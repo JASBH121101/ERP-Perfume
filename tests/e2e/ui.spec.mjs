@@ -173,3 +173,79 @@ test('mobile navigation opens and closes after selecting a module', async ({ pag
   await expect(page.getByRole('heading', { name: 'Facturación' })).toBeVisible();
   await expect(page.locator('#sidebar')).not.toHaveClass(/open/);
 });
+
+
+test('product creation and edits persist locally after reload without changing stock', async ({ page }) => {
+  await page.goto('/'); await page.locator('#sidebar button[data-view="products"]').click();
+  await page.getByRole('button', { name: /Nuevo producto/ }).click();
+  const dialog=page.locator('#product-dialog');
+  await dialog.getByLabel('Nombre del perfume').fill('QA Persistente');
+  await dialog.getByLabel('SKU / Código interno').fill('QA-PERSIST-01');
+  await dialog.getByLabel('Precio de venta (C$)').fill('1500');
+  await dialog.getByLabel('Existencias iniciales').fill('6');
+  await dialog.getByRole('button', { name: /Agregar a demo/ }).click();
+  await page.reload(); await page.locator('#sidebar button[data-view="products"]').click();
+  await expect(page.locator('#product-table-body')).toContainText('QA Persistente');
+  await page.getByRole('button', { name: 'Editar QA Persistente' }).click();
+  await dialog.getByLabel('Nombre del perfume').fill('QA Persistente Editado');
+  await dialog.getByLabel('Precio de venta (C$)').fill('1750');
+  await expect(dialog.getByLabel('Existencias iniciales')).toHaveValue('6');
+  await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
+  await expect(page.locator('#product-table-body')).toContainText('QA Persistente Editado');
+  await expect(page.locator('#product-table-body')).toContainText('6 uds.');
+  await page.reload(); await page.locator('#sidebar button[data-view="products"]').click();
+  await expect(page.locator('#product-table-body')).toContainText('QA Persistente Editado');
+});
+
+test('products can be deactivated and reactivated from the catalogue', async ({ page }) => {
+  await page.goto('/'); await page.locator('#sidebar button[data-view="products"]').click();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Desactivar Yara Lattafa' }).click();
+  await expect(page.locator('#product-count')).toHaveText('07');
+  await page.locator('#product-status-filter').selectOption('inactive');
+  await expect(page.locator('#product-table-body')).toContainText('Yara Lattafa');
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Activar Yara Lattafa' }).click();
+  await page.locator('#product-status-filter').selectOption('active');
+  await expect(page.locator('#product-table-body')).toContainText('Yara Lattafa');
+});
+
+test('inventory movements update stock, block negative balances, and persist', async ({ page }) => {
+  await page.goto('/'); await page.locator('#sidebar button[data-view="inventory"]').click();
+  const inventory=page.locator('#view-root');
+  await inventory.locator('tr').filter({ hasText: 'Yara Lattafa' }).getByRole('button', { name: 'Movimiento' }).click();
+  const stockDialog=page.locator('#stock-dialog');
+  await stockDialog.locator('select[name="type"]').selectOption('entry');
+  await stockDialog.locator('input[name="quantity"]').fill('4');
+  await stockDialog.getByRole('button', { name: 'Guardar movimiento' }).click();
+  await expect(inventory).toContainText('12 unidades');
+  await inventory.locator('tr').filter({ hasText: 'Yara Lattafa' }).getByRole('button', { name: 'Movimiento' }).click();
+  await stockDialog.locator('select[name="type"]').selectOption('exit');
+  await stockDialog.locator('input[name="quantity"]').fill('99');
+  await stockDialog.getByRole('button', { name: 'Guardar movimiento' }).click();
+  await expect(stockDialog).toBeVisible();
+  await expect(page.locator('#toast-region')).toContainText(/no puede dejar existencias negativas/i);
+  await stockDialog.locator('input[name="quantity"]').fill('2');
+  await stockDialog.getByRole('button', { name: 'Guardar movimiento' }).click();
+  await expect(inventory).toContainText('10 unidades');
+  await inventory.getByRole('button', { name: 'Registrar movimiento' }).click();
+  await stockDialog.locator('select[name="productId"]').selectOption('2');
+  await stockDialog.locator('select[name="type"]').selectOption('adjustment');
+  await stockDialog.locator('input[name="quantity"]').fill('7');
+  await stockDialog.getByRole('button', { name: 'Guardar movimiento' }).click();
+  await expect(inventory).toContainText('7 unidades');
+  await expect(inventory.locator('.ledger-panel')).toContainText('Entrada');
+  await expect(inventory.locator('.ledger-panel')).toContainText('Salida');
+  await expect(inventory.locator('.ledger-panel')).toContainText('Ajuste');
+  await page.reload(); await page.locator('#sidebar button[data-view="inventory"]').click();
+  await expect(page.locator('#view-root')).toContainText('7 unidades');
+  await expect(page.locator('.ledger-panel')).toContainText('Ajuste');
+});
+
+test('inventory CSV export is available', async ({ page }) => {
+  await page.goto('/'); await page.locator('#sidebar button[data-view="inventory"]').click();
+  const download=page.waitForEvent('download');
+  await page.getByRole('button', { name: /Exportar CSV/ }).click();
+  const file=await download;
+  expect(file.suggestedFilename()).toBe('jb-parfums-inventario-demo.csv');
+});

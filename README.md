@@ -33,3 +33,8 @@ See docs/qa-agent.md for capabilities, guardrails, activation and cost controls.
 
 ## Status
 The interface is not production-ready. Authentication, database persistence, inventory operations, invoices and HR workflows still need implementation and validation.
+
+
+## Functional prototype status
+
+Products and inventory support browser-local DEMO persistence (localStorage), product create/edit/view/deactivate/delete, stock entries/exits/adjustments, an inventory ledger and CSV export. This is not a production database: it is isolated to the current browser and is not synchronized with Neon or R2. Do not enter real customer, employee or business records.
