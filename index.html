@@ -29,14 +29,24 @@
       <div class="nav-caption">GENERAL</div>
       <nav class="primary-nav">
         <button class="nav-item active" data-view="dashboard"><span class="nav-icon" data-icon="grid"></span><span>Resumen</span></button>
-        <button class="nav-item" data-view="products"><span class="nav-icon" data-icon="bottle"></span><span>Productos</span><span class="nav-count" id="product-count">08</span></button>
-        <button class="nav-item" data-view="inventory"><span class="nav-icon" data-icon="boxes"></span><span>Inventario</span></button>
+      </nav>
+
+      <div class="nav-caption nav-caption-spaced">COMERCIAL</div>
+      <nav class="primary-nav">
         <button class="nav-item" data-view="orders"><span class="nav-icon" data-icon="receipt"></span><span>Pedidos</span><span class="nav-ping"></span></button>
+        <button class="nav-item" data-view="billing"><span class="nav-icon" data-icon="receipt"></span><span>Facturación</span></button>
         <button class="nav-item" data-view="customers"><span class="nav-icon" data-icon="users"></span><span>Clientes</span></button>
       </nav>
 
-      <div class="nav-caption nav-caption-spaced">GESTIÓN</div>
+      <div class="nav-caption nav-caption-spaced">INVENTARIO</div>
       <nav class="primary-nav">
+        <button class="nav-item" data-view="products"><span class="nav-icon" data-icon="bottle"></span><span>Productos</span><span class="nav-count" id="product-count">08</span></button>
+        <button class="nav-item" data-view="inventory"><span class="nav-icon" data-icon="boxes"></span><span>Existencias</span></button>
+      </nav>
+
+      <div class="nav-caption nav-caption-spaced">ADMINISTRACIÓN</div>
+      <nav class="primary-nav">
+        <button class="nav-item" data-view="hr"><span class="nav-icon" data-icon="users"></span><span>RRHH</span></button>
         <button class="nav-item" data-view="analytics"><span class="nav-icon" data-icon="chart"></span><span>Informes</span></button>
         <button class="nav-item" data-view="settings"><span class="nav-icon" data-icon="settings"></span><span>Configuración</span></button>
       </nav>
@@ -70,6 +80,11 @@
             <input id="global-search" type="search" placeholder="Buscar productos, pedidos..." autocomplete="off" aria-label="Buscar en el sistema">
             <kbd>⌘ K</kbd>
           </label>
+          <div class="font-controls" role="group" aria-label="Tamaño de letra">
+            <button type="button" id="font-decrease" aria-label="Disminuir tamaño de letra" title="Disminuir letra">A−</button>
+            <span id="font-scale-label" aria-live="polite">110%</span>
+            <button type="button" id="font-increase" aria-label="Aumentar tamaño de letra" title="Aumentar letra">A+</button>
+          </div>
           <span class="demo-pill"><i></i> MODO DEMO</span>
           <button class="icon-button notification-button" type="button" aria-label="Notificaciones"><span data-icon="bell"></span><i></i></button>
           <span class="topbar-divider"></span>

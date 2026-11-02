@@ -1,15 +1,6 @@
 name: UI validation
 
 on:
-  push:
-    branches:
-      - main
-      - feature/ui-foundation
-    paths:
-      - "index.html"
-      - "assets/**"
-      - "scripts/**"
-      - ".github/workflows/ui-checks.yml"
   pull_request:
     branches:
       - main
@@ -18,12 +9,13 @@ on:
       - "assets/**"
       - "scripts/**"
       - ".github/workflows/ui-checks.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ui-validation-${{ github.ref }}
+  group: ui-validation-pr-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -61,6 +61,8 @@
     inventory: { title: 'Inventario', eyebrow: 'CONTROL DE EXISTENCIAS', heading: 'Inventario', subtitle: 'Consulta los niveles de stock y detecta reposiciones.' },
     orders: { title: 'Pedidos', eyebrow: 'OPERACIONES', heading: 'Pedidos y ventas', subtitle: 'Da seguimiento al estado de cada pedido.' },
     customers: { title: 'Clientes', eyebrow: 'RELACIONES', heading: 'Cartera de clientes', subtitle: 'Mantén organizada la información comercial.' },
+    billing: { title: 'Facturación', eyebrow: 'DOCUMENTOS COMERCIALES', heading: 'Facturación', subtitle: 'Consulta comprobantes, borradores y cuentas por cobrar.' },
+    hr: { title: 'RRHH', eyebrow: 'GESTIÓN DEL PERSONAL', heading: 'Recursos Humanos', subtitle: 'Organiza personal, asistencia, permisos y nómina.' },
     analytics: { title: 'Informes', eyebrow: 'RENDIMIENTO', heading: 'Informes y análisis', subtitle: 'Indicadores preparados para tomar decisiones.' },
     settings: { title: 'Configuración', eyebrow: 'SISTEMA', heading: 'Configuración', subtitle: 'Preferencias y conexiones de JB PARFUMS ERP.' }
   };
@@ -195,6 +197,35 @@
       featureCard('users', 'Clientes y recurrencia', 'Frecuencia de compra, valor acumulado y comportamiento de clientes frecuentes.') +
       '</div><div class="notice-panel">' + svg('spark') + '<div><strong>Los informes se activarán después del modelo de datos</strong><p>Primero definiremos las fórmulas y fuentes de cada indicador para evitar reportes que mezclen ventas, pedidos y cobros.</p></div></div>';
   }
+  function renderBilling() {
+    const rows = [
+      { id: 'FAC-DEMO-001', client: 'Cliente de demostración A', date: '02 nov 2026', total: 4050, state: 'Borrador' },
+      { id: 'FAC-DEMO-002', client: 'Cliente de demostración B', date: '01 nov 2026', total: 2200, state: 'Pendiente' },
+      { id: 'FAC-DEMO-003', client: 'Cliente de demostración C', date: '31 oct 2026', total: 1850, state: 'Emitida (demo)' }
+    ];
+    const table = rows.map(function (row) {
+      const chip = row.state === 'Pendiente'
+        ? '<span class="status-chip status-pending">Pendiente</span>'
+        : row.state === 'Borrador'
+          ? '<span class="status-chip status-muted">Borrador</span>'
+          : '<span class="status-chip status-success">Emitida (demo)</span>';
+      return '<tr><td class="table-primary">' + esc(row.id) + '</td><td>' + esc(row.client) + '</td><td>' + esc(row.date) + '</td><td class="table-primary">' + money(row.total) + '</td><td>' + chip + '</td></tr>';
+    }).join('');
+    return heading(views.billing, '<button class="button button-primary" data-action="billing-preview">' + svg('plus') + ' Nueva factura</button>') +
+      '<div class="summary-strip"><div class="summary-mini"><span>Comprobantes de muestra</span><strong>03</strong></div><div class="summary-mini"><span>Pendientes de cobro</span><strong>01</strong></div><div class="summary-mini"><span>Importe de muestra</span><strong>' + money(8100) + '</strong></div></div>' +
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>' + table + '</tbody></table></div></article>' +
+      '<div class="notice-panel">' + svg('warning') + '<div><strong>Facturación oficial aún no habilitada</strong><p>Esta pantalla contiene únicamente ejemplos ficticios. Numeración, impuestos, requisitos fiscales, formatos y notas de crédito se definirán después de verificar la normativa vigente de Nicaragua. No emite comprobantes fiscales reales.</p></div></div>';
+  }
+  function renderHR() {
+    return heading(views.hr, '<button class="button button-primary" data-action="hr-preview">' + svg('plus') + ' Agregar colaborador</button>') +
+      '<div class="summary-strip"><div class="summary-mini"><span>Equipo de demostración</span><strong>05</strong></div><div class="summary-mini"><span>Asistencia de hoy</span><strong>04</strong></div><div class="summary-mini"><span>Permisos pendientes</span><strong>01</strong></div></div>' +
+      '<div class="feature-grid">' +
+      featureCard('users', 'Personal y expedientes', 'Datos laborales, contratos, cargos, departamentos y documentos con permisos de acceso.') +
+      featureCard('clock', 'Asistencia y turnos', 'Entradas, salidas, horarios, ausencias y controles de jornada.') +
+      featureCard('receipt', 'Nómina y prestaciones', 'Periodos de pago, deducciones, prestaciones y comprobantes de nómina.') +
+      featureCard('calendar', 'Vacaciones y permisos', 'Solicitudes, aprobaciones, saldos disponibles y calendario de ausencias.') +
+      '</div><div class="notice-panel">' + svg('warning') + '<div><strong>RRHH en etapa de diseño</strong><p>Esta sección no contiene empleados reales ni procesa nómina. Los cálculos y documentos laborales se construirán tras validar la legislación nicaragüense, la privacidad de los expedientes y los permisos de cada rol.</p></div></div>';
+  }
   function renderSettings() {
     return heading(views.settings, '') +
       '<div class="feature-grid">' +
@@ -217,6 +248,8 @@
       inventory: renderInventory,
       orders: renderOrders,
       customers: renderCustomers,
+      billing: renderBilling,
+      hr: renderHR,
       analytics: renderAnalytics,
       settings: renderSettings
     };
@@ -245,6 +278,30 @@
   function openProductModal() {
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else toast('El formulario emergente no es compatible con este navegador.');
+  }
+  const fontLevels = [
+    { value: 'normal', label: '100%' },
+    { value: 'large', label: '110%' },
+    { value: 'larger', label: '120%' }
+  ];
+  let fontLevelIndex = 1;
+  function setFontLevel(index, persist) {
+    fontLevelIndex = Math.max(0, Math.min(fontLevels.length - 1, index));
+    const level = fontLevels[fontLevelIndex];
+    document.body.setAttribute('data-font-scale', level.value);
+    const label = document.getElementById('font-scale-label');
+    if (label) label.textContent = level.label;
+    const decrease = document.getElementById('font-decrease');
+    const increase = document.getElementById('font-increase');
+    if (decrease) decrease.disabled = fontLevelIndex === 0;
+    if (increase) increase.disabled = fontLevelIndex === fontLevels.length - 1;
+    if (persist) {
+      try {
+        window.localStorage.setItem('jbparfums-font-level', String(fontLevelIndex));
+      } catch (error) {
+        // Font controls still work for the current browser session.
+      }
+    }
   }
   function closeMobileMenu() {
     document.getElementById('sidebar').classList.remove('open');
@@ -286,11 +343,21 @@
     if (action) {
       const name = action.getAttribute('data-action');
       if (name === 'new-product') openProductModal();
+      else if (name === 'billing-preview') toast('El formulario de factura se diseñará después de validar los requisitos fiscales de Nicaragua.');
+      else if (name === 'hr-preview') toast('El alta de personal se habilitará después de definir roles y protección de expedientes.');
       else if (name === 'export') toast('La exportación estará disponible al conectar los datos reales.');
       else if (name === 'preview-product') {
         const product = products.find(function (p) { return String(p.id) === action.getAttribute('data-id'); });
         if (product) toast(product.name + ' · ' + product.stock + ' unidades · ' + money(product.price));
       } else if (name === 'preview-order') toast('El detalle de pedidos estará disponible en la siguiente etapa.');
+      return;
+    }
+    if (event.target.closest('#font-decrease')) {
+      setFontLevel(fontLevelIndex - 1, true);
+      return;
+    }
+    if (event.target.closest('#font-increase')) {
+      setFontLevel(fontLevelIndex + 1, true);
       return;
     }
     if (event.target.closest('#sidebar-collapse')) {
@@ -373,6 +440,14 @@
     initiallyCollapsed = false;
   }
   setSidebarCollapsed(initiallyCollapsed, false);
+  let storedFontLevel = 1;
+  try {
+    const storedValue = Number(window.localStorage.getItem('jbparfums-font-level'));
+    if (Number.isInteger(storedValue) && storedValue >= 0 && storedValue < fontLevels.length) storedFontLevel = storedValue;
+  } catch (error) {
+    storedFontLevel = 1;
+  }
+  setFontLevel(storedFontLevel, false);
   renderView();
   document.getElementById('menu-toggle').setAttribute('aria-expanded', 'false');
 }());

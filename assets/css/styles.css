@@ -95,3 +95,61 @@
   .data-table th{font-size:9px}
   .data-table td{font-size:10px}
 }
+
+
+/* Accessible font-size control: 100%, 110% and 120%. Layout geometry stays fixed. */
+body { --ui-font-scale: 1.1; }
+body[data-font-scale="normal"] { --ui-font-scale: 1; }
+body[data-font-scale="large"] { --ui-font-scale: 1.1; }
+body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
+.nav-caption { font-size: calc(10px * var(--ui-font-scale)); }
+.nav-item { font-size: calc(13px * var(--ui-font-scale)); }
+.workspace-switcher strong { font-size: calc(12px * var(--ui-font-scale)); }
+.workspace-switcher small,.storage-card>small { font-size: calc(10px * var(--ui-font-scale)); }
+.storage-card p { font-size: calc(11px * var(--ui-font-scale)); }
+.profile-copy strong { font-size: calc(11px * var(--ui-font-scale)); }
+.profile-copy small { font-size: calc(10px * var(--ui-font-scale)); }
+.breadcrumb { font-size: calc(11px * var(--ui-font-scale)); }
+.breadcrumb strong { font-size: calc(12px * var(--ui-font-scale)); }
+.global-search input { font-size: calc(12px * var(--ui-font-scale)); }
+.demo-pill { font-size: calc(9px * var(--ui-font-scale)); }
+.page-context .eyebrow,.eyebrow { font-size: calc(10px * var(--ui-font-scale)); }
+.page-date { font-size: calc(11px * var(--ui-font-scale)); }
+.page-heading p { font-size: calc(12px * var(--ui-font-scale)); }
+.button,.period-select,.filter-select { font-size: calc(11px * var(--ui-font-scale)); }
+.metric-label { font-size: calc(12px * var(--ui-font-scale)); }
+.metric-value { font-size: calc(30px * var(--ui-font-scale)); }
+.metric-foot { font-size: calc(10px * var(--ui-font-scale)); }
+.panel-heading h2 { font-size: calc(19px * var(--ui-font-scale)); }
+.panel-heading p { font-size: calc(11px * var(--ui-font-scale)); }
+.chart-summary strong { font-size: calc(28px * var(--ui-font-scale)); }
+.chart-summary span,.chart-note { font-size: calc(10px * var(--ui-font-scale)); }
+.top-product-info strong { font-size: calc(12px * var(--ui-font-scale)); }
+.top-product-info small { font-size: calc(10px * var(--ui-font-scale)); }
+.top-product-value { font-size: calc(11px * var(--ui-font-scale)); }
+.data-table th { font-size: calc(10px * var(--ui-font-scale)); }
+.data-table td,.table-primary { font-size: calc(11px * var(--ui-font-scale)); }
+.table-secondary { font-size: calc(9px * var(--ui-font-scale)); }
+.status-chip { font-size: calc(9px * var(--ui-font-scale)); }
+.stock-row-head { font-size: calc(11px * var(--ui-font-scale)); }
+.activity-copy strong { font-size: calc(10px * var(--ui-font-scale)); }
+.activity-copy small,.panel-footer-note { font-size: calc(9px * var(--ui-font-scale)); }
+.form-field { font-size: calc(10px * var(--ui-font-scale)); }
+.modal-note,.notice-panel p,.feature-card p { font-size: calc(10px * var(--ui-font-scale)); }
+.notice-panel strong { font-size: calc(11px * var(--ui-font-scale)); }
+.font-controls { display:flex; align-items:center; gap:4px; padding:3px; border:1px solid #e8e1d5; border-radius:8px; background:#fffdf9; white-space:nowrap; }
+.font-controls button { min-width:27px; height:27px; padding:0 5px; border:0; border-radius:5px; color:#746344; background:transparent; font-size:11px; font-weight:700; }
+.font-controls button:hover:not(:disabled) { background:#f4eddf; }
+.font-controls button:disabled { color:#c9c1b4; cursor:not-allowed; }
+.font-controls span { min-width:34px; color:#8c8170; text-align:center; font-size:9px; font-variant-numeric:tabular-nums; }
+@media(max-width:950px) {
+  .font-controls { gap:2px; }
+  .font-controls button { min-width:24px; }
+}
+@media(max-width:720px) {
+  .topbar-actions { gap:6px; }
+  .font-controls span { display:none; }
+}
+@media(max-width:420px) {
+  .font-controls button { min-width:22px; padding:0 3px; font-size:10px; }
+}
