@@ -77,7 +77,7 @@
         <div class="topbar-actions">
           <label class="global-search">
             <span data-icon="search"></span>
-            <input id="global-search" type="search" placeholder="Buscar productos, pedidos..." autocomplete="off" aria-label="Buscar en el sistema">
+            <input id="global-search" type="search" autocomplete="off" aria-label="Buscar en el sistema">
             <kbd>⌘ K</kbd>
           </label>
           <div class="font-controls" role="group" aria-label="Tamaño de letra">
@@ -119,26 +119,26 @@
       <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="bottle"></span><div><strong>Identificación y fragancia</strong><small>Información comercial y características del perfume</small></div></div>
         <div class="form-grid">
-          <label class="form-field full-field"><span>Nombre del perfume <b>*</b></span><input name="name" required maxlength="80" placeholder="Ej. Maison Alhambra Kismet"></label>
-          <label class="form-field"><span>Marca</span><input name="brand" maxlength="50" placeholder="Ej. Lattafa"></label>
-          <label class="form-field"><span>SKU / Código interno</span><input name="sku" maxlength="24" placeholder="Se genera automáticamente"></label>
+          <label class="form-field full-field"><span>Nombre del perfume <span class="required-mark" aria-hidden="true">*</span></span><input name="name" required maxlength="80"></label>
+          <label class="form-field"><span>Marca</span><input name="brand" maxlength="50"></label>
+          <label class="form-field"><span>SKU / Código interno</span><input name="sku" maxlength="24"></label>
           <label class="form-field"><span>Categoría</span><select name="category"><option>Perfumería</option><option>Árabes</option><option>Diseñador</option><option>Nicho</option><option>Unisex</option><option>Body Mist</option><option>Sets / Combos</option><option>Accesorios</option></select></label>
           <label class="form-field"><span>Concentración</span><select name="concentration"><option value="">Seleccionar concentración</option><option>Eau de Parfum (EDP)</option><option>Eau de Toilette (EDT)</option><option>Parfum / Extrait</option><option>Eau de Cologne (EDC)</option><option>Body Mist</option><option>Aceite perfumado</option><option>Otro</option></select></label>
           <label class="form-field"><span>Género</span><select name="gender"><option value="">No especificado</option><option>Femenino</option><option>Masculino</option><option>Unisex</option></select></label>
           <label class="form-field"><span>Familia olfativa</span><select name="family"><option value="">No especificada</option><option>Amaderada</option><option>Ámbar / Oriental</option><option>Floral</option><option>Frutal</option><option>Cítrica</option><option>Fresca / Acuática</option><option>Gourmand / Dulce</option><option>Especiada</option><option> Aromática</option><option>Otra</option></select></label>
-          <label class="form-field"><span>Contenido (ml)</span><input name="sizeMl" type="number" min="0" max="10000" step="1" placeholder="Ej. 100"></label>
+          <label class="form-field"><span>Contenido (ml)</span><input name="sizeMl" type="number" min="0" max="10000" step="1"></label>
           <label class="form-field"><span>Presentación</span><select name="presentation"><option value="">Seleccionar</option><option>Caja original</option><option>Tester</option><option>Sin caja</option><option>Decant</option><option>Set / Estuche</option></select></label>
-          <label class="form-field"><span>Código de barras (opcional)</span><input name="barcode" maxlength="40" placeholder="EAN / UPC"></label>
+          <label class="form-field"><span>Código de barras</span><input name="barcode" maxlength="40"></label>
         </div>
       </section>
 
       <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="chart"></span><div><strong>Costos y precio de venta</strong><small>Calcula costo unitario, utilidad y margen bruto</small></div></div>
         <div class="form-grid">
-          <label class="form-field"><span>Proveedor</span><input name="supplier" maxlength="80" placeholder="Nombre del proveedor"></label>
-          <label class="form-field"><span>Costo de compra (C$)</span><input name="purchaseCost" type="number" min="0" step="0.01" placeholder="0.00"></label>
-          <label class="form-field"><span>Costos adicionales (C$)</span><input name="additionalCost" type="number" min="0" step="0.01" placeholder="Envío, gestión, etc."></label>
-          <label class="form-field"><span>Precio de venta (C$) <b>*</b></span><input name="price" type="number" min="0.01" step="0.01" required placeholder="0.00"></label>
+          <label class="form-field"><span>Proveedor</span><input name="supplier" maxlength="80"></label>
+          <label class="form-field"><span>Costo de compra (C$)</span><input name="purchaseCost" type="number" min="0" step="0.01"></label>
+          <label class="form-field"><span>Costos adicionales (C$)</span><input name="additionalCost" type="number" min="0" step="0.01"></label>
+          <label class="form-field"><span>Precio de venta (C$) <span class="required-mark" aria-hidden="true">*</span></span><input name="price" type="number" min="0.01" step="0.01" required></label>
         </div>
         <div class="cost-preview-grid" aria-live="polite">
           <div class="cost-preview-card"><span>Costo unitario</span><strong id="unit-cost-preview">C$ 0</strong></div>
@@ -151,10 +151,10 @@
       <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="boxes"></span><div><strong>Inventario y ubicación</strong><small>Existencias iniciales y control de reposición</small></div></div>
         <div class="form-grid">
-          <label class="form-field"><span>Existencias iniciales <b>*</b></span><input name="stock" type="number" min="0" step="1" required placeholder="0"></label>
+          <label class="form-field"><span>Existencias iniciales <span class="required-mark" aria-hidden="true">*</span></span><input name="stock" type="number" min="0" step="1" required></label>
           <label class="form-field"><span>Stock mínimo</span><input name="minStock" type="number" min="0" step="1" value="3"></label>
-          <label class="form-field full-field"><span>Ubicación en bodega</span><input name="location" maxlength="40" placeholder="Ej. Estante A · Nivel 2"></label>
-          <label class="form-field full-field"><span>Notas internas</span><textarea name="notes" rows="2" maxlength="500" placeholder="Observaciones para uso interno..."></textarea></label>
+          <label class="form-field full-field"><span>Ubicación en bodega</span><input name="location" maxlength="40"></label>
+          <label class="form-field full-field"><span>Notas internas</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
         </div>
       </section>
 
@@ -167,10 +167,10 @@
       <div class="modal-heading"><div><span class="eyebrow">INVENTARIO · KARDEX DEMO</span><h2 id="stock-modal-title">Registrar movimiento</h2></div><button type="button" class="icon-button modal-close" id="stock-modal-close" aria-label="Cerrar">×</button></div>
       <p class="modal-note">Cada movimiento actualiza el stock y conserva el saldo anterior y posterior en el historial local.</p>
       <div class="form-grid">
-        <label class="form-field full-field"><span>Producto <b>*</b></span><select name="productId" required></select></label>
-        <label class="form-field full-field"><span>Tipo de movimiento <b>*</b></span><select name="type" id="stock-movement-type" required><option value="entry">Entrada</option><option value="exit">Salida</option><option value="adjustment">Ajuste de inventario</option></select></label>
-        <label class="form-field full-field"><span id="stock-quantity-label">Cantidad (unidades) <b>*</b></span><input name="quantity" id="stock-quantity" type="number" min="1" step="1" required placeholder="Ej. 3"></label>
-        <label class="form-field full-field"><span>Nota / referencia</span><input name="note" maxlength="120" placeholder="Ej. Compra a proveedor / conteo físico"></label>
+        <label class="form-field full-field"><span>Producto <span class="required-mark" aria-hidden="true">*</span></span><select name="productId" required></select></label>
+        <label class="form-field full-field"><span>Tipo de movimiento <span class="required-mark" aria-hidden="true">*</span></span><select name="type" id="stock-movement-type" required><option value="entry">Entrada</option><option value="exit">Salida</option><option value="adjustment">Ajuste de inventario</option></select></label>
+        <label class="form-field full-field"><span><span id="stock-quantity-label">Cantidad (unidades)</span> <span class="required-mark" aria-hidden="true">*</span></span><input name="quantity" id="stock-quantity" type="number" min="1" step="1" required></label>
+        <label class="form-field full-field"><span>Nota / referencia</span><input name="note" maxlength="120"></label>
       </div>
       <div class="modal-actions"><button type="button" class="button button-quiet" id="stock-cancel">Cancelar</button><button type="submit" class="button button-primary">Guardar movimiento</button></div>
     </form>
