@@ -175,6 +175,11 @@
         }).map(function (order) {
           if (needsCurrencyMigration) order = convertLegacyOrderToUsd(order);
           order.status = allowedStatuses.includes(order.status) ? order.status : 'Pendiente';
+          if (!order.paymentCurrency) {
+            order.paymentCurrency = 'USD';
+            order.paymentAmount = Number(order.amount || 0);
+            order.exchangeRate = 36.6;
+          }
           order.items = order.items.filter(function (item) {
             return item && String(item.name || '').trim() && Number.isInteger(item.quantity) && item.quantity > 0 && Number.isFinite(Number(item.unitPrice)) && Number(item.unitPrice) >= 0;
           });
@@ -387,6 +392,9 @@
         '<div class="detail-field"><span>Contacto</span><strong>' + esc(order.phone || 'No registrado') + '</strong></div>' +
         '<div class="detail-field"><span>Método de pago</span><strong>' + esc(order.paymentMethod || 'No registrado') + '</strong></div>' +
         '<div class="detail-field"><span>Estado del pago</span><strong>' + esc(order.paymentStatus || 'No registrado') + '</strong></div>' +
+        '<div class="detail-field"><span>Moneda de cobro</span><strong>' + esc(order.paymentCurrency || 'USD') + '</strong></div>' +
+        '<div class="detail-field"><span>Importe de cobro</span><strong>' + esc(moneyInCurrency(order.paymentAmount == null ? order.amount : order.paymentAmount, order.paymentCurrency || 'USD')) + '</strong></div>' +
+        '<div class="detail-field"><span>Tipo de cambio</span><strong>' + rateLabel(order.exchangeRate || 36.6) + '</strong></div>' +
         '<div class="detail-field"><span>Entrega</span><strong>' + esc(order.deliveryMode || 'No definida') + '</strong></div>' +
         '<div class="detail-field"><span>Estado del pedido</span><strong>' + orderStatus(order.status) + '</strong></div>' +
       '</section>' +
@@ -556,8 +564,10 @@
       const supplier=suppliers[num('supplierIndex')],product=products.find(p=>String(p.id)===get('productId')),quantity=num('quantity'),unitCost=num('unitCost');
       if(!supplier||!product||!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitCost)||unitCost<=0){toast('Revisa proveedor, producto, cantidad y costo.');return;}
       const unitUsd=toUsd(unitCost,currency),previous=product.stock,nextStock=previous+quantity;
+      const previousPurchaseCost=Number(product.purchaseCost||0),additionalCost=Number(product.additionalCost||0);
+      const weightedPurchaseCost=nextStock>0?roundMoney((previousPurchaseCost*previous+unitUsd*quantity)/nextStock):unitUsd;
       purchases.unshift({id,supplier:supplier.name,productId:product.id,product:product.name,quantity,currency,originalUnitCost:unitCost,originalTotal:roundMoney(unitCost*quantity),exchangeRate:rate,unitCostUsd:unitUsd,totalUsd:roundMoney(unitUsd*quantity),createdAt:new Date().toISOString()});
-      product.purchaseCost=unitUsd;product.unitCost=roundMoney(unitUsd+Number(product.additionalCost||0));product.profit=roundMoney(Number(product.price||0)-product.unitCost);product.margin=product.price>0?roundMoney(product.profit/product.price*100):0;product.stock=nextStock;
+      product.purchaseCost=weightedPurchaseCost;product.unitCost=roundMoney(weightedPurchaseCost+additionalCost);product.profit=roundMoney(Number(product.price||0)-product.unitCost);product.margin=product.price>0?roundMoney(product.profit/product.price*100):0;product.stock=nextStock;
       inventoryMovements.unshift({id,productId:product.id,productName:product.name,sku:product.sku,type:'Entrada por compra',quantity,delta:quantity,previousStock:previous,newStock:nextStock,note:'Compra a '+supplier.name,createdAt:new Date().toISOString()});
       persistDemoData();businessDialog.close();renderView();toast('Compra registrada; costo y existencias actualizados en DEMO.');
     }else if(type==='expense'){

@@ -313,7 +313,7 @@ test('form fields have no placeholder or optional copy; required fields use a re
 });
 
 
-test('business amounts display in USD and configuration shows the fixed reference rate', async ({ page }) => {
+test('business amounts display in USD and configuration shows the configurable reference rate', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#view-root')).toContainText('$359.30');
   await expect(page.locator('#view-root')).not.toContainText('C' + '$');
@@ -431,4 +431,37 @@ test('expenses support two currencies and cash account enforces currency match',
  await dialog.locator('input[name="concept"]').fill('Cobro QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.locator('select[name="account"]').selectOption({label:'Caja USD'});await dialog.getByRole('button',{name:'Guardar en demo'}).click();
  await expect(dialog).toBeVisible();await expect(page.locator('#toast-region')).toContainText(/debe coincidir/i);
+});
+
+
+test('customer, order and internal voucher with NIO abono flow',async({page})=>{
+ await page.goto('/');
+ await page.locator('#sidebar button[data-view="customers"]').click();
+ await page.getByRole('button',{name:/Nuevo cliente/}).click();
+ const dialog=page.locator('#business-dialog');
+ await dialog.locator('input[name="name"]').fill('Cliente Flujo QA');
+ await dialog.locator('input[name="contact"]').fill('88880000');
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();
+ await page.locator('#sidebar button[data-view="orders"]').click();
+ await page.getByRole('button',{name:/Nuevo pedido/}).click();
+ await dialog.locator('select[name="customerIndex"]').selectOption('0');
+ await dialog.locator('select[name="productId"]').selectOption('1');
+ await dialog.locator('input[name="quantity"]').fill('2');
+ await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();
+ await expect(page.locator('#view-root')).toContainText('JP-1049');
+ await expect(page.locator('#view-root')).toContainText('C$');
+ await page.locator('#sidebar button[data-view="billing"]').click();
+ await page.getByRole('button',{name:/Nuevo comprobante/}).click();
+ await dialog.locator('select[name="orderId"]').selectOption('JP-1049');
+ await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.getByRole('button',{name:'Crear comprobante demo'}).click();
+ const voucher=page.locator('#view-root').locator('tr').filter({hasText:'JP-1049'});
+ await expect(voucher).toContainText('Pendiente');
+ await voucher.getByRole('button',{name:'Registrar abono'}).click();
+ await dialog.locator('input[name="amount"]').fill('4900');
+ await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.locator('select[name="account"]').selectOption({label:'Caja NIO'});
+ await dialog.getByRole('button',{name:'Registrar abono'}).click();
+ await expect(page.locator('#view-root').locator('tr').filter({hasText:'JP-1049'})).toContainText('Pagado');
 });
