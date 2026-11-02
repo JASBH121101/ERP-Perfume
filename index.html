@@ -182,6 +182,31 @@
       <div class="modal-actions"><button type="button" class="button button-quiet" id="detail-cancel">Cerrar</button><button type="button" class="button button-primary" id="edit-detail-product" data-action="edit-from-detail">Editar ficha</button></div>
     </div>
   </dialog>
+  <dialog class="modal order-detail-modal" id="order-detail-dialog" aria-labelledby="order-detail-title">
+    <div class="modal-card">
+      <div class="modal-heading">
+        <div><span class="eyebrow">VENTAS · DETALLE DEMO</span><h2 id="order-detail-title">Pedido</h2></div>
+        <button type="button" class="icon-button modal-close" id="order-detail-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="modal-note" id="order-detail-subtitle">Registro ficticio para pruebas; no representa una venta real.</p>
+      <div id="order-detail-content"></div>
+      <div class="order-status-editor">
+        <label for="order-status-select">Estado del pedido
+          <select class="filter-select" id="order-status-select">
+            <option value="Pendiente">Pendiente</option>
+            <option value="En preparación">En preparación</option>
+            <option value="Listo para entrega">Listo para entrega</option>
+            <option value="En tránsito">En tránsito</option>
+            <option value="Completado">Completado</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button button-quiet" id="order-detail-cancel">Cerrar</button>
+        <button type="button" class="button button-primary" id="save-order-status" data-action="save-order-status">Guardar estado</button>
+      </div>
+    </div>
+  </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
   <noscript><div class="noscript-message">Activa JavaScript para utilizar el panel de demostración.</div></noscript>
 </body>
