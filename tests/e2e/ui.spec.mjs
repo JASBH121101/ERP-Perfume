@@ -229,7 +229,8 @@ test('inventory movements update stock, block negative balances, and persist', a
   await stockDialog.getByRole('button', { name: 'Guardar movimiento' }).click();
   await expect(inventory).toContainText('10 unidades');
   await inventory.getByRole('button', { name: 'Registrar movimiento' }).click();
-  await stockDialog.locator('select[name="productId"]').selectOption('2');
+  await stockDialog.locator('[data-lookup="product"]').fill('Yara');
+  await stockDialog.getByRole('option', { name: /Yara Lattafa/ }).click();
   await stockDialog.locator('select[name="type"]').selectOption('adjustment');
   await stockDialog.locator('input[name="quantity"]').fill('7');
   await stockDialog.getByRole('button', { name: 'Guardar movimiento' }).click();
@@ -411,7 +412,8 @@ test('purchase in córdobas retains rate and updates demo stock and cost',async(
  await page.goto('/');await page.locator('#sidebar button[data-view="suppliers"]').click();await page.getByRole('button',{name:/Nuevo proveedor/}).click();
  const dialog=page.locator('#business-dialog');await dialog.locator('input[name="name"]').fill('Proveedor QA');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await page.locator('#sidebar button[data-view="purchases"]').click();await page.getByRole('button',{name:/Registrar compra/}).click();
- await dialog.locator('select[name="supplierIndex"]').selectOption('0');await dialog.locator('select[name="productId"]').selectOption('2');
+ await dialog.locator('[data-lookup="supplier"]').fill('Proveedor QA');await dialog.getByRole('option',{name:/Proveedor QA/}).click();
+ await dialog.locator('[data-lookup="product"]').fill('JBP-002');await dialog.getByRole('option',{name:/Yara Lattafa/}).click();
  await dialog.locator('input[name="quantity"]').fill('2');await dialog.locator('input[name="unitCost"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$20.00');
  await page.locator('#sidebar button[data-view="inventory"]').click();await expect(page.locator('#view-root').locator('tr').filter({hasText:'Yara Lattafa'})).toContainText('10 unidades');
@@ -444,8 +446,10 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();
  await page.locator('#sidebar button[data-view="orders"]').click();
  await page.getByRole('button',{name:/Nuevo pedido/}).click();
- await dialog.locator('select[name="customerIndex"]').selectOption('0');
- await dialog.locator('select[name="productId"]').selectOption('1');
+ await dialog.locator('[data-lookup="customer"]').fill('Cliente Flujo');
+ await dialog.getByRole('option',{name:/Cliente Flujo QA/}).click();
+ await dialog.locator('[data-lookup="product"]').fill('JBP-001');
+ await dialog.getByRole('option',{name:/Club de Nuit Intense Man/}).click();
  await dialog.locator('input[name="quantity"]').fill('2');
  await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();
@@ -453,7 +457,8 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await expect(page.locator('#view-root')).toContainText('C$');
  await page.locator('#sidebar button[data-view="billing"]').click();
  await page.getByRole('button',{name:/Nuevo comprobante/}).click();
- await dialog.locator('select[name="orderId"]').selectOption('JP-1049');
+ await dialog.locator('[data-lookup="order"]').fill('JP-1049');
+ await dialog.getByRole('option',{name:/JP-1049/}).click();
  await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Crear comprobante demo'}).click();
  const voucher=page.locator('#view-root').locator('tr').filter({hasText:'JP-1049'});
@@ -464,4 +469,41 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await dialog.locator('select[name="account"]').selectOption({label:'Caja NIO'});
  await dialog.getByRole('button',{name:'Registrar abono'}).click();
  await expect(page.locator('#view-root').locator('tr').filter({hasText:'JP-1049'})).toContainText('Pagado');
+});
+
+
+test('new order starts empty and requires searchable customer and perfume selections', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: /Nuevo pedido/ }).click();
+  const dialog = page.locator('#business-dialog');
+  const customerSearch = dialog.locator('[data-lookup="customer"]');
+  const productSearch = dialog.locator('[data-lookup="product"]');
+  await expect(customerSearch).toHaveValue('');
+  await expect(productSearch).toHaveValue('');
+  await expect(dialog.locator('input[type="hidden"][name="customerIndex"]')).toHaveValue('');
+  await expect(dialog.locator('input[type="hidden"][name="productId"]')).toHaveValue('');
+  await customerSearch.fill('María');
+  await expect(dialog.getByRole('option', { name: /María Gutiérrez/ })).toBeVisible();
+  await dialog.getByRole('option', { name: /María Gutiérrez/ }).click();
+  await expect(dialog.locator('input[type="hidden"][name="customerIndex"]')).toHaveValue('0');
+  await productSearch.fill('JBP-003');
+  await expect(dialog.getByRole('option', { name: /Khamrah Lattafa/ })).toBeVisible();
+  await dialog.getByRole('option', { name: /Khamrah Lattafa/ }).click();
+  await expect(dialog.locator('input[type="hidden"][name="productId"]')).toHaveValue('3');
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
+});
+
+test('new internal voucher starts without a preselected sample order', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="billing"]').click();
+  await page.getByRole('button', { name: /Nuevo comprobante/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await expect(dialog.locator('[data-lookup="order"]')).toHaveValue('');
+  await expect(dialog.locator('input[type="hidden"][name="orderId"]')).toHaveValue('');
+  await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await expect(dialog.getByRole('option', { name: /JP-1048/ })).toBeVisible();
+  await dialog.getByRole('option', { name: /JP-1048/ }).click();
+  await expect(dialog.locator('input[type="hidden"][name="orderId"]')).toHaveValue('JP-1048');
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
 });
