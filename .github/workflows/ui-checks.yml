@@ -55,7 +55,7 @@ jobs:
     needs:
       - validate-ui
     if: >-
-      ${{ needs.validate-ui.result == 'failure' &&
+      ${{ failure() && needs.validate-ui.result == 'failure' &&
           vars.AI_REPAIR_ENABLED == 'true' &&
           github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest

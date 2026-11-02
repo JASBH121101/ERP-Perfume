@@ -14,7 +14,7 @@ test('ERP renders the dashboard and all primary modules', async ({ page }) => {
 
   await page.locator('#sidebar button[data-view="hr"]').click();
   await expect(page.getByRole('heading', { name: 'Recursos Humanos' })).toBeVisible();
-  await expect(page.getByText(/no procesa nómina/i)).toBeVisible();
+  await expect(page.getByText(/no contiene empleados reales/i)).toBeVisible();
 });
 
 test('desktop sidebar collapses and remembers its state', async ({ page }) => {
@@ -74,7 +74,7 @@ test('a new product can be added to the demo session', async ({ page }) => {
   await page.getByLabel('SKU / Código').fill('QA-ERP-001');
   await page.getByLabel('Categoría').selectOption('Árabes');
   await page.getByLabel('Precio de venta (C$)').fill('1250');
-  await page.getByLabel('Existencias').fill('4');
+  await dialog.getByLabel('Existencias').fill('4');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
   await expect(dialog).not.toBeVisible();
@@ -91,7 +91,7 @@ test('product names are rendered as text, not executable markup', async ({ page 
   const payload = '<img src=x onerror=alert(1)>';
   await page.getByLabel('Nombre del perfume').fill(payload);
   await page.getByLabel('Precio de venta (C$)').fill('100');
-  await page.getByLabel('Existencias').fill('1');
+  await dialog.getByLabel('Existencias').fill('1');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
   await expect(page.locator('#product-table-body')).toContainText(payload);
