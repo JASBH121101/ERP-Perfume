@@ -42,12 +42,12 @@
     { id: 7, name: 'Ana Abiyedh Rouge', brand: 'Lattafa', sku: 'JBP-007', category: 'Unisex', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Ambar / Oriental', sizeMl: 60, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1000, additionalCost: 100, unitCost: 1100, price: 1750, profit: 650, margin: 37.1, stock: 2, minStock: 4, location: 'B-02', tone: 'art-rose', active: true },
     { id: 8, name: 'Eclaire Lattafa', brand: 'Lattafa', sku: 'JBP-008', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1250, additionalCost: 100, unitCost: 1350, price: 2050, profit: 700, margin: 34.1, stock: 9, minStock: 3, location: 'B-03', tone: 'art-olive', active: true }
   ];
-  const orders = [
-    { id: 'JP-1048', customer: 'María Gutiérrez', date: '02 nov 2026', amount: 4050, status: 'Completado' },
-    { id: 'JP-1047', customer: 'Carlos Mendoza', date: '02 nov 2026', amount: 2200, status: 'Pendiente' },
-    { id: 'JP-1046', customer: 'Andrea López', date: '01 nov 2026', amount: 1850, status: 'Completado' },
-    { id: 'JP-1045', customer: 'Daniela Ruiz', date: '01 nov 2026', amount: 3100, status: 'En preparación' },
-    { id: 'JP-1044', customer: 'Luis Salazar', date: '31 oct 2026', amount: 1950, status: 'Completado' }
+  let orders = [
+    { id: 'JP-1048', customer: 'María Gutiérrez', phone: '+505 8888 1204', date: '02 nov 2026', amount: 4050, status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: 0, deliveryFee: 150, items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: 1850 }, { name: 'Eclaire Lattafa', sku: 'JBP-008', quantity: 1, unitPrice: 2050 }] },
+    { id: 'JP-1047', customer: 'Carlos Mendoza', phone: '+505 8777 2310', date: '02 nov 2026', amount: 2200, status: 'Pendiente', paymentMethod: 'Efectivo contra entrega', paymentStatus: 'Pendiente', deliveryMode: 'Retiro en tienda', discount: 0, deliveryFee: 0, items: [{ name: 'Khamrah Lattafa', sku: 'JBP-003', quantity: 1, unitPrice: 2200 }] },
+    { id: 'JP-1046', customer: 'Andrea López', phone: '+505 8666 3421', date: '01 nov 2026', amount: 1850, status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: 0, deliveryFee: 0, items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: 1850 }] },
+    { id: 'JP-1045', customer: 'Daniela Ruiz', phone: '+505 8555 4532', date: '01 nov 2026', amount: 3100, status: 'En preparación', paymentMethod: 'Tarjeta', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: 0, deliveryFee: 0, items: [{ name: 'Good Girl Carolina Herrera', sku: 'JBP-006', quantity: 1, unitPrice: 3100 }] },
+    { id: 'JP-1044', customer: 'Luis Salazar', phone: 'No registrado', date: '31 oct 2026', amount: 1950, status: 'Completado', paymentMethod: 'Efectivo', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: 0, deliveryFee: 0, items: [{ name: '9PM Afnan', sku: 'JBP-005', quantity: 1, unitPrice: 1950 }] }
   ];
   const customers = [
     { name: 'María Gutiérrez', contact: '+505 8888 1204', orders: 8, spent: 12450, since: 'Ago 2026' },
@@ -74,11 +74,12 @@
   const stockDialog = document.getElementById('stock-dialog');
   const stockForm = document.getElementById('stock-form');
   const detailDialog = document.getElementById('product-detail-dialog');
+  const orderDialog = document.getElementById('order-detail-dialog');
   const DEMO_STORAGE_KEY = 'jbparfums-demo-data-v1';
   let inventoryMovements = [];
   function persistDemoData() {
     try {
-      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 1, products: products, inventoryMovements: inventoryMovements }));
+      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 1, products: products, inventoryMovements: inventoryMovements, orders: orders }));
       return true;
     } catch (error) {
       toast('No se pudo guardar en este navegador. Los cambios solo durarán hasta cerrar la sesión.');
@@ -110,6 +111,18 @@
       inventoryMovements = parsed.inventoryMovements.filter(function (movement) {
         return movement && Number.isFinite(Number(movement.id)) && Number.isFinite(Number(movement.productId));
       });
+      if (Array.isArray(parsed.orders)) {
+        const allowedStatuses = ['Pendiente', 'En preparación', 'Listo para entrega', 'En tránsito', 'Completado'];
+        orders = parsed.orders.filter(function (order) {
+          return order && /^JP-\d+$/.test(String(order.id || '')) && String(order.customer || '').trim() && Array.isArray(order.items);
+        }).map(function (order) {
+          order.status = allowedStatuses.includes(order.status) ? order.status : 'Pendiente';
+          order.items = order.items.filter(function (item) {
+            return item && String(item.name || '').trim() && Number.isInteger(item.quantity) && item.quantity > 0 && Number.isFinite(Number(item.unitPrice)) && Number(item.unitPrice) >= 0;
+          });
+          return order;
+        });
+      }
     } catch (error) {
       products.forEach(function (product) { product.active = true; });
       inventoryMovements = [];
@@ -146,7 +159,8 @@
   }
   function orderStatus(value) {
     if (value === 'Completado') return '<span class="status-chip status-success">Completado</span>';
-    if (value === 'Pendiente') return '<span class="status-chip status-pending">Pendiente</span>';
+    if (value === 'Pendiente' || value === 'En preparación') return '<span class="status-chip status-pending">' + esc(value) + '</span>';
+    if (value === 'Listo para entrega' || value === 'En tránsito') return '<span class="status-chip status-success">' + esc(value) + '</span>';
     return '<span class="status-chip status-muted">' + esc(value) + '</span>';
   }
   function art(tone) {
@@ -290,9 +304,65 @@
     window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     toast('Inventario DEMO exportado a CSV.');
   }
+  function showOrderDetails(orderId) {
+    const order = orders.find(function (item) { return String(item.id) === String(orderId); });
+    if (!order) { toast('No se encontró el pedido seleccionado.'); return; }
+    const items = Array.isArray(order.items) ? order.items : [];
+    const subtotal = items.reduce(function (sum, item) { return sum + (Number(item.quantity) * Number(item.unitPrice)); }, 0);
+    const discount = Number(order.discount || 0);
+    const deliveryFee = Number(order.deliveryFee || 0);
+    const total = subtotal - discount + deliveryFee;
+    const lineRows = items.map(function (item) {
+      const lineTotal = Number(item.quantity) * Number(item.unitPrice);
+      return '<tr><td><span class="table-primary">' + esc(item.name) + '</span><small class="table-secondary">' + esc(item.sku || '—') + '</small></td><td>' + item.quantity + '</td><td>' + money(item.unitPrice) + '</td><td class="table-primary">' + money(lineTotal) + '</td></tr>';
+    }).join('');
+    document.getElementById('order-detail-title').textContent = order.id;
+    document.getElementById('order-detail-subtitle').textContent = 'Pedido DEMO · ' + order.date + ' · Registro ficticio para pruebas; no representa una venta real.';
+    document.getElementById('order-detail-content').innerHTML =
+      '<section class="order-detail-grid">' +
+        '<div class="detail-field"><span>Cliente</span><strong>' + esc(order.customer) + '</strong></div>' +
+        '<div class="detail-field"><span>Contacto</span><strong>' + esc(order.phone || 'No registrado') + '</strong></div>' +
+        '<div class="detail-field"><span>Método de pago</span><strong>' + esc(order.paymentMethod || 'No registrado') + '</strong></div>' +
+        '<div class="detail-field"><span>Estado del pago</span><strong>' + esc(order.paymentStatus || 'No registrado') + '</strong></div>' +
+        '<div class="detail-field"><span>Entrega</span><strong>' + esc(order.deliveryMode || 'No definida') + '</strong></div>' +
+        '<div class="detail-field"><span>Estado del pedido</span><strong>' + orderStatus(order.status) + '</strong></div>' +
+      '</section>' +
+      '<section class="order-items-section"><div class="order-items-heading">Productos del pedido</div>' +
+        '<div class="table-wrap"><table class="data-table order-items-table"><thead><tr><th>PRODUCTO / SKU</th><th>CANT.</th><th>PRECIO</th><th>SUBTOTAL</th></tr></thead><tbody>' + (lineRows || '<tr><td colspan="4">Sin productos registrados.</td></tr>') + '</tbody></table></div>' +
+      '</section>' +
+      '<div class="order-totals">' +
+        '<div><span>Subtotal</span><strong>' + money(subtotal) + '</strong></div>' +
+        (discount ? '<div><span>Descuento</span><strong>− ' + money(discount) + '</strong></div>' : '') +
+        (deliveryFee ? '<div><span>Entrega</span><strong>' + money(deliveryFee) + '</strong></div>' : '') +
+        '<div class="order-grand-total"><span>Total del pedido</span><strong>' + money(total) + '</strong></div>' +
+      '</div>' +
+      '<p class="order-demo-warning">Los datos de este pedido son ficticios y se guardan solo en este navegador. No generan factura ni movimiento de inventario.</p>';
+    const statusSelect = document.getElementById('order-status-select');
+    statusSelect.value = order.status;
+    document.getElementById('save-order-status').setAttribute('data-id', String(order.id));
+    if (typeof orderDialog.showModal === 'function') orderDialog.showModal();
+    else toast('El detalle de pedidos no es compatible con este navegador.');
+  }
+  function saveOrderStatus() {
+    const button = document.getElementById('save-order-status');
+    const order = orders.find(function (item) { return String(item.id) === button.getAttribute('data-id'); });
+    const nextStatus = document.getElementById('order-status-select').value;
+    const allowedStatuses = ['Pendiente', 'En preparación', 'Listo para entrega', 'En tránsito', 'Completado'];
+    if (!order || !allowedStatuses.includes(nextStatus)) { toast('No se pudo validar el estado seleccionado.'); return; }
+    if (order.status === nextStatus) { toast('El pedido ya tiene ese estado.'); return; }
+    const previousStatus = order.status;
+    order.status = nextStatus;
+    if (!persistDemoData()) {
+      order.status = previousStatus;
+      return;
+    }
+    orderDialog.close();
+    renderView();
+    toast('Estado del pedido actualizado en DEMO local.');
+  }
   function renderOrders() {
     const rows = orders.map(function (o) {
-      return '<tr><td class="table-primary">' + esc(o.id) + '</td><td>' + esc(o.customer) + '</td><td>' + esc(o.date) + '</td><td class="table-primary">' + money(o.amount) + '</td><td>' + orderStatus(o.status) + '</td><td><button class="table-action" data-action="preview-order" data-id="' + esc(o.id) + '" aria-label="Ver pedido">' + svg('eye') + '</button></td></tr>';
+      return '<tr><td class="table-primary">' + esc(o.id) + '</td><td>' + esc(o.customer) + '</td><td>' + esc(o.date) + '</td><td class="table-primary">' + money(o.amount) + '</td><td>' + orderStatus(o.status) + '</td><td><button class="table-action" data-action="preview-order" data-id="' + esc(o.id) + '" aria-label="Ver pedido ' + esc(o.id) + '">' + svg('eye') + '</button></td></tr>';
     }).join('');
     return heading(views.orders, '<button class="button button-primary" data-action="export">' + svg('download') + ' Exportar</button>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Pedidos de muestra</span><strong>' + orders.length + '</strong></div><div class="summary-mini"><span>Pendientes</span><strong>' + orders.filter(function (o) { return o.status !== 'Completado'; }).length + '</strong></div><div class="summary-mini"><span>Venta registrada</span><strong>' + money(orders.reduce(function (sum, o) { return sum + o.amount; }, 0)) + '</strong></div></div>' +
@@ -537,7 +607,8 @@
       else if (name === 'export') toast('La exportación estará disponible al conectar los datos reales.');
       else if (name === 'billing-preview') toast('El formulario de factura se diseñará después de validar los requisitos fiscales de Nicaragua.');
       else if (name === 'hr-preview') toast('El alta de personal se habilitará después de definir roles y protección de expedientes.');
-      else if (name === 'preview-order') toast('El detalle de pedidos estará disponible en la siguiente etapa.');
+      else if (name === 'preview-order') showOrderDetails(action.getAttribute('data-id'));
+      else if (name === 'save-order-status') saveOrderStatus();
       return;
     }
     if (event.target.closest('#font-decrease')) {
@@ -564,6 +635,7 @@
     if (event.target.closest('#modal-close') || event.target.closest('#cancel-product')) { dialog.close(); form.dataset.editingId = ''; form.elements.stock.readOnly = false; }
     if (event.target.closest('#stock-modal-close') || event.target.closest('#stock-cancel')) stockDialog.close();
     if (event.target.closest('#detail-close') || event.target.closest('#detail-cancel')) detailDialog.close();
+    if (event.target.closest('#order-detail-close') || event.target.closest('#order-detail-cancel')) orderDialog.close();
     if (event.target.closest('.notification-button')) toast('No hay notificaciones reales: el sistema aún está en modo demo.');
   });
   document.addEventListener('input', function (event) {
