@@ -223,7 +223,7 @@
       featureCard('users', 'Personal y expedientes', 'Datos laborales, contratos, cargos, departamentos y documentos con permisos de acceso.') +
       featureCard('clock', 'Asistencia y turnos', 'Entradas, salidas, horarios, ausencias y controles de jornada.') +
       featureCard('receipt', 'Nómina y prestaciones', 'Periodos de pago, deducciones, prestaciones y comprobantes de nómina.') +
-      featureCard('calendar', 'Vacaciones y permisos', 'Solicitudes, aprobaciones, saldos disponibles y calendario de ausencias.') +
+      featureCard('clock', 'Vacaciones y permisos', 'Solicitudes, aprobaciones, saldos disponibles y calendario de ausencias.') +
       '</div><div class="notice-panel">' + svg('warning') + '<div><strong>RRHH en etapa de diseño</strong><p>Esta sección no contiene empleados reales ni procesa nómina. Los cálculos y documentos laborales se construirán tras validar la legislación nicaragüense, la privacidad de los expedientes y los permisos de cada rol.</p></div></div>';
   }
   function renderSettings() {
@@ -442,7 +442,8 @@
   setSidebarCollapsed(initiallyCollapsed, false);
   let storedFontLevel = 1;
   try {
-    const storedValue = Number(window.localStorage.getItem('jbparfums-font-level'));
+    const savedFontLevel = window.localStorage.getItem('jbparfums-font-level');
+    const storedValue = savedFontLevel === null ? NaN : Number(savedFontLevel);
     if (Number.isInteger(storedValue) && storedValue >= 0 && storedValue < fontLevels.length) storedFontLevel = storedValue;
   } catch (error) {
     storedFontLevel = 1;
