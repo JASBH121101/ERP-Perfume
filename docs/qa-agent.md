@@ -73,13 +73,16 @@ To run the same checks on a developer machine that already has Node.js 22+, Pyth
 
 ## Current test coverage
 
-- Dashboard and main navigation.
-- Desktop sidebar collapse and persistence.
+- Dashboard and main navigation, including DEMO-derived metrics and per-product minimum stock.
+- Desktop sidebar collapse and persistence; mobile drawer scroll isolation.
 - Font-size scale and persistence.
-- Product search and stock filtering.
-- Local demo product creation.
+- Product search, stock filters, product create/edit/deactivate flows and duplicate SKU validation.
+- Searchable customer, supplier, perfume and order selectors; new order and voucher selectors start empty.
+- Inventory entries, exits, adjustments, stock guards and persisted movement ledger.
+- Order confirmation stock outflow, insufficient-stock blocking, no duplicate deduction on later status changes, and stock reversal when returned to pending.
+- Mobile product-modal footer visibility and accessible button sizing.
+- Currency conversion, preserved transaction rates, purchase cost averaging, NIO-only payroll, cash account currency validation and internal voucher/abono workflow.
 - Escaping of user-entered product names.
-- Mobile navigation.
-- Static HTML IDs, navigation, local assets, CSS structure and JavaScript hooks.
+- Static HTML IDs, navigation, local assets, CSS structure and JavaScript syntax hooks.
 
-The tests use demo data only. They do not connect to Neon or R2.
+The tests use demo data only. They do not connect to Neon or R2. The end-to-end suite must be run separately; adding test definitions does not mean they have passed.
