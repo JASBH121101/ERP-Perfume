@@ -71,10 +71,10 @@ test('a new product can be added to the demo session', async ({ page }) => {
   const dialog = page.locator('#product-dialog');
   await expect(dialog).toBeVisible();
   await page.getByLabel('Nombre del perfume').fill('Fragancia QA Automatizada');
-  await page.getByLabel('SKU / Código').fill('QA-ERP-001');
+  await page.getByLabel('SKU / Código interno').fill('QA-ERP-001');
   await page.getByLabel('Categoría').selectOption('Árabes');
   await page.getByLabel('Precio de venta (C$)').fill('1250');
-  await dialog.getByLabel('Existencias').fill('4');
+  await dialog.getByLabel('Existencias iniciales').fill('4');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
   await expect(dialog).not.toBeVisible();
@@ -154,7 +154,7 @@ test('product names are rendered as text, not executable markup', async ({ page 
   const payload = '<img src=x onerror=alert(1)>';
   await page.getByLabel('Nombre del perfume').fill(payload);
   await page.getByLabel('Precio de venta (C$)').fill('100');
-  await dialog.getByLabel('Existencias').fill('1');
+  await dialog.getByLabel('Existencias iniciales').fill('1');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
   await expect(page.locator('#product-table-body')).toContainText(payload);
