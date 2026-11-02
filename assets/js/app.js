@@ -508,6 +508,40 @@
   function productOptions(){return products.filter(p=>p.active!==false).map(p=>'<option value="'+p.id+'">'+esc(p.name)+' · '+money(p.price)+'</option>').join('');}
   function customerOptions(){return customers.map((c,i)=>'<option value="'+i+'">'+esc(c.name)+'</option>').join('');}
   function supplierOptions(){return suppliers.map((s,i)=>'<option value="'+i+'">'+esc(s.name)+'</option>').join('');}
+  function searchableField(label,name,lookupType,required,fieldId){
+    const id=fieldId||('business-'+name+'-search');
+    return '<div class="form-field search-field" data-search-field><label for="'+id+'">'+label+(required?' '+requiredMark():'')+'</label><input id="'+id+'" type="search" data-lookup="'+lookupType+'" data-target="'+name+'" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="'+id+'-results"'+(required?' required':'')+'><input type="hidden" name="'+name+'"><div class="search-results" id="'+id+'-results" role="listbox" hidden></div></div>';
+  }
+  function lookupItems(type){
+    if(type==='customer')return customers.map((item,index)=>({value:String(index),label:item.name,meta:item.contact||'Sin contacto',search:[item.name,item.contact].join(' ')}));
+    if(type==='supplier')return suppliers.map((item,index)=>({value:String(index),label:item.name,meta:[item.contact,item.phone].filter(Boolean).join(' · ')||'Proveedor',search:[item.name,item.contact,item.phone,item.email].join(' ')}));
+    if(type==='product')return products.filter(item=>item.active!==false).map(item=>({value:String(item.id),label:item.name,meta:[item.sku,money(item.price)].filter(Boolean).join(' · '),search:[item.name,item.sku,item.brand,item.category].join(' ')}));
+    if(type==='order')return orders.filter(item=>!invoices.some(invoice=>invoice.orderId===item.id)).map(item=>({value:item.id,label:item.id,meta:item.customer+' · '+money(item.amount),search:[item.id,item.customer,item.phone].join(' ')}));
+    return [];
+  }
+  function renderLookupResults(input){
+    const field=input.closest('[data-search-field]'),results=field&&field.querySelector('.search-results');
+    if(!field||!results)return;
+    const query=String(input.value||'').trim().toLocaleLowerCase('es');
+    const items=lookupItems(input.dataset.lookup).filter(item=>!query||item.search.toLocaleLowerCase('es').includes(query)).slice(0,8);
+    results.innerHTML=items.length?items.map(item=>'<button type="button" class="search-option" role="option" data-lookup-select data-value="'+esc(item.value)+'" data-label="'+esc(item.label)+'"><strong>'+esc(item.label)+'</strong><small>'+esc(item.meta)+'</small></button>').join(''):'<p class="search-empty">No hay coincidencias.</p>';
+    results.hidden=false;input.setAttribute('aria-expanded','true');
+  }
+  function closeLookupResults(field){
+    const input=field&&field.querySelector('[data-lookup]'),results=field&&field.querySelector('.search-results');
+    if(results)results.hidden=true;
+    if(input)input.setAttribute('aria-expanded','false');
+  }
+  function chooseLookupOption(field,value,label){
+    if(!field)return;
+    const input=field.querySelector('[data-lookup]'),hidden=field.querySelector('input[type="hidden"]');
+    if(!input||!hidden)return;
+    input.value=label;hidden.value=value;input.setCustomValidity('');closeLookupResults(field);
+  }
+  function selectLookupValue(input,value){
+    const item=lookupItems(input.dataset.lookup).find(entry=>String(entry.value)===String(value));
+    if(item)chooseLookupOption(input.closest('[data-search-field]'),item.value,item.label);
+  }
   function openBusinessDialog(type,recordId){
     const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra',expense:'Registrar gasto',cash:'Registrar recibo o pago',invoice:'Crear comprobante interno',payment:'Registrar abono',employee:'Agregar colaborador'};
     let body='';
@@ -516,19 +550,19 @@
     if(type==='order'){
       if(!customers.length){toast('Registra primero un cliente.');return;}
       if(!productOptions()){toast('Registra primero un producto activo.');return;}
-      body='<div class="form-grid">'+selectField('Cliente','customerIndex',customerOptions(),true)+selectField('Producto','productId',productOptions(),true)+formField('Cantidad','quantity','number',true,'min="1" step="1" value="1"')+currencyField('USD')+'</div><p class="form-helper">Los precios del catálogo permanecen en USD. Se guarda la moneda de cobro y la tasa utilizada.</p>';
+      body='<div class="form-grid">'+searchableField('Cliente','customerIndex','customer',true)+searchableField('Producto','productId','product',true)+formField('Cantidad','quantity','number',true,'min="1" step="1" value="1"')+currencyField('USD')+'</div><p class="form-helper">Los precios del catálogo permanecen en USD. Se guarda la moneda de cobro y la tasa utilizada.</p>';
     }
     if(type==='purchase'){
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
       if(!productOptions()){toast('Registra primero un producto activo.');return;}
-      body='<div class="form-grid">'+selectField('Proveedor','supplierIndex',supplierOptions(),true)+selectField('Producto','productId',productOptions(),true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
+      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
     }
     if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
     if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
     if(type==='invoice'){
       const choices=orders.filter(o=>!invoices.some(f=>f.orderId===o.id));
       if(!choices.length){toast('No hay pedidos disponibles para crear un comprobante.');return;}
-      body='<div class="form-grid">'+selectField('Pedido','orderId',choices.map(o=>'<option value="'+esc(o.id)+'">'+esc(o.id)+' · '+esc(o.customer)+' · '+money(o.amount)+'</option>').join(''),true)+currencyField('USD')+'</div><p class="form-helper">Comprobante interno DEMO; no es factura fiscal ni comprobante autorizado.</p>';
+      body='<div class="form-grid">'+searchableField('Pedido','orderId','order',true)+currencyField('USD')+'</div><p class="form-helper">Comprobante interno DEMO; no es factura fiscal ni comprobante autorizado.</p>';
     }
     if(type==='payment'){
       const invoice=invoices.find(f=>f.id===recordId);if(!invoice){toast('No se encontró el comprobante.');return;}
@@ -721,10 +755,9 @@
     const activeProducts = products.filter(function (product) { return product.active !== false; });
     if (!activeProducts.length) { toast('Primero activa o registra un producto para mover existencias.'); return; }
     stockForm.reset();
-    stockForm.elements.productId.innerHTML = activeProducts.map(function (product) {
-      return '<option value="' + product.id + '">' + esc(product.name) + ' · ' + esc(product.sku) + ' · stock ' + product.stock + '</option>';
-    }).join('');
-    if (productId != null) stockForm.elements.productId.value = String(productId);
+    const productSearch=stockForm.querySelector('[data-lookup="product"]');
+    if(productSearch){productSearch.value='';productSearch.setCustomValidity('');}
+    if(productId!=null&&productSearch)selectLookupValue(productSearch,productId);
     updateStockQuantityMode();
     if (typeof stockDialog.showModal === 'function') stockDialog.showModal();
   }
@@ -945,6 +978,19 @@
     toast(label+' registrada: '+product.name+' · '+(delta>0?'+':'')+delta+' unidades.');
   });
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);  businessForm.addEventListener('submit',saveBusinessRecord);
+  document.addEventListener('focusin',function(event){const input=event.target.closest('[data-lookup]');if(input)renderLookupResults(input);});
+  document.addEventListener('input',function(event){const input=event.target.closest('[data-lookup]');if(!input)return;const hidden=input.closest('[data-search-field]').querySelector('input[type="hidden"]');hidden.value='';input.setCustomValidity(input.value.trim()?'Selecciona un resultado de la lista.':'');renderLookupResults(input);});
+  document.addEventListener('click',function(event){
+    const option=event.target.closest('[data-lookup-select]');
+    if(option){chooseLookupOption(option.closest('[data-search-field]'),option.dataset.value,option.dataset.label);return;}
+    if(!event.target.closest('[data-search-field]'))document.querySelectorAll('[data-search-field]').forEach(closeLookupResults);
+  });
+  document.addEventListener('keydown',function(event){
+    const input=event.target.closest('[data-lookup]');
+    if(!input)return;
+    if(event.key==='Escape'){closeLookupResults(input.closest('[data-search-field]'));return;}
+    if(event.key==='Enter'){const first=input.closest('[data-search-field]').querySelector('[data-lookup-select]');if(first){event.preventDefault();first.click();}}
+  });
   document.addEventListener('click',function(event){
     const action=event.target.closest('[data-action]');
     if(!action){if(event.target.closest('#business-close')||event.target.closest('#business-cancel'))businessDialog.close();return;}
