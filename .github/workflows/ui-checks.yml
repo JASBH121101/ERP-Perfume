@@ -50,6 +50,16 @@ jobs:
       - name: Run all deterministic checks
         run: bash scripts/run-validation.sh
 
+      - name: Upload text-only validation log for optional AI diagnosis
+        if: always() && hashFiles('.ai-output/validation.log') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-validation-log
+          path: .ai-output/validation.log
+          retention-days: 1
+          if-no-files-found: ignore
+
+
   ai-repair:
     name: Supervised AI repair (optional)
     needs:
@@ -70,6 +80,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Download text-only validation log
+        uses: actions/download-artifact@v4
+        with:
+          name: qa-validation-log
+          path: .ai-output
+
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
