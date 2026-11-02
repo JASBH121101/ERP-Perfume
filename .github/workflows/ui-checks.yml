@@ -1,0 +1,44 @@
+name: UI validation
+
+on:
+  push:
+    branches:
+      - main
+      - feature/ui-foundation
+    paths:
+      - "index.html"
+      - "assets/**"
+      - "scripts/**"
+      - ".github/workflows/ui-checks.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "index.html"
+      - "assets/**"
+      - "scripts/**"
+      - ".github/workflows/ui-checks.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-ui:
+    name: Validate static UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: node --check assets/js/app.js
+      - name: Check HTML references and CSS structure
+        run: python scripts/check-ui.py
