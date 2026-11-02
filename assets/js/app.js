@@ -9,6 +9,8 @@
     users: '<path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
     chart: '<path d="M4 19V5M4 19h17"/><path d="m7 15 4-4 3 2 6-7"/><path d="M16 6h4v4"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.6.9l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.6-.9l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-1.9l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.6-.9l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.6.9l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 1.9Z" transform="translate(-.8 -1) scale(1.07)"/>',
+    collapse: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m8-11-3 3 3 3"/>',
+    expand: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m4-11 3 3-3 3"/>',
     search: '<circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/>',
     bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
@@ -249,6 +251,31 @@
     document.getElementById('mobile-scrim').classList.remove('visible');
     document.getElementById('menu-toggle').setAttribute('aria-expanded', 'false');
   }
+
+  function setSidebarCollapsed(collapsed, persist) {
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    const button = document.getElementById('sidebar-collapse');
+    if (button) {
+      const label = collapsed ? 'Expandir menú' : 'Contraer menú';
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+      button.setAttribute('aria-pressed', String(collapsed));
+      button.querySelector('[data-icon]').innerHTML = svg(collapsed ? 'expand' : 'collapse');
+    }
+    document.querySelectorAll('.nav-item').forEach(function (item) {
+      const labelNode = item.querySelectorAll('span')[1];
+      const label = labelNode ? labelNode.textContent.trim() : 'Sección';
+      item.setAttribute('aria-label', label);
+      item.setAttribute('title', collapsed ? label : '');
+    });
+    if (persist) {
+      try {
+        window.localStorage.setItem('jbparfums-sidebar-collapsed', collapsed ? '1' : '0');
+      } catch (error) {
+        // The menu remains usable when browser storage is unavailable.
+      }
+    }
+  }
   document.addEventListener('click', function (event) {
     const viewButton = event.target.closest('[data-view], [data-view-link]');
     if (viewButton) {
@@ -264,6 +291,10 @@
         const product = products.find(function (p) { return String(p.id) === action.getAttribute('data-id'); });
         if (product) toast(product.name + ' · ' + product.stock + ' unidades · ' + money(product.price));
       } else if (name === 'preview-order') toast('El detalle de pedidos estará disponible en la siguiente etapa.');
+      return;
+    }
+    if (event.target.closest('#sidebar-collapse')) {
+      setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'), true);
       return;
     }
     if (event.target.closest('#menu-toggle')) {
@@ -335,6 +366,13 @@
   });
 
   setDate();
+  let initiallyCollapsed = false;
+  try {
+    initiallyCollapsed = window.localStorage.getItem('jbparfums-sidebar-collapsed') === '1';
+  } catch (error) {
+    initiallyCollapsed = false;
+  }
+  setSidebarCollapsed(initiallyCollapsed, false);
   renderView();
   document.getElementById('menu-toggle').setAttribute('aria-expanded', 'false');
 }());
