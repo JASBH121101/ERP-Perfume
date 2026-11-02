@@ -251,3 +251,38 @@ test('inventory CSV export is available', async ({ page }) => {
 });
 
 test('mobile drawer scroll is isolated from page background', async ({ page }) => { await page.setViewportSize({width:390,height:844}); await page.goto('/'); await page.evaluate(()=>window.scrollTo(0,0)); await page.getByRole('button',{name:'Abrir menú'}).click(); const drawer=page.locator('#sidebar'); await expect(drawer).toHaveClass(/open/); await expect(page.locator('body')).toHaveClass(/mobile-menu-open/); const d=await drawer.evaluate(el=>({client:el.clientHeight,scroll:el.scrollHeight,overflow:getComputedStyle(el).overflowY})); expect(d.scroll).toBeGreaterThan(d.client); expect(d.overflow).toBe('auto'); await drawer.evaluate(el=>{el.scrollTop=el.scrollHeight}); await expect.poll(()=>drawer.evaluate(el=>el.scrollTop)).toBeGreaterThan(0); expect(await page.evaluate(()=>window.scrollY)).toBe(0); await page.locator('#mobile-scrim').click({position:{x:370,y:400}}); await expect(page.locator('body')).not.toHaveClass(/mobile-menu-open/); });
+
+
+test('mobile drawer scroll responds to wheel input without moving the page', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  await page.goto('/');
+  await page.evaluate(() => window.scrollTo(0, 240));
+  await page.waitForFunction(() => window.scrollY > 0);
+  const pageScrollBefore = await page.evaluate(() => window.scrollY);
+
+  await page.getByRole('button', { name: 'Abrir menú' }).click();
+  const drawer = page.locator('#sidebar');
+  await expect(drawer).toHaveClass(/open/);
+  await expect(page.locator('body')).toHaveClass(/mobile-menu-open/);
+  await expect(drawer).toHaveCSS('overflow-y', 'auto');
+
+  await page.mouse.move(130, 560);
+  await page.mouse.wheel(0, 420);
+  await expect.poll(() => drawer.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pageScrollBefore);
+
+  await page.locator('#mobile-scrim').click({ position: { x: 380, y: 560 } });
+  await expect(drawer).not.toHaveClass(/open/);
+  await expect(page.locator('body')).not.toHaveClass(/mobile-menu-open/);
+});
+
+test('the DEMO catalogue still contains the eight original sample perfumes', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#product-count')).toHaveText('08');
+  await page.locator('#sidebar button[data-view="products"]').click();
+  await expect(page.locator('#product-table-body tr')).toHaveCount(8);
+  await expect(page.locator('#product-table-body')).toContainText('Club de Nuit Intense Man');
+  await expect(page.locator('#product-table-body')).toContainText('Yara Lattafa');
+  await expect(page.locator('#product-table-body')).toContainText('Khamrah Lattafa');
+  await expect(page.locator('#product-table-body')).toContainText('Eclaire Lattafa');
+});
