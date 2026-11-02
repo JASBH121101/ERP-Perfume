@@ -311,3 +311,56 @@ test('form fields have no placeholder or optional copy; required fields use a re
     await expect(marker).toHaveCSS('color', 'rgb(220, 38, 38)');
   }
 });
+
+
+test('order eye opens detailed demo record and displays matching item and total amounts', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await expect(page.getByRole('heading', { name: 'Pedidos y ventas' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Ver pedido JP-1048' }).click();
+  const detail = page.locator('#order-detail-dialog');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('#order-detail-title')).toHaveText('JP-1048');
+  await expect(detail).toContainText('María Gutiérrez');
+  await expect(detail).toContainText('Yara Lattafa');
+  await expect(detail).toContainText('Eclaire Lattafa');
+  await expect(detail).toContainText('C$ 4,050');
+  await expect(detail).toContainText('Transferencia');
+  await expect(detail).toContainText(/registro ficticio/i);
+  await expect(detail.locator('.order-items-table tbody tr')).toHaveCount(2);
+});
+
+test('order status changes are validated and persist locally after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
+
+  const detail = page.locator('#order-detail-dialog');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('#order-status-select')).toHaveValue('Pendiente');
+  await detail.locator('#order-status-select').selectOption('En preparación');
+  await detail.getByRole('button', { name: 'Guardar estado' }).click();
+
+  await expect(detail).not.toBeVisible();
+  await expect(page.locator('#view-root')).toContainText('En preparación');
+  await expect(page.locator('#toast-region')).toContainText(/actualizado en DEMO local/i);
+
+  await page.reload();
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  const orderRow = page.locator('#view-root tr').filter({ hasText: 'JP-1047' });
+  await expect(orderRow).toContainText('En preparación');
+  await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
+  await expect(page.locator('#order-status-select')).toHaveValue('En preparación');
+});
+
+test('each sample order opens its own detail record', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+
+  for (const orderId of ['JP-1048', 'JP-1047', 'JP-1046', 'JP-1045', 'JP-1044']) {
+    await page.getByRole('button', { name: 'Ver pedido ' + orderId }).click();
+    await expect(page.locator('#order-detail-dialog #order-detail-title')).toHaveText(orderId);
+    await page.locator('#order-detail-cancel').click();
+  }
+});
