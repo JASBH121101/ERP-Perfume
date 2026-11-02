@@ -206,10 +206,6 @@
   function money(value) {
     return usdFormatter.format(Number(value || 0));
   }
-  function isLowStock(product) {
-    const minimum = Number.isInteger(product.minStock) ? product.minStock : 3;
-    return product.stock > 0 && product.stock <= minimum;
-  }
   function status(stock, minimum) {
     if (stock === 0) return '<span class="status-chip status-danger">Agotado</span>';
     if (stock <= (Number.isInteger(minimum) ? minimum : 3)) return '<span class="status-chip status-pending">Stock bajo</span>';
@@ -256,8 +252,8 @@
     const low = activeProducts.filter(needsRestock).length;
     return heading(views.dashboard, '<select class="period-select" aria-label="Periodo"><option>Últimos 7 días</option><option>Últimos 30 días</option><option>Este año</option></select><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
       '<section class="metric-grid">' +
-      metric('Ventas del mes', money(orders.reduce(function(sum,order){return sum+Number(order.amount||0);},0)), 'chart', '+12.8%', 'vs. mes anterior', false) +
-      metric('Pedidos recibidos', '18', 'bag', '+4.2%', 'vs. mes anterior', false) +
+      metric('Importe de pedidos', money(orders.reduce(function(sum,order){return sum+Number(order.amount||0);},0)), 'chart', 'Pedidos DEMO', 'importe registrado localmente', false) +
+      metric('Pedidos de muestra', String(orders.length), 'bag', 'Registros', 'pedidos guardados localmente', false) +
       metric('Productos activos', String(activeProducts.length).padStart(2, '0'), 'bottle', 'Catálogo', 'productos DEMO activos', true) +
       metric('Alertas de stock', String(low).padStart(2, '0'), 'warning', 'Revisar', 'productos bajo su stock mínimo', true) +
       '</section>' +
@@ -268,10 +264,10 @@
       '</section>' +
       '<section class="lower-grid"><article class="panel"><div class="panel-heading"><div><h2>Pedidos recientes</h2><p>Actividad de ejemplo del negocio</p></div><button class="panel-link" data-view="orders">Ver todos ' + svg('arrow') + '</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>' + productRows + '</tbody></table></div></article>' +
       '<article class="panel"><div class="panel-heading"><div><h2>Estado del inventario</h2><p>Distribución de stock de muestra</p></div></div><div class="stock-summary">' +
-      stockBar('Disponible', products.filter(function (p) { return p.stock > 3; }).length, products.length, '') +
-      stockBar('Stock bajo', products.filter(function (p) { return p.stock > 0 && p.stock <= 3; }).length, products.length, 'low') +
-      stockBar('Agotado', products.filter(function (p) { return p.stock === 0; }).length, products.length, 'out') +
-      '</div><div class="panel-footer-note">Las alertas reales se activarán al conectar inventario.</div></article></section>';
+      stockBar('Disponible', activeProducts.filter(function (p) { return p.stock > p.minStock; }).length, activeProducts.length, '') +
+      stockBar('Stock bajo', activeProducts.filter(function (p) { return p.stock > 0 && needsRestock(p); }).length, activeProducts.length, 'low') +
+      stockBar('Agotado', activeProducts.filter(function (p) { return p.stock === 0; }).length, activeProducts.length, 'out') +
+      '</div><div class="panel-footer-note">Conteos calculados con existencias DEMO y mínimos configurados por perfume.</div></article></section>';
   }
   function stockBar(label, count, total, tone) {
     const width = total ? Math.round(count / total * 100) : 0;
@@ -407,106 +403,80 @@
         (deliveryFee ? '<div><span>Entrega</span><strong>' + money(deliveryFee) + '</strong></div>' : '') +
         '<div class="order-grand-total"><span>Total del pedido</span><strong>' + money(total) + '</strong></div>' +
       '</div>' +
-      '<p class="order-demo-warning">Los datos de este pedido son ficticios y se guardan solo en este navegador. No generan factura ni movimiento de inventario.</p>';
+      '<p class="order-demo-warning">Pedido DEMO local. Al pasar a «En preparación» o a un estado posterior se descuenta el inventario; al devolverlo a «Pendiente» se registra el reingreso.</p>';
     const statusSelect = document.getElementById('order-status-select');
     statusSelect.value = order.status;
     document.getElementById('save-order-status').setAttribute('data-id', String(order.id));
     if (typeof orderDialog.showModal === 'function') orderDialog.showModal();
     else toast('El detalle de pedidos no es compatible con este navegador.');
   }
-  function saveOrderStatus() {
-    const button = document.getElementById('save-order-status');
-    const order = orders.find(function (item) { return String(item.id) === button.getAttribute('data-id'); });
-    const nextStatus = document.getElementById('order-status-select').value;
-    const allowedStatuses = ['Pendiente', 'En preparación', 'Listo para entrega', 'En tránsito', 'Completado'];
-    if (!order || !allowedStatuses.includes(nextStatus)) { toast('No se pudo validar el estado seleccionado.'); return; }
-    if (order.status === nextStatus) { toast('El pedido ya tiene ese estado.'); return; }
-    const previousStatus = order.status;
-    order.status = nextStatus;
-    if (!persistDemoData()) {
-      order.status = previousStatus;
-      return;
+  function captureDemoState() {
+    return JSON.stringify({products,inventoryMovements,orders,customers,suppliers,purchases,expenses,cashEntries,invoices,employees,exchangeRate});
+  }
+  function restoreDemoState(snapshot) {
+    const saved=JSON.parse(snapshot);
+    products=saved.products;inventoryMovements=saved.inventoryMovements;orders=saved.orders;customers=saved.customers;
+    suppliers=saved.suppliers;purchases=saved.purchases;expenses=saved.expenses;cashEntries=saved.cashEntries;
+    invoices=saved.invoices;employees=saved.employees;exchangeRate=Number(saved.exchangeRate)||36.6;
+  }
+  function resolveOrderProduct(item) {
+    return (item.productId!=null&&products.find(p=>String(p.id)===String(item.productId))) ||
+      (item.sku&&products.find(p=>String(p.sku).toLowerCase()===String(item.sku).toLowerCase())) ||
+      (item.name&&products.find(p=>String(p.name).toLowerCase()===String(item.name).toLowerCase())) || null;
+  }
+  function orderInventoryRequirements(order) {
+    const grouped=new Map();
+    for(const item of (Array.isArray(order.items)?order.items:[])){
+      const quantity=Number(item.quantity),product=resolveOrderProduct(item);
+      if(!Number.isInteger(quantity)||quantity<1)return {error:'El pedido contiene una cantidad inválida.'};
+      if(!product)return {error:'No se pudo vincular uno de los perfumes del pedido con el inventario. No se realizó ningún cambio.'};
+      const current=grouped.get(String(product.id));
+      if(current)current.quantity+=quantity;else grouped.set(String(product.id),{product,quantity});
     }
-    orderDialog.close();
-    renderView();
-    toast('Estado del pedido actualizado en DEMO local.');
+    if(!grouped.size)return {error:'El pedido no contiene productos para descontar del inventario.'};
+    return {items:Array.from(grouped.values())};
   }
-  function renderOrders() {
-    const rows = orders.map(function (o) {
-      return '<tr><td class="table-primary">' + esc(o.id) + '</td><td>' + esc(o.customer) + '</td><td>' + esc(o.date) + '</td><td class="table-primary">' + money(o.amount) + '</td><td>' + orderStatus(o.status) + '</td><td><button class="table-action" data-action="preview-order" data-id="' + esc(o.id) + '" aria-label="Ver pedido ' + esc(o.id) + '">' + svg('eye') + '</button></td></tr>';
-    }).join('');
-    return heading(views.orders, '<button class="button button-primary" data-action="export">' + svg('download') + ' Exportar</button>') +
-      '<div class="summary-strip"><div class="summary-mini"><span>Pedidos de muestra</span><strong>' + orders.length + '</strong></div><div class="summary-mini"><span>Pendientes</span><strong>' + orders.filter(function (o) { return o.status !== 'Completado'; }).length + '</strong></div><div class="summary-mini"><span>Venta registrada</span><strong>' + money(orders.reduce(function (sum, o) { return sum + o.amount; }, 0)) + '</strong></div></div>' +
-      '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></article>' +
-      '<div class="notice-panel">' + svg('spark') + '<div><strong>Flujo de pedidos pendiente de conexión</strong><p>En una siguiente etapa definiremos estados, abonos, pagos, entregas y trazabilidad de cada movimiento.</p></div></div>';
+  function recordOrderInventory(order,restoreStock) {
+    const requirement=orderInventoryRequirements(order);
+    if(requirement.error)return requirement;
+    if(!restoreStock){
+      const insufficient=requirement.items.find(line=>line.product.active===false||line.product.stock<line.quantity);
+      if(insufficient)return {error:insufficient.product.active===false?'El perfume '+insufficient.product.name+' está desactivado y no puede venderse.':'Stock insuficiente para '+insufficient.product.name+'. Disponible: '+insufficient.product.stock+'; solicitado: '+insufficient.quantity+'.'};
+    }
+    const timestamp=new Date().toISOString();
+    requirement.items.forEach(function(line,index){
+      const product=line.product,previous=Number(product.stock||0),delta=restoreStock?line.quantity:-line.quantity,next=previous+delta;
+      product.stock=next;
+      inventoryMovements.unshift({id:Date.now()+index,productId:product.id,productName:product.name,sku:product.sku,type:restoreStock?'Reingreso por pedido':'Salida por pedido',quantity:line.quantity,delta,previousStock:previous,newStock:next,note:(restoreStock?'Reversión del pedido ':'Pedido confirmado ')+order.id,sourceType:'order',sourceId:String(order.id),createdAt:timestamp});
+    });
+    return {items:requirement.items};
   }
-  function renderCustomers() {
-    const rows = customers.map(function (c) {
-      return '<tr><td class="table-primary">' + esc(c.name) + '<small class="table-secondary">' + esc(c.contact) + '</small></td><td>' + c.orders + '</td><td class="table-primary">' + money(c.spent) + '</td><td>' + esc(c.since) + '</td><td><span class="status-chip status-success">Activo</span></td></tr>';
-    }).join('');
-    return heading(views.customers, '<button class="button button-quiet" data-action="export">' + svg('download') + ' Exportar</button>') +
-      '<div class="summary-strip"><div class="summary-mini"><span>Clientes de muestra</span><strong>' + customers.length + '</strong></div><div class="summary-mini"><span>Compras acumuladas</span><strong>' + customers.reduce(function (sum, c) { return sum + c.orders; }, 0) + '</strong></div><div class="summary-mini"><span>Valor de cartera</span><strong>' + money(customers.reduce(function (sum, c) { return sum + c.spent; }, 0)) + '</strong></div></div>' +
-      '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>COMPRAS</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>' + rows + '</tbody></table></div></article>' +
-      '<div class="notice-panel">' + svg('warning') + '<div><strong>Datos de clientes ficticios</strong><p>No hay información personal real en esta vista. La ficha de cliente se diseñará con controles de acceso y protección de datos.</p></div></div>';
+  function saveOrderStatus() {
+    const button=document.getElementById('save-order-status'),order=orders.find(item=>String(item.id)===button.getAttribute('data-id'));
+    const nextStatus=document.getElementById('order-status-select').value;
+    const allowedStatuses=['Pendiente','En preparación','Listo para entrega','En tránsito','Completado'];
+    if(!order||!allowedStatuses.includes(nextStatus)){toast('No se pudo validar el estado seleccionado.');return;}
+    if(order.status===nextStatus){toast('El pedido ya tiene ese estado.');return;}
+    if(order.status==='Completado'){toast('Un pedido completado no se puede reabrir desde este formulario.');return;}
+    const snapshot=captureDemoState();let inventoryMessage='';
+    if(nextStatus==='Pendiente'&&order.inventoryAppliedAt){
+      const result=recordOrderInventory(order,true);if(result.error){toast(result.error);return;}
+      order.inventoryAppliedAt=null;inventoryMessage=' Existencias reingresadas en DEMO.';
+    }else if(nextStatus!=='Pendiente'&&!order.inventoryAppliedAt){
+      const result=recordOrderInventory(order,false);if(result.error){toast(result.error);return;}
+      order.inventoryAppliedAt=new Date().toISOString();inventoryMessage=' Existencias descontadas automáticamente.';
+    }
+    order.status=nextStatus;
+    if(!persistDemoData()){restoreDemoState(snapshot);return;}
+    orderDialog.close();renderView();toast('Estado del pedido actualizado en DEMO local.'+inventoryMessage);
   }
   function featureCard(symbol, title, description) {
     return '<article class="feature-card"><span class="feature-symbol">' + svg(symbol) + '</span><h3>' + title + '</h3><p>' + description + '</p></article>';
   }
-  function renderAnalytics() {
-    return heading(views.analytics, '<select class="period-select"><option>Mes actual</option><option>Últimos 90 días</option></select>') +
-      '<div class="feature-grid">' +
-      featureCard('chart', 'Ventas y rentabilidad', 'Resumen por periodo, comparación de ventas, margen y evolución del ingreso.') +
-      featureCard('bottle', 'Rendimiento por producto', 'Fragancias más vendidas, rotación, margen por referencia y productos sin movimiento.') +
-      featureCard('boxes', 'Inventario y reposición', 'Existencias valorizadas, alertas de mínimos y sugerencias de compra.') +
-      featureCard('users', 'Clientes y recurrencia', 'Frecuencia de compra, valor acumulado y comportamiento de clientes frecuentes.') +
-      '</div><div class="notice-panel">' + svg('spark') + '<div><strong>Los informes se activarán después del modelo de datos</strong><p>Primero definiremos las fórmulas y fuentes de cada indicador para evitar reportes que mezclen ventas, pedidos y cobros.</p></div></div>';
-  }
-  function renderBilling() {
-    const rows = [
-      { id: 'FAC-DEMO-001', client: 'Cliente de demostración A', date: '02 nov 2026', total: toUsd(4050), state: 'Borrador' },
-      { id: 'FAC-DEMO-002', client: 'Cliente de demostración B', date: '01 nov 2026', total: toUsd(2200), state: 'Pendiente' },
-      { id: 'FAC-DEMO-003', client: 'Cliente de demostración C', date: '31 oct 2026', total: toUsd(1850), state: 'Emitida (demo)' }
-    ];
-    const table = rows.map(function (row) {
-      const chip = row.state === 'Pendiente'
-        ? '<span class="status-chip status-pending">Pendiente</span>'
-        : row.state === 'Borrador'
-          ? '<span class="status-chip status-muted">Borrador</span>'
-          : '<span class="status-chip status-success">Emitida (demo)</span>';
-      return '<tr><td class="table-primary">' + esc(row.id) + '</td><td>' + esc(row.client) + '</td><td>' + esc(row.date) + '</td><td class="table-primary">' + money(row.total) + '</td><td>' + chip + '</td></tr>';
-    }).join('');
-    return heading(views.billing, '<button class="button button-primary" data-action="billing-preview">' + svg('plus') + ' Nueva factura</button>') +
-      '<div class="summary-strip"><div class="summary-mini"><span>Comprobantes de muestra</span><strong>03</strong></div><div class="summary-mini"><span>Pendientes de cobro</span><strong>01</strong></div><div class="summary-mini"><span>Importe de muestra</span><strong>' + money(toUsd(8100)) + '</strong></div></div>' +
-      '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>' + table + '</tbody></table></div></article>' +
-      '<div class="notice-panel">' + svg('warning') + '<div><strong>Facturación oficial aún no habilitada</strong><p>Esta pantalla contiene únicamente ejemplos ficticios. Numeración, impuestos, requisitos fiscales, formatos y notas de crédito se definirán después de verificar la normativa vigente de Nicaragua. No emite comprobantes fiscales reales.</p></div></div>';
-  }
-  function renderHR() {
-    return heading(views.hr, '<button class="button button-primary" data-action="hr-preview">' + svg('plus') + ' Agregar colaborador</button>') +
-      '<div class="summary-strip"><div class="summary-mini"><span>Equipo de demostración</span><strong>05</strong></div><div class="summary-mini"><span>Asistencia de hoy</span><strong>04</strong></div><div class="summary-mini"><span>Permisos pendientes</span><strong>01</strong></div></div>' +
-      '<div class="feature-grid">' +
-      featureCard('users', 'Personal y expedientes', 'Datos laborales, contratos, cargos, departamentos y documentos con permisos de acceso.') +
-      featureCard('clock', 'Asistencia y turnos', 'Entradas, salidas, horarios, ausencias y controles de jornada.') +
-      featureCard('receipt', 'Nómina y prestaciones', 'Periodos de pago, deducciones, prestaciones y comprobantes de nómina.') +
-      featureCard('clock', 'Vacaciones y permisos', 'Solicitudes, aprobaciones, saldos disponibles y calendario de ausencias.') +
-      '</div><div class="notice-panel">' + svg('warning') + '<div><strong>RRHH en etapa de diseño</strong><p>Esta sección no contiene empleados reales ni procesa nómina. Los cálculos y documentos laborales se construirán tras validar la legislación nicaragüense, la privacidad de los expedientes y los permisos de cada rol.</p></div></div>';
-  }
-  function renderSettings() {
-    return heading(views.settings, '') +
-      '<div class="feature-grid">' +
-      featureCard('settings', 'Preferencias del negocio', 'Formato de fecha, datos comerciales, reglas de inventario y numeración de documentos.') +
-      featureCard('receipt', 'Moneda y tipo de cambio', 'Moneda base: USD. Tipo de cambio de referencia para futura facturación: C$ 36.60 por US$ 1.') +
-      featureCard('users', 'Usuarios y permisos', 'Perfiles de administrador y colaboradores con permisos por módulo y registro de actividad.') +
-      featureCard('boxes', 'Almacenamiento de archivos', 'Imágenes de productos alojadas en R2 privado con enlaces temporales y acceso controlado.') +
-      featureCard('receipt', 'Base de datos y respaldo', 'Neon PostgreSQL con entornos separados para desarrollo y producción, migraciones y respaldos.') +
-      '</div><div class="notice-panel">' + svg('warning') + '<div><strong>Conexiones aún no configuradas</strong><p>No se han guardado claves, credenciales ni secretos en el navegador o en el repositorio.</p></div></div>';
-  }
-
   function requiredMark(){return '<span class="required-mark" aria-hidden="true">*</span>';}
   function formField(label,name,type,required,attrs){return '<label class="form-field"><span>'+label+(required?' '+requiredMark():'')+'</span><input name="'+name+'" type="'+(type||'text')+'"'+(required?' required':'')+' '+(attrs||'')+'></label>';}
   function selectField(label,name,options,required){return '<label class="form-field"><span>'+label+(required?' '+requiredMark():'')+'</span><select name="'+name+'"'+(required?' required':'')+'>'+options+'</select></label>';}
   function currencyField(selected){return selectField('Moneda de la operación','currency',currencyOptions(selected||'USD'),true);}
-  function productOptions(){return products.filter(p=>p.active!==false).map(p=>'<option value="'+p.id+'">'+esc(p.name)+' · '+money(p.price)+'</option>').join('');}
-  function customerOptions(){return customers.map((c,i)=>'<option value="'+i+'">'+esc(c.name)+'</option>').join('');}
   function supplierOptions(){return suppliers.map((s,i)=>'<option value="'+i+'">'+esc(s.name)+'</option>').join('');}
   function searchableField(label,name,lookupType,required,fieldId){
     const id=fieldId||('business-'+name+'-search');
@@ -549,12 +519,12 @@
     if(type==='supplier')body='<div class="form-grid">'+formField('Nombre del proveedor','name','text',true,'maxlength="80"')+formField('Contacto','contact','text',false,'maxlength="80"')+formField('Teléfono','phone','tel',false,'maxlength="40"')+formField('Correo','email','email',false,'maxlength="120"')+currencyField('USD')+'</div>';
     if(type==='order'){
       if(!customers.length){toast('Registra primero un cliente.');return;}
-      if(!productOptions()){toast('Registra primero un producto activo.');return;}
+      if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
       body='<div class="form-grid">'+searchableField('Cliente','customerIndex','customer',true)+searchableField('Producto','productId','product',true)+formField('Cantidad','quantity','number',true,'min="1" step="1" value="1"')+currencyField('USD')+'</div><p class="form-helper">Los precios del catálogo permanecen en USD. Se guarda la moneda de cobro y la tasa utilizada.</p>';
     }
     if(type==='purchase'){
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
-      if(!productOptions()){toast('Registra primero un producto activo.');return;}
+      if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
       body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
     }
     if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
@@ -579,21 +549,23 @@
     event.preventDefault();if(!businessForm.reportValidity())return;
     const data=new FormData(businessForm),get=k=>String(data.get(k)||'').trim(),num=k=>Number(data.get(k)||0);
     const type=businessForm.dataset.recordType,currency=get('currency')==='NIO'?'NIO':'USD',rate=exchangeRate,id=Date.now();
+    const snapshot=captureDemoState();
+    const persistBusinessChanges=function(){if(!persistDemoData()){restoreDemoState(snapshot);return false;}return true;};
     if(type==='customer'){
       if(!get('name'))return;
       customers.unshift({name:get('name'),contact:get('contact'),orders:0,spent:0,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
-      persistDemoData();businessDialog.close();renderView();toast('Cliente guardado en DEMO local.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Cliente guardado en DEMO local.');
     }else if(type==='supplier'){
       if(!get('name'))return;
       suppliers.unshift({id,name:get('name'),contact:get('contact'),phone:get('phone'),email:get('email'),currency});
-      persistDemoData();businessDialog.close();renderView();toast('Proveedor guardado en DEMO local.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Proveedor guardado en DEMO local.');
     }else if(type==='order'){
       const customer=customers[num('customerIndex')],product=products.find(p=>String(p.id)===get('productId')),quantity=num('quantity');
       if(!customer||!product||!Number.isInteger(quantity)||quantity<1){toast('Revisa el cliente, producto y cantidad.');return;}
       const total=roundMoney(product.price*quantity),next=orders.reduce((m,o)=>Math.max(m,Number(String(o.id).replace('JP-',''))||0),1043)+1;
-      const order={id:'JP-'+next,customer:customer.name,phone:customer.contact||'No registrado',date:new Date().toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'}),amount:total,status:'Pendiente',paymentMethod:'Por definir',paymentStatus:'Pendiente',deliveryMode:'Por coordinar',discount:0,deliveryFee:0,paymentCurrency:currency,paymentAmount:currency==='NIO'?roundMoney(total*rate):total,exchangeRate:rate,items:[{name:product.name,sku:product.sku,quantity,unitPrice:product.price}]};
+      const order={id:'JP-'+next,customer:customer.name,phone:customer.contact||'No registrado',date:new Date().toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'}),amount:total,status:'Pendiente',paymentMethod:'Por definir',paymentStatus:'Pendiente',deliveryMode:'Por coordinar',discount:0,deliveryFee:0,paymentCurrency:currency,paymentAmount:currency==='NIO'?roundMoney(total*rate):total,exchangeRate:rate,items:[{productId:product.id,name:product.name,sku:product.sku,quantity,unitPrice:product.price}]};
       orders.unshift(order);customer.orders=Number(customer.orders||0)+1;customer.spent=roundMoney(Number(customer.spent||0)+total);
-      persistDemoData();businessDialog.close();goToView('orders');toast('Pedido guardado en DEMO local. El inventario no se descuenta hasta registrar una salida.');
+      if(!persistBusinessChanges())return;businessDialog.close();goToView('orders');toast('Pedido guardado en DEMO local. El inventario no se descuenta hasta registrar una salida.');
     }else if(type==='purchase'){
       const supplier=suppliers[num('supplierIndex')],product=products.find(p=>String(p.id)===get('productId')),quantity=num('quantity'),unitCost=num('unitCost');
       if(!supplier||!product||!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitCost)||unitCost<=0){toast('Revisa proveedor, producto, cantidad y costo.');return;}
@@ -603,11 +575,11 @@
       purchases.unshift({id,supplier:supplier.name,productId:product.id,product:product.name,quantity,currency,originalUnitCost:unitCost,originalTotal:roundMoney(unitCost*quantity),exchangeRate:rate,unitCostUsd:unitUsd,totalUsd:roundMoney(unitUsd*quantity),createdAt:new Date().toISOString()});
       product.purchaseCost=weightedPurchaseCost;product.unitCost=roundMoney(weightedPurchaseCost+additionalCost);product.profit=roundMoney(Number(product.price||0)-product.unitCost);product.margin=product.price>0?roundMoney(product.profit/product.price*100):0;product.stock=nextStock;
       inventoryMovements.unshift({id,productId:product.id,productName:product.name,sku:product.sku,type:'Entrada por compra',quantity,delta:quantity,previousStock:previous,newStock:nextStock,note:'Compra a '+supplier.name,createdAt:new Date().toISOString()});
-      persistDemoData();businessDialog.close();renderView();toast('Compra registrada; costo y existencias actualizados en DEMO.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Compra registrada; costo y existencias actualizados en DEMO.');
     }else if(type==='expense'){
       const amount=num('amount');if(!get('description')||!Number.isFinite(amount)||amount<=0){toast('Revisa descripción e importe.');return;}
       expenses.unshift({id,category:get('category'),description:get('description'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),createdAt:new Date().toISOString()});
-      persistDemoData();businessDialog.close();renderView();toast('Gasto guardado con moneda y tasa de conversión.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Gasto guardado con moneda y tasa de conversión.');
     }else if(type==='cash'||type==='payment'){
       const amount=num('amount'),account=get('account'),accountCurrency=/NIO$/.test(account)?'NIO':'USD';
       if(type==='cash'&&!get('concept')){toast('Escribe un concepto para el movimiento.');return;}
@@ -623,25 +595,25 @@
         const supplier=get('supplierIndex')===''?null:suppliers[num('supplierIndex')];
         cashEntries.unshift({id,direction:get('direction'),concept:get('concept'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),account,supplier:supplier?supplier.name:'',createdAt:new Date().toISOString()});
       }
-      persistDemoData();businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.');
     }else if(type==='invoice'){
       const order=orders.find(o=>o.id===get('orderId'));if(!order||invoices.some(f=>f.orderId===order.id)){toast('Pedido no disponible o ya facturado.');return;}
       invoices.unshift({id:'JBI-'+String(id).slice(-6),orderId:order.id,customer:order.customer,currency,exchangeRate:rate,totalUsd:order.amount,originalAmount:currency==='NIO'?roundMoney(order.amount*rate):order.amount,paidUsd:0,status:'Pendiente',createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO'});
-      persistDemoData();businessDialog.close();renderView();toast('Comprobante interno DEMO creado. No es una factura fiscal.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Comprobante interno DEMO creado. No es una factura fiscal.');
     }else if(type==='employee'){
       const salary=num('salaryNio');if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0){toast('Revisa los datos y el salario.');return;}
       employees.unshift({id,name:get('name'),position:get('position'),department:get('department'),salaryNio:salary,status:'Activo'});
-      persistDemoData();businessDialog.close();renderView();toast('Colaborador registrado en DEMO. Salario expresado en córdobas.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Colaborador registrado en DEMO. Salario expresado en córdobas.');
     }
   }
   function dateText(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'});}
   function renderCustomers(){
     const rows=customers.map(c=>'<tr><td class="table-primary">'+esc(c.name)+'<small class="table-secondary">'+esc(c.contact||'Sin contacto')+'</small></td><td>'+Number(c.orders||0)+'</td><td class="table-primary">'+money(c.spent)+'</td><td>'+esc(c.since||'—')+'</td><td><span class="status-chip status-success">Activo</span></td></tr>').join('');
-    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Compras acumuladas USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>COMPRAS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes DEMO locales</strong><p>Los datos viven en este navegador. No introducir datos personales reales hasta configurar autenticación y base de datos.</p></div></div>';
+    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>PEDIDOS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes DEMO locales</strong><p>Los datos viven en este navegador. No introducir datos personales reales hasta configurar autenticación y base de datos.</p></div></div>';
   }
   function renderOrders(){
     const rows=orders.map(o=>'<tr><td class="table-primary">'+esc(o.id)+'</td><td>'+esc(o.customer)+'</td><td>'+esc(o.date)+'</td><td class="table-primary">'+money(o.amount)+'<small class="table-secondary">Cobro: '+moneyInCurrency(o.paymentAmount==null?o.amount:o.paymentAmount,o.paymentCurrency||'USD')+'</small></td><td>'+orderStatus(o.status)+'</td><td><button class="table-action" data-action="preview-order" data-id="'+esc(o.id)+'" aria-label="Ver pedido '+esc(o.id)+'">'+svg('eye')+'</button></td></tr>').join('');
-    return heading(views.orders,'<button class="button button-primary" data-action="new-order">'+svg('plus')+' Nuevo pedido</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Pedidos</span><strong>'+orders.length+'</strong></div><div class="summary-mini"><span>Pendientes</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Ventas registradas USD</span><strong>'+money(orders.reduce((s,o)=>s+Number(o.amount||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL / COBRO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Sin pedidos.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Pedidos DEMO</strong><p>Los pedidos conservan su moneda y tasa de cobro. Registrar un pedido no descuenta inventario; registra la salida desde Existencias al entregar.</p></div></div>';
+    return heading(views.orders,'<button class="button button-primary" data-action="new-order">'+svg('plus')+' Nuevo pedido</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Pedidos</span><strong>'+orders.length+'</strong></div><div class="summary-mini"><span>Pendientes</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(orders.reduce((s,o)=>s+Number(o.amount||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL / COBRO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Sin pedidos.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Pedidos DEMO</strong><p>El inventario se descuenta al confirmar el pedido (estado «En preparación» o posterior). Si vuelve a «Pendiente», se registra el reingreso correspondiente.</p></div></div>';
   }
   function renderBilling(){
     const rows=invoices.map(f=>{const paid=Number(f.paidUsd||0),balance=Math.max(0,f.totalUsd-paid);return '<tr><td class="table-primary">'+esc(f.id)+'</td><td>'+esc(f.orderId)+'</td><td>'+esc(f.customer)+'</td><td>'+money(f.totalUsd)+'<small class="table-secondary">'+moneyInCurrency(f.originalAmount,f.currency)+' · '+rateLabel(f.exchangeRate)+'</small></td><td>'+money(paid)+' pagado <small class="table-secondary">'+money(balance)+' pendiente</small></td><td><span class="status-chip '+(balance===0?'status-success':'status-pending')+'">'+esc(f.status)+'</span></td><td>'+(balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Registrar abono</button>':'—')+'</td></tr>';}).join('');
@@ -838,18 +810,26 @@
         const product = products.find(function (item) { return String(item.id) === action.getAttribute('data-id'); });
         if (!product) return;
         if (product.active !== false && !window.confirm('¿Desactivar ' + product.name + '? Dejará de aparecer en el inventario activo.')) return;
-        product.active = product.active === false; persistDemoData(); renderView();
+        const snapshot=captureDemoState();
+        product.active = product.active === false;
+        if(!persistDemoData()){restoreDemoState(snapshot);renderView();return;}
+        renderView();
         toast(product.active ? 'Producto reactivado en el catálogo DEMO.' : 'Producto desactivado. Su historial se conserva.');
       }
       else if (name === 'delete-product') {
         const product = products.find(function (item) { return String(item.id) === action.getAttribute('data-id'); });
         if (!product) return;
-        if (inventoryMovements.some(function (movement) { return String(movement.productId) === String(product.id); })) {
-          toast('No se puede eliminar: el producto ya tiene movimientos. Puedes desactivarlo y conservar su historial.'); return;
+        const hasStockHistory=inventoryMovements.some(function (movement) { return String(movement.productId) === String(product.id); });
+        const hasOrderHistory=orders.some(function(order){return Array.isArray(order.items)&&order.items.some(function(item){return (item.productId!=null&&String(item.productId)===String(product.id))||(item.sku&&String(item.sku).toLowerCase()===String(product.sku).toLowerCase())||(item.name&&String(item.name).toLowerCase()===String(product.name).toLowerCase());});});
+        const hasPurchaseHistory=purchases.some(function(purchase){return String(purchase.productId)===String(product.id);});
+        if (hasStockHistory||hasOrderHistory||hasPurchaseHistory) {
+          toast('No se puede eliminar: el producto tiene historial de inventario, pedidos o compras. Puedes desactivarlo y conservar su trazabilidad.'); return;
         }
         if (!window.confirm('¿Eliminar definitivamente este producto DEMO?')) return;
+        const snapshot=captureDemoState();
         products = products.filter(function (item) { return String(item.id) !== String(product.id); });
-        persistDemoData(); renderView(); toast('Producto DEMO eliminado.');
+        if(!persistDemoData()){restoreDemoState(snapshot);renderView();return;}
+        renderView(); toast('Producto DEMO eliminado.');
       }
       else if (name === 'stock-new') openStockModal();
       else if (name === 'stock-product') openStockModal(action.getAttribute('data-id'));
@@ -946,11 +926,12 @@
       toast('Ese SKU ya existe. Utiliza un código diferente.'); form.elements.sku.focus(); return;
     }
     const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
+    const snapshot=captureDemoState();
     if (existing) {
-      Object.assign(existing,fields); persistDemoData(); form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false;
+      Object.assign(existing,fields); if(!persistDemoData()){restoreDemoState(snapshot);return;} form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false;
       updateProductCostPreview(); dialog.close(); renderView(); toast('Ficha de producto actualizada y guardada localmente en modo DEMO.');
     } else {
-      products.unshift(Object.assign({id:Date.now(),stock:stock,active:true,tone:'art-violet'},fields)); persistDemoData();
+      products.unshift(Object.assign({id:Date.now(),stock:stock,active:true,tone:'art-violet'},fields)); if(!persistDemoData()){restoreDemoState(snapshot);return;}
       form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false; updateProductCostPreview();
       dialog.close(); goToView('products'); toast('Producto guardado en DEMO local; no se ha guardado en Neon.');
     }
@@ -972,9 +953,11 @@
     const newStock=previousStock+delta;
     if(newStock<0){toast('Stock insuficiente. La salida no puede dejar existencias negativas.');return;}
     if(delta===0){toast('El ajuste coincide con el stock actual; no se registró ningún movimiento.');return;}
+    const snapshot=captureDemoState();
     product.stock=newStock;
     inventoryMovements.unshift({id:Date.now(),productId:product.id,productName:product.name,sku:product.sku,type:label,quantity:Math.abs(delta),delta:delta,previousStock:previousStock,newStock:newStock,note:note,createdAt:new Date().toISOString()});
-    persistDemoData(); stockForm.reset(); stockDialog.close(); renderView();
+    if(!persistDemoData()){restoreDemoState(snapshot);return;}
+    stockForm.reset(); stockDialog.close(); renderView();
     toast(label+' registrada: '+product.name+' · '+(delta>0?'+':'')+delta+' unidades.');
   });
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);  businessForm.addEventListener('submit',saveBusinessRecord);
@@ -1001,7 +984,7 @@
     if(!event.target||event.target.id!=='exchange-rate-form')return;
     event.preventDefault();const next=Number(new FormData(event.target).get('exchangeRate'));
     if(!Number.isFinite(next)||next<=0||next>100000){toast('Introduce un tipo de cambio válido.');return;}
-    exchangeRate=Number(next.toFixed(4));if(!persistDemoData())return;renderView();toast('Tipo de cambio actualizado. Las operaciones anteriores conservan su tasa.');
+    const previousRate=exchangeRate;exchangeRate=Number(next.toFixed(4));if(!persistDemoData()){exchangeRate=previousRate;return;}renderView();toast('Tipo de cambio actualizado. Las operaciones anteriores conservan su tasa.');
   });
   setDate();
   let initiallyCollapsed = false;
