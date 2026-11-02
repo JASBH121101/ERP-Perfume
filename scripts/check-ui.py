@@ -15,7 +15,7 @@ REQUIRED_IDS = {
     "product-dialog", "product-form", "toast-region",
     "menu-toggle", "mobile-scrim", "product-count",
     "breadcrumb-current", "page-eyebrow", "sidebar-collapse",
-    "font-decrease", "font-increase", "font-scale-label",
+    "font-decrease", "font-increase", "font-scale-label", "order-detail-dialog",
 }
 
 REQUIRED_VIEWS = {
@@ -97,7 +97,7 @@ def main():
             return fail("Missing font scale style: " + marker)
 
     js = JS_FILE.read_text(encoding="utf-8")
-    for marker in ("new FormData(form)", "renderView()", "function setFontLevel", "function setSidebarCollapsed"):
+    for marker in ("new FormData(form)", "renderView()", "function setFontLevel", "function setSidebarCollapsed", "function showOrderDetails", "function saveOrderStatus"):
         if marker not in js:
             return fail("Expected UI hook was not found: " + marker)
 
