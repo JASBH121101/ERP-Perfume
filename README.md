@@ -5,6 +5,13 @@ ERP web application for JB PARFUMS.
 ## Current phase
 UI foundation and quality automation. All business records currently shown in the interface are demo data.
 
+## Currency policy
+
+- Operational/base currency: USD ($).
+- Fixed reference rate for future invoice conversion: C$ 36.60 per US$ 1.
+- DEMO values from the former Córdobas interface are normalized to USD; browser-local DEMO records are migrated once.
+- Official invoicing and NIO conversion are not enabled yet.
+
 ## Architecture
 - Frontend: HTML, CSS and vanilla JavaScript.
 - Hosting/runtime: Cloudflare Pages + Workers.

@@ -32,28 +32,34 @@
     node.innerHTML = svg(node.getAttribute('data-icon'));
   });
 
+  const USD_EXCHANGE_RATE = 36.6;
+  function toUsd(value) {
+    const amount = Number(value || 0);
+    return Math.round((amount / USD_EXCHANGE_RATE + Number.EPSILON) * 100) / 100;
+  }
+
   let products = [
-    { id: 1, name: 'Club de Nuit Intense Man', brand: 'Armaf', sku: 'JBP-001', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Amaderada', sizeMl: 105, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: 1450, additionalCost: 100, unitCost: 1550, price: 2450, profit: 900, margin: 36.7, stock: 14, minStock: 4, location: 'A-01', tone: 'art-night', active: true },
-    { id: 2, name: 'Yara Lattafa', brand: 'Lattafa', sku: 'JBP-002', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1050, additionalCost: 100, unitCost: 1150, price: 1850, profit: 700, margin: 37.8, stock: 8, minStock: 3, location: 'A-02', tone: 'art-rose', active: true },
-    { id: 3, name: 'Khamrah Lattafa', brand: 'Lattafa', sku: 'JBP-003', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1350, additionalCost: 100, unitCost: 1450, price: 2200, profit: 750, margin: 34.1, stock: 3, minStock: 5, location: 'A-03', tone: 'art-olive', active: true },
-    { id: 4, name: 'Badee Al Oud Amethyst', brand: 'Lattafa', sku: 'JBP-004', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1250, additionalCost: 100, unitCost: 1350, price: 2100, profit: 750, margin: 35.7, stock: 0, minStock: 3, location: 'A-04', tone: 'art-violet', active: true },
-    { id: 5, name: '9PM Afnan', brand: 'Afnan', sku: 'JBP-005', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Ámbar / Oriental', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1200, additionalCost: 100, unitCost: 1300, price: 1950, profit: 650, margin: 33.3, stock: 11, minStock: 3, location: 'A-05', tone: 'art-night', active: true },
-    { id: 6, name: 'Good Girl Carolina Herrera', brand: 'Carolina Herrera', sku: 'JBP-006', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Ámbar / Oriental', sizeMl: 80, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: 1950, additionalCost: 100, unitCost: 2050, price: 3100, profit: 1050, margin: 33.9, stock: 5, minStock: 4, location: 'B-01', tone: 'art-night', active: true },
-    { id: 7, name: 'Ana Abiyedh Rouge', brand: 'Lattafa', sku: 'JBP-007', category: 'Unisex', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Ambar / Oriental', sizeMl: 60, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1000, additionalCost: 100, unitCost: 1100, price: 1750, profit: 650, margin: 37.1, stock: 2, minStock: 4, location: 'B-02', tone: 'art-rose', active: true },
-    { id: 8, name: 'Eclaire Lattafa', brand: 'Lattafa', sku: 'JBP-008', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1250, additionalCost: 100, unitCost: 1350, price: 2050, profit: 700, margin: 34.1, stock: 9, minStock: 3, location: 'B-03', tone: 'art-olive', active: true }
+    { id: 1, name: 'Club de Nuit Intense Man', brand: 'Armaf', sku: 'JBP-001', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Amaderada', sizeMl: 105, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: toUsd(1450), additionalCost: toUsd(100), unitCost: toUsd(1550), price: toUsd(2450), profit: toUsd(900), margin: 36.7, stock: 14, minStock: 4, location: 'A-01', tone: 'art-night', active: true },
+    { id: 2, name: 'Yara Lattafa', brand: 'Lattafa', sku: 'JBP-002', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1050), additionalCost: toUsd(100), unitCost: toUsd(1150), price: toUsd(1850), profit: toUsd(700), margin: 37.8, stock: 8, minStock: 3, location: 'A-02', tone: 'art-rose', active: true },
+    { id: 3, name: 'Khamrah Lattafa', brand: 'Lattafa', sku: 'JBP-003', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1350), additionalCost: toUsd(100), unitCost: toUsd(1450), price: toUsd(2200), profit: toUsd(750), margin: 34.1, stock: 3, minStock: 5, location: 'A-03', tone: 'art-olive', active: true },
+    { id: 4, name: 'Badee Al Oud Amethyst', brand: 'Lattafa', sku: 'JBP-004', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1250), additionalCost: toUsd(100), unitCost: toUsd(1350), price: toUsd(2100), profit: toUsd(750), margin: 35.7, stock: 0, minStock: 3, location: 'A-04', tone: 'art-violet', active: true },
+    { id: 5, name: '9PM Afnan', brand: 'Afnan', sku: 'JBP-005', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Ámbar / Oriental', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1200), additionalCost: toUsd(100), unitCost: toUsd(1300), price: toUsd(1950), profit: toUsd(650), margin: 33.3, stock: 11, minStock: 3, location: 'A-05', tone: 'art-night', active: true },
+    { id: 6, name: 'Good Girl Carolina Herrera', brand: 'Carolina Herrera', sku: 'JBP-006', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Ámbar / Oriental', sizeMl: 80, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: toUsd(1950), additionalCost: toUsd(100), unitCost: toUsd(2050), price: toUsd(3100), profit: toUsd(1050), margin: 33.9, stock: 5, minStock: 4, location: 'B-01', tone: 'art-night', active: true },
+    { id: 7, name: 'Ana Abiyedh Rouge', brand: 'Lattafa', sku: 'JBP-007', category: 'Unisex', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Ambar / Oriental', sizeMl: 60, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1000), additionalCost: toUsd(100), unitCost: toUsd(1100), price: toUsd(1750), profit: toUsd(650), margin: 37.1, stock: 2, minStock: 4, location: 'B-02', tone: 'art-rose', active: true },
+    { id: 8, name: 'Eclaire Lattafa', brand: 'Lattafa', sku: 'JBP-008', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1250), additionalCost: toUsd(100), unitCost: toUsd(1350), price: toUsd(2050), profit: toUsd(700), margin: 34.1, stock: 9, minStock: 3, location: 'B-03', tone: 'art-olive', active: true }
   ];
   let orders = [
-    { id: 'JP-1048', customer: 'María Gutiérrez', phone: '+505 8888 1204', date: '02 nov 2026', amount: 4050, status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: 0, deliveryFee: 150, items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: 1850 }, { name: 'Eclaire Lattafa', sku: 'JBP-008', quantity: 1, unitPrice: 2050 }] },
-    { id: 'JP-1047', customer: 'Carlos Mendoza', phone: '+505 8777 2310', date: '02 nov 2026', amount: 2200, status: 'Pendiente', paymentMethod: 'Efectivo contra entrega', paymentStatus: 'Pendiente', deliveryMode: 'Retiro en tienda', discount: 0, deliveryFee: 0, items: [{ name: 'Khamrah Lattafa', sku: 'JBP-003', quantity: 1, unitPrice: 2200 }] },
-    { id: 'JP-1046', customer: 'Andrea López', phone: '+505 8666 3421', date: '01 nov 2026', amount: 1850, status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: 0, deliveryFee: 0, items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: 1850 }] },
-    { id: 'JP-1045', customer: 'Daniela Ruiz', phone: '+505 8555 4532', date: '01 nov 2026', amount: 3100, status: 'En preparación', paymentMethod: 'Tarjeta', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: 0, deliveryFee: 0, items: [{ name: 'Good Girl Carolina Herrera', sku: 'JBP-006', quantity: 1, unitPrice: 3100 }] },
-    { id: 'JP-1044', customer: 'Luis Salazar', phone: 'No registrado', date: '31 oct 2026', amount: 1950, status: 'Completado', paymentMethod: 'Efectivo', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: 0, deliveryFee: 0, items: [{ name: '9PM Afnan', sku: 'JBP-005', quantity: 1, unitPrice: 1950 }] }
+    { id: 'JP-1048', customer: 'María Gutiérrez', phone: '+505 8888 1204', date: '02 nov 2026', amount: toUsd(4050), status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: toUsd(0), deliveryFee: toUsd(150), items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: toUsd(1850) }, { name: 'Eclaire Lattafa', sku: 'JBP-008', quantity: 1, unitPrice: toUsd(2050) }] },
+    { id: 'JP-1047', customer: 'Carlos Mendoza', phone: '+505 8777 2310', date: '02 nov 2026', amount: toUsd(2200), status: 'Pendiente', paymentMethod: 'Efectivo contra entrega', paymentStatus: 'Pendiente', deliveryMode: 'Retiro en tienda', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: 'Khamrah Lattafa', sku: 'JBP-003', quantity: 1, unitPrice: toUsd(2200) }] },
+    { id: 'JP-1046', customer: 'Andrea López', phone: '+505 8666 3421', date: '01 nov 2026', amount: toUsd(1850), status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: toUsd(1850) }] },
+    { id: 'JP-1045', customer: 'Daniela Ruiz', phone: '+505 8555 4532', date: '01 nov 2026', amount: toUsd(3100), status: 'En preparación', paymentMethod: 'Tarjeta', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: 'Good Girl Carolina Herrera', sku: 'JBP-006', quantity: 1, unitPrice: toUsd(3100) }] },
+    { id: 'JP-1044', customer: 'Luis Salazar', phone: 'No registrado', date: '31 oct 2026', amount: toUsd(1950), status: 'Completado', paymentMethod: 'Efectivo', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: '9PM Afnan', sku: 'JBP-005', quantity: 1, unitPrice: toUsd(1950) }] }
   ];
   const customers = [
-    { name: 'María Gutiérrez', contact: '+505 8888 1204', orders: 8, spent: 12450, since: 'Ago 2026' },
-    { name: 'Carlos Mendoza', contact: '+505 8777 2310', orders: 5, spent: 8950, since: 'Sep 2026' },
-    { name: 'Andrea López', contact: '+505 8666 3421', orders: 4, spent: 7300, since: 'Sep 2026' },
-    { name: 'Daniela Ruiz', contact: '+505 8555 4532', orders: 3, spent: 6100, since: 'Oct 2026' }
+    { name: 'María Gutiérrez', contact: '+505 8888 1204', orders: 8, spent: toUsd(12450), since: 'Ago 2026' },
+    { name: 'Carlos Mendoza', contact: '+505 8777 2310', orders: 5, spent: toUsd(8950), since: 'Sep 2026' },
+    { name: 'Andrea López', contact: '+505 8666 3421', orders: 4, spent: toUsd(7300), since: 'Sep 2026' },
+    { name: 'Daniela Ruiz', contact: '+505 8555 4532', orders: 3, spent: toUsd(6100), since: 'Oct 2026' }
   ];
   const views = {
     dashboard: { title: 'Resumen', eyebrow: 'CENTRO DE CONTROL', heading: 'Buenos días', subtitle: 'Una mirada clara al movimiento de tu negocio.' },
@@ -75,11 +81,35 @@
   const stockForm = document.getElementById('stock-form');
   const detailDialog = document.getElementById('product-detail-dialog');
   const orderDialog = document.getElementById('order-detail-dialog');
-  const DEMO_STORAGE_KEY = 'jbparfums-demo-data-v1';
+  const DEMO_STORAGE_KEY = 'jbparfums-demo-data-v2';
+  const LEGACY_DEMO_STORAGE_KEY = 'jbparfums-demo-data-v1';
+  function convertLegacyProductToUsd(product) {
+    const purchaseCost = Number(product.purchaseCost || 0);
+    const additionalCost = Number(product.additionalCost || 0);
+    const unitCost = product.unitCost == null ? purchaseCost + additionalCost : Number(product.unitCost || 0);
+    const price = Number(product.price || 0);
+    return Object.assign({}, product, {
+      purchaseCost: toUsd(purchaseCost),
+      additionalCost: toUsd(additionalCost),
+      unitCost: toUsd(unitCost),
+      price: toUsd(price),
+      profit: toUsd(product.profit == null ? price - unitCost : product.profit)
+    });
+  }
+  function convertLegacyOrderToUsd(order) {
+    return Object.assign({}, order, {
+      amount: toUsd(order.amount),
+      discount: toUsd(order.discount),
+      deliveryFee: toUsd(order.deliveryFee),
+      items: Array.isArray(order.items) ? order.items.map(function (item) {
+        return Object.assign({}, item, { unitPrice: toUsd(item.unitPrice) });
+      }) : []
+    });
+  }
   let inventoryMovements = [];
   function persistDemoData() {
     try {
-      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 1, products: products, inventoryMovements: inventoryMovements, orders: orders }));
+      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 2, products: products, inventoryMovements: inventoryMovements, orders: orders }));
       return true;
     } catch (error) {
       toast('No se pudo guardar en este navegador. Los cambios solo durarán hasta cerrar la sesión.');
@@ -88,14 +118,15 @@
   }
   function loadDemoData() {
     try {
-      const stored = window.localStorage.getItem(DEMO_STORAGE_KEY);
+      const stored = window.localStorage.getItem(DEMO_STORAGE_KEY) || window.localStorage.getItem(LEGACY_DEMO_STORAGE_KEY);
       if (!stored) {
         products.forEach(function (product) { product.active = true; });
         persistDemoData();
         return;
       }
       const parsed = JSON.parse(stored);
-      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.products) || !Array.isArray(parsed.inventoryMovements)) {
+      const needsCurrencyMigration = parsed && parsed.version === 1;
+      if (!parsed || ![1, 2].includes(parsed.version) || !Array.isArray(parsed.products) || !Array.isArray(parsed.inventoryMovements)) {
         products.forEach(function (product) { product.active = true; });
         persistDemoData();
         return;
@@ -106,7 +137,7 @@
         product.active = product.active !== false;
         product.stock = Number.isInteger(product.stock) && product.stock >= 0 ? product.stock : 0;
         product.minStock = Number.isInteger(product.minStock) && product.minStock >= 0 ? product.minStock : 3;
-        return product;
+        return needsCurrencyMigration ? convertLegacyProductToUsd(product) : product;
       });
       inventoryMovements = parsed.inventoryMovements.filter(function (movement) {
         return movement && Number.isFinite(Number(movement.id)) && Number.isFinite(Number(movement.productId));
@@ -116,12 +147,17 @@
         orders = parsed.orders.filter(function (order) {
           return order && /^JP-\d+$/.test(String(order.id || '')) && String(order.customer || '').trim() && Array.isArray(order.items);
         }).map(function (order) {
+          if (needsCurrencyMigration) order = convertLegacyOrderToUsd(order);
           order.status = allowedStatuses.includes(order.status) ? order.status : 'Pendiente';
           order.items = order.items.filter(function (item) {
             return item && String(item.name || '').trim() && Number.isInteger(item.quantity) && item.quantity > 0 && Number.isFinite(Number(item.unitPrice)) && Number(item.unitPrice) >= 0;
           });
           return order;
         });
+      }
+      if (needsCurrencyMigration) {
+        const saved = persistDemoData();
+        if (saved) window.localStorage.removeItem(LEGACY_DEMO_STORAGE_KEY);
       }
     } catch (error) {
       products.forEach(function (product) { product.active = true; });
@@ -135,8 +171,9 @@
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
     });
   }
+  const usdFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
   function money(value) {
-    return 'C$ ' + Number(value || 0).toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    return usdFormatter.format(Number(value || 0));
   }
   function isLowStock(product) {
     const minimum = Number.isInteger(product.minStock) ? product.minStock : 3;
@@ -188,13 +225,13 @@
     const low = activeProducts.filter(needsRestock).length;
     return heading(views.dashboard, '<select class="period-select" aria-label="Periodo"><option>Últimos 7 días</option><option>Últimos 30 días</option><option>Este año</option></select><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
       '<section class="metric-grid">' +
-      metric('Ventas del mes', 'C$ 28,450', 'chart', '+12.8%', 'vs. mes anterior', false) +
+      metric('Ventas del mes', money(toUsd(28450)), 'chart', '+12.8%', 'vs. mes anterior', false) +
       metric('Pedidos recibidos', '18', 'bag', '+4.2%', 'vs. mes anterior', false) +
       metric('Productos activos', String(activeProducts.length).padStart(2, '0'), 'bottle', 'Catálogo', 'productos DEMO activos', true) +
       metric('Alertas de stock', String(low).padStart(2, '0'), 'warning', 'Revisar', 'productos bajo su stock mínimo', true) +
       '</section>' +
       '<section class="dashboard-grid">' +
-      '<article class="panel"><div class="panel-heading"><div><h2>Rendimiento de ventas</h2><p>Comportamiento comercial de los últimos días</p></div><button class="panel-link" data-view="analytics">Ver informe ' + svg('arrow') + '</button></div><div class="chart-summary"><strong>C$ 28,450</strong><span>ventas de muestra</span></div>' +
+      '<article class="panel"><div class="panel-heading"><div><h2>Rendimiento de ventas</h2><p>Comportamiento comercial de los últimos días</p></div><button class="panel-link" data-view="analytics">Ver informe ' + svg('arrow') + '</button></div><div class="chart-summary"><strong>' + money(toUsd(28450)) + '</strong><span>ventas de muestra</span></div>' +
       '<div class="chart-wrap"><svg viewBox="0 0 620 180" role="img" aria-label="Gráfico ilustrativo de ventas semanales"><defs><linearGradient id="sales-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#c4a16b" stop-opacity=".26"/><stop offset="100%" stop-color="#c4a16b" stop-opacity="0"/></linearGradient></defs><path class="chart-gridline" d="M42 25H608M42 65H608M42 105H608M42 145H608"/><path class="chart-area" d="M42 129 C78 118 94 82 130 91 S188 115 222 77 S280 95 314 58 S374 77 408 53 S468 69 502 39 S566 57 608 22 V145 H42Z"/><path class="chart-line" d="M42 129 C78 118 94 82 130 91 S188 115 222 77 S280 95 314 58 S374 77 408 53 S468 69 502 39 S566 57 608 22"/><circle class="chart-point" cx="130" cy="91" r="4"/><circle class="chart-point" cx="222" cy="77" r="4"/><circle class="chart-point" cx="314" cy="58" r="4"/><circle class="chart-point" cx="408" cy="53" r="4"/><circle class="chart-point" cx="502" cy="39" r="4"/><text class="chart-label" x="42" y="166">Lun</text><text class="chart-label" x="135" y="166">Mar</text><text class="chart-label" x="228" y="166">Mié</text><text class="chart-label" x="321" y="166">Jue</text><text class="chart-label" x="414" y="166">Vie</text><text class="chart-label" x="507" y="166">Sáb</text><text class="chart-label" x="592" y="166">Dom</text></svg></div><div class="chart-note"><i></i> Datos ilustrativos · Se conectará al módulo de ventas</div></article>' +
       '<article class="panel"><div class="panel-heading"><div><h2>Productos destacados</h2><p>Selección de catálogo de ejemplo</p></div><button class="panel-link" data-view="products">Catálogo ' + svg('arrow') + '</button></div><div class="top-products">' + topRows + '</div><div class="panel-footer-note">Precios y existencias de demostración.</div></article>' +
       '</section>' +
@@ -392,9 +429,9 @@
   }
   function renderBilling() {
     const rows = [
-      { id: 'FAC-DEMO-001', client: 'Cliente de demostración A', date: '02 nov 2026', total: 4050, state: 'Borrador' },
-      { id: 'FAC-DEMO-002', client: 'Cliente de demostración B', date: '01 nov 2026', total: 2200, state: 'Pendiente' },
-      { id: 'FAC-DEMO-003', client: 'Cliente de demostración C', date: '31 oct 2026', total: 1850, state: 'Emitida (demo)' }
+      { id: 'FAC-DEMO-001', client: 'Cliente de demostración A', date: '02 nov 2026', total: toUsd(4050), state: 'Borrador' },
+      { id: 'FAC-DEMO-002', client: 'Cliente de demostración B', date: '01 nov 2026', total: toUsd(2200), state: 'Pendiente' },
+      { id: 'FAC-DEMO-003', client: 'Cliente de demostración C', date: '31 oct 2026', total: toUsd(1850), state: 'Emitida (demo)' }
     ];
     const table = rows.map(function (row) {
       const chip = row.state === 'Pendiente'
@@ -405,7 +442,7 @@
       return '<tr><td class="table-primary">' + esc(row.id) + '</td><td>' + esc(row.client) + '</td><td>' + esc(row.date) + '</td><td class="table-primary">' + money(row.total) + '</td><td>' + chip + '</td></tr>';
     }).join('');
     return heading(views.billing, '<button class="button button-primary" data-action="billing-preview">' + svg('plus') + ' Nueva factura</button>') +
-      '<div class="summary-strip"><div class="summary-mini"><span>Comprobantes de muestra</span><strong>03</strong></div><div class="summary-mini"><span>Pendientes de cobro</span><strong>01</strong></div><div class="summary-mini"><span>Importe de muestra</span><strong>' + money(8100) + '</strong></div></div>' +
+      '<div class="summary-strip"><div class="summary-mini"><span>Comprobantes de muestra</span><strong>03</strong></div><div class="summary-mini"><span>Pendientes de cobro</span><strong>01</strong></div><div class="summary-mini"><span>Importe de muestra</span><strong>' + money(toUsd(8100)) + '</strong></div></div>' +
       '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>' + table + '</tbody></table></div></article>' +
       '<div class="notice-panel">' + svg('warning') + '<div><strong>Facturación oficial aún no habilitada</strong><p>Esta pantalla contiene únicamente ejemplos ficticios. Numeración, impuestos, requisitos fiscales, formatos y notas de crédito se definirán después de verificar la normativa vigente de Nicaragua. No emite comprobantes fiscales reales.</p></div></div>';
   }
@@ -422,7 +459,8 @@
   function renderSettings() {
     return heading(views.settings, '') +
       '<div class="feature-grid">' +
-      featureCard('settings', 'Preferencias del negocio', 'Moneda, formato de fecha, datos comerciales, reglas de inventario y numeración de documentos.') +
+      featureCard('settings', 'Preferencias del negocio', 'Formato de fecha, datos comerciales, reglas de inventario y numeración de documentos.') +
+      featureCard('receipt', 'Moneda y tipo de cambio', 'Moneda base: USD. Tipo de cambio de referencia para futura facturación: C$ 36.60 por US$ 1.') +
       featureCard('users', 'Usuarios y permisos', 'Perfiles de administrador y colaboradores con permisos por módulo y registro de actividad.') +
       featureCard('boxes', 'Almacenamiento de archivos', 'Imágenes de productos alojadas en R2 privado con enlaces temporales y acceso controlado.') +
       featureCard('receipt', 'Base de datos y respaldo', 'Neon PostgreSQL con entornos separados para desarrollo y producción, migraciones y respaldos.') +

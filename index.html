@@ -136,13 +136,13 @@
         <div class="form-section-heading"><span class="form-section-icon" data-icon="chart"></span><div><strong>Costos y precio de venta</strong><small>Calcula costo unitario, utilidad y margen bruto</small></div></div>
         <div class="form-grid">
           <label class="form-field"><span>Proveedor</span><input name="supplier" maxlength="80"></label>
-          <label class="form-field"><span>Costo de compra (C$)</span><input name="purchaseCost" type="number" min="0" step="0.01"></label>
-          <label class="form-field"><span>Costos adicionales (C$)</span><input name="additionalCost" type="number" min="0" step="0.01"></label>
-          <label class="form-field"><span>Precio de venta (C$) <span class="required-mark" aria-hidden="true">*</span></span><input name="price" type="number" min="0.01" step="0.01" required></label>
+          <label class="form-field"><span>Costo de compra (USD)</span><input name="purchaseCost" type="number" min="0" step="0.01"></label>
+          <label class="form-field"><span>Costos adicionales (USD)</span><input name="additionalCost" type="number" min="0" step="0.01"></label>
+          <label class="form-field"><span>Precio de venta (USD) <span class="required-mark" aria-hidden="true">*</span></span><input name="price" type="number" min="0.01" step="0.01" required></label>
         </div>
         <div class="cost-preview-grid" aria-live="polite">
-          <div class="cost-preview-card"><span>Costo unitario</span><strong id="unit-cost-preview">C$ 0</strong></div>
-          <div class="cost-preview-card"><span>Utilidad estimada</span><strong id="unit-profit-preview">C$ 0</strong></div>
+          <div class="cost-preview-card"><span>Costo unitario</span><strong id="unit-cost-preview">$0.00</strong></div>
+          <div class="cost-preview-card"><span>Utilidad estimada</span><strong id="unit-profit-preview">$0.00</strong></div>
           <div class="cost-preview-card"><span>Margen bruto</span><strong id="gross-margin-preview">—</strong></div>
         </div>
         <p class="form-helper">Cálculo preliminar: costo de compra + costos adicionales. Margen bruto = utilidad ÷ precio de venta. No incluye impuestos ni gastos generales.</p>

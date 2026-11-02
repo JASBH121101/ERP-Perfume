@@ -73,7 +73,7 @@ test('a new product can be added to the demo session', async ({ page }) => {
   await page.getByLabel('Nombre del perfume').fill('Fragancia QA Automatizada');
   await page.getByLabel('SKU / Código interno').fill('QA-ERP-001');
   await dialog.locator('select[name="category"]').selectOption('Árabes');
-  await page.getByLabel('Precio de venta (C$)').fill('1250');
+  await page.getByLabel('Precio de venta (USD)').fill('1250');
   await dialog.getByLabel('Existencias iniciales').fill('4');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
@@ -97,13 +97,13 @@ test('product master calculates unit cost, profit and gross margin', async ({ pa
   await dialog.getByLabel('Género').selectOption('Unisex');
   await dialog.getByLabel('Contenido (ml)').fill('100');
   await dialog.getByLabel('Proveedor').fill('Proveedor QA');
-  await dialog.getByLabel('Costo de compra (C$)').fill('900');
-  await dialog.getByLabel('Costos adicionales (C$)').fill('100');
-  await dialog.getByLabel('Precio de venta (C$)').fill('1500');
+  await dialog.getByLabel('Costo de compra (USD)').fill('20');
+  await dialog.getByLabel('Costos adicionales (USD)').fill('5');
+  await dialog.getByLabel('Precio de venta (USD)').fill('50');
 
-  await expect(dialog.locator('#unit-cost-preview')).toHaveText('C$ 1,000');
-  await expect(dialog.locator('#unit-profit-preview')).toHaveText('C$ 500');
-  await expect(dialog.locator('#gross-margin-preview')).toHaveText('33.3%');
+  await expect(dialog.locator('#unit-cost-preview')).toHaveText('$25.00');
+  await expect(dialog.locator('#unit-profit-preview')).toHaveText('$25.00');
+  await expect(dialog.locator('#gross-margin-preview')).toHaveText('50.0%');
 
   await dialog.getByLabel('Existencias iniciales').fill('7');
   await dialog.getByLabel('Stock mínimo').fill('2');
@@ -153,7 +153,7 @@ test('product names are rendered as text, not executable markup', async ({ page 
 
   const payload = '<img src=x onerror=alert(1)>';
   await page.getByLabel('Nombre del perfume').fill(payload);
-  await page.getByLabel('Precio de venta (C$)').fill('100');
+  await page.getByLabel('Precio de venta (USD)').fill('100');
   await dialog.getByLabel('Existencias iniciales').fill('1');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
@@ -181,14 +181,14 @@ test('product creation and edits persist locally after reload without changing s
   const dialog=page.locator('#product-dialog');
   await dialog.getByLabel('Nombre del perfume').fill('QA Persistente');
   await dialog.getByLabel('SKU / Código interno').fill('QA-PERSIST-01');
-  await dialog.getByLabel('Precio de venta (C$)').fill('1500');
+  await dialog.getByLabel('Precio de venta (USD)').fill('1500');
   await dialog.getByLabel('Existencias iniciales').fill('6');
   await dialog.getByRole('button', { name: /Agregar a demo/ }).click();
   await page.reload(); await page.locator('#sidebar button[data-view="products"]').click();
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente');
   await page.getByRole('button', { name: 'Editar QA Persistente' }).click();
   await dialog.getByLabel('Nombre del perfume').fill('QA Persistente Editado');
-  await dialog.getByLabel('Precio de venta (C$)').fill('1750');
+  await dialog.getByLabel('Precio de venta (USD)').fill('1750');
   await expect(dialog.getByLabel('Existencias iniciales')).toHaveValue('6');
   await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente Editado');
@@ -313,6 +313,154 @@ test('form fields have no placeholder or optional copy; required fields use a re
 });
 
 
+
+test('business amounts display in USD and configuration shows the fixed reference rate', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#view-root')).toContainText('$777.32');
+  await expect(page.locator('#view-root')).not.toContainText('C, async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await expect(page.getByRole('heading', { name: 'Pedidos y ventas' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Ver pedido JP-1048' }).click();
+  const detail = page.locator('#order-detail-dialog');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('#order-detail-title')).toHaveText('JP-1048');
+  await expect(detail).toContainText('María Gutiérrez');
+  await expect(detail).toContainText('Yara Lattafa');
+  await expect(detail).toContainText('Eclaire Lattafa');
+  await expect(detail).toContainText('$110.66');
+  await expect(detail).toContainText('Transferencia');
+  await expect(detail).toContainText(/registro ficticio/i);
+  await expect(detail.locator('.order-items-table tbody tr')).toHaveCount(2);
+});
+
+test('order status changes are validated and persist locally after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
+
+  const detail = page.locator('#order-detail-dialog');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('#order-status-select')).toHaveValue('Pendiente');
+  await detail.locator('#order-status-select').selectOption('En preparación');
+  await detail.getByRole('button', { name: 'Guardar estado' }).click();
+
+  await expect(detail).not.toBeVisible();
+  await expect(page.locator('#view-root')).toContainText('En preparación');
+  await expect(page.locator('#toast-region')).toContainText(/actualizado en DEMO local/i);
+
+  await page.reload();
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  const orderRow = page.locator('#view-root tr').filter({ hasText: 'JP-1047' });
+  await expect(orderRow).toContainText('En preparación');
+  await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
+  await expect(page.locator('#order-status-select')).toHaveValue('En preparación');
+});
+
+test('each sample order opens its own detail record', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+
+  for (const orderId of ['JP-1048', 'JP-1047', 'JP-1046', 'JP-1045', 'JP-1044']) {
+    await page.getByRole('button', { name: 'Ver pedido ' + orderId }).click();
+    await expect(page.locator('#order-detail-dialog #order-detail-title')).toHaveText(orderId);
+    await page.locator('#order-detail-cancel').click();
+  }
+});
+);
+  await page.locator('#sidebar button[data-view="products"]').click();
+  await expect(page.locator('#product-table-body')).toContainText('$66.94');
+  await expect(page.locator('#view-root')).not.toContainText('C, async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await expect(page.getByRole('heading', { name: 'Pedidos y ventas' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Ver pedido JP-1048' }).click();
+  const detail = page.locator('#order-detail-dialog');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('#order-detail-title')).toHaveText('JP-1048');
+  await expect(detail).toContainText('María Gutiérrez');
+  await expect(detail).toContainText('Yara Lattafa');
+  await expect(detail).toContainText('Eclaire Lattafa');
+  await expect(detail).toContainText('$110.66');
+  await expect(detail).toContainText('Transferencia');
+  await expect(detail).toContainText(/registro ficticio/i);
+  await expect(detail.locator('.order-items-table tbody tr')).toHaveCount(2);
+});
+
+test('order status changes are validated and persist locally after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
+
+  const detail = page.locator('#order-detail-dialog');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('#order-status-select')).toHaveValue('Pendiente');
+  await detail.locator('#order-status-select').selectOption('En preparación');
+  await detail.getByRole('button', { name: 'Guardar estado' }).click();
+
+  await expect(detail).not.toBeVisible();
+  await expect(page.locator('#view-root')).toContainText('En preparación');
+  await expect(page.locator('#toast-region')).toContainText(/actualizado en DEMO local/i);
+
+  await page.reload();
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  const orderRow = page.locator('#view-root tr').filter({ hasText: 'JP-1047' });
+  await expect(orderRow).toContainText('En preparación');
+  await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
+  await expect(page.locator('#order-status-select')).toHaveValue('En preparación');
+});
+
+test('each sample order opens its own detail record', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+
+  for (const orderId of ['JP-1048', 'JP-1047', 'JP-1046', 'JP-1045', 'JP-1044']) {
+    await page.getByRole('button', { name: 'Ver pedido ' + orderId }).click();
+    await expect(page.locator('#order-detail-dialog #order-detail-title')).toHaveText(orderId);
+    await page.locator('#order-detail-cancel').click();
+  }
+});
+);
+  await page.locator('#sidebar button[data-view="settings"]').click();
+  await expect(page.locator('#view-root')).toContainText('Moneda base: USD');
+  await expect(page.locator('#view-root')).toContainText('C$ 36.60 por US$ 1');
+});
+
+test('legacy DEMO data is converted once from córdobas to USD at 36.60', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('jbparfums-demo-data-v1', JSON.stringify({
+      version: 1,
+      products: [{
+        id: 91, name: 'Legacy Migration Perfume', brand: 'Legacy', sku: 'MIG-001',
+        purchaseCost: 183, additionalCost: 36.6, unitCost: 219.6,
+        price: 366, profit: 146.4, margin: 40, stock: 2, minStock: 1, active: true
+      }],
+      inventoryMovements: [],
+      orders: [{
+        id: 'JP-9999', customer: 'Cliente migración', phone: 'No registrado',
+        date: '02 nov 2026', amount: 402.6, discount: 0, deliveryFee: 36.6,
+        status: 'Pendiente', paymentMethod: 'Efectivo', paymentStatus: 'Pendiente',
+        deliveryMode: 'Retiro en tienda',
+        items: [{ name: 'Legacy Migration Perfume', sku: 'MIG-001', quantity: 1, unitPrice: 366 }]
+      }]
+    }));
+  });
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="products"]').click();
+  await expect(page.locator('#product-table-body')).toContainText('$10.00');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(saved.version).toBe(2);
+  expect(saved.products[0].price).toBe(10);
+  expect(saved.products[0].unitCost).toBe(6);
+  expect(saved.orders[0].amount).toBe(11);
+  expect(saved.orders[0].deliveryFee).toBe(1);
+  expect(saved.orders[0].items[0].unitPrice).toBe(10);
+  expect(await page.evaluate(() => localStorage.getItem('jbparfums-demo-data-v1'))).toBeNull();
+});
+
+
 test('order eye opens detailed demo record and displays matching item and total amounts', async ({ page }) => {
   await page.goto('/');
   await page.locator('#sidebar button[data-view="orders"]').click();
@@ -325,7 +473,7 @@ test('order eye opens detailed demo record and displays matching item and total 
   await expect(detail).toContainText('María Gutiérrez');
   await expect(detail).toContainText('Yara Lattafa');
   await expect(detail).toContainText('Eclaire Lattafa');
-  await expect(detail).toContainText('C$ 4,050');
+  await expect(detail).toContainText('$110.66');
   await expect(detail).toContainText('Transferencia');
   await expect(detail).toContainText(/registro ficticio/i);
   await expect(detail.locator('.order-items-table tbody tr')).toHaveCount(2);
