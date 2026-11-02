@@ -69,6 +69,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -124,6 +125,7 @@ jobs:
           git checkout -b "$AI_BRANCH"
           git add -- index.html assets/css/styles.css assets/js/app.js
           git commit -m "fix(ai): low-risk UI repair for PR #${PR_NUMBER}"
+          gh auth setup-git --hostname github.com
           git push origin "$AI_BRANCH"
 
           gh pr create \

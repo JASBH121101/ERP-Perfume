@@ -56,7 +56,11 @@ def main():
         CSS_FILE,
         JS_FILE,
         ROOT / "playwright.config.mjs",
+        ROOT / "package.json",
         ROOT / "tests" / "e2e" / "ui.spec.mjs",
+        ROOT / "scripts" / "run-validation.sh",
+        ROOT / "scripts" / "ai-repair.mjs",
+        ROOT / "scripts" / "validate-ai-patch.mjs",
     )
     for path in required_files:
         if not path.is_file():

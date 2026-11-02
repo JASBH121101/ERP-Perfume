@@ -12,6 +12,10 @@ echo "Python: $(python3 --version)"
 echo
 echo "=== JavaScript syntax ==="
 node --check assets/js/app.js
+node --check playwright.config.mjs
+node --check scripts/ai-repair.mjs
+node --check scripts/validate-ai-patch.mjs
+bash -n scripts/run-validation.sh
 
 echo
 echo "=== Static structure and asset checks ==="

@@ -87,6 +87,7 @@ test('product names are rendered as text, not executable markup', async ({ page 
   await page.goto('/');
   await page.locator('#sidebar button[data-view="products"]').click();
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
+  const dialog = page.locator('#product-dialog');
 
   const payload = '<img src=x onerror=alert(1)>';
   await page.getByLabel('Nombre del perfume').fill(payload);
