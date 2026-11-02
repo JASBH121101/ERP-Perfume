@@ -249,3 +249,5 @@ test('inventory CSV export is available', async ({ page }) => {
   const file=await download;
   expect(file.suggestedFilename()).toBe('jb-parfums-inventario-demo.csv');
 });
+
+test('mobile drawer scroll is isolated from page background', async ({ page }) => { await page.setViewportSize({width:390,height:844}); await page.goto('/'); await page.evaluate(()=>window.scrollTo(0,0)); await page.getByRole('button',{name:'Abrir menú'}).click(); const drawer=page.locator('#sidebar'); await expect(drawer).toHaveClass(/open/); await expect(page.locator('body')).toHaveClass(/mobile-menu-open/); const d=await drawer.evaluate(el=>({client:el.clientHeight,scroll:el.scrollHeight,overflow:getComputedStyle(el).overflowY})); expect(d.scroll).toBeGreaterThan(d.client); expect(d.overflow).toBe('auto'); await drawer.evaluate(el=>{el.scrollTop=el.scrollHeight}); await expect.poll(()=>drawer.evaluate(el=>el.scrollTop)).toBeGreaterThan(0); expect(await page.evaluate(()=>window.scrollY)).toBe(0); await page.locator('#mobile-scrim').click({position:{x:370,y:400}}); await expect(page.locator('body')).not.toHaveClass(/mobile-menu-open/); });

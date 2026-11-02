@@ -474,6 +474,7 @@
   function closeMobileMenu() {
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('mobile-scrim').classList.remove('visible');
+    document.body.classList.remove('mobile-menu-open');
     document.getElementById('menu-toggle').setAttribute('aria-expanded', 'false');
   }
 
@@ -556,6 +557,7 @@
       const sidebar = document.getElementById('sidebar');
       const open = !sidebar.classList.contains('open');
       sidebar.classList.toggle('open', open);
+      document.body.classList.toggle('mobile-menu-open', open);
       document.getElementById('mobile-scrim').classList.toggle('visible', open);
       document.getElementById('menu-toggle').setAttribute('aria-expanded', String(open));
     }
