@@ -1,36 +1,142 @@
-name: UI validation
+name: ERP quality gate
 
 on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     paths:
       - "index.html"
       - "assets/**"
       - "scripts/**"
-      - ".github/workflows/ui-checks.yml"
-  workflow_dispatch:
+      - "tests/**"
+      - "package.json"
+      - "playwright.config.mjs"
+      - ".github/workflows/**"
+
+concurrency:
+  group: erp-quality-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
-concurrency:
-  group: ui-validation-pr-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   validate-ui:
-    name: Validate static UI
+    name: Static and browser tests
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 12
     steps:
-      - name: Checkout
+      - name: Checkout pull request code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check JavaScript syntax
-        run: node --check assets/js/app.js
-      - name: Check HTML references and CSS structure
-        run: python scripts/check-ui.py
+
+      - name: Install pinned browser-test dependency
+        run: npm install --no-package-lock --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run all deterministic checks
+        run: bash scripts/run-validation.sh
+
+  ai-repair:
+    name: Supervised AI repair (optional)
+    needs:
+      - validate-ui
+    if: >-
+      ${{ needs.validate-ui.result == 'failure' &&
+          vars.AI_REPAIR_ENABLED == 'true' &&
+          github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout the exact failed pull request revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned browser-test dependency
+        run: npm install --no-package-lock --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Ask the text-only QA agent for one low-risk repair
+        id: ai
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: node scripts/ai-repair.mjs
+
+      - name: Validate AI patch allowlist
+        if: steps.ai.outputs.patch_created == 'true'
+        run: node scripts/validate-ai-patch.mjs .ai-output/repair.patch
+
+      - name: Apply AI patch
+        if: steps.ai.outputs.patch_created == 'true'
+        run: |
+          git apply --check --whitespace=error .ai-output/repair.patch
+          git apply --whitespace=error .ai-output/repair.patch
+
+      - name: Re-run the entire test suite after the proposed repair
+        if: steps.ai.outputs.patch_created == 'true'
+        run: bash scripts/run-validation.sh
+
+      - name: Create a separate draft pull request only if every test passes
+        if: steps.ai.outputs.patch_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          git diff --check
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No code changes remain after validation."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          AI_BRANCH="ai-fix/pr-${PR_NUMBER}-run-${RUN_ID}"
+          git checkout -b "$AI_BRANCH"
+          git add -- index.html assets/css/styles.css assets/js/app.js
+          git commit -m "fix(ai): low-risk UI repair for PR #${PR_NUMBER}"
+          git push origin "$AI_BRANCH"
+
+          gh pr create \
+            --repo "$GH_REPO" \
+            --base "$BASE_BRANCH" \
+            --head "$AI_BRANCH" \
+            --draft \
+            --title "fix(ai): validated UI repair for PR #${PR_NUMBER}" \
+            --body "Automated low-risk UI repair proposal.
+
+          - Restricted to HTML, CSS and browser-side JavaScript.
+          - No images, databases, storage, credentials or production systems accessed.
+          - Patch passed the allowlist validator.
+          - Full static and browser test suite passed again after the patch.
+
+          Human review is required. This PR is not merged automatically."

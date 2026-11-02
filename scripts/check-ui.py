@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Low-cost static checks for the JB PARFUMS UI foundation."""
+"""Dependency-free static checks for the JB PARFUMS ERP UI."""
 
 from html.parser import HTMLParser
 from pathlib import Path
@@ -14,7 +14,18 @@ REQUIRED_IDS = {
     "sidebar", "view-root", "global-search", "page-date",
     "product-dialog", "product-form", "toast-region",
     "menu-toggle", "mobile-scrim", "product-count",
-    "breadcrumb-current", "page-eyebrow",
+    "breadcrumb-current", "page-eyebrow", "sidebar-collapse",
+    "font-decrease", "font-increase", "font-scale-label",
+}
+
+REQUIRED_VIEWS = {
+    'data-view="dashboard"',
+    'data-view="products"',
+    'data-view="inventory"',
+    'data-view="orders"',
+    'data-view="customers"',
+    'data-view="billing"',
+    'data-view="hr"',
 }
 
 
@@ -40,7 +51,14 @@ def fail(message):
 
 
 def main():
-    for path in (HTML_FILE, CSS_FILE, JS_FILE):
+    required_files = (
+        HTML_FILE,
+        CSS_FILE,
+        JS_FILE,
+        ROOT / "playwright.config.mjs",
+        ROOT / "tests" / "e2e" / "ui.spec.mjs",
+    )
+    for path in required_files:
         if not path.is_file():
             return fail("Missing required file: " + str(path.relative_to(ROOT)))
 
@@ -55,6 +73,11 @@ def main():
     if missing_ids:
         return fail("Missing required HTML IDs: " + ", ".join(missing_ids))
 
+    html = HTML_FILE.read_text(encoding="utf-8")
+    missing_views = sorted(view for view in REQUIRED_VIEWS if view not in html)
+    if missing_views:
+        return fail("Missing navigation views: " + ", ".join(missing_views))
+
     missing_refs = [
         ref for ref in parser.local_refs
         if not (ROOT / ref).is_file()
@@ -65,12 +88,16 @@ def main():
     css = CSS_FILE.read_text(encoding="utf-8")
     if css.count("{") != css.count("}"):
         return fail("CSS brace count is unbalanced.")
+    for marker in ('data-font-scale="normal"', 'data-font-scale="large"', 'data-font-scale="larger"'):
+        if marker not in css:
+            return fail("Missing font scale style: " + marker)
 
     js = JS_FILE.read_text(encoding="utf-8")
-    if "new FormData(form)" not in js or "renderView()" not in js:
-        return fail("Expected UI form/render hooks were not found.")
+    for marker in ("new FormData(form)", "renderView()", "function setFontLevel", "function setSidebarCollapsed"):
+        if marker not in js:
+            return fail("Expected UI hook was not found: " + marker)
 
-    print("PASS: required files, IDs, local assets, CSS braces and UI hooks.")
+    print("PASS: required files, IDs, navigation, local assets, CSS and UI hooks.")
     return 0
 
 
