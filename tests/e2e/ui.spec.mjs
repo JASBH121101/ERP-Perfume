@@ -72,7 +72,7 @@ test('a new product can be added to the demo session', async ({ page }) => {
   await expect(dialog).toBeVisible();
   await page.getByLabel('Nombre del perfume').fill('Fragancia QA Automatizada');
   await page.getByLabel('SKU / Código interno').fill('QA-ERP-001');
-  await page.getByLabel('Categoría').selectOption('Árabes');
+  await dialog.locator('select[name="category"]').selectOption('Árabes');
   await page.getByLabel('Precio de venta (C$)').fill('1250');
   await dialog.getByLabel('Existencias iniciales').fill('4');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
