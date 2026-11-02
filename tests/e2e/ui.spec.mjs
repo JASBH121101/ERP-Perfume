@@ -294,7 +294,7 @@ test('form fields have no placeholder or optional copy; required fields use a re
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
 
   await expect(productDialog.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
-  await expect(productDialog.locator('label')).not.toContainText(/opcional/i);
+  await expect(productDialog.locator('label').filter({ hasText: /opcional/i })).toHaveCount(0);
   await expect(productDialog.locator('.required-mark')).toHaveCount(3);
   for (const marker of await productDialog.locator('.required-mark').all()) {
     await expect(marker).toHaveCSS('color', 'rgb(220, 38, 38)');
@@ -305,7 +305,7 @@ test('form fields have no placeholder or optional copy; required fields use a re
   await page.getByRole('button', { name: /Registrar movimiento/ }).click();
   const stockDialog = page.locator('#stock-dialog');
   await expect(stockDialog.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
-  await expect(stockDialog.locator('label')).not.toContainText(/opcional/i);
+  await expect(stockDialog.locator('label').filter({ hasText: /opcional/i })).toHaveCount(0);
   await expect(stockDialog.locator('.required-mark')).toHaveCount(3);
   for (const marker of await stockDialog.locator('.required-mark').all()) {
     await expect(marker).toHaveCSS('color', 'rgb(220, 38, 38)');
