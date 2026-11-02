@@ -507,3 +507,85 @@ test('new internal voucher starts without a preselected sample order', async ({ 
   await expect(dialog.locator('input[type="hidden"][name="orderId"]')).toHaveValue('JP-1048');
   await dialog.getByRole('button', { name: 'Cancelar' }).click();
 });
+
+test('confirming a pending order deducts stock once and returning it to pending restores stock', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: /Nuevo pedido/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[data-lookup="customer"]').fill('María');
+  await dialog.getByRole('option', { name: /María Gutiérrez/ }).click();
+  await dialog.locator('[data-lookup="product"]').fill('JBP-001');
+  await dialog.getByRole('option', { name: /Club de Nuit Intense Man/ }).click();
+  await dialog.locator('input[name="quantity"]').fill('2');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('En preparación');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await expect(page.locator('#view-root tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
+  await expect(page.locator('.ledger-panel')).toContainText('Salida por pedido');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('Listo para entrega');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await expect(page.locator('#view-root tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('Pendiente');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await expect(page.locator('#view-root tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('14 unidades');
+  await expect(page.locator('.ledger-panel')).toContainText('Reingreso por pedido');
+});
+
+test('order confirmation blocks insufficient stock without changing order or inventory', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: /Nuevo pedido/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[data-lookup="customer"]').fill('María');
+  await dialog.getByRole('option', { name: /María Gutiérrez/ }).click();
+  await dialog.locator('[data-lookup="product"]').fill('JBP-003');
+  await dialog.getByRole('option', { name: /Khamrah Lattafa/ }).click();
+  await dialog.locator('input[name="quantity"]').fill('4');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('En preparación');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await expect(page.locator('#toast-region')).toContainText(/stock insuficiente/i);
+  await expect(page.locator('#order-status-select')).toHaveValue('En preparación');
+  await page.locator('#order-detail-cancel').click();
+  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await expect(page.locator('#view-root tr').filter({ hasText: 'Khamrah Lattafa' })).toContainText('3 unidades');
+  await expect(page.locator('.ledger-panel')).not.toContainText('Salida por pedido');
+});
+
+test('completed orders cannot be reopened through the status editor', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="orders"]').click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1048' }).click();
+  await page.locator('#order-status-select').selectOption('Pendiente');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await expect(page.locator('#toast-region')).toContainText(/no se puede reabrir/i);
+  await expect(page.locator('#order-detail-dialog')).toBeVisible();
+  await expect(page.locator('#order-status-select')).toHaveValue('Pendiente');
+});
+
+test('mobile product modal keeps the complete action footer visible while scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="products"]').click();
+  await page.getByRole('button', { name: /Nuevo producto/ }).click();
+  const dialog = page.locator('#product-dialog');
+  await dialog.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  const bounds = await dialog.evaluate(element => {
+    const footer = element.querySelector('.modal-actions').getBoundingClientRect();
+    const button = element.querySelector('#save-product').getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return { dialogBottom: box.bottom, footerBottom: footer.bottom, buttonHeight: button.height };
+  });
+  expect(bounds.footerBottom).toBeLessThanOrEqual(bounds.dialogBottom + 1);
+  expect(bounds.buttonHeight).toBeGreaterThanOrEqual(44);
+});
