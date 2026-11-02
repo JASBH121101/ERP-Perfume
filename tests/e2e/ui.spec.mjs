@@ -83,6 +83,48 @@ test('a new product can be added to the demo session', async ({ page }) => {
   await expect(page.getByText(/no se ha guardado en Neon/i)).toBeVisible();
 });
 
+
+test('product master calculates unit cost, profit and gross margin', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="products"]').click();
+  await page.getByRole('button', { name: /Nuevo producto/ }).click();
+
+  const dialog = page.locator('#product-dialog');
+  await dialog.getByLabel('Nombre del perfume').fill('QA Oud Reserve');
+  await dialog.getByLabel('Marca').fill('QA Maison');
+  await dialog.getByLabel('SKU / Código interno').fill('QA-COST-001');
+  await dialog.getByLabel('Concentración').selectOption('Eau de Parfum (EDP)');
+  await dialog.getByLabel('Género').selectOption('Unisex');
+  await dialog.getByLabel('Contenido (ml)').fill('100');
+  await dialog.getByLabel('Proveedor').fill('Proveedor QA');
+  await dialog.getByLabel('Costo de compra (C$)').fill('900');
+  await dialog.getByLabel('Costos adicionales (C$)').fill('100');
+  await dialog.getByLabel('Precio de venta (C$)').fill('1500');
+
+  await expect(dialog.locator('#unit-cost-preview')).toHaveText('C$ 1,000');
+  await expect(dialog.locator('#unit-profit-preview')).toHaveText('C$ 500');
+  await expect(dialog.locator('#gross-margin-preview')).toHaveText('33.3%');
+
+  await dialog.getByLabel('Existencias iniciales').fill('7');
+  await dialog.getByLabel('Stock mínimo').fill('2');
+  await dialog.getByLabel('Ubicación en bodega').fill('Estante QA A-01');
+  await dialog.getByRole('button', { name: /Agregar a demo/ }).click();
+
+  await expect(page.locator('#product-table-body')).toContainText('QA Oud Reserve');
+  await expect(page.locator('#product-table-body')).toContainText('QA Maison');
+  await expect(page.locator('#product-table-body')).toContainText('100 ml');
+  await expect(page.locator('#product-table-body')).toContainText('Margen 33.3%');
+});
+
+test('product catalog filters by fragrance category', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="products"]').click();
+
+  await page.getByLabel('Filtrar por categoría').selectOption('Diseñador');
+  await expect(page.locator('#product-table-body')).toContainText('Club de Nuit Intense Man');
+  await expect(page.locator('#product-table-body')).not.toContainText('Yara Lattafa');
+});
+
 test('product names are rendered as text, not executable markup', async ({ page }) => {
   await page.goto('/');
   await page.locator('#sidebar button[data-view="products"]').click();

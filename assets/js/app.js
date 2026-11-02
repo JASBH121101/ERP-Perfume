@@ -33,14 +33,14 @@
   });
 
   const products = [
-    { id: 1, name: 'Club de Nuit Intense Man', sku: 'JBP-001', category: 'Diseñador', price: 2450, stock: 14, tone: 'art-night' },
-    { id: 2, name: 'Yara Lattafa', sku: 'JBP-002', category: 'Árabes', price: 1850, stock: 8, tone: 'art-rose' },
-    { id: 3, name: 'Khamrah Lattafa', sku: 'JBP-003', category: 'Árabes', price: 2200, stock: 3, tone: 'art-olive' },
-    { id: 4, name: 'Badee Al Oud Amethyst', sku: 'JBP-004', category: 'Árabes', price: 2100, stock: 0, tone: 'art-violet' },
-    { id: 5, name: '9PM Afnan', sku: 'JBP-005', category: 'Árabes', price: 1950, stock: 11, tone: 'art-night' },
-    { id: 6, name: 'Good Girl Carolina Herrera', sku: 'JBP-006', category: 'Diseñador', price: 3100, stock: 5, tone: 'art-night' },
-    { id: 7, name: 'Ana Abiyedh Rouge', sku: 'JBP-007', category: 'Unisex', price: 1750, stock: 2, tone: 'art-rose' },
-    { id: 8, name: 'Eclaire Lattafa', sku: 'JBP-008', category: 'Árabes', price: 2050, stock: 9, tone: 'art-olive' }
+    { id: 1, name: 'Club de Nuit Intense Man', brand: 'Armaf', sku: 'JBP-001', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Amaderada', sizeMl: 105, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: 1450, additionalCost: 100, unitCost: 1550, price: 2450, profit: 900, margin: 36.7, stock: 14, minStock: 4, location: 'A-01', tone: 'art-night' },
+    { id: 2, name: 'Yara Lattafa', brand: 'Lattafa', sku: 'JBP-002', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1050, additionalCost: 100, unitCost: 1150, price: 1850, profit: 700, margin: 37.8, stock: 8, minStock: 3, location: 'A-02', tone: 'art-rose' },
+    { id: 3, name: 'Khamrah Lattafa', brand: 'Lattafa', sku: 'JBP-003', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1350, additionalCost: 100, unitCost: 1450, price: 2200, profit: 750, margin: 34.1, stock: 3, minStock: 5, location: 'A-03', tone: 'art-olive' },
+    { id: 4, name: 'Badee Al Oud Amethyst', brand: 'Lattafa', sku: 'JBP-004', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1250, additionalCost: 100, unitCost: 1350, price: 2100, profit: 750, margin: 35.7, stock: 0, minStock: 3, location: 'A-04', tone: 'art-violet' },
+    { id: 5, name: '9PM Afnan', brand: 'Afnan', sku: 'JBP-005', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Ámbar / Oriental', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1200, additionalCost: 100, unitCost: 1300, price: 1950, profit: 650, margin: 33.3, stock: 11, minStock: 3, location: 'A-05', tone: 'art-night' },
+    { id: 6, name: 'Good Girl Carolina Herrera', brand: 'Carolina Herrera', sku: 'JBP-006', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Ámbar / Oriental', sizeMl: 80, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: 1950, additionalCost: 100, unitCost: 2050, price: 3100, profit: 1050, margin: 33.9, stock: 5, minStock: 4, location: 'B-01', tone: 'art-night' },
+    { id: 7, name: 'Ana Abiyedh Rouge', brand: 'Lattafa', sku: 'JBP-007', category: 'Unisex', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Ambar / Oriental', sizeMl: 60, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1000, additionalCost: 100, unitCost: 1100, price: 1750, profit: 650, margin: 37.1, stock: 2, minStock: 4, location: 'B-02', tone: 'art-rose' },
+    { id: 8, name: 'Eclaire Lattafa', brand: 'Lattafa', sku: 'JBP-008', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: 1250, additionalCost: 100, unitCost: 1350, price: 2050, profit: 700, margin: 34.1, stock: 9, minStock: 3, location: 'B-03', tone: 'art-olive' }
   ];
   const orders = [
     { id: 'JP-1048', customer: 'María Gutiérrez', date: '02 nov 2026', amount: 4050, status: 'Completado' },
@@ -66,7 +66,7 @@
     analytics: { title: 'Informes', eyebrow: 'RENDIMIENTO', heading: 'Informes y análisis', subtitle: 'Indicadores preparados para tomar decisiones.' },
     settings: { title: 'Configuración', eyebrow: 'SISTEMA', heading: 'Configuración', subtitle: 'Preferencias y conexiones de JB PARFUMS ERP.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all' };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all' };
   const root = document.getElementById('view-root');
   const globalSearch = document.getElementById('global-search');
   const dialog = document.getElementById('product-dialog');
@@ -80,10 +80,24 @@
   function money(value) {
     return 'C$ ' + Number(value || 0).toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
-  function status(stock) {
+  function isLowStock(product) {
+    const minimum = Number.isInteger(product.minStock) ? product.minStock : 3;
+    return product.stock > 0 && product.stock <= minimum;
+  }
+  function status(stock, minimum) {
     if (stock === 0) return '<span class="status-chip status-danger">Agotado</span>';
-    if (stock <= 3) return '<span class="status-chip status-pending">Stock bajo</span>';
+    if (stock <= (Number.isInteger(minimum) ? minimum : 3)) return '<span class="status-chip status-pending">Stock bajo</span>';
     return '<span class="status-chip status-success">Disponible</span>';
+  }
+  function costSummary(product) {
+    const unitCost = Number(product.unitCost ?? ((product.purchaseCost || 0) + (product.additionalCost || 0)));
+    const profit = Number(product.price || 0) - unitCost;
+    const margin = Number(product.price) > 0 ? (profit / Number(product.price)) * 100 : 0;
+    return { unitCost, profit, margin };
+  }
+  function productMeta(product) {
+    return [product.sku, product.brand, product.concentration, product.sizeMl ? product.sizeMl + ' ml' : '']
+      .filter(Boolean).map(esc).join(' · ');
   }
   function orderStatus(value) {
     if (value === 'Completado') return '<span class="status-chip status-success">Completado</span>';
@@ -138,34 +152,46 @@
   function filteredProducts() {
     return products.filter(function (product) {
       const query = (state.query || '').toLowerCase();
-      const matches = !query || [product.name, product.sku, product.category].join(' ').toLowerCase().indexOf(query) !== -1;
+      const searchable = [product.name, product.brand, product.sku, product.category, product.concentration, product.family, product.supplier].join(' ').toLowerCase();
+      const matches = !query || searchable.indexOf(query) !== -1;
       const filter = state.filter;
-      const stockMatch = filter === 'all' || (filter === 'available' && product.stock > 3) || (filter === 'low' && product.stock > 0 && product.stock <= 3) || (filter === 'out' && product.stock === 0);
-      return matches && stockMatch;
+      const minimum = Number.isInteger(product.minStock) ? product.minStock : 3;
+      const stockMatch = filter === 'all' ||
+        (filter === 'available' && product.stock > minimum) ||
+        (filter === 'low' && isLowStock(product)) ||
+        (filter === 'out' && product.stock === 0);
+      const category = state.category || 'all';
+      const categoryMatch = category === 'all' || product.category === category;
+      return matches && stockMatch && categoryMatch;
     });
   }
   function productTable(items) {
     if (!items.length) return '<tr><td colspan="6"><div class="empty-state">No hay resultados para esta búsqueda.</div></td></tr>';
     return items.map(function (p) {
-      return '<tr><td><div class="product-cell">' + art(p.tone) + '<span><span class="table-primary">' + esc(p.name) + '</span><small class="table-secondary">' + esc(p.sku) + '</small></span></div></td><td>' + esc(p.category) + '</td><td class="table-primary">' + money(p.price) + '</td><td>' + p.stock + ' uds.</td><td>' + status(p.stock) + '</td><td><div class="table-actions"><button class="table-action" type="button" data-action="preview-product" data-id="' + p.id + '" aria-label="Ver ' + esc(p.name) + '">' + svg('eye') + '</button></div></td></tr>';
+      const costs = costSummary(p);
+      return '<tr><td><div class="product-cell">' + art(p.tone) + '<span><span class="table-primary">' + esc(p.name) + '</span><small class="table-secondary">' + productMeta(p) + '</small></span></div></td><td>' + esc(p.category) + '</td><td class="table-primary">' + money(p.price) + '<small class="table-secondary">Costo ' + money(costs.unitCost) + ' · Margen ' + costs.margin.toFixed(1) + '%</small></td><td>' + p.stock + ' uds. <small class="table-secondary">Mín. ' + (Number.isInteger(p.minStock) ? p.minStock : 3) + '</small></td><td>' + status(p.stock, p.minStock) + '</td><td><div class="table-actions"><button class="table-action" type="button" data-action="preview-product" data-id="' + p.id + '" aria-label="Ver ' + esc(p.name) + '">' + svg('eye') + '</button></div></td></tr>';
     }).join('');
   }
   function renderProducts() {
     const items = filteredProducts();
+    const categories = ['Perfumería', 'Árabes', 'Diseñador', 'Nicho', 'Unisex', 'Body Mist', 'Sets / Combos', 'Accesorios'];
+    const categoryOptions = categories.map(function (category) {
+      return '<option value="' + esc(category) + '"' + ((state.category || 'all') === category ? ' selected' : '') + '>' + esc(category) + '</option>';
+    }).join('');
     return heading(views.products, '<button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
-      '<div class="summary-strip"><div class="summary-mini"><span>Total en catálogo</span><strong>' + products.length + '</strong></div><div class="summary-mini"><span>Con stock disponible</span><strong>' + products.filter(function (p) { return p.stock > 3; }).length + '</strong></div><div class="summary-mini"><span>Requieren revisión</span><strong>' + products.filter(function (p) { return p.stock <= 3; }).length + '</strong></div></div>' +
-      '<div class="toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" placeholder="Buscar por nombre, SKU..." value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los productos</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
-      '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO</th><th>EXISTENCIAS</th><th>ESTADO</th><th></th></tr></thead><tbody id="product-table-body">' + productTable(items) + '</tbody></table></div></article>' +
-      '<div class="notice-panel">' + svg('spark') + '<div><strong>Catálogo en modo demostración</strong><p>Los productos nuevos se mantienen en memoria mientras esta pestaña esté abierta. La carga de imágenes y el guardado permanente se habilitarán al integrar R2 y Neon.</p></div></div>';
+      '<div class="summary-strip"><div class="summary-mini"><span>Total en catálogo</span><strong>' + products.length + '</strong></div><div class="summary-mini"><span>Con stock disponible</span><strong>' + products.filter(function (p) { return p.stock > (Number.isInteger(p.minStock) ? p.minStock : 3); }).length + '</strong></div><div class="summary-mini"><span>Requieren revisión</span><strong>' + products.filter(isLowStock).length + '</strong></div></div>' +
+      '<div class="toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" placeholder="Buscar nombre, marca, SKU..." value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="category-filter" aria-label="Filtrar por categoría"><option value="all"' + ((state.category || 'all') === 'all' ? ' selected' : '') + '>Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO / COSTO</th><th>EXISTENCIAS</th><th>ESTADO</th><th></th></tr></thead><tbody id="product-table-body">' + productTable(items) + '</tbody></table></div></article>' +
+      '<div class="notice-panel">' + svg('spark') + '<div><strong>Ficha de producto ampliada · Modo demostración</strong><p>La ficha incluye datos de fragancia, costo, utilidad, margen, proveedor y ubicación. Los registros permanecen en memoria durante esta sesión y aún no se guardan en Neon. Las fotografías del catálogo existente quedan fuera de este módulo.</p></div></div>';
   }
   function renderInventory() {
     const rows = products.slice().sort(function (a, b) { return a.stock - b.stock; }).map(function (p) {
-      return '<tr><td><div class="product-cell">' + art(p.tone) + '<span><span class="table-primary">' + esc(p.name) + '</span><small class="table-secondary">' + esc(p.sku) + '</small></span></div></td><td>' + esc(p.category) + '</td><td>' + p.stock + ' unidades</td><td>' + status(p.stock) + '</td><td>' + (p.stock <= 3 ? '<span class="table-secondary">Revisar reposición</span>' : '<span class="table-secondary">Nivel estable</span>') + '</td></tr>';
+      return '<tr><td><div class="product-cell">' + art(p.tone) + '<span><span class="table-primary">' + esc(p.name) + '</span><small class="table-secondary">' + esc(p.sku) + '</small></span></div></td><td>' + esc(p.category) + '</td><td>' + p.stock + ' unidades</td><td>' + status(p.stock, p.minStock) + '</td><td>' + (isLowStock(p) ? '<span class="table-secondary">Revisar reposición</span>' : '<span class="table-secondary">Nivel estable</span>') + '</td></tr>';
     }).join('');
     return heading(views.inventory, '<button class="button button-quiet" data-action="export">' + svg('download') + ' Exportar</button>') +
-      '<div class="summary-strip"><div class="summary-mini"><span>Referencias</span><strong>' + products.length + '</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong>' + products.reduce(function (sum, p) { return sum + p.stock; }, 0) + '</strong></div><div class="summary-mini"><span>Reposición sugerida</span><strong>' + products.filter(function (p) { return p.stock <= 3; }).length + '</strong></div></div>' +
+      '<div class="summary-strip"><div class="summary-mini"><span>Referencias</span><strong>' + products.length + '</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong>' + products.reduce(function (sum, p) { return sum + p.stock; }, 0) + '</strong></div><div class="summary-mini"><span>Reposición sugerida</span><strong>' + products.filter(function (p) { return isLowStock(p); }).length + '</strong></div></div>' +
       '<article class="list-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th></tr></thead><tbody>' + rows + '</tbody></table></div></article>' +
-      '<div class="notice-panel">' + svg('warning') + '<div><strong>Umbral de stock provisional: 3 unidades</strong><p>Este umbral es ilustrativo. Más adelante podrá configurarse por producto o categoría.</p></div></div>';
+      '<div class="notice-panel">' + svg('warning') + '<div><strong>Stock mínimo configurable por producto</strong><p>Las alertas se calculan con el mínimo definido en cada ficha. Estos niveles todavía son datos de demostración.</p></div></div>';
   }
   function renderOrders() {
     const rows = orders.map(function (o) {
@@ -261,6 +287,7 @@
     state.view = view;
     state.query = '';
     state.filter = 'all';
+    state.category = 'all';
     globalSearch.value = '';
     renderView();
     closeMobileMenu();
@@ -275,7 +302,22 @@
       item.remove();
     }, 3600);
   }
+  function updateProductCostPreview() {
+    const purchaseCost = Number(form.elements.purchaseCost.value || 0);
+    const additionalCost = Number(form.elements.additionalCost.value || 0);
+    const price = Number(form.elements.price.value || 0);
+    const unitCost = purchaseCost + additionalCost;
+    const profit = price - unitCost;
+    const margin = price > 0 ? (profit / price) * 100 : null;
+    document.getElementById('unit-cost-preview').textContent = money(unitCost);
+    document.getElementById('unit-profit-preview').textContent = price > 0 ? money(profit) : '—';
+    document.getElementById('gross-margin-preview').textContent = margin === null ? '—' : margin.toFixed(1) + '%';
+    document.getElementById('unit-profit-preview').classList.toggle('negative-value', profit < 0 && price > 0);
+    document.getElementById('gross-margin-preview').classList.toggle('negative-value', margin !== null && margin < 0);
+  }
   function openProductModal() {
+    form.reset();
+    updateProductCostPreview();
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else toast('El formulario emergente no es compatible con este navegador.');
   }
@@ -348,7 +390,10 @@
       else if (name === 'export') toast('La exportación estará disponible al conectar los datos reales.');
       else if (name === 'preview-product') {
         const product = products.find(function (p) { return String(p.id) === action.getAttribute('data-id'); });
-        if (product) toast(product.name + ' · ' + product.stock + ' unidades · ' + money(product.price));
+        if (product) {
+          const costs = costSummary(product);
+          toast(product.name + ' · ' + (product.brand || 'Marca sin especificar') + ' · ' + (product.sizeMl ? product.sizeMl + ' ml' : 'Tamaño sin especificar') + ' · utilidad ' + money(costs.profit) + ' · ' + costs.margin.toFixed(1) + '% de margen · stock ' + product.stock);
+        }
       } else if (name === 'preview-order') toast('El detalle de pedidos estará disponible en la siguiente etapa.');
       return;
     }
@@ -398,7 +443,13 @@
       const body = document.getElementById('product-table-body');
       if (body) body.innerHTML = productTable(filteredProducts());
     }
+    if (event.target && event.target.id === 'category-filter') {
+      state.category = event.target.value;
+      const body = document.getElementById('product-table-body');
+      if (body) body.innerHTML = productTable(filteredProducts());
+    }
   });
+  form.addEventListener('input', updateProductCostPreview);
   document.addEventListener('keydown', function (event) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
@@ -410,23 +461,55 @@
     event.preventDefault();
     if (!form.reportValidity()) return;
     const data = new FormData(form);
-    const name = String(data.get('name') || '').trim();
-    const price = Number(data.get('price'));
-    const stock = Number(data.get('stock'));
-    if (!name || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
-      toast('Revisa los datos antes de agregar el producto.');
+    const value = function (key) { return String(data.get(key) || '').trim(); };
+    const number = function (key) { return Number(data.get(key) || 0); };
+    const name = value('name');
+    const price = number('price');
+    const stock = number('stock');
+    const minStock = number('minStock');
+    const purchaseCost = number('purchaseCost');
+    const additionalCost = number('additionalCost');
+    const sku = value('sku') || 'JBP-' + String(products.length + 1).padStart(3, '0');
+    const unitCost = purchaseCost + additionalCost;
+    const profit = price - unitCost;
+    const margin = price > 0 ? (profit / price) * 100 : 0;
+    const invalidNumbers = [price, stock, minStock, purchaseCost, additionalCost].some(function (n) { return !Number.isFinite(n) || n < 0; });
+    if (!name || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || !Number.isInteger(minStock) || invalidNumbers) {
+      toast('Revisa el nombre, el precio y los valores de inventario y costos.');
+      return;
+    }
+    if (products.some(function (p) { return String(p.sku).toLowerCase() === sku.toLowerCase(); })) {
+      toast('Ese SKU ya existe. Utiliza un código diferente.');
+      form.elements.sku.focus();
       return;
     }
     products.unshift({
       id: Date.now(),
       name: name,
-      sku: String(data.get('sku') || '').trim() || 'JBP-' + String(products.length + 1).padStart(3, '0'),
-      category: String(data.get('category') || 'Perfumería'),
+      brand: value('brand'),
+      sku: sku,
+      category: value('category') || 'Perfumería',
+      concentration: value('concentration'),
+      gender: value('gender'),
+      family: value('family'),
+      sizeMl: number('sizeMl') || null,
+      presentation: value('presentation'),
+      barcode: value('barcode'),
+      supplier: value('supplier'),
+      purchaseCost: purchaseCost,
+      additionalCost: additionalCost,
+      unitCost: unitCost,
       price: price,
+      profit: profit,
+      margin: margin,
       stock: stock,
+      minStock: minStock,
+      location: value('location'),
+      notes: value('notes'),
       tone: 'art-violet'
     });
     form.reset();
+    updateProductCostPreview();
     dialog.close();
     goToView('products');
     toast('Producto agregado a la demostración. No se ha guardado en Neon.');

@@ -153,3 +153,36 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 @media(max-width:420px) {
   .font-controls button { min-width:22px; padding:0 3px; font-size:10px; }
 }
+
+
+/* Product master form — structured ERP data entry. */
+.product-modal { width:min(780px,calc(100vw - 28px)); max-width:780px; max-height:calc(100vh - 32px); overflow:auto; }
+.product-modal-card { padding:24px 26px 20px; }
+.product-form-section { padding:17px 0 18px; border-top:1px solid #eee8de; }
+.form-section-heading { display:flex; align-items:center; gap:11px; margin:0 0 14px; }
+.form-section-icon { display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; border:1px solid #eee4d4; border-radius:9px; color:#957547; background:#f8f2e8; }
+.form-section-icon svg { width:17px; height:17px; }
+.form-section-heading div { display:flex; flex-direction:column; gap:4px; }
+.form-section-heading strong { color:#423b30; font-size:12px; }
+.form-section-heading small { color:#9d9486; font-size:10px; }
+.product-modal .form-grid { gap:13px 14px; }
+.product-modal .form-field b { color:#a36d44; }
+.product-modal .form-field input,.product-modal .form-field select,.product-modal .form-field textarea { width:100%; min-height:39px; padding:9px 10px; border:1px solid #e8e1d6; border-radius:7px; outline:0; color:#514b40; background:#fffefa; font:inherit; font-size:11px; resize:vertical; }
+.product-modal .form-field textarea { min-height:66px; line-height:1.5; }
+.product-modal .form-field input:focus,.product-modal .form-field select:focus,.product-modal .form-field textarea:focus { border-color:#c7a773; box-shadow:0 0 0 3px #b9965a1a; }
+.cost-preview-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:15px; }
+.cost-preview-card { min-width:0; padding:11px 12px; border:1px solid #eee6d8; border-radius:9px; background:#faf7f0; }
+.cost-preview-card span { display:block; color:#918776; font-size:9px; }
+.cost-preview-card strong { display:block; margin-top:6px; color:#4f4535; font:500 20px "Playfair Display",Georgia,serif; overflow-wrap:anywhere; }
+.cost-preview-card strong.negative-value { color:#a65b52; }
+.form-helper { margin:9px 0 0; color:#9a9285; font-size:9px; line-height:1.5; }
+.product-modal .modal-actions { position:sticky; bottom:-20px; margin:0 -26px; padding:14px 26px 4px; background:#fffdf9ed; backdrop-filter:blur(8px); }
+@media(max-width:560px) {
+  .product-modal-card { padding:18px 16px 15px; }
+  .product-modal .form-grid { grid-template-columns:1fr; }
+  .product-modal .full-field { grid-column:auto; }
+  .cost-preview-grid { gap:7px; }
+  .cost-preview-card { padding:9px; }
+  .cost-preview-card strong { font-size:17px; }
+  .product-modal .modal-actions { margin:0 -16px; padding-right:16px; padding-left:16px; }
+}
