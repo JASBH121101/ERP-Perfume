@@ -125,13 +125,13 @@
     const topRows = top.map(function (product) {
       return '<div class="top-product">' + art(product.tone) + '<div class="top-product-info"><strong>' + esc(product.name) + '</strong><small>' + esc(product.category) + ' · ' + product.stock + ' unidades</small></div><span class="top-product-value">' + money(product.price) + '</span></div>';
     }).join('');
-    const low = products.filter(function (product) { return product.stock <= 3; }).length;
+    const low = products.filter(isLowStock).length;
     return heading(views.dashboard, '<select class="period-select" aria-label="Periodo"><option>Últimos 7 días</option><option>Últimos 30 días</option><option>Este año</option></select><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
       '<section class="metric-grid">' +
       metric('Ventas del mes', 'C$ 28,450', 'chart', '+12.8%', 'vs. mes anterior', false) +
       metric('Pedidos recibidos', '18', 'bag', '+4.2%', 'vs. mes anterior', false) +
       metric('Productos activos', String(products.length).padStart(2, '0'), 'bottle', 'Catálogo', 'productos de demostración', true) +
-      metric('Alertas de stock', String(low).padStart(2, '0'), 'warning', 'Revisar', 'productos con 3 unidades o menos', true) +
+      metric('Alertas de stock', String(low).padStart(2, '0'), 'warning', 'Revisar', 'productos bajo su stock mínimo', true) +
       '</section>' +
       '<section class="dashboard-grid">' +
       '<article class="panel"><div class="panel-heading"><div><h2>Rendimiento de ventas</h2><p>Comportamiento comercial de los últimos días</p></div><button class="panel-link" data-view="analytics">Ver informe ' + svg('arrow') + '</button></div><div class="chart-summary"><strong>C$ 28,450</strong><span>ventas de muestra</span></div>' +

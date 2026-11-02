@@ -116,6 +116,20 @@ test('product master calculates unit cost, profit and gross margin', async ({ pa
   await expect(page.locator('#product-table-body')).toContainText('Margen 33.3%');
 });
 
+
+test('inventory alerts use each product minimum stock', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="inventory"]').click();
+
+  const inventory = page.locator('#view-root');
+  await expect(inventory).toContainText('Stock mínimo configurable por producto');
+  await expect(inventory.getByText('Khamrah Lattafa')).toBeVisible();
+  const khamrahRow = inventory.locator('tr').filter({ hasText: 'Khamrah Lattafa' });
+  await expect(khamrahRow).toContainText('Stock bajo');
+  const yaraRow = inventory.locator('tr').filter({ hasText: 'Yara Lattafa' });
+  await expect(yaraRow).toContainText('Disponible');
+});
+
 test('product catalog filters by fragrance category', async ({ page }) => {
   await page.goto('/');
   await page.locator('#sidebar button[data-view="products"]').click();
