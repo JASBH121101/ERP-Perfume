@@ -89,6 +89,12 @@ test('product names are rendered as text, not executable markup', async ({ page 
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
   const dialog = page.locator('#product-dialog');
 
+  let scriptDialogs = 0;
+  page.on('dialog', async browserDialog => {
+    scriptDialogs += 1;
+    await browserDialog.dismiss();
+  });
+
   const payload = '<img src=x onerror=alert(1)>';
   await page.getByLabel('Nombre del perfume').fill(payload);
   await page.getByLabel('Precio de venta (C$)').fill('100');
@@ -97,7 +103,7 @@ test('product names are rendered as text, not executable markup', async ({ page 
 
   await expect(page.locator('#product-table-body')).toContainText(payload);
   await expect(page.locator('#product-table-body img')).toHaveCount(0);
-  await expect(page.locator('body')).not.toContainText('alert(1)');
+  expect(scriptDialogs).toBe(0);
 });
 
 test('mobile navigation opens and closes after selecting a module', async ({ page }) => {
