@@ -1,0 +1,85 @@
+# JB PARFUMS ERP — QA automation agent
+
+## Profile
+
+The QA agent is medium-advanced and human-supervised. Deterministic tests always run on pull requests. The AI repair stage is optional and disabled by default.
+
+## Scope
+
+The agent receives only:
+- Plain-text test output.
+- index.html.
+- assets/css/styles.css.
+- assets/js/app.js.
+
+It does not receive screenshots, images, video, audio, customer records, employee records, database contents, storage objects, environment files or secrets other than its own API key.
+
+The agent cannot call Neon, Cloudflare, R2, Supabase, public websites, external tools or shell commands. It can only request one structured text response from the OpenAI Responses API.
+
+## Automatic repair boundary
+
+A proposed repair is accepted for verification only when:
+1. The model classifies it as low risk.
+2. Every changed path is within the exact UI allowlist.
+3. The patch edits existing files only.
+4. The patch contains no binary files, new files, deletions, renames or path traversal.
+5. git apply --check succeeds.
+6. The complete static and Playwright suite passes again.
+
+The allowed files are:
+- index.html
+- assets/css/styles.css
+- assets/js/app.js
+
+If a failure requires changes to business rules, prices, invoices, payroll, employee records, authentication, APIs, database schemas, migrations, infrastructure, workflows, packages, test suites or scripts, the agent must request manual review.
+
+When verification passes, GitHub Actions creates a separate draft pull request against the original feature branch. It never pushes to main, merges a pull request or deploys a repair directly to production.
+
+Only one AI request is attempted for each failed workflow run. There is no automatic retry loop.
+
+## Enable the AI stage
+
+The code is committed, but the AI stage is intentionally disabled until the owner configures API access.
+
+In the private repository:
+1. Open Settings → Secrets and variables → Actions.
+2. Under Secrets, create OPENAI_API_KEY with an API key from the OpenAI API Platform.
+3. Under Variables, create AI_REPAIR_ENABLED with the value true.
+4. Optionally create OPENAI_MODEL with gpt-6-luna. This is the default if the variable is empty.
+
+Never put the API key in source code, a commit, an issue, a Pull Request, a workflow log or a chat message.
+
+API usage is billed separately from a ChatGPT subscription. Configure a project budget/alert in the OpenAI API Platform and review usage before enabling the variable.
+
+## Cost controls
+
+- Deterministic static and browser checks do not call an LLM.
+- The AI stage runs only after a failed validation and only when explicitly enabled.
+- The model defaults to gpt-6-luna with medium reasoning.
+- The request uses store=false and a 3,500-token maximum output.
+- Logs and source context are locally capped before sending.
+- No image input, visual model call, web search, file search or tool call is enabled.
+- No Neon, R2, Cloudflare Worker or Supabase API calls are made by the QA agent.
+- Playwright screenshot, video and trace recording are disabled.
+
+## Local development
+
+No project software needs to be installed on a work computer. GitHub Actions installs the pinned test dependency on its hosted runner.
+
+To run the same checks on a developer machine that already has Node.js 22+, Python 3 and Chromium:
+- npm install --no-package-lock --no-audit --no-fund
+- npx playwright install chromium
+- bash scripts/run-validation.sh
+
+## Current test coverage
+
+- Dashboard and main navigation.
+- Desktop sidebar collapse and persistence.
+- Font-size scale and persistence.
+- Product search and stock filtering.
+- Local demo product creation.
+- Escaping of user-entered product names.
+- Mobile navigation.
+- Static HTML IDs, navigation, local assets, CSS structure and JavaScript hooks.
+
+The tests use demo data only. They do not connect to Neon or R2.
