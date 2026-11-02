@@ -315,7 +315,7 @@ test('form fields have no placeholder or optional copy; required fields use a re
 
 test('business amounts display in USD and configuration shows the fixed reference rate', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#view-root')).toContainText('$777.32');
+  await expect(page.locator('#view-root')).toContainText('$359.30');
   await expect(page.locator('#view-root')).not.toContainText('C' + '$');
   await page.locator('#sidebar button[data-view="products"]').click();
   await expect(page.locator('#product-table-body')).toContainText('$66.94');
@@ -338,7 +338,7 @@ test('legacy DEMO data is converted once from córdobas to USD at 36.60', async 
   await page.locator('#sidebar button[data-view="products"]').click();
   await expect(page.locator('#product-table-body')).toContainText('$10.00');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
-  expect(saved.version).toBe(2);
+  expect(saved.version).toBe(3);
   expect(saved.products[0].price).toBe(10);
   expect(saved.products[0].unitCost).toBe(6);
   expect(saved.orders[0].amount).toBe(11);
@@ -397,4 +397,38 @@ test('each sample order opens its own detail record', async ({ page }) => {
     await expect(page.locator('#order-detail-dialog #order-detail-title')).toHaveText(orderId);
     await page.locator('#order-detail-cancel').click();
   }
+});
+
+
+test('exchange rate is configurable and persists to DEMO settings',async({page})=>{
+ await page.goto('/');await page.locator('#sidebar button[data-view="settings"]').click();
+ const rate=page.locator('#exchange-rate-form input[name="exchangeRate"]');await expect(rate).toHaveValue('36.6000');
+ await rate.fill('37.25');await page.getByRole('button',{name:'Guardar tipo de cambio'}).click();
+ await expect(page.locator('#view-root')).toContainText('C$ 37.25 por US$ 1');await page.reload();await page.locator('#sidebar button[data-view="settings"]').click();
+ await expect(page.locator('#exchange-rate-form input[name="exchangeRate"]')).toHaveValue('37.2500');
+});
+test('purchase in córdobas retains rate and updates demo stock and cost',async({page})=>{
+ await page.goto('/');await page.locator('#sidebar button[data-view="suppliers"]').click();await page.getByRole('button',{name:/Nuevo proveedor/}).click();
+ const dialog=page.locator('#business-dialog');await dialog.locator('input[name="name"]').fill('Proveedor QA');await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();await page.locator('#sidebar button[data-view="purchases"]').click();await page.getByRole('button',{name:/Registrar compra/}).click();
+ await dialog.locator('select[name="supplierIndex"]').selectOption('0');await dialog.locator('select[name="productId"]').selectOption('2');
+ await dialog.locator('input[name="quantity"]').fill('2');await dialog.locator('input[name="unitCost"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$20.00');
+ await page.locator('#sidebar button[data-view="inventory"]').click();await expect(page.locator('#view-root').locator('tr').filter({hasText:'Yara Lattafa'})).toContainText('10 unidades');
+});
+test('payroll is NIO-only',async({page})=>{
+ await page.goto('/');await page.locator('#sidebar button[data-view="hr"]').click();await page.getByRole('button',{name:/Agregar colaborador/}).click();
+ const dialog=page.locator('#business-dialog');await expect(dialog.locator('select[name="currency"]')).toHaveCount(0);
+ await dialog.locator('input[name="name"]').fill('Colaborador QA');await dialog.locator('input[name="position"]').fill('Asistente');await dialog.locator('input[name="salaryNio"]').fill('15000');
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('Colaborador QA');await expect(page.locator('#view-root')).toContainText('15,000.00');
+});
+test('expenses support two currencies and cash account enforces currency match',async({page})=>{
+ await page.goto('/');await page.locator('#sidebar button[data-view="expenses"]').click();await page.getByRole('button',{name:/Nuevo gasto/}).click();
+ const dialog=page.locator('#business-dialog');await dialog.locator('select[name="category"]').selectOption({label:'Transporte'});
+ await dialog.locator('input[name="description"]').fill('Transporte QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$10.00');
+ await page.locator('#sidebar button[data-view="cash"]').click();await page.getByRole('button',{name:/Registrar movimiento/}).click();
+ await dialog.locator('input[name="concept"]').fill('Cobro QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.locator('select[name="account"]').selectOption({label:'Caja USD'});await dialog.getByRole('button',{name:'Guardar en demo'}).click();
+ await expect(dialog).toBeVisible();await expect(page.locator('#toast-region')).toContainText(/debe coincidir/i);
 });

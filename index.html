@@ -44,6 +44,16 @@
         <button class="nav-item" data-view="inventory"><span class="nav-icon" data-icon="boxes"></span><span>Existencias</span></button>
       </nav>
 
+      <div class="nav-caption nav-caption-spaced">ABASTECIMIENTO</div>
+      <nav class="primary-nav">
+        <button class="nav-item" data-view="purchases"><span class="nav-icon" data-icon="receipt"></span><span>Compras</span></button>
+        <button class="nav-item" data-view="suppliers"><span class="nav-icon" data-icon="users"></span><span>Proveedores</span></button>
+      </nav>
+      <div class="nav-caption nav-caption-spaced">FINANZAS</div>
+      <nav class="primary-nav">
+        <button class="nav-item" data-view="expenses"><span class="nav-icon" data-icon="receipt"></span><span>Gastos</span></button>
+        <button class="nav-item" data-view="cash"><span class="nav-icon" data-icon="chart"></span><span>Caja y bancos</span></button>
+      </nav>
       <div class="nav-caption nav-caption-spaced">ADMINISTRACIÓN</div>
       <nav class="primary-nav">
         <button class="nav-item" data-view="hr"><span class="nav-icon" data-icon="users"></span><span>RRHH</span></button>
@@ -206,6 +216,13 @@
         <button type="button" class="button button-primary" id="save-order-status" data-action="save-order-status">Guardar estado</button>
       </div>
     </div>
+  </dialog>
+  <dialog class="modal business-modal" id="business-dialog" aria-labelledby="business-modal-title">
+    <form id="business-form" method="dialog" class="modal-card">
+      <div class="modal-heading"><div><span class="eyebrow">GESTIÓN · DEMO LOCAL</span><h2 id="business-modal-title">Nuevo registro</h2></div><button type="button" class="icon-button modal-close" id="business-close" aria-label="Cerrar">×</button></div>
+      <div id="business-form-body"></div>
+      <div class="modal-actions"><button type="button" class="button button-quiet" id="business-cancel">Cancelar</button><button type="submit" class="button button-primary" id="business-save">Guardar en demo</button></div>
+    </form>
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
   <noscript><div class="noscript-message">Activa JavaScript para utilizar el panel de demostración.</div></noscript>

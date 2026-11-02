@@ -8,7 +8,7 @@ UI foundation and quality automation. All business records currently shown in th
 ## Currency policy
 
 - Operational/base currency: USD ($).
-- Fixed reference rate for future invoice conversion: C$ 36.60 per US$ 1.
+- Configurable reference rate for conversions: C$ 36.60 per US$ 1 by default.
 - DEMO values from the former Córdobas interface are normalized to USD; browser-local DEMO records are migrated once.
 - Official invoicing and NIO conversion are not enabled yet.
 
@@ -45,3 +45,8 @@ The interface is not production-ready. Authentication, database persistence, inv
 ## Functional prototype status
 
 Products and inventory support browser-local DEMO persistence (localStorage), product create/edit/view/deactivate/delete, stock entries/exits/adjustments, an inventory ledger and CSV export. This is not a production database: it is isolated to the current browser and is not synchronized with Neon or R2. Do not enter real customer, employee or business records.
+
+
+## Operational DEMO modules
+
+The feature branch adds browser-local workflows for customers, orders, suppliers, purchases, expenses, cash/bank movements, internal non-fiscal vouchers, abonos and employee records. Purchase receipts update demo stock. Business transactions preserve original currency, USD equivalent and exchange rate used. USD is the reporting base; payroll is NIO-only. The exchange rate is editable in Settings and defaults to C$36.60 per US$1. All records remain local to the browser and are not synchronized.
