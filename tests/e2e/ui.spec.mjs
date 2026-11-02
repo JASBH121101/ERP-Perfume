@@ -286,3 +286,28 @@ test('the DEMO catalogue still contains the eight original sample perfumes', asy
   await expect(page.locator('#product-table-body')).toContainText('Khamrah Lattafa');
   await expect(page.locator('#product-table-body')).toContainText('Eclaire Lattafa');
 });
+
+
+test('form fields have no placeholder or optional copy; required fields use a red asterisk only', async ({ page }) => {
+  await page.goto('/');
+  const productDialog = page.locator('#product-dialog');
+  await page.getByRole('button', { name: /Nuevo producto/ }).click();
+
+  await expect(productDialog.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
+  await expect(productDialog.locator('label')).not.toContainText(/opcional/i);
+  await expect(productDialog.locator('.required-mark')).toHaveCount(3);
+  for (const marker of await productDialog.locator('.required-mark').all()) {
+    await expect(marker).toHaveCSS('color', 'rgb(220, 38, 38)');
+  }
+
+  await productDialog.getByRole('button', { name: 'Cancelar' }).click();
+  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await page.getByRole('button', { name: /Registrar movimiento/ }).click();
+  const stockDialog = page.locator('#stock-dialog');
+  await expect(stockDialog.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
+  await expect(stockDialog.locator('label')).not.toContainText(/opcional/i);
+  await expect(stockDialog.locator('.required-mark')).toHaveCount(3);
+  for (const marker of await stockDialog.locator('.required-mark').all()) {
+    await expect(marker).toHaveCSS('color', 'rgb(220, 38, 38)');
+  }
+});

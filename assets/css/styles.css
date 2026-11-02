@@ -166,7 +166,7 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 .form-section-heading strong { color:#423b30; font-size:12px; }
 .form-section-heading small { color:#9d9486; font-size:10px; }
 .product-modal .form-grid { gap:13px 14px; }
-.product-modal .form-field b { color:#a36d44; }
+
 .product-modal .form-field input,.product-modal .form-field select,.product-modal .form-field textarea { width:100%; min-height:39px; padding:9px 10px; border:1px solid #e8e1d6; border-radius:7px; outline:0; color:#514b40; background:#fffefa; font:inherit; font-size:11px; resize:vertical; }
 .product-modal .form-field textarea { min-height:66px; line-height:1.5; }
 .product-modal .form-field input:focus,.product-modal .form-field select:focus,.product-modal .form-field textarea:focus { border-color:#c7a773; box-shadow:0 0 0 3px #b9965a1a; }
@@ -203,3 +203,5 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 @media(max-width:520px){.heading-actions-inline{align-items:stretch;flex-direction:column}.detail-grid{grid-template-columns:1fr 1fr}.stock-modal .modal-card,.detail-modal .modal-card{padding:18px}}
 
 @media(max-width:720px){body.mobile-menu-open{overflow:hidden;overscroll-behavior:none;touch-action:none}.sidebar{height:100dvh;max-height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable}.sidebar.open{overflow-y:auto}.mobile-scrim{touch-action:none}.main-panel{min-height:100dvh}}
+/* Required fields are identified only by a red asterisk. */
+.form-field .required-mark{color:#dc2626;font-size:1.15em;font-weight:800;line-height:1}
