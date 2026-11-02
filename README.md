@@ -39,12 +39,12 @@ See docs/qa-agent.md for capabilities, guardrails, activation and cost controls.
 - Monitor Free-tier usage before adding integrations.
 
 ## Status
-The interface is not production-ready. Authentication, database persistence, inventory operations, invoices and HR workflows still need implementation and validation.
+The interface is not production-ready. Authentication, shared database persistence, fiscal invoicing, full accounts receivable/payable and advanced HR workflows still need implementation and validation. Inventory order outflows and reversals are available in the DEMO workflow only.
 
 
 ## Functional prototype status
 
-Products and inventory support browser-local DEMO persistence (localStorage), product create/edit/view/deactivate/delete, stock entries/exits/adjustments, an inventory ledger and CSV export. This is not a production database: it is isolated to the current browser and is not synchronized with Neon or R2. Do not enter real customer, employee or business records.
+Products and inventory support browser-local DEMO persistence (localStorage), product create/edit/view/deactivate/delete with historical-record protection, stock entries/exits/adjustments, automatic order-confirmation outflows with reversals, an inventory ledger and CSV export. This is not a production database: it is isolated to the current browser and is not synchronized with Neon or R2. Do not enter real customer, employee or business records.
 
 
 ## Operational DEMO modules
