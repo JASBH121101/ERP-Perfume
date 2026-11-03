@@ -164,7 +164,7 @@ jobs:
   jb-expert-qa:
     name: JB Expert QA — deterministic source audit
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
