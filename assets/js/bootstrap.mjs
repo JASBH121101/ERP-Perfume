@@ -4,6 +4,8 @@ const $ = (selector) => document.querySelector(selector);
 const authDialog = $("#auth-dialog");
 const authForm = $("#auth-form");
 const authFeedback = $("#auth-feedback");
+const API_BASE_URL = (document.querySelector('meta[name="jb-api-base-url"]')?.content || "").trim().replace(/\/+$/, "");
+const apiUrl = (path) => API_BASE_URL + (path.startsWith("/") ? path : "/" + path);
 let authClient = null;
 let authSession = null;
 let authUser = null;
@@ -94,7 +96,7 @@ function updateAuthControls() {
 async function initialize() {
   let config = { mode: "demo", authBaseUrl: null };
   try {
-    const response = await fetch("/api/config", { cache: "no-store" });
+    const response = await fetch(apiUrl("/api/config"), { cache: "no-store" });
     if (response.ok) config = { ...config, ...(await readJson(response)) };
   } catch {
     // Local source tests run without Cloudflare Functions; remain in DEMO mode.
@@ -114,6 +116,8 @@ async function initialize() {
   }
 
   window.JBAuth = {
+    apiUrl,
+    apiBaseUrl: API_BASE_URL,
     mode: authClient ? "authenticated" : "demo",
     client: authClient,
     get user() { return authUser; },
