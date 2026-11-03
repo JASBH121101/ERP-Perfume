@@ -205,15 +205,23 @@ jobs:
 
       - name: Run JB Expert QA local static audit
         id: jbqa-audit
-        continue-on-error: true
         run: |
           mkdir -p "$RUNNER_TEMP/jb-expert-qa-report"
+          set +e
           node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
             --format=json \
             --output="$RUNNER_TEMP/jb-expert-qa-report/report.json"
+          json_status=$?
           node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
             --format=markdown \
             --output="$RUNNER_TEMP/jb-expert-qa-report/report.md"
+          markdown_status=$?
+          set -e
+          if [ ! -s "$RUNNER_TEMP/jb-expert-qa-report/report.json" ] || [ ! -s "$RUNNER_TEMP/jb-expert-qa-report/report.md" ]; then
+            echo "::error::JB Expert QA failed to generate both report formats."
+            exit 1
+          fi
+          echo "Report generation completed (JSON exit: $json_status; Markdown exit: $markdown_status). The gate below decides whether findings block CI."
 
       - name: Upload JB Expert QA report
         if: always()
@@ -261,7 +269,7 @@ jobs:
               `- Engine: ${report.version ?? "unknown"}`,
               `- Files analyzed: ${report.analysisScope?.filesAnalyzed ?? 0}`,
               `- Findings: ${report.summary?.findings ?? 0}`,
-              `- Score: ${score ?? "n/a"}/${minimum ?? "n/a"}`,
+              `- Score: ${score ?? "n/a"}/100 (minimum: ${minimum ?? "n/a"})`,
               `- Critical findings: ${critical.length}`,
               `- Scan complete: ${complete ? "yes" : "no"}`,
               ""
