@@ -188,7 +188,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: JASBH121101/JB-Expert-QA
-          ref: 7d7787278496cd9191eaba527522a1c70fe51f42
+          ref: bc88596104f3c996eedc2dd775e0661aade76fd8
           token: ${{ secrets.JBQA_REPO_READ_TOKEN }}
           path: .jb-expert-qa
           fetch-depth: 1
