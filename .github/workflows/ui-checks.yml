@@ -11,15 +11,15 @@ on:
       - ready_for_review
     paths:
       - "index.html"
+      - "README.md"
+      - "docs/**"
       - "assets/**"
       - "functions/**"
       - "db/**"
       - "scripts/**"
       - "tests/**"
       - "package.json"
-      - "playwright.config.mjs"
       - "jb-expert-qa.config.json"
-      - "playwright.config.mjs"
       - ".github/workflows/**"
 
 concurrency:
