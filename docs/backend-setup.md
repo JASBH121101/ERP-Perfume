@@ -31,8 +31,8 @@ Do not paste this secret into GitHub, source files, pull-request comments, or ch
 ## Neon Auth checklist
 
 - Add the Pages branch preview origin to Neon Auth trusted domains on the `development` branch.
-- Enable email verification on sign-up before assigning the owner role.
-- Verify the owner account's email before using protected ERP records.
+- In Neon Auth → Email & Password on the `development` branch, enable **Verify email on sign-up** and **Require email verification**. The current method is OTP; the ERP login dialog now supports entering and resending the six-digit code.
+- Keep automatic sign-in after verification enabled. Verify the owner account's email before using protected ERP records.
 - Keep the owner email in the Preview variable only; do not place it in frontend source.
 
 ## HR access
