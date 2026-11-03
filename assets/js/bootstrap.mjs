@@ -136,11 +136,6 @@ async function initialize() {
   await import("./app.js");
   updateAuthControls();
 
-  window.addEventListener("jb:auth-changed", async () => {
-    await refreshProfile();
-    updateAuthControls();
-  });
-
   $("#auth-control")?.addEventListener("click", async () => {
     if (!authClient) return;
     if (authUser) {
