@@ -54,3 +54,7 @@ npm test
 ```
 
 See [Backend setup](docs/backend-setup.md) for the Worker deployment and secret configuration.
+
+## Static production deployment
+
+Cloudflare Pages publishes only the static `dist/` output from `main`. API routes are served by the standalone Worker at `https://jb-parfums-erp-api.jaredblancoh19.workers.dev`; no Pages Functions are used. A Pages deployment does not provision the Worker or copy database secrets. See [Backend setup](docs/backend-setup.md) for the one-time GitHub Actions token and Worker database secret requirements.
