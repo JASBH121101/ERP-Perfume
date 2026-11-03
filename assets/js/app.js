@@ -563,6 +563,14 @@
     const wholesale=Number(product.wholesalePrice||0);
     return customerType==='business'&&wholesale>0?wholesale:Number(product.price||0);
   }
+  function applyInvoiceCustomerPricing(){
+    if(businessForm.dataset.recordType!=='invoice'||businessForm.querySelector('[name="saleSource"]')?.value==='web')return;
+    invoiceDraftItems=invoiceDraftItems.map(line=>{
+      const product=products.find(item=>String(item.id)===String(line.productId));
+      return product?Object.assign({},line,{unitPriceUsd:invoiceSuggestedPrice(product)}):line;
+    });
+    renderInvoiceCart();
+  }
   function invoiceDraftTotals(){
     if(!invoiceDraftItems.length)return {error:'Agrega al menos un perfume a la factura.'};
     const items=[];
@@ -1233,6 +1241,7 @@
   businessForm.addEventListener('change',function(event){
     if(businessForm.dataset.recordType!=='invoice')return;
     if(event.target.name==='saleSource')refreshInvoiceSourceUI();
+    if(event.target.name==='customerType')applyInvoiceCustomerPricing();
     if(['currency','customerName','customerType','discountUsd','deliveryFeeUsd','amountReceived'].includes(event.target.name))updateInvoicePreview();
   });
   businessForm.addEventListener('input',function(event){
@@ -1243,7 +1252,7 @@
     if(['customerName','customerPhone','discountUsd','deliveryFeeUsd','amountReceived'].includes(event.target.name))updateInvoicePreview();
     if(event.target.name==='customerName'){
       const match=customers.find(item=>String(item.name||'').toLocaleLowerCase('es')===event.target.value.trim().toLocaleLowerCase('es'));
-      if(match){const phone=businessForm.querySelector('[name="customerPhone"]');const type=businessForm.querySelector('[name="customerType"]');if(phone&&!phone.value)phone.value=match.contact||'';if(type)type.value=match.customerType||'particular';}
+      if(match){const phone=businessForm.querySelector('[name="customerPhone"]');const type=businessForm.querySelector('[name="customerType"]');if(phone&&!phone.value)phone.value=match.contact||'';if(type&&type.value!==(match.customerType||'particular')){type.value=match.customerType||'particular';applyInvoiceCustomerPricing();}}
     }
   });
   businessForm.addEventListener('submit',saveBusinessRecord);
