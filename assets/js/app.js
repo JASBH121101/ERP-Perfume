@@ -903,7 +903,7 @@
       invoices.unshift(invoice);
       if(!persistBusinessChanges())return;
       businessDialog.close();renderView();toast('Factura '+invoice.id+' generada. Inventario actualizado sin duplicar salidas.');
-      showInvoicePreview(invoice.id);
+      window.requestAnimationFrame(function(){showInvoicePreview(invoice.id);});
     }else if(type==='employee'){
       const salary=num('salaryNio');if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0){toast('Revisa los datos y el salario.');return;}
       employees.unshift({id,name:get('name'),position:get('position'),department:get('department'),salaryNio:salary,status:'Activo'});
