@@ -715,7 +715,7 @@
       (Number(invoice.deliveryFeeUsd)>0?'<div><span>Entrega</span>'+invoiceUsdPrimary(invoice.deliveryFeeUsd,rate)+'</div>':'')+
       '<div class="invoice-paper-total"><span>TOTAL USD</span>'+invoiceUsdPrimary(invoice.totalUsd,rate)+'</div>'+
       '<div><span>'+(balance>0&&Number(invoice.paidUsd||0)>0?'Abono inicial recibido':'Pago recibido')+'</span>'+invoiceUsdPrimary(invoice.paidUsd||0,rate)+'</div>'+
-      (paymentOriginalAmount>0?'<div><span>Importe recibido en '+esc(paymentCurrency)+'</span><strong>'+moneyInCurrency(paymentOriginalAmount,paymentCurrency)+'</strong></div>':'')+
+      (paymentOriginalAmount>0&&paymentCurrency==='NIO'?'<div><span>Pago inicial registrado en córdobas</span><strong>'+moneyInCurrency(paymentOriginalAmount,'NIO')+'</strong></div>':'')+
       '<div><span>Saldo pendiente</span>'+invoiceUsdPrimary(balance,rate)+'</div></section>'+
       '<footer class="invoice-paper-footer"><div><strong>Método de pago:</strong> '+esc(invoice.paymentMethod||'Pendiente')+'</div><div>Tipo de cambio aplicado: '+rateLabel(rate)+'</div><p>Documento generado por JB PARFUMS ERP en modo DEMO. No es una factura fiscal autorizada.</p></footer></article>';
   }
