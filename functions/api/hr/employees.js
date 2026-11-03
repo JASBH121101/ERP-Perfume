@@ -8,7 +8,7 @@ export async function onRequestGet({ request, env }) {
   if (auth.response) return auth.response;
 
   try {
-    const employees = await auth.sql(
+    const employees = await auth.sql.query(
       "SELECT id, employee_code, name, position, department, salary_nio::text AS salary_nio, status, hire_date, phone, email, created_at, updated_at FROM employees ORDER BY LOWER(name), created_at"
     );
     return json({ employees });
@@ -49,11 +49,11 @@ export async function onRequestPost({ request, env }) {
   }
 
   try {
-    const rows = await auth.sql(
+    const rows = await auth.sql.query(
       "INSERT INTO employees (employee_code, name, position, department, salary_nio, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, employee_code, name, position, department, salary_nio::text AS salary_nio, status, hire_date, phone, email, created_at, updated_at",
       [employeeCode || null, name, position, department || null, salary.toFixed(2), auth.user.id]
     );
-    await auth.sql(
+    await auth.sql.query(
       "INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, details) VALUES ($1, 'create', 'employee', $2, $3::jsonb)",
       [auth.user.id, rows[0].id, JSON.stringify({ name, position, department })]
     );
