@@ -557,6 +557,9 @@
   function invoiceCurrencyAmount(amountUsd,currency,rate){
     return moneyInCurrency(currency==='NIO'?roundMoney(amountUsd*rate):amountUsd,currency);
   }
+  function invoiceUsdPrimary(amountUsd,rate){
+    return '<strong class="invoice-money-stack">'+money(amountUsd)+'<small>'+moneyInCurrency(roundMoney(Number(amountUsd||0)*Number(rate||exchangeRate)),'NIO')+'</small></strong>';
+  }
   function invoiceSelectedCurrency(){
     return businessForm.querySelector('[name="currency"]')?.value==='NIO'?'NIO':'USD';
   }
@@ -678,31 +681,42 @@
     }
     const source=selectedSource==='web'?'Pedido de página web':(selectedSource==='manual'?'Venta manual':'Venta presencial');
     const lineRows=totals.items.map(item=>
-      '<div class="invoice-preview-line"><div class="invoice-line-product"><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'Sin SKU')+'</small></div><span class="invoice-line-quantity">'+item.quantity+' uds.</span><div class="invoice-line-unit"><strong>'+invoiceCurrencyAmount(item.unitPriceUsd,currency,rate)+'</strong><small>'+money(item.unitPriceUsd)+' / unidad</small></div><div class="invoice-line-total"><strong>'+invoiceCurrencyAmount(item.lineTotalUsd,currency,rate)+'</strong><small>'+money(item.lineTotalUsd)+' base USD</small></div></div>'
+      '<div class="invoice-preview-line"><div class="invoice-line-product"><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'Sin SKU')+'</small></div><span class="invoice-line-quantity">'+item.quantity+' uds.</span><div class="invoice-line-unit"><strong>'+money(item.unitPriceUsd)+'</strong><small>'+moneyInCurrency(roundMoney(item.unitPriceUsd*rate),'NIO')+'</small></div><div class="invoice-line-total"><strong>'+money(item.lineTotalUsd)+'</strong><small>'+moneyInCurrency(roundMoney(item.lineTotalUsd*rate),'NIO')+'</small></div></div>'
     ).join('');
     preview.innerHTML='<div class="invoice-preview-heading"><div><span class="invoice-kicker">VISTA PREVIA DE FACTURA</span><strong>'+esc(customer)+'</strong></div><span class="invoice-demo-chip">DEMO · NO FISCAL</span></div>'+
       '<div class="invoice-preview-meta"><div><span>CLIENTE</span><strong>'+esc(customer)+'</strong></div><div><span>CONTACTO</span><strong>'+esc(phone)+'</strong></div><div><span>ORIGEN</span><strong>'+source+'</strong></div><div><span>FECHA</span><strong>'+new Date().toLocaleDateString('es-NI')+'</strong></div></div>'+
       '<div class="invoice-lines-heading"><span>PRODUCTO</span><span>CANT.</span><span>PRECIO</span><span>IMPORTE</span></div><div class="invoice-preview-lines">'+lineRows+'</div>'+
-      '<div class="invoice-preview-totals"><div><span>Subtotal</span><strong>'+invoiceCurrencyAmount(totals.subtotalUsd,currency,rate)+'</strong></div>'+
-      (totals.discountUsd?'<div><span>Descuento</span><strong>− '+invoiceCurrencyAmount(totals.discountUsd,currency,rate)+'</strong></div>':'')+
-      (totals.deliveryFeeUsd?'<div><span>Entrega</span><strong>'+invoiceCurrencyAmount(totals.deliveryFeeUsd,currency,rate)+'</strong></div>':'')+
-      '<div class="invoice-grand-total"><span>Total a cobrar</span><strong>'+invoiceCurrencyAmount(totals.totalUsd,currency,rate)+'</strong></div><div class="invoice-exchange-row"><span>Total base USD</span><strong>'+money(totals.totalUsd)+'</strong></div></div>'+
+      '<div class="invoice-preview-totals"><div><span>Subtotal</span>'+invoiceUsdPrimary(totals.subtotalUsd,rate)+'</div>'+
+      (totals.discountUsd?'<div><span>Descuento (USD)</span><strong class="invoice-money-stack">− '+money(totals.discountUsd)+'<small>− '+moneyInCurrency(roundMoney(totals.discountUsd*rate),'NIO')+'</small></strong></div>':'')+
+      (totals.deliveryFeeUsd?'<div><span>Entrega</span><strong class="invoice-money-stack">'+money(totals.deliveryFeeUsd)+'<small>'+moneyInCurrency(roundMoney(totals.deliveryFeeUsd*rate),'NIO')+'</small></strong></div>':'')+
+      '<div class="invoice-grand-total"><span>Total en dólares (USD)</span>'+invoiceUsdPrimary(totals.totalUsd,rate)+'</div></div>'+
+      '<div class="invoice-exchange-row"><span>Equivalente en córdobas</span><strong>'+moneyInCurrency(roundMoney(totals.totalUsd*rate),'NIO')+'</strong></div>'+
       '<div class="invoice-exchange-row"><span>Tipo de cambio aplicado</span><strong>'+rateLabel(rate)+'</strong></div>';
   }
   function invoiceDocumentMarkup(invoice){
-    const currency=invoice.currency==='NIO'?'NIO':'USD',rate=Number(invoice.exchangeRate||exchangeRate);
-    const lines=(invoice.items||[]).map(item=>'<tr><td><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'')+(item.barcode?' · '+esc(item.barcode):'')+'</small></td><td>'+Number(item.quantity||0)+'</td><td>'+invoiceCurrencyAmount(item.unitPriceUsd,currency,rate)+'</td><td>'+invoiceCurrencyAmount(item.lineTotalUsd==null?Number(item.quantity||0)*Number(item.unitPriceUsd||0):item.lineTotalUsd,currency,rate)+'</td></tr>').join('');
+    const rate=Number(invoice.exchangeRate||exchangeRate);
+    const paymentCurrency=invoice.paymentCurrency||invoice.currency||'USD';
+    const paymentOriginalAmount=invoice.paymentOriginalAmount==null
+      ?(Array.isArray(invoice.payments)&&invoice.payments.length?Number(invoice.payments[0].amount||0):Number(invoice.paidUsd||0))
+      :Number(invoice.paymentOriginalAmount||0);
+    const lines=(invoice.items||[]).map(item=>{
+      const unit=Number(item.unitPriceUsd||0);
+      const lineTotal=item.lineTotalUsd==null?Number(item.quantity||0)*unit:Number(item.lineTotalUsd||0);
+      return '<tr><td><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'')+(item.barcode?' · '+esc(item.barcode):'')+'</small></td><td>'+Number(item.quantity||0)+'</td><td><span class="invoice-paper-usd">'+money(unit)+'</span><small class="invoice-paper-reference">'+moneyInCurrency(roundMoney(unit*rate),'NIO')+'</small></td><td><span class="invoice-paper-usd">'+money(lineTotal)+'</span><small class="invoice-paper-reference">'+moneyInCurrency(roundMoney(lineTotal*rate),'NIO')+'</small></td></tr>';
+    }).join('');
     const balance=Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0));
     const source=invoice.source==='web'?'Página web':(invoice.source==='manual'?'Venta manual':'Tienda física');
     return '<article class="invoice-paper"><header class="invoice-paper-header"><div class="invoice-paper-brand"><span class="invoice-paper-monogram">JB</span><div><strong>JB PARFUMS</strong><small>FRAGANCIAS · PERFUMERÍA</small></div></div><div class="invoice-paper-number"><span>COMPROBANTE INTERNO</span><strong>'+esc(invoice.id)+'</strong><small>'+esc(dateText(invoice.createdAt))+'</small></div></header>'+
       '<div class="invoice-paper-status"><span>DEMO · NO FISCAL</span><strong>'+esc(invoice.status||'Pendiente')+'</strong></div>'+
-      '<section class="invoice-paper-parties"><div><small>FACTURAR A</small><strong>'+esc(invoice.customer||'Cliente general')+'</strong><span>'+esc(invoice.phone||'Sin contacto')+'</span><span>'+esc(invoice.customerType==='business'?'Cliente negocio':'Cliente particular')+'</span></div><div><small>ORIGEN DE VENTA</small><strong>'+source+'</strong><span>'+(invoice.orderId?'Pedido '+esc(invoice.orderId):'Venta directa')+'</span><span>Moneda: '+currency+'</span></div></section>'+
+      '<section class="invoice-paper-parties"><div><small>FACTURAR A</small><strong>'+esc(invoice.customer||'Cliente general')+'</strong><span>'+esc(invoice.phone||'Sin contacto')+'</span><span>'+esc(invoice.customerType==='business'?'Cliente negocio':'Cliente particular')+'</span></div><div><small>ORIGEN DE VENTA</small><strong>'+source+'</strong><span>'+(invoice.orderId?'Pedido '+esc(invoice.orderId):'Venta directa')+'</span><span>Moneda de venta: USD</span><span>Moneda de cobro: '+esc(paymentCurrency)+'</span></div></section>'+
       '<table class="invoice-paper-table"><thead><tr><th>PRODUCTO / CÓDIGO</th><th>CANT.</th><th>PRECIO UNIT.</th><th>IMPORTE</th></tr></thead><tbody>'+lines+'</tbody></table>'+
-      '<section class="invoice-paper-summary"><div><span>Subtotal</span><strong>'+invoiceCurrencyAmount(invoice.subtotalUsd,currency,rate)+'</strong></div>'+
-      (Number(invoice.discountUsd)>0?'<div><span>Descuento</span><strong>− '+invoiceCurrencyAmount(invoice.discountUsd,currency,rate)+'</strong></div>':'')+
-      (Number(invoice.deliveryFeeUsd)>0?'<div><span>Entrega</span><strong>'+invoiceCurrencyAmount(invoice.deliveryFeeUsd,currency,rate)+'</strong></div>':'')+
-      '<div class="invoice-paper-total"><span>TOTAL</span><strong>'+invoiceCurrencyAmount(invoice.totalUsd,currency,rate)+'</strong></div>'+
-      '<div><span>'+(balance>0&&Number(invoice.paidUsd||0)>0?'Abono inicial recibido':'Pago recibido')+'</span><strong>'+invoiceCurrencyAmount(invoice.paidUsd||0,currency,rate)+'</strong></div><div><span>Saldo pendiente</span><strong>'+invoiceCurrencyAmount(balance,currency,rate)+'</strong></div></section>'+
+      '<section class="invoice-paper-summary"><div><span>Subtotal</span>'+invoiceUsdPrimary(invoice.subtotalUsd,rate)+'</div>'+
+      (Number(invoice.discountUsd)>0?'<div><span>Descuento</span><strong class="invoice-money-stack">− '+money(invoice.discountUsd)+'<small>− '+moneyInCurrency(roundMoney(invoice.discountUsd*rate),'NIO')+'</small></strong></div>':'')+
+      (Number(invoice.deliveryFeeUsd)>0?'<div><span>Entrega</span>'+invoiceUsdPrimary(invoice.deliveryFeeUsd,rate)+'</div>':'')+
+      '<div class="invoice-paper-total"><span>TOTAL USD</span>'+invoiceUsdPrimary(invoice.totalUsd,rate)+'</div>'+
+      '<div><span>'+(balance>0&&Number(invoice.paidUsd||0)>0?'Abono inicial recibido':'Pago recibido')+'</span>'+invoiceUsdPrimary(invoice.paidUsd||0,rate)+'</div>'+
+      (paymentOriginalAmount>0?'<div><span>Importe recibido en '+esc(paymentCurrency)+'</span><strong>'+moneyInCurrency(paymentOriginalAmount,paymentCurrency)+'</strong></div>':'')+
+      '<div><span>Saldo pendiente</span>'+invoiceUsdPrimary(balance,rate)+'</div></section>'+
       '<footer class="invoice-paper-footer"><div><strong>Método de pago:</strong> '+esc(invoice.paymentMethod||'Pendiente')+'</div><div>Tipo de cambio aplicado: '+rateLabel(rate)+'</div><p>Documento generado por JB PARFUMS ERP en modo DEMO. No es una factura fiscal autorizada.</p></footer></article>';
   }
   function showInvoicePreview(invoiceId){
@@ -761,9 +775,9 @@
         '<div class="full-field"><div class="invoice-cart-heading"><strong>Productos de la factura</strong><span id="invoice-item-count">0 artículos</span></div><div id="invoice-cart" class="invoice-cart"><div class="invoice-preview-empty">Busca y agrega uno o varios perfumes.</div></div></div>'+
         formField('Descuento (USD)','discountUsd','number',false,'min="0" step="0.01" value="0"')+
         formField('Cargo de entrega (USD)','deliveryFeeUsd','number',false,'min="0" step="0.01" value="0"')+
-        currencyField('NIO')+
+        selectField('Moneda de cobro','currency',currencyOptions('USD'),true)+
         selectField('Método de pago','paymentMethod','<option selected>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Pago móvil</option><option>Cheque</option><option>Pendiente / crédito</option><option>Otro</option>',true)+
-        formField('Importe recibido (moneda de factura)','amountReceived','number',false,'min="0" step="0.01" value="0"')+
+        formField('Importe recibido (moneda de cobro)','amountReceived','number',false,'min="0" step="0.01" value="0"')+
         '<p class="form-helper full-field">En una venta directa, el sistema propone cobrar el total automáticamente. Si recibes solo una parte, cambia el importe para registrar el abono inicial; el resto quedará como saldo pendiente. Para una venta a crédito, selecciona «Pendiente / crédito».</p>'+ '<p class="form-helper full-field">Para clientes de negocio se utilizará el precio mayorista del producto cuando esté configurado; de lo contrario se conserva el precio normal. La factura guarda una copia del precio aplicado.</p>'+
         '<section class="invoice-preview full-field" id="invoice-preview" aria-live="polite"><div class="invoice-preview-empty">Agrega perfumes para calcular la factura.</div></section>'+
         '<p class="form-helper full-field">Comprobante interno DEMO, no fiscal. La factura se guardará en este navegador y actualizará el inventario una sola vez.</p></div>';
@@ -865,7 +879,7 @@
       const phone=source==='web'?(order?.phone||get('customerPhone')):get('customerPhone');
       const received=num('amountReceived');
       if(!Number.isFinite(received)||received<0){toast('El importe recibido no puede ser negativo.');return;}
-      const totalOriginal=currency==='NIO'?roundMoney(totals.totalUsd*rate):totals.totalUsd;
+      const totalOriginal=totals.totalUsd;
       const paidUsd=toUsd(received,currency);
       if(paidUsd>totals.totalUsd+0.001){toast('El importe recibido supera el total de la factura.');return;}
       const nextNumber=Math.max(0,...invoices.map(f=>Number(String(f.id||'').match(/(\d+)$/)?.[1]||0)))+1;
@@ -874,7 +888,7 @@
         id:invoiceId,orderId:source==='web'?order.id:'',source,customer:customerName,customerType,phone:phone||'',
         items:totals.items.map(item=>({productId:item.productId,name:item.name,sku:item.sku||'',barcode:item.barcode||'',quantity:item.quantity,unitPriceUsd:item.unitPriceUsd,lineTotalUsd:item.lineTotalUsd})),
         subtotalUsd:totals.subtotalUsd,discountUsd:totals.discountUsd,deliveryFeeUsd:totals.deliveryFeeUsd,
-        currency,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:totalOriginal,paidUsd,payments:[],
+        currency:'USD',paymentCurrency:currency,paymentOriginalAmount:received,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:totalOriginal,paidUsd,payments:[],
         paymentMethod:get('paymentMethod')||'Pendiente',status:paidUsd>=totals.totalUsd-0.001?'Pagado':(paidUsd>0?'Abono parcial':'Pendiente'),
         createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO',taxIncluded:false,inventoryAppliedAt:null
       };
@@ -940,7 +954,7 @@
     const rows=invoices.map(f=>{
       const paid=Number(f.paidUsd||0),balance=Math.max(0,Number(f.totalUsd||0)-paid);
       const origin=f.source==='web'?'Página web':(f.source==='manual'?'Venta manual':'Tienda física');
-      return '<tr><td data-label="Factura / origen" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Fecha">'+dateText(f.createdAt)+'</td><td data-label="Total">'+moneyInCurrency(f.originalAmount,f.currency)+'<small class="table-secondary">'+money(f.totalUsd)+' USD · '+rateLabel(f.exchangeRate)+'</small></td><td data-label="Pago recibido / saldo">'+money(paid)+' recibido <small class="table-secondary">'+money(balance)+' saldo pendiente</small></td><td data-label="Estado"><span class="status-chip '+(balance===0?'status-success':'status-pending')+'">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="view-invoice" data-id="'+esc(f.id)+'">Ver / imprimir</button>'+(balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Abonar</button>':'')+'</td></tr>';
+      return '<tr><td data-label="Factura / origen" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Fecha">'+dateText(f.createdAt)+'</td><td data-label="Total">'+money(f.totalUsd)+'<small class="table-secondary">'+moneyInCurrency(roundMoney(Number(f.totalUsd||0)*Number(f.exchangeRate||exchangeRate)),'NIO')+' · '+rateLabel(f.exchangeRate)+'</small></td><td data-label="Pago recibido / saldo">'+money(paid)+' recibido <small class="table-secondary">'+money(balance)+' saldo pendiente</small></td><td data-label="Estado"><span class="status-chip '+(balance===0?'status-success':'status-pending')+'">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="view-invoice" data-id="'+esc(f.id)+'">Ver / imprimir</button>'+(balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Abonar</button>':'')+'</td></tr>';
     }).join('');
     return heading(views.billing,'<button class="button button-primary" data-action="new-invoice">'+svg('plus')+' Nueva factura</button>')+
       '<div class="summary-strip"><div class="summary-mini"><span>Facturas DEMO</span><strong>'+invoices.length+'</strong></div><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(invoices.reduce((s,f)=>s+Math.max(0,f.totalUsd-Number(f.paidUsd||0)),0))+'</strong></div><div class="summary-mini"><span>Venta facturada USD</span><strong>'+money(invoices.reduce((s,f)=>s+f.totalUsd,0))+'</strong></div></div>'+
