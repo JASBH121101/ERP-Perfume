@@ -3,7 +3,7 @@
 ERP web application for JB PARFUMS.
 
 ## Current phase
-UI foundation and quality automation. All business records currently shown in the interface are demo data.
+UI foundation and initial backend integration. Operational modules remain DEMO except for protected employee list/create in the isolated Preview/Development environment.
 
 ## Currency policy
 
@@ -15,8 +15,8 @@ UI foundation and quality automation. All business records currently shown in th
 ## Architecture
 - Frontend: HTML, CSS and vanilla JavaScript.
 - Hosting/runtime: Cloudflare Pages + Workers.
-- Database: Neon PostgreSQL (not connected yet).
-- Assets: private Cloudflare R2 bucket (not connected yet).
+- Database: Neon PostgreSQL (development schema prepared; Preview connection secret pending).
+- Assets: private Cloudflare R2 bucket (Preview binding prepared; upload workflows pending).
 - CI and test automation: GitHub Actions.
 - Browser automation: Playwright with Chromium.
 - Optional AI repair: OpenAI Responses API, disabled by default.
@@ -54,13 +54,13 @@ The feature branch adds browser-local workflows for customers, orders, suppliers
 
 ## Backend integration status (development only)
 
-The backend foundation is being introduced on the `feat/neon-cloudflare-backend` branch and the Neon `development` branch. The production Pages environment and Neon production branch are not enabled by this work.
+The backend foundation is being introduced on the `feat/neon-cloudflare-backend-final` branch and the Neon `development` branch. The production Pages environment and Neon production branch are not enabled by this work.
 
 - Cloudflare Pages Functions provide server-side API routes.
 - Neon PostgreSQL stores operational records; `DATABASE_URL` remains a Cloudflare Preview secret and is never shipped to the browser.
 - Neon Managed Auth validates sessions. The HR API currently allows `owner`, `admin`, and `hr` roles.
 - RR. HH. remains visible in the navigation. Employee and salary records are protected and use NIO.
-- The private R2 bucket is bound to Pages Preview as `ASSETS`; product/document upload workflows are not wired yet.
+- The private R2 bucket is bound to Pages Preview as `ERP_ASSETS`; product/document upload workflows are not wired yet.
 - Without all required preview variables, the app stays in local DEMO mode.
 
 See [Backend setup](docs/backend-setup.md) for the preview-only setup and promotion checklist.
