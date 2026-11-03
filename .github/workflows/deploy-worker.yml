@@ -58,11 +58,24 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Normalize Cloudflare token for CI
+        if: steps.cloudflare-secret.outputs.skip != 'true'
+        env:
+          RAW_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          token="$(printf '%s' "$RAW_CLOUDFLARE_API_TOKEN" | tr -d '\r\n')"
+          if [ -z "$token" ] || [[ "$token" =~ [[:space:]] ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is empty or contains unsupported whitespace. Re-copy the token in Cloudflare and replace the GitHub Actions secret."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
+
       - name: Deploy Worker to Cloudflare
         if: steps.cloudflare-secret.outputs.skip != 'true'
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ddfbc84938d4d2795dd70d524b4197c9
           wranglerVersion: "4"
           workingDirectory: worker
