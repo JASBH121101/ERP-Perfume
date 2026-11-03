@@ -1,5 +1,4 @@
 // Production deployment is gated through GitHub Actions from main.
-// Retry deployment after rotating the scoped Cloudflare CI token.
 import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
@@ -75,7 +74,11 @@ async function requireUser(request, env, allowedRoles = []) {
     const verified = await jwtVerify(
       authorization.slice(7),
       getJwks(env.NEON_AUTH_JWKS_URL),
-      { issuer: env.NEON_AUTH_BASE_URL, algorithms: ["EdDSA"] }
+      {
+        issuer: new URL(env.NEON_AUTH_BASE_URL).origin,
+        audience: new URL(env.NEON_AUTH_BASE_URL).origin,
+        algorithms: ["EdDSA"]
+      }
     );
     identity = verified.payload;
   } catch {
