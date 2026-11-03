@@ -314,7 +314,7 @@
     }).join('');
     return heading(views.products, '<button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Productos activos</span><strong>' + activeCount + '</strong></div><div class="summary-mini"><span>Desactivados</span><strong>' + inactiveCount + '</strong></div><div class="summary-mini"><span>Requieren reposición</span><strong>' + products.filter(function (product) { return product.active !== false && needsRestock(product); }).length + '</strong></div></div>' +
-      '<div class="toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="product-status-filter" aria-label="Estado del producto"><option value="active"' + (state.productStatus === 'active' ? ' selected' : '') + '>Activos</option><option value="inactive"' + (state.productStatus === 'inactive' ? ' selected' : '') + '>Desactivados</option><option value="all"' + (state.productStatus === 'all' ? ' selected' : '') + '>Todos</option></select><select class="filter-select" id="category-filter" aria-label="Filtrar por categoría"><option value="all"' + (state.category === 'all' ? ' selected' : '') + '>Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
+      '<div class="toolbar products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="product-status-filter" aria-label="Estado del producto"><option value="active"' + (state.productStatus === 'active' ? ' selected' : '') + '>Activos</option><option value="inactive"' + (state.productStatus === 'inactive' ? ' selected' : '') + '>Desactivados</option><option value="all"' + (state.productStatus === 'all' ? ' selected' : '') + '>Todos</option></select><select class="filter-select" id="category-filter" aria-label="Filtrar por categoría"><option value="all"' + (state.category === 'all' ? ' selected' : '') + '>Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO / COSTO</th><th>EXISTENCIAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody id="product-table-body">' + productTable(filteredProducts()) + '</tbody></table></div></article>' +
       '<div class="notice-panel"><span>' + svg('spark') + '</span><div><strong>Catálogo de demostración con guardado local</strong><p>Los productos se guardan en este navegador y permanecen después de recargar. Todavía no se sincronizan con Neon ni contienen datos reales del negocio. El stock se modifica únicamente desde Existencias.</p></div></div>';
   }
@@ -538,25 +538,6 @@
     const item=lookupItems(input.dataset.lookup).find(entry=>String(entry.value)===String(value));
     if(item)chooseLookupOption(input.closest('[data-search-field]'),item.value,item.label);
   }
-  function invoiceOrderTotals(order){
-    const source=Array.isArray(order&&order.items)?order.items:[];
-    if(!source.length)return {error:'Este pedido no contiene un detalle de productos; no se puede generar el comprobante.'};
-    const items=[];
-    for(const item of source){
-      const quantity=Number(item.quantity),unitPriceUsd=Number(item.unitPrice);
-      if(!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitPriceUsd)||unitPriceUsd<0)return {error:'El pedido contiene cantidades o precios inválidos.'};
-      items.push({productId:item.productId==null?null:item.productId,name:String(item.name||'Producto sin nombre'),sku:String(item.sku||''),quantity,unitPriceUsd:roundMoney(unitPriceUsd),lineTotalUsd:roundMoney(quantity*unitPriceUsd)});
-    }
-    const subtotalUsd=roundMoney(items.reduce((sum,item)=>sum+item.lineTotalUsd,0));
-    const discountUsd=roundMoney(Number(order.discount||0)),deliveryFeeUsd=roundMoney(Number(order.deliveryFee||0));
-    if(discountUsd<0||deliveryFeeUsd<0||discountUsd>subtotalUsd)return {error:'El descuento o el cargo de entrega del pedido no es válido.'};
-    const totalUsd=roundMoney(subtotalUsd-discountUsd+deliveryFeeUsd);
-    if(totalUsd<=0)return {error:'El total del comprobante debe ser mayor que cero.'};
-    return {items,subtotalUsd,discountUsd,deliveryFeeUsd,totalUsd};
-  }
-  function invoiceCurrencyAmount(amountUsd,currency,rate){
-    return moneyInCurrency(currency==='NIO'?roundMoney(amountUsd*rate):amountUsd,currency);
-  }
   function invoiceUsdPrimary(amountUsd,rate){
     return '<strong class="invoice-money-stack">'+money(amountUsd)+'<small>'+moneyInCurrency(roundMoney(Number(amountUsd||0)*Number(rate||exchangeRate)),'NIO')+'</small></strong>';
   }
@@ -623,7 +604,9 @@
     set('customerPhone',order.phone||'');
     set('customerType',order.customerType||'particular');
     set('currency',order.paymentCurrency==='NIO'?'NIO':'USD');
-    set('paymentMethod',order.paymentMethod||'Pendiente / crédito');
+    const invoicePaymentMethods=['Efectivo','Transferencia','Tarjeta','Pago móvil','Cheque','Efectivo contra entrega','Pendiente / crédito','Otro'];
+    const orderPaymentMethod=String(order.paymentMethod||'');
+    set('paymentMethod',invoicePaymentMethods.includes(orderPaymentMethod)?orderPaymentMethod:'Pendiente / crédito');
     set('discountUsd',Number(order.discount||0));
     set('deliveryFeeUsd',Number(order.deliveryFee||0));
     invoiceDraftItems=(Array.isArray(order.items)?order.items:[]).map(item=>{
@@ -776,7 +759,7 @@
         formField('Descuento (USD)','discountUsd','number',false,'min="0" step="0.01" value="0"')+
         formField('Cargo de entrega (USD)','deliveryFeeUsd','number',false,'min="0" step="0.01" value="0"')+
         selectField('Moneda de cobro','currency',currencyOptions('USD'),true)+
-        selectField('Método de pago','paymentMethod','<option selected>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Pago móvil</option><option>Cheque</option><option>Pendiente / crédito</option><option>Otro</option>',true)+
+        selectField('Método de pago','paymentMethod','<option selected>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Pago móvil</option><option>Cheque</option><option>Efectivo contra entrega</option><option>Pendiente / crédito</option><option>Otro</option>',true)+
         formField('Importe recibido (moneda de cobro)','amountReceived','number',false,'min="0" step="0.01" value="0"')+
         '<p class="form-helper full-field">En una venta directa, el sistema propone cobrar el total automáticamente. Si recibes solo una parte, cambia el importe para registrar el abono inicial; el resto quedará como saldo pendiente. Para una venta a crédito, selecciona «Pendiente / crédito».</p>'+ '<p class="form-helper full-field">Para clientes de negocio se utilizará el precio mayorista del producto cuando esté configurado; de lo contrario se conserva el precio normal. La factura guarda una copia del precio aplicado.</p>'+
         '<section class="invoice-preview full-field" id="invoice-preview" aria-live="polite"><div class="invoice-preview-empty">Agrega perfumes para calcular la factura.</div></section>'+

@@ -88,5 +88,8 @@ To run the same checks on a developer machine that already has Node.js 22+, Pyth
 - Sidebar integration state labels without simulated progress meters.
 - Escaping of user-entered product names.
 - Static HTML IDs, navigation, local assets, CSS structure and JavaScript syntax hooks.
+- Dependency-free advisory scan for obviously unreferenced named functions, application cache APIs and delegated document event-handler counts. Heuristic findings require human review; they are not auto-deleted.
+- The current UI prototype has no Service Worker, Cache API or IndexedDB layer. localStorage is DEMO persistence, not a cache; HTTP caching is managed by the browser/hosting layer.
+- The OpenAI repair stage remains disabled by default. Deterministic checks do not make LLM requests.
 
 The tests use demo data only. They do not connect to Neon or R2. The end-to-end suite must be run separately; adding test definitions does not mean they have passed.

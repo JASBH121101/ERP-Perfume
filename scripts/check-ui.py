@@ -3,6 +3,7 @@
 
 from html.parser import HTMLParser
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +49,44 @@ class UIParser(HTMLParser):
 def fail(message):
     print("FAIL:", message)
     return 1
+
+
+
+def report_hygiene(js, html):
+    """Advisory source scan; reports candidates without changing or rejecting code."""
+    combined = js + "\n" + html
+    declarations = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(", js)
+    candidates = sorted({
+        name for name in declarations
+        if len(re.findall(r"\b" + re.escape(name) + r"\b", combined)) == 1
+    })
+    if candidates:
+        print("REVIEW: possible unreferenced functions (heuristic only): " + ", ".join(candidates))
+    else:
+        print("PASS: no obvious unreferenced named functions.")
+
+    cache_features = {
+        "Service Worker": r"navigator\.serviceWorker",
+        "Cache API": r"\bcaches\.",
+        "IndexedDB": r"\bindexedDB\b",
+        "HTTP cache directives": r"Cache-Control|ETag|Last-Modified",
+    }
+    detected = [label for label, pattern in cache_features.items() if re.search(pattern, js + html, re.I)]
+    if detected:
+        print("INFO: app-level cache integrations found: " + ", ".join(detected))
+    else:
+        print("INFO: no Service Worker, Cache API or IndexedDB integration in app code.")
+    if "localStorage" in js:
+        print("INFO: localStorage is used for DEMO persistence; it is not an application cache.")
+
+    delegated = {
+        event: len(re.findall(r"document\.addEventListener\(\s*['\"]" + event + r"['\"]", js))
+        for event in ("click", "input", "change", "keydown")
+    }
+    active = [event + "=" + str(count) for event, count in delegated.items() if count]
+    if active:
+        print("INFO: document-delegated event handlers: " + ", ".join(active))
+        print("INFO: listener counts are advisory; distinct delegated handlers are not assumed to conflict.")
 
 
 def main():
@@ -101,6 +140,7 @@ def main():
         if marker not in js:
             return fail("Expected UI hook was not found: " + marker)
 
+    report_hygiene(js, html)
     print("PASS: required files, IDs, navigation, local assets, CSS and UI hooks.")
     return 0
 

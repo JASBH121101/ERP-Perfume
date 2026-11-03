@@ -474,6 +474,7 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await dialog.locator('select[name="currency"]').selectOption('NIO');
  await expect(dialog.locator('#invoice-preview')).toContainText('C$');
  await expect(dialog.locator('#invoice-preview')).toContainText('36.60');
+ await expect(dialog.locator('[name="paymentMethod"]')).toHaveValue('Pendiente / crédito');
  await dialog.getByRole('button',{name:'Generar factura'}).click();
  await page.locator('#invoice-preview-dialog').getByRole('button',{name:'Cerrar'}).click();
  await navigateToView(page, 'billing');
@@ -749,7 +750,7 @@ test('in-store invoice creates the customer, updates stock once and opens a prin
   await modal.getByRole('button', { name: 'Agregar producto' }).click();
   await modal.getByLabel('Cantidad de Yara Lattafa').fill('2');
   await modal.locator('select[name="currency"]').selectOption('NIO');
-  await modal.getByLabel('Importe recibido (moneda de factura)').fill('3700.26');
+  await modal.getByLabel('Importe recibido (moneda de cobro)').fill('3700.26');
   await modal.getByRole('button', { name: 'Generar factura' }).click();
 
   const preview = page.locator('#invoice-preview-dialog');
@@ -780,6 +781,7 @@ test('web order invoice links the order and does not apply stock twice', async (
   await orderSearch.fill('JP-1047');
   await modal.locator('[data-lookup-select]').filter({ hasText: 'JP-1047' }).click();
   await expect(modal.getByLabel('Nombre del cliente')).toHaveValue('Carlos Mendoza');
+  await expect(modal.locator('[name="paymentMethod"]')).toHaveValue('Efectivo contra entrega');
   await expect(modal.locator('#invoice-cart')).toContainText('Khamrah Lattafa');
   await modal.getByRole('button', { name: 'Generar factura' }).click();
 
@@ -931,6 +933,7 @@ test('invoice keeps USD as the primary sale currency when collection is changed 
   const currency = dialog.locator('select[name="currency"]');
   const preview = dialog.locator('#invoice-preview');
   await expect(currency).toHaveValue('USD');
+  await dialog.locator('[name="customerName"]').fill('Cliente QA USD');
   await dialog.locator('[data-lookup="product"]').fill('JBP-001');
   await dialog.getByRole('option', { name: /Club de Nuit Intense Man/ }).click();
   await dialog.getByRole('button', { name: 'Agregar producto' }).click();
