@@ -13,17 +13,20 @@ This guide describes the integration branch. It does not authorize a production 
 
 ## Preview-only Cloudflare variables
 
-In Cloudflare Dashboard → Workers & Pages → `erp-perfume` → Settings → Variables and Secrets → Preview, add:
+The non-secret preview values are already preconfigured in Cloudflare for the `feat/neon-cloudflare-backend-final` preview:
+
+- `NEON_AUTH_BASE_URL`
+- `NEON_AUTH_JWKS_URL`
+- `BOOTSTRAP_OWNER_EMAIL`
+- `ERP_ENVIRONMENT=development`
+
+The private database connection string must be entered by the project owner directly in Cloudflare. Go to Cloudflare Dashboard → Workers & Pages → `erp-perfume` → Settings → Variables and Secrets → Preview, then add:
 
 | Name | Type | Value |
 |---|---|---|
-| `DATABASE_URL` | Secret | The connection URI for the Neon `development` branch and restricted `jb_erp_app` role |
-| `NEON_AUTH_BASE_URL` | Plain text | `https://ep-lingering-field-bethkduo.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth` |
-| `NEON_AUTH_JWKS_URL` | Plain text | `https://ep-lingering-field-bethkduo.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth/.well-known/jwks.json` |
-| `BOOTSTRAP_OWNER_EMAIL` | Plain text | The ERP owner's verified email address |
-| `ERP_ENVIRONMENT` | Plain text | `development` |
+| `DATABASE_URL` | Secret | Connection URI for Neon `development`, database `erp_perfume`, restricted role `jb_erp_app` |
 
-Never add these variables to Production until the migration, permissions, backups, and data workflows have been reviewed and the owner explicitly approves the cutover.
+Do not paste this secret into GitHub, source files, pull-request comments, or chat. Never add it to Production at this stage.
 
 ## Neon Auth checklist
 
