@@ -1,6 +1,21 @@
 name: ERP quality gate
 
 on:
+  push:
+    branches:
+      - 'feat/**'
+    paths:
+      - 'index.html'
+      - 'assets/**'
+      - 'functions/**'
+      - 'db/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'playwright.config.mjs'
+      - 'jb-expert-qa.config.json'
+      - '.github/workflows/**'
   pull_request:
     branches:
       - main
