@@ -748,7 +748,8 @@ test('in-store invoice creates the customer, updates stock once and opens a prin
   await modal.locator('[data-lookup-select]').filter({ hasText: 'Yara Lattafa' }).click();
   await modal.getByRole('button', { name: 'Agregar producto' }).click();
   await modal.getByLabel('Cantidad de Yara Lattafa').fill('2');
-  await modal.getByLabel('Importe recibido (moneda de factura)').fill('3700');
+  await modal.locator('select[name="currency"]').selectOption('NIO');
+  await modal.getByLabel('Importe recibido (moneda de factura)').fill('3700.26');
   await modal.getByRole('button', { name: 'Generar factura' }).click();
 
   const preview = page.locator('#invoice-preview-dialog');
@@ -884,6 +885,7 @@ test('customer receivables track an initial payment, partial abono and final set
   await dialog.locator('[data-lookup="product"]').fill('JBP-002');
   await dialog.getByRole('option', { name: /Yara Lattafa/ }).click();
   await dialog.getByRole('button', { name: 'Agregar producto' }).click();
+  await dialog.locator('select[name="currency"]').selectOption('USD');
   await dialog.locator('input[name="amountReceived"]').fill('10');
   await dialog.getByRole('button', { name: 'Generar factura' }).click();
 
