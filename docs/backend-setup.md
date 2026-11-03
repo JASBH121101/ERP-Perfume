@@ -9,7 +9,7 @@ This guide describes the integration branch. It does not authorize a production 
 - Database: Neon PostgreSQL database `erp_perfume`, development branch only.
 - Identity: Neon Managed Better Auth on the same development branch.
 - Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to Pages Preview as `ASSETS`.
-- Database access: the restricted `jb_erp_app` role. Do not use the database owner URL from application code.
+- Database access: `jb_erp_runtime_sql`, a dedicated SQL-created login with `NOINHERIT`, no administrative capabilities, and column-level grants only for the current authentication and HR API. Do not use a database-owner URL or a Neon-managed superuser role from application code.
 
 ## Preview-only Cloudflare variables
 
@@ -20,11 +20,23 @@ The non-secret preview values are already preconfigured in Cloudflare for the `f
 - `BOOTSTRAP_OWNER_EMAIL`
 - `ERP_ENVIRONMENT=development`
 
-The private database connection string must be entered by the project owner directly in Cloudflare. Go to Cloudflare Dashboard → Workers & Pages → `erp-perfume` → Settings → Variables and Secrets → Preview, then add:
+The private database connection string must be entered by the project owner directly in Cloudflare.
+The SQL role `jb_erp_runtime_sql` has already been created on the Neon `development` branch and granted only the columns required by the current HR API. It deliberately has no password set yet. In Neon SQL Editor (make sure the selected branch is `development`), set a strong password directly:
+
+```sql
+ALTER ROLE jb_erp_runtime_sql PASSWORD '<generate-a-strong-password-here>';
+```
+
+Then build the URI below and enter it only in the Cloudflare Preview secret field. Do not put the password in this repository or a pull-request comment:
+
+```text
+postgresql://jb_erp_runtime_sql:<PASSWORD>@ep-lingering-field-bethkduo-pooler.c-9.us-east-2.aws.neon.tech/erp_perfume?sslmode=require
+```
+ Go to Cloudflare Dashboard → Workers & Pages → `erp-perfume` → Settings → Variables and Secrets → Preview, then add:
 
 | Name | Type | Value |
 |---|---|---|
-| `DATABASE_URL` | Secret | Connection URI for Neon `development`, database `erp_perfume`, restricted role `jb_erp_app` |
+| `DATABASE_URL` | Secret | Connection URI for Neon `development`, database `erp_perfume`, role `jb_erp_runtime_sql` |
 
 Do not paste this secret into GitHub, source files, pull-request comments, or chat. Never add it to Production at this stage.
 
