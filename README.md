@@ -50,3 +50,17 @@ Products and inventory support browser-local DEMO persistence (localStorage), pr
 ## Operational DEMO modules
 
 The feature branch adds browser-local workflows for customers, orders, suppliers, purchases, expenses, cash/bank movements, internal non-fiscal vouchers, abonos and employee records. Internal voucher previews are built from the linked order and show customer/contact, item names, quantities, unit prices, subtotal, discount, delivery, total, selected currency and the exchange rate used. Saved vouchers keep their line-item and currency snapshots. Purchase receipts update demo stock. Business transactions preserve original currency, USD equivalent and exchange rate used. USD is the reporting base; payroll is NIO-only. The exchange rate is editable in Settings and defaults to C$36.60 per US$1. All records remain local to the browser and are not synchronized.
+
+
+## Backend integration status (development only)
+
+The backend foundation is being introduced on the `feat/neon-cloudflare-backend` branch and the Neon `development` branch. The production Pages environment and Neon production branch are not enabled by this work.
+
+- Cloudflare Pages Functions provide server-side API routes.
+- Neon PostgreSQL stores operational records; `DATABASE_URL` remains a Cloudflare Preview secret and is never shipped to the browser.
+- Neon Managed Auth validates sessions. The HR API currently allows `owner`, `admin`, and `hr` roles.
+- RR. HH. remains visible in the navigation. Employee and salary records are protected and use NIO.
+- The private R2 bucket is bound to Pages Preview as `ASSETS`; product/document upload workflows are not wired yet.
+- Without all required preview variables, the app stays in local DEMO mode.
+
+See [Backend setup](docs/backend-setup.md) for the preview-only setup and promotion checklist.
