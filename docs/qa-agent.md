@@ -14,7 +14,7 @@ The agent receives only:
 
 It does not receive screenshots, images, video, audio, customer records, employee records, database contents, storage objects, environment files or secrets other than its own API key.
 
-The supervised UI-repair agent cannot call Neon, Cloudflare, R2, Supabase, public websites, external tools or shell commands. The separate deterministic dependency-audit step may call only the fixed OSV.dev advisory API when `advisories.enabled` is true; it sends npm package names and exact versions only, never source files, secrets or customer data. It does not install packages or execute lifecycle scripts.
+The supervised UI-repair agent cannot call Neon, Cloudflare, R2, Supabase, public websites, external tools or shell commands. The separate deterministic dependency-audit step may call only the fixed OSV.dev advisory API when `advisories.enabled` is true; it sends npm package names and exact versions only, never source files, secrets or customer data. The visual browser pass runs the checked-out ERP UI in Chromium against a temporary loopback server and enforces same-origin-only requests; external API, analytics, storage and production-service origins are blocked.
 
 ## Automatic repair boundary
 
@@ -96,21 +96,25 @@ The tests use demo data only. They do not connect to Neon or R2. The end-to-end 
 
 ## JB Expert QA integration
 
-The ERP pull-request workflow also runs the private **JB Expert QA 0.4.0** project auditor.
+The ERP pull-request workflow runs **JB Expert QA 0.6.0** in two complementary stages: static source audit and isolated browser/visual audit.
 
 - GitHub Actions reads the private `JASBH121101/JB-Expert-QA` repository using the repository secret `JBQA_REPO_READ_TOKEN`.
-- The token must be a fine-grained PAT restricted to that single repository with `Contents: read-only`. It is used only by the secondary checkout step and is never written to the workspace or report.
+- The token is a fine-grained PAT restricted to that repository with `Contents: read-only`. It is never written to the workspace or any report.
+- The engine is pinned to commit `51f0abd17290d48f5f9ad1c2a4c27c96514286b6` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
 - The ERP keeps its own `jb-expert-qa.config.json` policy: profile `jb-parfums-erp`, minimum score **90/100**, and a security weight of **45%**. The workflow passes this file to the auditor; other projects continue using the shared general profile unless they supply their own.
-- CI requires the exact `jb-parfums-erp` profile and blocks on a score below its configured minimum (at least 90/100), critical findings, rule errors, or incomplete scans.
-- The engine is pinned to commit `7452320d4fe61bf5e5574899513b1f7e6704af8d` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
-- The job runs the local static project auditor on a clean archive of the exact ERP pull-request revision. The engine itself is kept outside that scan snapshot.
-- This integration does **not** install ERP dependencies, execute ERP code, call Gemini, Cloudflare Workers AI, OpenAI, Neon, R2, or Supabase, and does not connect to production data.
-- The scanner skips environment files and credential material without opening their contents. The report records file paths and findings, not copied source contents or secret values.
-- JSON and Markdown reports are uploaded as a GitHub Actions artifact for seven days.
-- During initial calibration, the gate blocks incomplete scans, critical findings, and QA rule execution errors. A score below the engine's advisory threshold is reported but does not yet block CI; the current ERP baseline must be reviewed before enabling score-based blocking.
-- The integration runs for pull requests originating from this repository. Pull requests from forks skip the job because GitHub does not expose repository secrets to fork workflows.
+- The static audit examines a clean archive of the exact ERP pull-request revision. It does not execute code, install ERP packages, or connect to the database.
+- The optional OSV.dev step sends only exact npm package names and versions. The ERP has no root npm lockfile, so current advisory coverage is partial and does not include transitive dependencies.
+- The visual job installs only the pinned JB Expert QA browser dependencies with lifecycle scripts disabled, then launches Chromium against a temporary loopback server. That server exposes only `index.html` and `assets/**` from the pull-request checkout.
+- The visual audit checks mobile (390×844), tablet (768×1024), and desktop (1365×900), runs axe-core locally, measures overlap between visible interactive controls, and captures screenshots for each viewport.
+- The visual browser uses `sameOriginOnly: true`: any HTTP(S) or WebSocket request to an origin other than the temporary local preview is blocked and recorded. It cannot reach Neon, Cloudflare R2, external APIs, analytics, or production services.
+- CI requires the exact `jb-parfums-erp` static profile and blocks on a score below 90/100, critical findings, rule errors, incomplete scans, or high-severity visual findings where a control is measurably obscured by another element.
+- Static JSON/Markdown reports and visual JSON/HTML/Markdown reports plus viewport screenshots are uploaded as GitHub Actions artifacts for seven days.
+- The visual pass does execute the ERP's browser-side HTML/CSS/JavaScript in Chromium, but only with demo/local state and no production credentials or external-origin access. It does not repair files, push commits, merge PRs, or deploy.
+- The integration runs for pull requests originating from this repository. Pull requests from forks skip the private-repository checkout because GitHub does not expose repository secrets to fork workflows.
 
-The existing Playwright/static validation job remains independent. JB Expert QA supplements it; it does not replace browser tests or certify live database state.
+The visual overlap detector is evidence-based rather than a subjective design judge. It excludes ancestor/descendant pairs (such as an icon inside its own button), records the intersection area and which control receives hit tests, and flags high-severity cases where a visible control is blocked. Hidden menus, modals and authenticated workflows are not opened automatically; those states still require dedicated tests.
+
+The existing Playwright end-to-end suite remains independent. JB Expert QA supplements it; it does not replace the ERP's functional tests or certify live database state.
 
 ## Supply-chain advisory lookup
 
