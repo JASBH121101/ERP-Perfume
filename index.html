@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171511">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="shortcut icon" href="assets/favicon.svg">
   <meta name="description" content="JB PARFUMS ERP — administración y control comercial.">
   <meta name="jb-api-base-url" content="https://jb-parfums-erp-api.jaredblancoh19.workers.dev">
   <title>JB PARFUMS — ERP</title>
@@ -13,7 +16,7 @@
   <link rel="stylesheet" href="assets/css/styles.css">
   <script type="module" src="assets/js/bootstrap.mjs"></script>
 </head>
-<body>
+<body class="auth-pending">
   <div class="app-shell">
     <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
       <a class="brand" href="#" aria-label="JB PARFUMS inicio" data-view-link="dashboard">
@@ -250,7 +253,8 @@
         <div><span class="eyebrow">JB PARFUMS · ACCESO SEGURO</span><h2 id="auth-title">Acceso al ERP</h2></div>
         <button type="button" class="icon-button modal-close" id="auth-close" aria-label="Cerrar">×</button>
       </div>
-      <p class="modal-note">La cuenta se valida con Neon Auth. Los datos operativos nunca se conectan directamente desde el navegador a PostgreSQL.</p>
+      <p class="modal-note auth-gate-note">Iniciá sesión o crea tu cuenta para continuar. El resumen, los pedidos, el inventario y los módulos de administración permanecerán ocultos hasta validar tu perfil.</p>
+      <p class="modal-note">La identidad se valida con Neon Auth. El backend comprueba tu sesión y tus permisos antes de permitir el acceso al ERP.</p>
       <div class="auth-mode-switch" id="auth-mode-switch" role="group" aria-label="Tipo de acceso">
         <button type="button" class="active" id="auth-mode-signin">Iniciar sesión</button>
         <button type="button" id="auth-mode-signup">Crear cuenta</button>
@@ -267,6 +271,6 @@
     </form>
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
-  <noscript><div class="noscript-message">Activa JavaScript para utilizar el panel de demostración.</div></noscript>
+  <noscript><div class="noscript-message">Activa JavaScript para iniciar sesión de forma segura en JB PARFUMS ERP.</div></noscript>
 </body>
 </html>
