@@ -266,3 +266,61 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 .search-option strong{color:#514b40;font-size:11px;font-weight:650}
 .search-option small{color:#9b9284;font-size:9px;font-weight:450}
 .search-empty{margin:0;padding:11px;color:#9b9284;font-size:10px}
+
+
+/* Mobile inventory: convert wide data tables into readable stacked records. */
+@media(max-width:720px){
+  .inventory-stock-panel,.ledger-panel{min-width:0;overflow:hidden}
+  .inventory-stock-table,.inventory-ledger-table{
+    display:block;width:100%;min-width:0;table-layout:fixed;border-collapse:separate;border-spacing:0;white-space:normal
+  }
+  .inventory-stock-table thead,.inventory-ledger-table thead{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0,0,0,0);white-space:nowrap;border:0
+  }
+  .inventory-stock-table tbody,.inventory-ledger-table tbody{display:grid;gap:10px;width:100%}
+  .inventory-stock-table tbody tr,.inventory-ledger-table tbody tr{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;
+    min-width:0;padding:13px;border:1px solid #eee7dc;border-radius:10px;background:#fffdf9
+  }
+  .inventory-stock-table tbody td,.inventory-ledger-table tbody td{
+    display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:5px;
+    padding:0;border:0;white-space:normal;overflow-wrap:anywhere;line-height:1.4
+  }
+  .inventory-stock-table tbody td::before,.inventory-ledger-table tbody td::before{
+    display:block;content:attr(data-label);color:#a49a89;font-size:9px;font-weight:700;
+    letter-spacing:.45px;text-transform:uppercase
+  }
+  .inventory-stock-table tbody td:first-child{grid-column:1/-1;padding-bottom:9px;border-bottom:1px solid #f0ebe3}
+  .inventory-stock-table .product-cell{width:100%;min-width:0;align-items:center}
+  .inventory-stock-table .product-cell>span{min-width:0;overflow-wrap:anywhere}
+  .inventory-stock-table tbody td:last-child{grid-column:1/-1;padding-top:2px}
+  .inventory-stock-table tbody td:last-child .button{width:100%;min-height:42px}
+  .inventory-ledger-table tbody td:last-child{grid-column:1/-1;padding-top:9px;border-top:1px solid #f0ebe3}
+  .inventory-stock-table tbody td[colspan],.inventory-ledger-table tbody td[colspan]{grid-column:1/-1;display:block;text-align:center}
+  .inventory-stock-table tbody td[colspan]::before,.inventory-ledger-table tbody td[colspan]::before{content:none}
+  .inventory-stock-table .table-secondary,.inventory-ledger-table .table-secondary{white-space:normal;overflow-wrap:anywhere}
+}
+
+/* Mobile dialogs stay inside the visual viewport, even when an earlier table was scrolled. */
+@media(max-width:720px){
+  dialog.modal.product-modal[open]{
+    position:fixed;top:50%;left:12px;right:12px;bottom:auto;transform:translateY(-50%);
+    width:auto;max-width:none;max-height:calc(100dvh - 24px);height:auto;margin:0;
+    box-sizing:border-box;overscroll-behavior:contain
+  }
+  .product-modal-card{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+  .product-modal .modal-heading,.product-modal .product-form-section,
+  .product-modal .form-grid,.product-modal .form-field{min-width:0}
+  .product-modal .form-field input,.product-modal .form-field select,
+  .product-modal .form-field textarea{max-width:100%;min-width:0}
+  .product-modal .modal-actions{width:auto;max-width:none}
+  .product-modal .modal-actions .button{min-width:0}
+  .product-modal .modal-actions .button-primary{overflow-wrap:anywhere}
+}
+@media(max-width:420px){
+  dialog.modal.product-modal[open]{left:8px;right:8px;max-height:calc(100dvh - 16px)}
+  .product-modal-card{padding:16px 12px 12px}
+  .product-modal .modal-actions{margin:0 -12px;padding:11px 12px 10px;grid-template-columns:.8fr 1.2fr;gap:8px}
+  .product-modal .modal-actions .button{padding-inline:8px;font-size:10px}
+}
