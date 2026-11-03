@@ -525,3 +525,88 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
   .auth-control { padding-inline: 9px; font-size: 11px; }
   .topbar-actions .demo-pill { display: none; }
 }
+
+
+/* Secure entry: never reveal ERP modules until the backend validates a profile. */
+body.auth-pending,
+body.auth-locked {
+  min-height: 100vh;
+  overflow: hidden;
+  background: #f7f3eb;
+}
+body.auth-pending .app-shell,
+body.auth-locked .app-shell {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.auth-gate-note {
+  border-left-color: #9b7846;
+  color: #443a2c;
+  background: #f6efe2;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.auth-modal .modal-note:not(.auth-gate-note) {
+  color: #625849;
+  background: #f8f4ed;
+}
+.auth-feedback.is-error {
+  color: #9b3f35;
+  font-weight: 600;
+}
+#auth-close[hidden] {
+  display: none !important;
+}
+.auth-modal .modal-actions .button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+/* Improve contrast for the connected environment indicator on the light header. */
+.demo-pill.connected {
+  color: #285e47;
+  border-color: #a9cdb7;
+  background: #e8f3eb;
+}
+.demo-pill.connected i {
+  background: #287b52;
+  box-shadow: 0 0 0 3px rgba(40, 123, 82, .14);
+}
+
+/* Subtle brand watermark on invoice preview and print output. */
+.invoice-paper {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.invoice-paper::before {
+  position: absolute;
+  z-index: 0;
+  top: 48%;
+  left: 50%;
+  width: 140%;
+  content: "JB PARFUMS";
+  transform: translate(-50%, -50%) rotate(-31deg);
+  color: #b89a68;
+  opacity: .105;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: clamp(42px, 8vw, 94px);
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+.invoice-paper > * {
+  position: relative;
+  z-index: 1;
+}
+@media print {
+  .invoice-paper::before {
+    opacity: .09;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
