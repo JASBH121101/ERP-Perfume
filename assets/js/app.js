@@ -840,15 +840,17 @@
       }else{
         const stockResult=recordInvoiceInventory(invoice);
         if(stockResult.error){toast(stockResult.error);return;}
-        const existingCustomer=customers.find(item=>String(item.name||'').trim().toLocaleLowerCase('es')===customerName.toLocaleLowerCase('es'));
-        if(existingCustomer){
-          existingCustomer.customerType=customerType;
-          if(phone)existingCustomer.contact=phone;
+      }
+      const existingCustomer=customers.find(item=>String(item.name||'').trim().toLocaleLowerCase('es')===customerName.toLocaleLowerCase('es'));
+      if(existingCustomer){
+        existingCustomer.customerType=customerType;
+        if(phone)existingCustomer.contact=phone;
+        if(source==='store'){
           existingCustomer.orders=Number(existingCustomer.orders||0)+1;
           existingCustomer.spent=roundMoney(Number(existingCustomer.spent||0)+totals.totalUsd);
-        }else{
-          customers.unshift({name:customerName,contact:phone||'',customerType,orders:1,spent:totals.totalUsd,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
         }
+      }else{
+        customers.unshift({name:customerName,contact:phone||'',customerType,orders:1,spent:totals.totalUsd,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
       }
       if(paidUsd>0){
         const account=(invoice.paymentMethod==='Transferencia'?'Banco ':'Caja ')+currency;
