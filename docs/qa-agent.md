@@ -93,3 +93,20 @@ To run the same checks on a developer machine that already has Node.js 22+, Pyth
 - The OpenAI repair stage remains disabled by default. Deterministic checks do not make LLM requests.
 
 The tests use demo data only. They do not connect to Neon or R2. The end-to-end suite must be run separately; adding test definitions does not mean they have passed.
+
+## JB Expert QA integration
+
+The ERP pull-request workflow also runs the private **JB Expert QA 0.4.0** project auditor.
+
+- GitHub Actions reads the private `JASBH121101/JB-Expert-QA` repository using the repository secret `JBQA_REPO_READ_TOKEN`.
+- The token must be a fine-grained PAT restricted to that single repository with `Contents: read-only`. It is used only by the secondary checkout step and is never written to the workspace or report.
+- The engine is pinned to commit `2833c195d658461564abee0a8c8fb615777a9658` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
+- The job runs the local static project auditor on a clean archive of the exact ERP pull-request revision. The engine itself is kept outside that scan snapshot.
+- This integration does **not** install ERP dependencies, execute ERP code, call Gemini, Cloudflare Workers AI, OpenAI, Neon, R2, or Supabase, and does not connect to production data.
+- The scanner skips environment files and credential material without opening their contents. The report records file paths and findings, not copied source contents or secret values.
+- JSON and Markdown reports are uploaded as a GitHub Actions artifact for seven days.
+- During initial calibration, the gate blocks incomplete scans, critical findings, and QA rule execution errors. A score below the engine's advisory threshold is reported but does not yet block CI; the current ERP baseline must be reviewed before enabling score-based blocking.
+- The integration runs for pull requests originating from this repository. Pull requests from forks skip the job because GitHub does not expose repository secrets to fork workflows.
+
+The existing Playwright/static validation job remains independent. JB Expert QA supplements it; it does not replace browser tests or certify live database state.
+
