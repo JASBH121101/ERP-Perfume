@@ -159,3 +159,124 @@ jobs:
           - Full static and browser test suite passed again after the patch.
 
           Human review is required. This PR is not merged automatically."
+
+  jb-expert-qa:
+    name: JB Expert QA — deterministic source audit
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact ERP pull request revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Verify private QA repository token is configured
+        env:
+          JBQA_REPO_READ_TOKEN: ${{ secrets.JBQA_REPO_READ_TOKEN }}
+        run: |
+          if [ -z "$JBQA_REPO_READ_TOKEN" ]; then
+            echo "::error::Missing JBQA_REPO_READ_TOKEN. Add the fine-grained read-only token to ERP-Perfume Actions secrets."
+            exit 1
+          fi
+
+      - name: Checkout pinned JB Expert QA engine
+        uses: actions/checkout@v4
+        with:
+          repository: JASBH121101/JB-Expert-QA
+          ref: 2833c195d658461564abee0a8c8fb615777a9658
+          token: ${{ secrets.JBQA_REPO_READ_TOKEN }}
+          path: .jb-expert-qa
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Create clean ERP source snapshot
+        run: |
+          mkdir -p "$RUNNER_TEMP/erp-project"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/erp-project"
+
+      - name: Run JB Expert QA local static audit
+        id: jbqa-audit
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/jb-expert-qa-report"
+          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --format=json \
+            --output="$RUNNER_TEMP/jb-expert-qa-report/report.json"
+          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --format=markdown \
+            --output="$RUNNER_TEMP/jb-expert-qa-report/report.md"
+
+      - name: Upload JB Expert QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jb-expert-qa-report
+          path: ${{ runner.temp }}/jb-expert-qa-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Enforce critical findings and scan completeness
+        if: always()
+        env:
+          REPORT_PATH: ${{ runner.temp }}/jb-expert-qa-report/report.json
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          let report;
+          try {
+            report = JSON.parse(readFileSync(process.env.REPORT_PATH, "utf8"));
+          } catch {
+            console.error("JB Expert QA did not produce a readable JSON report.");
+            process.exit(1);
+          }
+
+          const critical = (report.diagnostics ?? []).filter((item) => item.severity === "critical");
+          const ruleErrors = (report.execution ?? []).filter((item) => item.status !== "passed");
+          const complete = report.analysisScope?.complete === true;
+          const score = report.scoring?.score;
+          const minimum = report.scoring?.minimumScore;
+
+          console.log("JB Expert QA version:", report.version ?? "unknown");
+          console.log("Files analyzed:", report.analysisScope?.filesAnalyzed ?? 0);
+          console.log("Findings:", report.summary?.findings ?? 0);
+          console.log("Score:", score ?? "not calculated", "/", minimum ?? "n/a");
+          console.log("Critical findings:", critical.length);
+          console.log("Rule execution errors:", ruleErrors.length);
+          console.log("Scan complete:", complete);
+
+          await import("node:fs").then(({ appendFileSync }) => {
+            const lines = [
+              "### JB Expert QA",
+              "",
+              `- Engine: ${report.version ?? "unknown"}`,
+              `- Files analyzed: ${report.analysisScope?.filesAnalyzed ?? 0}`,
+              `- Findings: ${report.summary?.findings ?? 0}`,
+              `- Score: ${score ?? "n/a"}/${minimum ?? "n/a"}`,
+              `- Critical findings: ${critical.length}`,
+              `- Scan complete: ${complete ? "yes" : "no"}`,
+              ""
+            ].join("\n");
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines);
+          });
+
+          if (!complete || critical.length > 0 || ruleErrors.length > 0) {
+            console.error("JB Expert QA blocked this check: incomplete scan, critical finding, or rule execution error.");
+            process.exit(1);
+          }
+
+          if (report.scoring?.passed !== true) {
+            console.warn("Score is below the configured threshold. This is advisory during initial baseline calibration; critical findings and incomplete scans remain blocking.");
+          }
+
+          console.log("JB Expert QA gate passed.");
+          NODE
