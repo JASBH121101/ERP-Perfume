@@ -12,12 +12,16 @@ echo "Python: $(python3 --version)"
 echo
 echo "=== JavaScript syntax ==="
 node --check assets/js/app.js
+node --check assets/js/bootstrap.mjs
 node --check playwright.config.mjs
 node --check scripts/ai-repair.mjs
 node --check scripts/validate-ai-patch.mjs
 bash -n scripts/run-validation.sh
 
 echo
+echo "=== Build Cloudflare Pages output ==="
+npm run build
+
 echo "=== Static structure and asset checks ==="
 python3 scripts/check-ui.py
 
