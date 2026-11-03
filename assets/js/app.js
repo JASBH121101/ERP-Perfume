@@ -927,7 +927,7 @@
         try{
           const token=await window.JBAuth.getToken();
           if(!token)throw new Error('La sesión expiró. Inicia sesión nuevamente.');
-          const response=await fetch('/api/hr/employees',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({name:get('name'),position:get('position'),department:get('department'),salaryNio:salary})});
+          const response=await fetch(window.JBAuth.apiUrl ? window.JBAuth.apiUrl('/api/hr/employees') : '/api/hr/employees',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({name:get('name'),position:get('position'),department:get('department'),salaryNio:salary})});
           const result=await response.json().catch(()=>({}));
           if(!response.ok)throw new Error(result?.error?.message||'No se pudo guardar el colaborador en Neon.');
           const employee=result.employee;
@@ -985,7 +985,7 @@
     try{
       const token=await auth.getToken();
       if(!token)throw new Error('La sesión expiró. Inicia sesión nuevamente.');
-      const response=await fetch('/api/hr/employees',{headers:{authorization:'Bearer '+token},cache:'no-store'});
+      const response=await fetch(window.JBAuth.apiUrl ? window.JBAuth.apiUrl('/api/hr/employees') : '/api/hr/employees',{headers:{authorization:'Bearer '+token},cache:'no-store'});
       const body=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(body?.error?.message||'No se pudieron cargar los colaboradores.');
       employees=(Array.isArray(body.employees)?body.employees:[]).map(e=>({
