@@ -66,7 +66,8 @@ function updateAuthControls() {
   const button = $("#auth-control");
   const pill = $("#connection-pill");
   if (pill) {
-    pill.innerHTML = "<i></i> " + (authClient ? "NEON · DESARROLLO" : "MODO DEMO");
+    const indicator = pill.querySelector("i") || document.createElement("i");
+    pill.replaceChildren(indicator, document.createTextNode(" " + (authClient ? "NEON · DESARROLLO" : "MODO DEMO")));
     pill.classList.toggle("connected", Boolean(authClient));
   }
   if (button) {
