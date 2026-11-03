@@ -96,23 +96,23 @@ The tests use demo data only. They do not connect to Neon or R2. The end-to-end 
 
 ## JB Expert QA integration
 
-The ERP pull-request workflow runs **JB Expert QA 0.6.0** in two complementary stages: static source audit and isolated browser/visual audit.
+The ERP pull-request workflow runs **JB Expert QA 0.7.0** in two complementary stages: static source audit and isolated browser/visual audit.
 
 - GitHub Actions reads the private `JASBH121101/JB-Expert-QA` repository using the repository secret `JBQA_REPO_READ_TOKEN`.
 - The token is a fine-grained PAT restricted to that repository with `Contents: read-only`. It is never written to the workspace or any report.
-- The engine is pinned to commit `51f0abd17290d48f5f9ad1c2a4c27c96514286b6` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
+- The engine is pinned to commit `7d7787278496cd9191eaba527522a1c70fe51f42` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
 - The ERP keeps its own `jb-expert-qa.config.json` policy: profile `jb-parfums-erp`, minimum score **90/100**, and a security weight of **45%**. The workflow passes this file to the auditor; other projects continue using the shared general profile unless they supply their own.
 - The static audit examines a clean archive of the exact ERP pull-request revision. It does not execute code, install ERP packages, or connect to the database.
 - The optional OSV.dev step sends only exact npm package names and versions. The ERP has no root npm lockfile, so current advisory coverage is partial and does not include transitive dependencies.
 - The visual job installs only the pinned JB Expert QA browser dependencies with lifecycle scripts disabled, then launches Chromium against a temporary loopback server. That server exposes only `index.html` and `assets/**` from the pull-request checkout.
-- The visual audit checks mobile (390×844), tablet (768×1024), and desktop (1365×900), runs axe-core locally, measures overlap between visible interactive controls, and captures screenshots for each viewport.
+- The visual audit checks mobile (390×844), tablet (768×1024), and desktop (1365×900), runs axe-core locally, measures overlap between visible interactive controls, explores up to 12 safe interactive states per viewport, and captures screenshots for each viewport.
 - The visual browser uses `sameOriginOnly: true`: any HTTP(S) or WebSocket request to an origin other than the temporary local preview is blocked and recorded. It cannot reach Neon, Cloudflare R2, external APIs, analytics, or production services.
 - CI requires the exact `jb-parfums-erp` static profile and blocks on a score below 90/100, critical findings, rule errors, incomplete scans, or high-severity visual findings where a control is measurably obscured by another element.
 - Static JSON/Markdown reports and visual JSON/HTML/Markdown reports plus viewport screenshots are uploaded as GitHub Actions artifacts for seven days.
 - The visual pass does execute the ERP's browser-side HTML/CSS/JavaScript in Chromium, but only with demo/local state and no production credentials or external-origin access. It does not repair files, push commits, merge PRs, or deploy.
 - The integration runs for pull requests originating from this repository. Pull requests from forks skip the private-repository checkout because GitHub does not expose repository secrets to fork workflows.
 
-The visual overlap detector is evidence-based rather than a subjective design judge. It excludes ancestor/descendant pairs (such as an icon inside its own button), records the intersection area and which control receives hit tests, and flags high-severity cases where a visible control is blocked. Hidden menus, modals and authenticated workflows are not opened automatically; those states still require dedicated tests.
+The visual overlap detector is evidence-based rather than a subjective design judge. It excludes ancestor/descendant pairs (such as an icon inside its own button), records the intersection area and which control receives hit tests, and flags high-severity cases where a visible control is blocked. Interactive-state exploration opens controls with recognizable disclosure semantics or toggle intent (for example, collapsed aria-expanded controls, hidden aria-controls targets, tabs, details/summary disclosures, and named menu/sidebar toggles). It skips links, form submission controls and labels suggesting destructive or transactional actions. Each candidate is tested from a fresh local page load; the report identifies the state and trigger selector. This does not automatically authenticate, submit forms, or explore arbitrary controls without an identifiable toggle signal.
 
 The existing Playwright end-to-end suite remains independent. JB Expert QA supplements it; it does not replace the ERP's functional tests or certify live database state.
 
