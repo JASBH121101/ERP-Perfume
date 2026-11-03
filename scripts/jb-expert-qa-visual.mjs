@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { extname, relative, resolve, sep } from "node:path";
 import { auditViewports } from "../.jb-expert-qa/src/adapters/playwright/audit-url.js";
 import { formatReport } from "../.jb-expert-qa/src/reporters/index.js";
 
-const root = resolve(process.cwd());
+const root = await realpath(process.cwd());
 const outputDir = resolve(root, ".ai-output/jb-expert-qa-visual");
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -54,8 +54,12 @@ const server = createServer(async (request, response) => {
 
   try {
     const fileStats = await lstat(filePath);
-    if (fileStats.isSymbolicLink() || !fileStats.isFile()) throw new Error("Not a regular file");
-    const content = await readFile(filePath);
+    const actualPath = await realpath(filePath);
+    const actualRelative = relative(root, actualPath);
+    if (fileStats.isSymbolicLink() || !fileStats.isFile() || actualRelative === ".." || actualRelative.startsWith(".." + sep)) {
+      throw new Error("Not an allowed regular file");
+    }
+    const content = await readFile(actualPath);
     response.writeHead(200, {
       "content-type": contentTypes[extname(filePath).toLowerCase()] || "application/octet-stream",
       "content-length": content.length,
@@ -113,6 +117,11 @@ try {
     sameOriginOnly: true
   });
 
+  const allOverlaps = report.viewports.flatMap((viewport) =>
+    (viewport.findings ?? [])
+      .filter((item) => item.id?.startsWith("UIUX-004-"))
+      .map((item) => ({ viewport: viewport.name, finding: item }))
+  );
   const highOverlaps = report.viewports.flatMap((viewport) =>
     (viewport.findings ?? [])
       .filter((item) => item.id?.startsWith("UIUX-004-") && item.severity === "high")
@@ -127,7 +136,7 @@ try {
   console.log("Engine:", report.version);
   console.log("Viewports:", report.summary.viewportsChecked);
   console.log("Passed viewports:", report.summary.passedViewports);
-  console.log("Interactive collisions:", report.summary.totalFindings);
+  console.log("Interactive collisions:", allOverlaps.length);
   console.log("High-severity blocked controls:", highOverlaps.length);
   console.log("Same-origin-only:", true);
 
