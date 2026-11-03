@@ -207,7 +207,11 @@ async function initialize() {
   }
 
   try {
-    authClient = createAuthClient(config.authBaseUrl);
+    authClient = createAuthClient(config.authBaseUrl, {
+      // Pages and Neon Auth are on different origins. Include the managed
+      // Better Auth session cookie so token() can return the user's JWT.
+      fetchOptions: { credentials: "include" }
+    });
     await refreshProfile();
   } catch (error) {
     console.error("[auth] Initialization failed:", error?.message || "unknown error");
