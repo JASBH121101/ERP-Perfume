@@ -864,3 +864,49 @@ test('supplier purchases support initial payments, partial balances and final se
   expect(saved.cashEntries.filter(item => item.sourceType === 'purchase' && item.sourceId === String(purchase.id)).reduce((sum,item)=>sum+item.amountUsd,0)).toBe(10);
   expect(saved.products.find(product => product.sku === 'JBP-002').stock).toBe(stockBeforeSettlement);
 });
+
+
+test('customer receivables track an initial payment, partial abono and final settlement', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="billing"]').click();
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('input[name="customerName"]').fill('Cliente CXC QA');
+  await dialog.locator('[data-lookup="product"]').fill('JBP-002');
+  await dialog.getByRole('option', { name: /Yara Lattafa/ }).click();
+  await dialog.getByRole('button', { name: 'Agregar producto' }).click();
+  await dialog.locator('input[name="amountReceived"]').fill('10');
+  await dialog.getByRole('button', { name: 'Generar factura' }).click();
+
+  await page.locator('#invoice-preview-dialog').getByRole('button', { name: 'Cerrar' }).click();
+  await page.locator('#sidebar button[data-view="receivables"]').click();
+  const row = page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' });
+  await expect(row).toContainText('Abono parcial');
+  await expect(row).toContainText('1 abono(s)');
+  const stockAfterInvoice = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')).products.find(p=>p.sku==='JBP-002').stock;
+
+  await row.getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('10');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+
+  await expect(page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' })).toContainText('Abono parcial');
+  await expect(page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' })).toContainText('2 abono(s)');
+  const afterPartial = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')).products.find(p=>p.sku==='JBP-002').stock;
+  expect(afterPartial).toBe(stockAfterInvoice);
+
+  await page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' }).getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('30.55');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+
+  await expect(page.locator('#view-root')).toContainText('No hay cuentas pendientes de cobro.');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const invoice = saved.invoices.find(item => item.customer === 'Cliente CXC QA');
+  expect(invoice.status).toBe('Pagado');
+  expect(invoice.payments).toHaveLength(3);
+  expect(saved.cashEntries.filter(item => item.sourceType === 'invoice' && item.sourceId === invoice.id)).toHaveLength(3);
+  expect(saved.products.find(p=>p.sku==='JBP-002').stock).toBe(stockAfterInvoice);
+});

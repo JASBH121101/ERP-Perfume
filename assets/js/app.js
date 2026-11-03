@@ -75,7 +75,8 @@
     inventory: { title: 'Inventario', eyebrow: 'CONTROL DE EXISTENCIAS', heading: 'Inventario', subtitle: 'Consulta los niveles de stock y detecta reposiciones.' },
     orders: { title: 'Pedidos', eyebrow: 'OPERACIONES', heading: 'Pedidos y ventas', subtitle: 'Da seguimiento al estado de cada pedido.' },
     customers: { title: 'Clientes', eyebrow: 'RELACIONES', heading: 'Cartera de clientes', subtitle: 'Mantén organizada la información comercial.' },
-    billing: { title: 'Facturación', eyebrow: 'DOCUMENTOS COMERCIALES', heading: 'Facturación', subtitle: 'Consulta comprobantes, borradores y cuentas por cobrar.' },
+    billing: { title: 'Facturación', eyebrow: 'DOCUMENTOS COMERCIALES', heading: 'Facturación', subtitle: 'Registra ventas presenciales y pedidos web en un mismo lugar.' },
+    receivables: { title: 'Cuentas por cobrar', eyebrow: 'FINANZAS', heading: 'Cuentas por cobrar', subtitle: 'Da seguimiento a saldos y abonos de clientes.' },
     hr: { title: 'RRHH', eyebrow: 'GESTIÓN DEL PERSONAL', heading: 'Recursos Humanos', subtitle: 'Organiza personal, asistencia, permisos y nómina.' },
     analytics: { title: 'Informes', eyebrow: 'RENDIMIENTO', heading: 'Informes y análisis', subtitle: 'Indicadores preparados para tomar decisiones.' },
     settings: { title: 'Configuración', eyebrow: 'SISTEMA', heading: 'Configuración', subtitle: 'Preferencias y conexiones de JB PARFUMS ERP.' },
@@ -812,7 +813,9 @@
         const amountUsd=toUsd(amount,currency),balance=roundMoney(invoice.totalUsd-Number(invoice.paidUsd||0));
         if(amountUsd>balance+0.001){toast('El abono supera el saldo pendiente.');return;}
         invoice.paidUsd=roundMoney(Number(invoice.paidUsd||0)+amountUsd);invoice.status=invoice.paidUsd>=invoice.totalUsd-0.001?'Pagado':'Abono parcial';
-        cashEntries.unshift({id,direction:'income',concept:'Abono '+invoice.id,currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,createdAt:new Date().toISOString()});
+        invoice.payments=Array.isArray(invoice.payments)?invoice.payments:[];
+        invoice.payments.push({amount,currency,exchangeRate:rate,amountUsd,account,createdAt:new Date().toISOString()});
+        cashEntries.unshift({id,direction:'income',concept:'Abono '+invoice.id,currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,sourceType:'invoice',sourceId:String(invoice.id),createdAt:new Date().toISOString()});
       }else if(type==='purchase-payment'){
         const purchase=purchases.find(p=>String(p.id)===String(businessForm.dataset.recordId));if(!purchase){toast('No se encontró la compra seleccionada.');return;}
         const amountUsd=toUsd(amount,currency),balance=roundMoney(Number(purchase.totalUsd||0)-Number(purchase.paidUsd||0));
@@ -846,7 +849,7 @@
         id:invoiceId,orderId:source==='web'?order.id:'',source,customer:customerName,customerType,phone:phone||'',
         items:totals.items.map(item=>({productId:item.productId,name:item.name,sku:item.sku||'',barcode:item.barcode||'',quantity:item.quantity,unitPriceUsd:item.unitPriceUsd,lineTotalUsd:item.lineTotalUsd})),
         subtotalUsd:totals.subtotalUsd,discountUsd:totals.discountUsd,deliveryFeeUsd:totals.deliveryFeeUsd,
-        currency,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:totalOriginal,paidUsd,
+        currency,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:totalOriginal,paidUsd,payments:[],
         paymentMethod:get('paymentMethod')||'Pendiente',status:paidUsd>=totals.totalUsd-0.001?'Pagado':(paidUsd>0?'Abono parcial':'Pendiente'),
         createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO',taxIncluded:false,inventoryAppliedAt:null
       };
@@ -886,6 +889,7 @@
       }
       if(paidUsd>0){
         const account=(invoice.paymentMethod==='Transferencia'?'Banco ':'Caja ')+currency;
+        invoice.payments.push({amount:received,currency,exchangeRate:rate,amountUsd:paidUsd,account,createdAt:new Date().toISOString()});
         cashEntries.unshift({id:Date.now(),direction:'income',concept:'Cobro inicial '+invoice.id,currency,originalAmount:received,exchangeRate:rate,amountUsd:paidUsd,account,paymentMethod:invoice.paymentMethod,createdAt:new Date().toISOString()});
       }
       invoices.unshift(invoice);
@@ -917,6 +921,21 @@
       '<div class="summary-strip"><div class="summary-mini"><span>Facturas DEMO</span><strong>'+invoices.length+'</strong></div><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(invoices.reduce((s,f)=>s+Math.max(0,f.totalUsd-Number(f.paidUsd||0)),0))+'</strong></div><div class="summary-mini"><span>Venta facturada USD</span><strong>'+money(invoices.reduce((s,f)=>s+f.totalUsd,0))+'</strong></div></div>'+
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FACTURA / ORIGEN</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ABONOS</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Todavía no hay facturas DEMO.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Comprobantes internos DEMO, no fiscales</strong><p>La vista previa permite imprimir en formato A4. No tiene autorización tributaria ni sustituye una factura fiscal.</p></div></div>';
+  }
+  function renderReceivables(){
+    const open=invoices.filter(f=>Number(f.totalUsd||0)-Number(f.paidUsd||0)>0.001);
+    const total=open.reduce((sum,f)=>sum+Math.max(0,Number(f.totalUsd||0)-Number(f.paidUsd||0)),0);
+    const clients=new Set(open.map(f=>String(f.customer||'').trim().toLocaleLowerCase('es'))).size;
+    const rows=open.map(f=>{
+      const balance=Math.max(0,Number(f.totalUsd||0)-Number(f.paidUsd||0));
+      const origin=f.source==='web'?'Página web':'Tienda física';
+      const paymentCount=Array.isArray(f.payments)?f.payments.length:(Number(f.paidUsd||0)>0?1:0);
+      return '<tr><td data-label="Factura / fecha" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+dateText(f.createdAt)+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Origen">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</td><td data-label="Total">'+money(Number(f.totalUsd||0))+'</td><td data-label="Abonado">'+money(Number(f.paidUsd||0))+'<small class="table-secondary">'+paymentCount+' abono(s)</small></td><td data-label="Saldo"><strong>'+money(balance)+'</strong></td><td data-label="Estado"><span class="status-chip status-pending">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Registrar abono</button></td></tr>';
+    }).join('');
+    return heading(views.receivables,'<button class="button button-quiet" data-view="billing">Ver facturas</button>')+
+      '<div class="summary-strip"><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Clientes con saldo</span><strong>'+clients+'</strong></div><div class="summary-mini"><span>Facturas pendientes</span><strong>'+open.length+'</strong></div></div>'+
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FACTURA / FECHA</th><th>CLIENTE</th><th>ORIGEN</th><th>TOTAL USD</th><th>ABONADO</th><th>SALDO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">No hay cuentas pendientes de cobro.</td></tr>')+'</tbody></table></div></article>'+
+      '<div class="notice-panel">'+svg('warning')+'<div><strong>Cuentas por cobrar DEMO</strong><p>Los saldos se calculan sobre comprobantes internos locales. Cada abono conserva importe, moneda, tasa y cuenta de ingreso; no representa una transacción bancaria real.</p></div></div>';
   }
   function renderHR(){
     const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip status-success">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
@@ -982,6 +1001,7 @@
       orders: renderOrders,
       customers: renderCustomers,
       billing: renderBilling,
+      receivables: renderReceivables,
       hr: renderHR,
       analytics: renderAnalytics,
       settings: renderSettings,
