@@ -507,10 +507,57 @@
     const input=field.querySelector('[data-lookup]'),hidden=field.querySelector('input[type="hidden"]');
     if(!input||!hidden)return;
     input.value=label;hidden.value=value;input.setCustomValidity('');closeLookupResults(field);
+    if(input.dataset.lookup==='order'&&businessForm.dataset.recordType==='invoice')updateInvoicePreview();
   }
   function selectLookupValue(input,value){
     const item=lookupItems(input.dataset.lookup).find(entry=>String(entry.value)===String(value));
     if(item)chooseLookupOption(input.closest('[data-search-field]'),item.value,item.label);
+  }
+  function invoiceOrderTotals(order){
+    const source=Array.isArray(order&&order.items)?order.items:[];
+    if(!source.length)return {error:'Este pedido no contiene un detalle de productos; no se puede generar el comprobante.'};
+    const items=[];
+    for(const item of source){
+      const quantity=Number(item.quantity),unitPriceUsd=Number(item.unitPrice);
+      if(!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitPriceUsd)||unitPriceUsd<0)return {error:'El pedido contiene cantidades o precios inválidos.'};
+      items.push({productId:item.productId==null?null:item.productId,name:String(item.name||'Producto sin nombre'),sku:String(item.sku||''),quantity,unitPriceUsd:roundMoney(unitPriceUsd),lineTotalUsd:roundMoney(quantity*unitPriceUsd)});
+    }
+    const subtotalUsd=roundMoney(items.reduce((sum,item)=>sum+item.lineTotalUsd,0));
+    const discountUsd=roundMoney(Number(order.discount||0)),deliveryFeeUsd=roundMoney(Number(order.deliveryFee||0));
+    if(discountUsd<0||deliveryFeeUsd<0||discountUsd>subtotalUsd)return {error:'El descuento o el cargo de entrega del pedido no es válido.'};
+    const totalUsd=roundMoney(subtotalUsd-discountUsd+deliveryFeeUsd);
+    if(totalUsd<=0)return {error:'El total del comprobante debe ser mayor que cero.'};
+    return {items,subtotalUsd,discountUsd,deliveryFeeUsd,totalUsd};
+  }
+  function invoiceCurrencyAmount(amountUsd,currency,rate){
+    return moneyInCurrency(currency==='NIO'?roundMoney(amountUsd*rate):amountUsd,currency);
+  }
+  function updateInvoicePreview(){
+    if(businessForm.dataset.recordType!=='invoice')return;
+    const preview=businessForm.querySelector('#invoice-preview');
+    if(!preview)return;
+    const orderId=businessForm.querySelector('input[name="orderId"]')?.value||'';
+    const order=orders.find(item=>String(item.id)===String(orderId));
+    if(!order){preview.innerHTML='<div class="invoice-preview-empty">Busca y selecciona un pedido para cargar el cliente, los perfumes y los importes.</div>';return;}
+    const totals=invoiceOrderTotals(order);
+    if(totals.error){preview.innerHTML='<div class="invoice-preview-empty invoice-preview-error">'+esc(totals.error)+'</div>';return;}
+    const currency=businessForm.querySelector('[name="currency"]')?.value==='NIO'?'NIO':'USD',rate=exchangeRate;
+    const lineRows=totals.items.map(item=>
+      '<div class="invoice-preview-line"><div class="invoice-line-product"><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'Sin SKU')+'</small></div><span class="invoice-line-quantity">'+item.quantity+' uds.</span><div class="invoice-line-unit"><strong>'+invoiceCurrencyAmount(item.unitPriceUsd,currency,rate)+'</strong><small>'+money(item.unitPriceUsd)+' / unidad</small></div><div class="invoice-line-total"><strong>'+invoiceCurrencyAmount(item.lineTotalUsd,currency,rate)+'</strong><small>'+money(item.lineTotalUsd)+' base USD</small></div></div>'
+    ).join('');
+    const totalOriginal=currency==='NIO'?roundMoney(totals.totalUsd*rate):totals.totalUsd;
+    preview.innerHTML=
+      '<div class="invoice-preview-heading"><div><span class="invoice-kicker">RESUMEN DEL COMPROBANTE</span><strong>'+esc(order.id)+'</strong></div><span class="invoice-demo-chip">DEMO · NO FISCAL</span></div>'+
+      '<div class="invoice-preview-meta"><div><span>CLIENTE</span><strong>'+esc(order.customer||'Sin cliente')+'</strong></div><div><span>CONTACTO</span><strong>'+esc(order.phone||'No registrado')+'</strong></div><div><span>FECHA DEL PEDIDO</span><strong>'+esc(order.date||'—')+'</strong></div><div><span>ESTADO</span><strong>'+esc(order.status||'Pendiente')+'</strong></div></div>'+
+      '<div class="invoice-lines-heading"><span>PRODUCTO</span><span>CANT.</span><span>PRECIO</span><span>IMPORTE</span></div>'+
+      '<div class="invoice-preview-lines">'+lineRows+'</div>'+
+      '<div class="invoice-preview-totals"><div><span>Subtotal</span><strong>'+invoiceCurrencyAmount(totals.subtotalUsd,currency,rate)+'</strong></div>'+
+      (totals.discountUsd?'<div><span>Descuento</span><strong>− '+invoiceCurrencyAmount(totals.discountUsd,currency,rate)+'</strong></div>':'')+
+      (totals.deliveryFeeUsd?'<div><span>Entrega</span><strong>'+invoiceCurrencyAmount(totals.deliveryFeeUsd,currency,rate)+'</strong></div>':'')+
+      '<div class="invoice-grand-total"><span>Total a cobrar</span><strong>'+moneyInCurrency(totalOriginal,currency)+'</strong></div>'+
+      '<div class="invoice-total-reference"><span>Equivalente base</span><strong>'+money(totals.totalUsd)+' USD</strong></div></div>'+
+      '<div class="invoice-exchange-row"><span>Tipo de cambio aplicado</span><strong>'+rateLabel(rate)+'</strong></div>'+
+      '<p class="invoice-preview-note">El importe se calcula desde el pedido y la tasa actual. No incluye impuestos ni constituye una factura fiscal autorizada.</p>';
   }
   function openBusinessDialog(type,recordId){
     const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra',expense:'Registrar gasto',cash:'Registrar recibo o pago',invoice:'Crear comprobante interno',payment:'Registrar abono',employee:'Agregar colaborador'};
@@ -532,7 +579,7 @@
     if(type==='invoice'){
       const choices=orders.filter(o=>!invoices.some(f=>f.orderId===o.id));
       if(!choices.length){toast('No hay pedidos disponibles para crear un comprobante.');return;}
-      body='<div class="form-grid">'+searchableField('Pedido','orderId','order',true)+currencyField('USD')+'</div><p class="form-helper">Comprobante interno DEMO; no es factura fiscal ni comprobante autorizado.</p>';
+      body='<div class="form-grid">'+searchableField('Pedido','orderId','order',true)+currencyField('USD')+'</div><section class="invoice-preview" id="invoice-preview" aria-live="polite"><div class="invoice-preview-empty">Busca y selecciona un pedido para cargar el cliente, los perfumes y los importes.</div></section><p class="form-helper">Comprobante interno DEMO. La tasa se conserva al guardar; no incluye impuestos ni sustituye una factura fiscal autorizada.</p>';
     }
     if(type==='payment'){
       const invoice=invoices.find(f=>f.id===recordId);if(!invoice){toast('No se encontró el comprobante.');return;}
@@ -543,6 +590,7 @@
     document.getElementById('business-modal-title').textContent=titles[type]||'Nuevo registro';
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
     document.getElementById('business-save').textContent=type==='invoice'?'Crear comprobante demo':(type==='payment'?'Registrar abono':'Guardar en demo');
+    if(type==='invoice')updateInvoicePreview();
     if(typeof businessDialog.showModal==='function')businessDialog.showModal();
   }
   function saveBusinessRecord(event){
@@ -597,9 +645,18 @@
       }
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.');
     }else if(type==='invoice'){
-      const order=orders.find(o=>o.id===get('orderId'));if(!order||invoices.some(f=>f.orderId===order.id)){toast('Pedido no disponible o ya facturado.');return;}
-      invoices.unshift({id:'JBI-'+String(id).slice(-6),orderId:order.id,customer:order.customer,currency,exchangeRate:rate,totalUsd:order.amount,originalAmount:currency==='NIO'?roundMoney(order.amount*rate):order.amount,paidUsd:0,status:'Pendiente',createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO'});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Comprobante interno DEMO creado. No es una factura fiscal.');
+      const order=orders.find(o=>String(o.id)===get('orderId'));
+      if(!order||invoices.some(f=>f.orderId===order.id)){toast('Pedido no disponible o ya facturado.');return;}
+      const totals=invoiceOrderTotals(order);
+      if(totals.error){toast(totals.error);return;}
+      const originalAmount=currency==='NIO'?roundMoney(totals.totalUsd*rate):totals.totalUsd;
+      invoices.unshift({
+        id:'JBI-'+String(id).slice(-6),orderId:order.id,customer:order.customer,phone:order.phone||'',
+        items:totals.items,subtotalUsd:totals.subtotalUsd,discountUsd:totals.discountUsd,deliveryFeeUsd:totals.deliveryFeeUsd,
+        currency:currency,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:originalAmount,
+        paidUsd:0,status:'Pendiente',createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO',taxIncluded:false
+      });
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Comprobante interno DEMO creado con detalle e importe calculado.');
     }else if(type==='employee'){
       const salary=num('salaryNio');if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0){toast('Revisa los datos y el salario.');return;}
       employees.unshift({id,name:get('name'),position:get('position'),department:get('department'),salaryNio:salary,status:'Activo'});
@@ -960,9 +1017,11 @@
     stockForm.reset(); stockDialog.close(); renderView();
     toast(label+' registrada: '+product.name+' · '+(delta>0?'+':'')+delta+' unidades.');
   });
-  stockForm.elements.type.addEventListener('change',updateStockQuantityMode);  businessForm.addEventListener('submit',saveBusinessRecord);
+  stockForm.elements.type.addEventListener('change',updateStockQuantityMode);
+  businessForm.addEventListener('change',function(event){if(event.target.name==='currency'&&businessForm.dataset.recordType==='invoice')updateInvoicePreview();});
+  businessForm.addEventListener('submit',saveBusinessRecord);
   document.addEventListener('focusin',function(event){const input=event.target.closest('[data-lookup]');if(input)renderLookupResults(input);});
-  document.addEventListener('input',function(event){const input=event.target.closest('[data-lookup]');if(!input)return;const hidden=input.closest('[data-search-field]').querySelector('input[type="hidden"]');hidden.value='';input.setCustomValidity(input.value.trim()?'Selecciona un resultado de la lista.':'');renderLookupResults(input);});
+  document.addEventListener('input',function(event){const input=event.target.closest('[data-lookup]');if(!input)return;const hidden=input.closest('[data-search-field]').querySelector('input[type="hidden"]');hidden.value='';input.setCustomValidity(input.value.trim()?'Selecciona un resultado de la lista.':'');renderLookupResults(input);if(input.dataset.lookup==='order'&&businessForm.dataset.recordType==='invoice')updateInvoicePreview();});
   document.addEventListener('click',function(event){
     const option=event.target.closest('[data-lookup-select]');
     if(option){chooseLookupOption(option.closest('[data-search-field]'),option.dataset.value,option.dataset.label);return;}
