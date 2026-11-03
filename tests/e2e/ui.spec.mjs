@@ -602,6 +602,9 @@ test('saved internal invoice keeps line items, computed totals and the exchange 
   await expect(row).toContainText('Pagado');
   await expect(row).toContainText('C$');
   await expect(page.locator('#view-root')).toContainText('110.66');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(saved.invoices[0].currency).toBe('USD');
+  expect(saved.invoices[0].paymentCurrency).toBe('NIO');
 });
 
 test('confirming a pending order deducts stock once and returning it to pending restores stock', async ({ page }) => {
