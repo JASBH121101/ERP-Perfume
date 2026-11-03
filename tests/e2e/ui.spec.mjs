@@ -584,8 +584,60 @@ test('mobile product modal keeps the complete action footer visible while scroll
     const footer = element.querySelector('.modal-actions').getBoundingClientRect();
     const button = element.querySelector('#save-product').getBoundingClientRect();
     const box = element.getBoundingClientRect();
-    return { dialogBottom: box.bottom, footerBottom: footer.bottom, buttonHeight: button.height };
+    return { dialogBottom: box.bottom, dialogLeft: box.left, dialogRight: box.right, viewportWidth: window.innerWidth, footerBottom: footer.bottom, buttonHeight: button.height };
   });
+  expect(bounds.dialogLeft).toBeGreaterThanOrEqual(0);
+  expect(bounds.dialogRight).toBeLessThanOrEqual(bounds.viewportWidth);
   expect(bounds.footerBottom).toBeLessThanOrEqual(bounds.dialogBottom + 1);
   expect(bounds.buttonHeight).toBeGreaterThanOrEqual(44);
+});
+
+
+test('mobile inventory tables fit the viewport without horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="inventory"]').click();
+  const dimensions = await page.evaluate(() => {
+    const stock = document.querySelector('.inventory-stock-table');
+    const ledger = document.querySelector('.inventory-ledger-table');
+    return {
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+      stockClient: stock.clientWidth,
+      stockScroll: stock.scrollWidth,
+      ledgerClient: ledger.clientWidth,
+      ledgerScroll: ledger.scrollWidth,
+      stockRowDisplay: getComputedStyle(stock.querySelector('tbody tr')).display,
+      ledgerRowDisplay: getComputedStyle(ledger.querySelector('tbody tr')).display
+    };
+  });
+  expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport + 1);
+  expect(dimensions.stockScroll).toBeLessThanOrEqual(dimensions.stockClient + 1);
+  expect(dimensions.ledgerScroll).toBeLessThanOrEqual(dimensions.ledgerClient + 1);
+  expect(dimensions.stockRowDisplay).toBe('grid');
+  expect(dimensions.ledgerRowDisplay).toBe('grid');
+});
+
+test('editing a product on mobile keeps dialog and inputs within screen width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="products"]').click();
+  await page.getByRole('button', { name: 'Editar Club de Nuit Intense Man' }).click();
+  const dialog = page.locator('#product-dialog');
+  const metrics = await dialog.evaluate(element => {
+    const modal = element.getBoundingClientRect();
+    const input = element.querySelector('input[name="name"]').getBoundingClientRect();
+    const footer = element.querySelector('.modal-actions').getBoundingClientRect();
+    return {
+      viewport: window.innerWidth,
+      left: modal.left,
+      right: modal.right,
+      inputRight: input.right,
+      footerRight: footer.right
+    };
+  });
+  expect(metrics.left).toBeGreaterThanOrEqual(0);
+  expect(metrics.right).toBeLessThanOrEqual(metrics.viewport);
+  expect(metrics.inputRight).toBeLessThanOrEqual(metrics.viewport);
+  expect(metrics.footerRight).toBeLessThanOrEqual(metrics.viewport);
 });
