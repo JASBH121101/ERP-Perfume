@@ -8,7 +8,7 @@ export async function onRequestGet({ env }) {
 
   try {
     const sql = getDatabase(env);
-    const rows = await sql("SELECT 1::int AS ok");
+    const rows = await sql.query("SELECT 1::int AS ok");
     return json({
       ok: rows[0] && rows[0].ok === 1,
       services: {
