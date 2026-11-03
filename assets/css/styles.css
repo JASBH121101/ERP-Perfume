@@ -324,3 +324,46 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
   .product-modal .modal-actions{margin:0 -12px;padding:11px 12px 10px;grid-template-columns:.8fr 1.2fr;gap:8px}
   .product-modal .modal-actions .button{padding-inline:8px;font-size:10px}
 }
+
+
+/* Shared mobile cards for operational tables across all modules. */
+@media(max-width:720px){
+  .mobile-record-table{
+    display:block;width:100%;min-width:0;table-layout:fixed;border-collapse:separate;border-spacing:0;white-space:normal
+  }
+  .mobile-record-table thead{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0,0,0,0);white-space:nowrap;border:0
+  }
+  .mobile-record-table tbody{display:grid;gap:10px;width:100%}
+  .mobile-record-table tbody tr{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;
+    min-width:0;padding:13px;border:1px solid #eee7dc;border-radius:10px;background:#fffdf9
+  }
+  .mobile-record-table tbody td{
+    display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:5px;
+    padding:0;border:0;white-space:normal;overflow-wrap:anywhere;line-height:1.4
+  }
+  .mobile-record-table tbody td::before{
+    display:block;content:attr(data-label);color:#a49a89;font-size:9px;font-weight:700;
+    letter-spacing:.45px;text-transform:uppercase
+  }
+  .mobile-record-table tbody td:first-child{
+    grid-column:1/-1;padding-bottom:9px;border-bottom:1px solid #f0ebe3
+  }
+  .mobile-record-table.mobile-record-actions tbody td:last-child{
+    grid-column:1/-1;padding-top:2px
+  }
+  .mobile-record-table.mobile-record-actions tbody td:last-child .button{
+    width:100%;min-height:42px
+  }
+  .mobile-record-table tbody td[colspan]{
+    grid-column:1/-1;display:block;text-align:center
+  }
+  .mobile-record-table tbody td[colspan]::before{content:none}
+  .mobile-record-table .product-cell{width:100%;min-width:0}
+  .mobile-record-table .product-cell>span{min-width:0;overflow-wrap:anywhere}
+  .mobile-record-table .table-secondary{white-space:normal;overflow-wrap:anywhere}
+  .mobile-record-table .table-actions{width:100%;min-width:0;justify-content:flex-start;flex-wrap:wrap}
+  .mobile-record-table .table-action{width:34px;height:34px}
+}
