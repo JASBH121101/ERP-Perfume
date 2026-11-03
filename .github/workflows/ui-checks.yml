@@ -46,7 +46,7 @@ jobs:
           node-version: 22
 
       - name: Install pinned browser-test dependency
-        run: npm install --no-package-lock --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -98,7 +98,7 @@ jobs:
           node-version: 22
 
       - name: Install pinned browser-test dependency
-        run: npm install --no-package-lock --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -202,6 +202,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install ERP build dependencies and resolve lockfile
+        run: npm install --no-audit --no-fund
+
       - name: Install JB Expert QA browser dependencies without lifecycle scripts
         run: npm --prefix .jb-expert-qa install --ignore-scripts --no-audit --no-fund --package-lock=false
 
@@ -212,6 +215,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/erp-project"
           git archive HEAD | tar -x -C "$RUNNER_TEMP/erp-project"
+          cp package-lock.json "$RUNNER_TEMP/erp-project/package-lock.json"
 
       - name: Run JB Expert QA local static audit
         id: jbqa-audit
@@ -234,6 +238,15 @@ jobs:
             exit 1
           fi
           echo "Report generation completed (JSON exit: $json_status; Markdown exit: $markdown_status). The gate below decides whether findings block CI."
+
+      - name: Upload resolved ERP package lockfile for commit
+        if: always() && hashFiles("package-lock.json") != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: erp-package-lock
+          path: package-lock.json
+          retention-days: 1
+          if-no-files-found: ignore
 
       - name: Run JB Expert QA visual audit on isolated local ERP preview
         run: node scripts/jb-expert-qa-visual.mjs
