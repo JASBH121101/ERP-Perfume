@@ -4,7 +4,10 @@ import { extname, relative, resolve, sep } from "node:path";
 import { auditViewports } from "../.jb-expert-qa/src/adapters/playwright/audit-url.js";
 import { formatReport } from "../.jb-expert-qa/src/reporters/index.js";
 
+await import("./build.mjs");
+
 const root = await realpath(process.cwd());
+const siteRoot = await realpath(resolve(root, "dist"));
 const outputDir = resolve(root, ".ai-output/jb-expert-qa-visual");
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -44,8 +47,8 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  const filePath = resolve(root, "." + pathname);
-  const relativePath = relative(root, filePath);
+  const filePath = resolve(siteRoot, "." + pathname);
+  const relativePath = relative(siteRoot, filePath);
   if (relativePath === ".." || relativePath.startsWith(".." + sep)) {
     response.writeHead(403);
     response.end();
@@ -55,7 +58,7 @@ const server = createServer(async (request, response) => {
   try {
     const fileStats = await lstat(filePath);
     const actualPath = await realpath(filePath);
-    const actualRelative = relative(root, actualPath);
+    const actualRelative = relative(siteRoot, actualPath);
     if (fileStats.isSymbolicLink() || !fileStats.isFile() || actualRelative === ".." || actualRelative.startsWith(".." + sep)) {
       throw new Error("Not an allowed regular file");
     }
