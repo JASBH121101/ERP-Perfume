@@ -557,8 +557,400 @@ test('invoice preview recalculates from linked order and selected exchange curre
   await expect(preview).toContainText('Total a cobrar');
   await expect(preview).toContainText('Tipo de cambio aplicado');
   await dialog.locator('select[name="currency"]').selectOption('NIO');
-  await expect(preview).toContainText('C$');
+  await expect(preview).toContainText('C
+});
+
+
+test('invoice keeps USD as the primary sale currency when collection is changed to NIO', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'billing');
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+  const dialog = page.locator('#business-dialog');
+  const currency = dialog.locator('select[name="currency"]');
+  const preview = dialog.locator('#invoice-preview');
+  await expect(currency).toHaveValue('USD');
+  await dialog.locator('[data-lookup="product"]').fill('JBP-001');
+  await dialog.getByRole('option', { name: /Club de Nuit Intense Man/ }).click();
+  await dialog.getByRole('button', { name: 'Agregar producto' }).click();
+  await dialog.locator('input[name="discountUsd"]').fill('10');
+  await expect(preview.locator('.invoice-line-unit strong').first()).toContainText('66.94');
+  await expect(preview.locator('.invoice-line-unit small').first()).toContainText('2,450.00');
+  const discount = preview.locator('.invoice-preview-totals > div').filter({ hasText: 'Descuento (USD)' });
+  await expect(discount.locator('strong')).toContainText('10.00');
+  await expect(discount.locator('strong small')).toContainText('366.00');
+  await expect(preview.locator('.invoice-grand-total strong')).toContainText('56.94');
+  await currency.selectOption('NIO');
+  await expect(preview.locator('.invoice-line-unit strong').first()).toContainText('66.94');
+  await expect(discount.locator('strong')).toContainText('10.00');
+  await expect(preview.locator('.invoice-grand-total strong')).toContainText('56.94');
+  await expect(preview.locator('.invoice-exchange-row').first()).toContainText('C$');
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
+});
+
+test('saved internal invoice keeps line items, computed totals and the exchange rate used', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'billing');
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[name="saleSource"]').selectOption('web');
+  await dialog.locator('[name="saleSource"]').selectOption('web');await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await dialog.getByRole('option', { name: /JP-1048/ }).click();
+  await dialog.locator('select[name="currency"]').selectOption('NIO');
+  await expect(dialog.locator('#invoice-preview')).toContainText('C$');
+  await dialog.getByRole('button', { name: 'Generar factura' }).click();
+  const row = page.locator('#view-root tr').filter({ hasText: 'JP-1048' });
+  await expect(row).toContainText('Pagado');
+  await expect(row).toContainText('C$');
+  await expect(page.locator('#view-root')).toContainText('110.66');
+});
+
+test('confirming a pending order deducts stock once and returning it to pending restores stock', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'orders');
+  await page.getByRole('button', { name: /Nuevo pedido/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[data-lookup="customer"]').fill('María');
+  await dialog.getByRole('option', { name: /María Gutiérrez/ }).click();
+  await dialog.locator('[data-lookup="product"]').fill('JBP-001');
+  await dialog.getByRole('option', { name: /Club de Nuit Intense Man/ }).click();
+  await dialog.locator('input[name="quantity"]').fill('2');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('En preparación');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#view-root .inventory-stock-table tbody tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
+  await expect(page.locator('.ledger-panel')).toContainText('Salida por pedido');
+  await navigateToView(page, 'orders');
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('Listo para entrega');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#view-root .inventory-stock-table tbody tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
+  await navigateToView(page, 'orders');
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('Pendiente');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#view-root .inventory-stock-table tbody tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('14 unidades');
+  await expect(page.locator('.ledger-panel')).toContainText('Reingreso por pedido');
+});
+
+test('order confirmation blocks insufficient stock without changing order or inventory', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'orders');
+  await page.getByRole('button', { name: /Nuevo pedido/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[data-lookup="customer"]').fill('María');
+  await dialog.getByRole('option', { name: /María Gutiérrez/ }).click();
+  await dialog.locator('[data-lookup="product"]').fill('JBP-003');
+  await dialog.getByRole('option', { name: /Khamrah Lattafa/ }).click();
+  await dialog.locator('input[name="quantity"]').fill('4');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+  await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
+  await page.locator('#order-status-select').selectOption('En preparación');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await expect(page.locator('#toast-region')).toContainText(/stock insuficiente/i);
+  await expect(page.locator('#order-status-select')).toHaveValue('En preparación');
+  await page.locator('#order-detail-cancel').click();
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#view-root tr').filter({ hasText: 'Khamrah Lattafa' })).toContainText('3 unidades');
+  await expect(page.locator('.ledger-panel')).not.toContainText('Salida por pedido');
+});
+
+test('completed orders cannot be reopened through the status editor', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'orders');
+  await page.getByRole('button', { name: 'Ver pedido JP-1048' }).click();
+  await page.locator('#order-status-select').selectOption('Pendiente');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
+  await expect(page.locator('#toast-region')).toContainText(/no se puede reabrir/i);
+  await expect(page.locator('#order-detail-dialog')).toBeVisible();
+  await expect(page.locator('#order-status-select')).toHaveValue('Pendiente');
+});
+
+test('mobile product modal keeps the complete action footer visible while scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await navigateToView(page, 'products');
+  await page.getByRole('button', { name: /Nuevo producto/ }).click();
+  const dialog = page.locator('#product-dialog');
+  await dialog.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  const bounds = await dialog.evaluate(element => {
+    const footer = element.querySelector('.modal-actions').getBoundingClientRect();
+    const button = element.querySelector('#save-product').getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return { dialogBottom: box.bottom, dialogLeft: box.left, dialogRight: box.right, viewportWidth: window.innerWidth, footerBottom: footer.bottom, buttonHeight: button.height };
+  });
+  expect(bounds.dialogLeft).toBeGreaterThanOrEqual(0);
+  expect(bounds.dialogRight).toBeLessThanOrEqual(bounds.viewportWidth);
+  expect(bounds.footerBottom).toBeLessThanOrEqual(bounds.dialogBottom + 1);
+  expect(bounds.buttonHeight).toBeGreaterThanOrEqual(44);
+});
+
+
+test('mobile inventory tables fit the viewport without horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+  const dimensions = await page.evaluate(() => {
+    const stock = document.querySelector('.inventory-stock-table');
+    const ledger = document.querySelector('.inventory-ledger-table');
+    return {
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+      stockClient: stock.clientWidth,
+      stockScroll: stock.scrollWidth,
+      ledgerClient: ledger.clientWidth,
+      ledgerScroll: ledger.scrollWidth,
+      stockRowDisplay: getComputedStyle(stock.querySelector('tbody tr')).display,
+      ledgerRowDisplay: getComputedStyle(ledger.querySelector('tbody tr')).display
+    };
+  });
+  expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport + 1);
+  expect(dimensions.stockScroll).toBeLessThanOrEqual(dimensions.stockClient + 1);
+  expect(dimensions.ledgerScroll).toBeLessThanOrEqual(dimensions.ledgerClient + 1);
+  expect(dimensions.stockRowDisplay).toBe('grid');
+  expect(dimensions.ledgerRowDisplay).toBe('grid');
+});
+
+test('editing a product on mobile keeps dialog and inputs within screen width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await navigateToView(page, 'products');
+  await page.getByRole('button', { name: 'Editar Club de Nuit Intense Man' }).click();
+  const dialog = page.locator('#product-dialog');
+  const metrics = await dialog.evaluate(element => {
+    const modal = element.getBoundingClientRect();
+    const input = element.querySelector('input[name="name"]').getBoundingClientRect();
+    const footer = element.querySelector('.modal-actions').getBoundingClientRect();
+    return {
+      viewport: window.innerWidth,
+      left: modal.left,
+      right: modal.right,
+      inputRight: input.right,
+      footerRight: footer.right
+    };
+  });
+  expect(metrics.left).toBeGreaterThanOrEqual(0);
+  expect(metrics.right).toBeLessThanOrEqual(metrics.viewport);
+  expect(metrics.inputRight).toBeLessThanOrEqual(metrics.viewport);
+  expect(metrics.footerRight).toBeLessThanOrEqual(metrics.viewport);
+});
+
+
+test('all operational list tables reflow inside a 390px mobile viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const views = ['products','orders','customers','billing','suppliers','purchases','expenses','cash','hr'];
+  for (const view of views) {
+    await navigateToView(page, '' + view + '');
+    const measurements = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+      tables: Array.from(document.querySelectorAll('.mobile-record-table')).map(table => ({
+        client: table.clientWidth,
+        scroll: table.scrollWidth
+      }))
+    }));
+    expect(measurements.document, view + ' page document width').toBeLessThanOrEqual(measurements.viewport + 1);
+    for (const table of measurements.tables) {
+      expect(table.scroll, view + ' table width').toBeLessThanOrEqual(table.client + 1);
+    }
+  }
+});
+
+
+test('in-store invoice creates the customer, updates stock once and opens a printable A4 preview', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'billing');
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+
+  const modal = page.locator('#business-dialog');
+  await expect(modal).toBeVisible();
+  await modal.getByLabel('Nombre del cliente').fill('Cliente QA Presencial');
+  await modal.getByLabel('Perfume (nombre, SKU o código de barras)').fill('Yara Lattafa');
+  await modal.locator('[data-lookup-select]').filter({ hasText: 'Yara Lattafa' }).click();
+  await modal.getByRole('button', { name: 'Agregar producto' }).click();
+  await modal.getByLabel('Cantidad de Yara Lattafa').fill('2');
+  await modal.locator('select[name="currency"]').selectOption('NIO');
+  await modal.getByLabel('Importe recibido (moneda de factura)').fill('3700.26');
+  await modal.getByRole('button', { name: 'Generar factura' }).click();
+
+  const preview = page.locator('#invoice-preview-dialog');
+  await expect(preview).toBeVisible();
+  await expect(page.locator('#invoice-print-document')).toContainText('JB PARFUMS');
+  await expect(page.locator('#invoice-print-document')).toContainText('Cliente QA Presencial');
+  await expect(page.locator('#invoice-print-document')).toContainText('Yara Lattafa');
+  await expect(preview.getByRole('button', { name: /Imprimir factura/ })).toBeVisible();
+
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const yara = saved.products.find(product => product.name === 'Yara Lattafa');
+  expect(yara.stock).toBe(6);
+  expect(saved.invoices[0].source).toBe('store');
+  expect(saved.invoices[0].status).toBe('Pagado');
+  expect(saved.customers.some(customer => customer.name === 'Cliente QA Presencial')).toBe(true);
+  expect(saved.inventoryMovements.filter(movement => movement.sourceType === 'invoice' && movement.sourceId === saved.invoices[0].id)).toHaveLength(1);
+});
+
+test('web order invoice links the order and does not apply stock twice', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'billing');
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+
+  const modal = page.locator('#business-dialog');
+  await modal.locator('[name="saleSource"]').selectOption('web');
+  const orderSearch = modal.getByLabel('Buscar pedido web (número o cliente)');
+  await expect(orderSearch).toBeVisible();
+  await orderSearch.fill('JP-1047');
+  await modal.locator('[data-lookup-select]').filter({ hasText: 'JP-1047' }).click();
+  await expect(modal.getByLabel('Nombre del cliente')).toHaveValue('Carlos Mendoza');
+  await expect(modal.locator('#invoice-cart')).toContainText('Khamrah Lattafa');
+  await modal.getByRole('button', { name: 'Generar factura' }).click();
+
+  await expect(page.locator('#invoice-preview-dialog')).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const order = saved.orders.find(item => item.id === 'JP-1047');
+  expect(saved.invoices[0].source).toBe('web');
+  expect(saved.invoices[0].orderId).toBe('JP-1047');
+  expect(order.status).toBe('En preparación');
+  expect(saved.inventoryMovements.filter(movement => movement.sourceType === 'order' && movement.sourceId === 'JP-1047' && movement.delta < 0)).toHaveLength(1);
+  expect(saved.products.find(product => product.name === 'Khamrah Lattafa').stock).toBe(2);
+
+  await page.reload();
+  const reloaded = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(reloaded.products.find(product => product.name === 'Khamrah Lattafa').stock).toBe(2);
+  expect(reloaded.invoices).toHaveLength(1);
+});
+
+test('in-store invoice blocks sales that exceed available stock', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'billing');
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+
+  const modal = page.locator('#business-dialog');
+  await modal.getByLabel('Nombre del cliente').fill('Cliente sin stock');
+  await modal.getByLabel('Perfume (nombre, SKU o código de barras)').fill('Khamrah Lattafa');
+  await modal.locator('[data-lookup-select]').filter({ hasText: 'Khamrah Lattafa' }).click();
+  await modal.getByRole('button', { name: 'Agregar producto' }).click();
+  await modal.getByLabel('Cantidad de Khamrah Lattafa').fill('4');
+  await modal.getByRole('button', { name: 'Generar factura' }).click();
+
+  await expect(modal).toBeVisible();
+  await expect(page.locator('#toast-region')).toContainText(/Stock insuficiente para Khamrah Lattafa/);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(saved.invoices).toHaveLength(0);
+  expect(saved.products.find(product => product.name === 'Khamrah Lattafa').stock).toBe(3);
+});
+
+
+test('supplier purchases support initial payments, partial balances and final settlement without duplicate stock', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'suppliers');
+  await page.getByRole('button', { name: /Nuevo proveedor/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('input[name="name"]').fill('Proveedor CXP QA');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+
+  await navigateToView(page, 'purchases');
+  await page.getByRole('button', { name: /Registrar compra/ }).click();
+  await dialog.locator('[data-lookup="supplier"]').fill('Proveedor CXP');
+  await dialog.getByRole('option', { name: /Proveedor CXP QA/ }).click();
+  await dialog.locator('[data-lookup="product"]').fill('JBP-002');
+  await dialog.getByRole('option', { name: /Yara Lattafa/ }).click();
+  await dialog.locator('input[name="quantity"]').fill('2');
+  await dialog.locator('input[name="unitCost"]').fill('5');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('input[name="initialPayment"]').fill('2');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+
+  await navigateToView(page, 'payables');
+  const payableRow = page.locator('#view-root tbody tr').filter({ hasText: 'Proveedor CXP QA' });
+  await expect(payableRow).toContainText('Abono parcial');
+  await expect(payableRow).toContainText('$8.00');
+
+  await payableRow.getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('3');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+  await expect(page.locator('#view-root')).toContainText('$5.00');
+
+  const stockBeforeSettlement = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('jbparfums-demo-data-v2'));
+    return saved.products.find(product => product.sku === 'JBP-002').stock;
+  });
+
+  const updatedRow = page.locator('#view-root tbody tr').filter({ hasText: 'Proveedor CXP QA' });
+  await updatedRow.getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('5');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+
+  await expect(page.locator('#view-root')).toContainText('No hay cuentas pendientes con proveedores.');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const purchase = saved.purchases.find(item => item.supplier === 'Proveedor CXP QA');
+  expect(purchase.paidUsd).toBe(10);
+  expect(purchase.status).toBe('Pagado');
+  expect(purchase.payments).toHaveLength(3);
+  expect(saved.cashEntries.filter(item => item.sourceType === 'purchase' && item.sourceId === String(purchase.id))).toHaveLength(3);
+  expect(saved.cashEntries.filter(item => item.sourceType === 'purchase' && item.sourceId === String(purchase.id)).reduce((sum,item)=>sum+item.amountUsd,0)).toBe(10);
+  expect(saved.products.find(product => product.sku === 'JBP-002').stock).toBe(stockBeforeSettlement);
+});
+
+
+test('customer receivables track an initial payment, partial abono and final settlement', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'billing');
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('input[name="customerName"]').fill('Cliente CXC QA');
+  await dialog.locator('[data-lookup="product"]').fill('JBP-002');
+  await dialog.getByRole('option', { name: /Yara Lattafa/ }).click();
+  await dialog.getByRole('button', { name: 'Agregar producto' }).click();
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('input[name="amountReceived"]').fill('10');
+  await dialog.getByRole('button', { name: 'Generar factura' }).click();
+
+  await page.locator('#invoice-preview-dialog').getByRole('button', { name: 'Cerrar' }).click();
+  await navigateToView(page, 'receivables');
+  const row = page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' });
+  await expect(row).toContainText('Abono parcial');
+  await expect(row).toContainText('1 abono(s)');
+  const stockAfterInvoice = await page.evaluate(() => { const saved = JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')); return saved.products.find(p=>p.sku==='JBP-002').stock; });
+
+  await row.getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('10');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+
+  await expect(page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' })).toContainText('Abono parcial');
+  await expect(page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' })).toContainText('2 abono(s)');
+  const afterPartial = await page.evaluate(() => { const saved = JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')); return saved.products.find(p=>p.sku==='JBP-002').stock; });
+  expect(afterPartial).toBe(stockAfterInvoice);
+
+  await page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' }).getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('30.55');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+
+  await expect(page.locator('#view-root')).toContainText('No hay cuentas pendientes de cobro.');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const invoice = saved.invoices.find(item => item.customer === 'Cliente CXC QA');
+  expect(invoice.status).toBe('Pagado');
+  expect(invoice.payments).toHaveLength(3);
+  expect(saved.cashEntries.filter(item => item.sourceType === 'invoice' && item.sourceId === invoice.id)).toHaveLength(3);
+  expect(saved.products.find(p=>p.sku==='JBP-002').stock).toBe(stockAfterInvoice);
+});
+);
   await expect(preview).toContainText('110.66');
+  await expect(preview.locator('.invoice-line-unit strong').first()).toContainText('50.55');
+  await expect(preview.locator('.invoice-line-unit small').first()).toContainText('1,850.00');
+  await expect(preview.locator('.invoice-grand-total strong')).toContainText('110.66');
   await dialog.getByRole('button', { name: 'Cancelar' }).click();
 });
 
