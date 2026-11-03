@@ -69,6 +69,7 @@
   let invoices=[];
   let invoiceDraftItems=[];
   let employees=[];
+  let hrRecordsLoaded=false,hrRecordsLoading=false,hrLoadAttempted=false,hrLoadError='';
   const views = {
     dashboard: { title: 'Resumen', eyebrow: 'CENTRO DE CONTROL', heading: 'Buenos días', subtitle: 'Una mirada clara al movimiento de tu negocio.' },
     products: { title: 'Productos', eyebrow: 'CATÁLOGO', heading: 'Catálogo de productos', subtitle: 'Administra las fragancias, sus precios y la disponibilidad.' },
@@ -773,7 +774,9 @@
     if(type==='employee')body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+'</div><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
-    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en demo');
+    const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
+    document.querySelector('#business-dialog .eyebrow').textContent=secureHR?'RR. HH. · NEON DEVELOPMENT':'GESTIÓN · DEMO LOCAL';
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':(secureHR?'Guardar en Neon':'Guardar en demo'));
     if(type==='invoice'){
       businessForm.dataset.invoiceReceivedEdited='0';
       businessForm.dataset.invoiceCurrency=businessForm.querySelector('[name="currency"]')?.value||'NIO';
@@ -782,7 +785,7 @@
     }
     if(typeof businessDialog.showModal==='function')businessDialog.showModal();
   }
-  function saveBusinessRecord(event){
+  async function saveBusinessRecord(event){
     event.preventDefault();if(!businessForm.reportValidity())return;
     const data=new FormData(businessForm),get=k=>String(data.get(k)||'').trim(),num=k=>Number(data.get(k)||0);
     const type=businessForm.dataset.recordType,currency=get('currency')==='NIO'?'NIO':'USD',rate=exchangeRate,id=Date.now();
@@ -920,8 +923,22 @@
       window.requestAnimationFrame(function(){showInvoicePreview(invoice.id);});
     }else if(type==='employee'){
       const salary=num('salaryNio');if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0){toast('Revisa los datos y el salario.');return;}
+      if(window.JBAuth&&window.JBAuth.mode==='authenticated'){
+        try{
+          const token=await window.JBAuth.getToken();
+          if(!token)throw new Error('La sesión expiró. Inicia sesión nuevamente.');
+          const response=await fetch('/api/hr/employees',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({name:get('name'),position:get('position'),department:get('department'),salaryNio:salary})});
+          const result=await response.json().catch(()=>({}));
+          if(!response.ok)throw new Error(result?.error?.message||'No se pudo guardar el colaborador en Neon.');
+          const employee=result.employee;
+          employees.unshift({id:employee.id,employeeCode:employee.employee_code||'',name:employee.name,position:employee.position,department:employee.department||'',salaryNio:Number(employee.salary_nio||0),status:employee.status||'Activo'});
+          hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
+          businessDialog.close();renderView();toast('Colaborador guardado en Neon Development. Salario expresado en córdobas.');
+        }catch(error){toast(error?.message||'No se pudo guardar el registro de RR. HH.');}
+        return;
+      }
       employees.unshift({id,name:get('name'),position:get('position'),department:get('department'),salaryNio:salary,status:'Activo'});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Colaborador registrado en DEMO. Salario expresado en córdobas.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Colaborador registrado en DEMO local. Salario expresado en córdobas.');
     }
   }
   function dateText(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'});}
@@ -959,9 +976,54 @@
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FACTURA / FECHA</th><th>CLIENTE</th><th>ORIGEN</th><th>TOTAL USD</th><th>PAGOS RECIBIDOS</th><th>SALDO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">No hay cuentas pendientes de cobro.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Cuentas por cobrar DEMO</strong><p>Los saldos se calculan sobre comprobantes internos locales. Cada abono conserva importe, moneda, tasa y cuenta de ingreso; no representa una transacción bancaria real.</p></div></div>';
   }
+  async function loadHRFromAPI(force){
+    const auth=window.JBAuth;
+    if(!auth||auth.mode!=='authenticated'||!auth.profile||!['owner','admin','hr'].includes(auth.profile.role)||hrRecordsLoading)return;
+    if(hrRecordsLoaded&&!force)return;
+    if(hrLoadAttempted&&!force)return;
+    hrRecordsLoading=true;hrLoadAttempted=true;hrLoadError='';
+    try{
+      const token=await auth.getToken();
+      if(!token)throw new Error('La sesión expiró. Inicia sesión nuevamente.');
+      const response=await fetch('/api/hr/employees',{headers:{authorization:'Bearer '+token},cache:'no-store'});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(body?.error?.message||'No se pudieron cargar los colaboradores.');
+      employees=(Array.isArray(body.employees)?body.employees:[]).map(e=>({
+        id:e.id,employeeCode:e.employee_code||'',name:e.name,position:e.position,department:e.department||'',
+        salaryNio:Number(e.salary_nio||0),status:e.status||'Activo',hireDate:e.hire_date||null,
+        phone:e.phone||'',email:e.email||''
+      }));
+      hrRecordsLoaded=true;
+    }catch(error){
+      hrLoadError=error?.message||'No se pudieron cargar los registros de RR. HH.';
+      hrRecordsLoaded=false;
+    }finally{
+      hrRecordsLoading=false;
+      if(state.view==='hr')renderView();
+    }
+  }
   function renderHR(){
+    const auth=window.JBAuth,backendMode=Boolean(auth&&auth.mode==='authenticated');
+    if(backendMode&&!auth.user){
+      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Sección protegida</strong><p>Inicia sesión con tu cuenta autorizada para consultar expedientes y salarios. RR. HH. permanece habilitado, pero los datos reales no se muestran sin autenticación.</p></div></div>';
+    }
+    if(backendMode&&!auth.profile){
+      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Cuenta pendiente de autorización</strong><p>'+esc(auth.profileError||'Verifica tu correo y vuelve a iniciar sesión para validar tus permisos de ERP.')+'</p></div></div>';
+    }
+    if(backendMode&&!['owner','admin','hr'].includes(auth.profile.role)){
+      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Permiso insuficiente</strong><p>Tu cuenta no tiene acceso al expediente de personal. Solicita el rol RR. HH. a la cuenta propietaria.</p></div></div>';
+    }
+    if(backendMode&&!hrRecordsLoaded){
+      if(!hrRecordsLoading&&!hrLoadAttempted)loadHRFromAPI(false);
+      const message=hrLoadError||'Consultando los registros protegidos de Neon…';
+      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>RR. HH. · Neon Development</strong><p>'+esc(message)+'</p>'+(hrLoadError?'<button class="button button-quiet button-small" data-action="reload-hr">Reintentar</button>':'')+'</div></div>';
+    }
     const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip status-success">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
-    return heading(views.hr,'<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Colaboradores DEMO</span><strong>'+employees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual (C$)</span><strong>'+moneyInCurrency(employees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Moneda salarial</span><strong>NIO</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">No hay colaboradores DEMO.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>RRHH DEMO</strong><p>La nómina se mantiene en córdobas. Deducciones, prestaciones y documentos laborales requieren validación legal antes de producción.</p></div></div>';
+    const action=backendMode||!auth?'<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>':'';
+    const countLabel=backendMode?'Colaboradores en Neon':'Colaboradores DEMO';
+    const noticeTitle=backendMode?'RR. HH. sincronizado con Neon Development':'RRHH DEMO';
+    const noticeText=backendMode?'Los registros están protegidos por sesión y roles. Salarios y nómina se almacenan en córdobas; la nómina legal requiere revisar deducciones, prestaciones y normativa laboral.':'La nómina se mantiene en córdobas. Deducciones, prestaciones y documentos laborales requieren validación legal antes de producción.';
+    return heading(views.hr,action)+'<div class="summary-strip"><div class="summary-mini"><span>'+countLabel+'</span><strong>'+employees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual (C$)</span><strong>'+moneyInCurrency(employees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Moneda salarial</span><strong>NIO</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>'+noticeTitle+'</strong><p>'+noticeText+'</p></div></div>';
   }
   function renderAnalytics(){
     const sales=orders.reduce((s,o)=>s+Number(o.amount||0),0),inventory=products.reduce((s,p)=>s+Number(p.unitCost||0)*Number(p.stock||0),0),potential=products.reduce((s,p)=>s+Math.max(0,costSummary(p).profit)*Number(p.stock||0),0),totalExpenses=expenses.reduce((s,e)=>s+Number(e.amountUsd||0),0),totalPurchases=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
