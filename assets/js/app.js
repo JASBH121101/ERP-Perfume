@@ -689,7 +689,7 @@
       '<div class="invoice-preview-totals"><div><span>Subtotal</span>'+invoiceUsdPrimary(totals.subtotalUsd,rate)+'</div>'+
       (totals.discountUsd?'<div><span>Descuento (USD)</span><strong class="invoice-money-stack">− '+money(totals.discountUsd)+'<small>− '+moneyInCurrency(roundMoney(totals.discountUsd*rate),'NIO')+'</small></strong></div>':'')+
       (totals.deliveryFeeUsd?'<div><span>Entrega</span><strong class="invoice-money-stack">'+money(totals.deliveryFeeUsd)+'<small>'+moneyInCurrency(roundMoney(totals.deliveryFeeUsd*rate),'NIO')+'</small></strong></div>':'')+
-      '<div class="invoice-grand-total"><span>Total en dólares (USD)</span>'+invoiceUsdPrimary(totals.totalUsd,rate)+'</div></div>'+
+      '<div class="invoice-grand-total"><span>Total a cobrar (USD)</span>'+invoiceUsdPrimary(totals.totalUsd,rate)+'</div></div>'+
       '<div class="invoice-exchange-row"><span>Equivalente en córdobas</span><strong>'+moneyInCurrency(roundMoney(totals.totalUsd*rate),'NIO')+'</strong></div>'+
       '<div class="invoice-exchange-row"><span>Tipo de cambio aplicado</span><strong>'+rateLabel(rate)+'</strong></div>';
   }
@@ -969,7 +969,7 @@
       const balance=Math.max(0,Number(f.totalUsd||0)-Number(f.paidUsd||0));
       const origin=f.source==='web'?'Página web':(f.source==='manual'?'Venta manual':'Tienda física');
       const paymentCount=Array.isArray(f.payments)?f.payments.length:(Number(f.paidUsd||0)>0?1:0);
-      return '<tr><td data-label="Factura / fecha" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+dateText(f.createdAt)+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Origen">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</td><td data-label="Total">'+money(Number(f.totalUsd||0))+'</td><td data-label="Pagos recibidos">'+money(Number(f.paidUsd||0))+'<small class="table-secondary">'+paymentCount+' pago(s) registrado(s)</small></td><td data-label="Saldo"><strong>'+money(balance)+'</strong></td><td data-label="Estado"><span class="status-chip status-pending">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Registrar abono</button></td></tr>';
+      return '<tr><td data-label="Factura / fecha" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+dateText(f.createdAt)+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Origen">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</td><td data-label="Total">'+money(Number(f.totalUsd||0))+'</td><td data-label="Pagos recibidos">'+money(Number(f.paidUsd||0))+'<small class="table-secondary">'+paymentCount+' abono(s)</small></td><td data-label="Saldo"><strong>'+money(balance)+'</strong></td><td data-label="Estado"><span class="status-chip status-pending">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Registrar abono</button></td></tr>';
     }).join('');
     return heading(views.receivables,'<button class="button button-quiet" data-view="billing">Ver facturas</button>')+
       '<div class="summary-strip"><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Clientes con saldo</span><strong>'+clients+'</strong></div><div class="summary-mini"><span>Facturas pendientes</span><strong>'+open.length+'</strong></div></div>'+
