@@ -63,10 +63,13 @@
 
       <div class="sidebar-bottom">
         <div class="storage-card">
-          <div class="storage-heading"><span class="tiny-status"></span> SISTEMA EN PREPARACIÓN</div>
-          <p>La interfaz está usando datos de demostración.</p>
-          <div class="storage-meter"><span></span></div>
-          <small>Conexiones pendientes</small>
+          <div class="storage-heading"><span class="tiny-status"></span> MODO DEMO ACTIVO</div>
+          <p>Los cambios se guardan en este navegador.</p>
+          <div class="storage-connection-list">
+            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Almacenamiento local</span><strong>Activo</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Neon PostgreSQL</span><strong>Pendiente</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Cloudflare R2</span><strong>Pendiente</strong></div>
+          </div>
         </div>
         <button class="profile-button" type="button">
           <span class="avatar">JB</span>
