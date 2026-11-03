@@ -209,10 +209,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/jb-expert-qa-report"
           set +e
           node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
             --format=json \
             --output="$RUNNER_TEMP/jb-expert-qa-report/report.json"
           json_status=$?
           node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
             --format=markdown \
             --output="$RUNNER_TEMP/jb-expert-qa-report/report.md"
           markdown_status=$?
