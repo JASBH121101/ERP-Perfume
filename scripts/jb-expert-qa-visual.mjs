@@ -114,7 +114,9 @@ try {
     timeout: 20000,
     runAxe: true,
     allowPrivateNetworks: true,
-    sameOriginOnly: true
+    sameOriginOnly: true,
+    interactionExploration: true,
+    maxInteractionActions: 12
   });
 
   const allOverlaps = report.viewports.flatMap((viewport) =>
@@ -136,6 +138,10 @@ try {
   console.log("Engine:", report.version);
   console.log("Viewports:", report.summary.viewportsChecked);
   console.log("Passed viewports:", report.summary.passedViewports);
+  const interactionStates = report.viewports.reduce((sum, viewport) => sum + (viewport.evidence?.interactionStatesChecked ?? 0), 0);
+  const interactionActions = report.viewports.reduce((sum, viewport) => sum + (viewport.evidence?.interactionActionsAttempted ?? 0), 0);
+  console.log("Interactive states explored:", interactionStates);
+  console.log("Interaction actions attempted:", interactionActions);
   console.log("Interactive collisions:", allOverlaps.length);
   console.log("High-severity blocked controls:", highOverlaps.length);
   console.log("Same-origin-only:", true);
