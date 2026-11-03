@@ -500,3 +500,24 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
   .topbar-actions{flex:0 1 auto;min-width:0;gap:5px}
   .global-search{flex:0 1 auto;width:min(42vw,150px);min-width:0}
 }
+
+
+/* Secure Neon Auth controls */
+.auth-control[hidden],
+#auth-name-field[hidden] { display: none !important; }
+.auth-control { white-space: nowrap; }
+.demo-pill.connected { color: #b9e8d0; border-color: rgba(91, 180, 134, .32); background: rgba(42, 114, 82, .16); }
+.demo-pill.connected i { background: #62c995; box-shadow: 0 0 0 3px rgba(98, 201, 149, .13); }
+.auth-modal { width: min(94vw, 480px); max-width: 480px; }
+.auth-modal-card { width: 100%; gap: 16px; }
+.auth-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border: 1px solid var(--line, #2f2b24); border-radius: 12px; background: rgba(255,255,255,.025); }
+.auth-mode-switch button { min-height: 38px; border: 0; border-radius: 8px; background: transparent; color: var(--muted, #a9a39a); font: inherit; cursor: pointer; }
+.auth-mode-switch button.active { color: var(--text, #f5f0e8); background: rgba(196, 157, 91, .16); box-shadow: inset 0 0 0 1px rgba(196, 157, 91, .25); }
+.auth-feedback { min-height: 20px; margin: 0; color: var(--muted, #a9a39a); font-size: 13px; line-height: 1.45; }
+.auth-modal .modal-actions { justify-content: stretch; }
+.auth-modal .modal-actions .button { width: 100%; }
+.auth-modal .modal-note { line-height: 1.55; }
+@media (max-width: 760px) {
+  .auth-control { padding-inline: 9px; font-size: 11px; }
+  .topbar-actions .demo-pill { display: none; }
+}
