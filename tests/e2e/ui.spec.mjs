@@ -466,9 +466,11 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await expect(dialog.locator('#invoice-preview')).toContainText('C$');
  await expect(dialog.locator('#invoice-preview')).toContainText('36.60');
  await dialog.getByRole('button',{name:'Generar factura'}).click();
- const voucher=page.locator('#view-root').locator('tr').filter({hasText:'JP-1049'});
- await expect(voucher).toContainText('Pendiente');
  await page.locator('#invoice-preview-dialog').getByRole('button',{name:'Cerrar'}).click();
+ await page.locator('#sidebar button[data-view="billing"]').click();
+ const voucher=page.locator('#view-root tbody tr').filter({hasText:'Cliente Flujo QA'});
+ await expect(voucher).toContainText('Pendiente');
+ await expect(voucher).toContainText('JP-1049');
  await voucher.getByRole('button',{name:'Abonar'}).click();
  await dialog.locator('input[name="amount"]').fill('4900');
  await dialog.locator('select[name="currency"]').selectOption('NIO');

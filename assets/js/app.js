@@ -674,7 +674,7 @@
       '<div class="invoice-preview-totals"><div><span>Subtotal</span><strong>'+invoiceCurrencyAmount(totals.subtotalUsd,currency,rate)+'</strong></div>'+
       (totals.discountUsd?'<div><span>Descuento</span><strong>− '+invoiceCurrencyAmount(totals.discountUsd,currency,rate)+'</strong></div>':'')+
       (totals.deliveryFeeUsd?'<div><span>Entrega</span><strong>'+invoiceCurrencyAmount(totals.deliveryFeeUsd,currency,rate)+'</strong></div>':'')+
-      '<div class="invoice-grand-total"><span>Total a cobrar</span><strong>'+invoiceCurrencyAmount(totals.totalUsd,currency,rate)+'</strong></div></div>'+
+      '<div class="invoice-grand-total"><span>Total a cobrar</span><strong>'+invoiceCurrencyAmount(totals.totalUsd,currency,rate)+'</strong></div><div class="invoice-exchange-row"><span>Total base USD</span><strong>'+money(totals.totalUsd)+'</strong></div></div>'+
       '<div class="invoice-exchange-row"><span>Tipo de cambio aplicado</span><strong>'+rateLabel(rate)+'</strong></div>';
   }
   function invoiceDocumentMarkup(invoice){
