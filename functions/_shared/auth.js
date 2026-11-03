@@ -1,0 +1,74 @@
+import { createRemoteJWKSet, jwtVerify } from "jose";
+import { getDatabase } from "./db.js";
+import { errorResponse } from "./http.js";
+
+const keySets = new Map();
+
+function getKeySet(url) {
+  if (!keySets.has(url)) keySets.set(url, createRemoteJWKSet(new URL(url)));
+  return keySets.get(url);
+}
+
+export async function requireUser(request, env, allowedRoles = []) {
+  if (!env || !env.NEON_AUTH_JWKS_URL || !env.NEON_AUTH_BASE_URL || !env.DATABASE_URL) {
+    return { response: errorResponse(503, "AUTH_NOT_CONFIGURED", "Authentication is not configured for this deployment.") };
+  }
+
+  const authorization = request.headers.get("authorization") || "";
+  if (!authorization.toLowerCase().startsWith("bearer ")) {
+    return { response: errorResponse(401, "UNAUTHORIZED", "Sign in to continue.") };
+  }
+
+  let identity;
+  try {
+    const verified = await jwtVerify(
+      authorization.slice(7),
+      getKeySet(env.NEON_AUTH_JWKS_URL),
+      { issuer: env.NEON_AUTH_BASE_URL, algorithms: ["EdDSA"] }
+    );
+    identity = verified.payload;
+  } catch {
+    return { response: errorResponse(401, "INVALID_SESSION", "Your session is invalid or expired. Sign in again.") };
+  }
+
+  const authUserId = typeof identity.sub === "string" ? identity.sub : "";
+  if (!authUserId) {
+    return { response: errorResponse(401, "INVALID_SESSION", "The session does not contain a user identity.") };
+  }
+
+  try {
+    const sql = getDatabase(env);
+    // Resolve email and verification state from Neon Auth's source-of-truth table.
+    // The managed-auth JWT documents sub/email; email verification is persisted on neon_auth.user.
+    const authRows = await sql.query(
+      'SELECT id, email, name, "emailVerified" AS email_verified FROM neon_auth."user" WHERE id = $1 LIMIT 1',
+      [authUserId]
+    );
+    const authRecord = authRows[0];
+    if (!authRecord || typeof authRecord.email !== "string" || !authRecord.email.trim()) {
+      return { response: errorResponse(401, "AUTH_USER_NOT_FOUND", "The signed-in account could not be found.") };
+    }
+    if (authRecord.email_verified !== true) {
+      return { response: errorResponse(403, "VERIFIED_EMAIL_REQUIRED", "Verify your email address before accessing ERP data.") };
+    }
+
+    const email = authRecord.email.trim().toLowerCase();
+    const displayName = typeof authRecord.name === "string" ? authRecord.name.trim() : "";
+    const rows = await sql.query(
+      "INSERT INTO app_users (auth_user_id, email, display_name, role) VALUES ($1, $2, $3, CASE WHEN LOWER($4) = LOWER($2) THEN 'owner' ELSE 'viewer' END) ON CONFLICT (auth_user_id) DO UPDATE SET email = EXCLUDED.email, display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name ELSE app_users.display_name END, updated_at = NOW() RETURNING id, auth_user_id, email, display_name, role, active",
+      [authUserId, email, displayName, env.BOOTSTRAP_OWNER_EMAIL || ""]
+    );
+    const user = rows[0];
+
+    if (!user || user.active !== true) {
+      return { response: errorResponse(403, "ACCOUNT_DISABLED", "This ERP account is disabled.") };
+    }
+    if (allowedRoles.length && !allowedRoles.includes(user.role)) {
+      return { response: errorResponse(403, "INSUFFICIENT_ROLE", "Your account does not have permission for this section.") };
+    }
+    return { user, sql };
+  } catch (error) {
+    console.error("[auth] Unable to resolve ERP user:", error && error.message ? error.message : "database error");
+    return { response: errorResponse(503, "IDENTITY_UNAVAILABLE", "The ERP identity service is temporarily unavailable.") };
+  }
+}

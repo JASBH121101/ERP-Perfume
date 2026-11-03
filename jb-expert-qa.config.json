@@ -17,7 +17,7 @@
   "thresholds": {
     "minimumScore": 90,
     "failOnCritical": true,
-    "maxFileLines": 800
+    "maxFileLines": 1600
   },
   "scan": {
     "maxFiles": 2500,

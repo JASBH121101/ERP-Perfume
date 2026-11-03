@@ -17,6 +17,8 @@ REQUIRED_IDS = {
     "menu-toggle", "mobile-scrim", "product-count",
     "breadcrumb-current", "page-eyebrow", "sidebar-collapse",
     "font-decrease", "font-increase", "font-scale-label", "order-detail-dialog",
+    "auth-dialog", "auth-form", "auth-control", "connection-pill", "auth-feedback",
+    "auth-email", "auth-password", "auth-otp-field", "auth-otp", "auth-resend-code", "auth-mode-switch",
 }
 
 REQUIRED_VIEWS = {
