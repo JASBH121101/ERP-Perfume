@@ -3,64 +3,54 @@
 ERP web application for JB PARFUMS.
 
 ## Current phase
-UI foundation and initial backend integration. Operational modules remain DEMO except for protected employee list/create in the isolated Preview/Development environment.
+
+The ERP interface and browser-local DEMO workflows are available. The standalone API Worker is prepared in the repository; its deployment and Neon Development connection must be completed before authenticated records can be used.
 
 ## Currency policy
 
 - Operational/base currency: USD ($).
 - Configurable reference rate for conversions: C$ 36.60 per US$ 1 by default.
-- DEMO values from the former Córdobas interface are normalized to USD; browser-local DEMO records are migrated once.
-- Official invoicing and NIO conversion are not enabled yet.
+- Browser-local DEMO records are isolated to the current browser and are not synchronized.
+- Official invoicing and NIO conversion are not enabled yet. Payroll values are NIO-only.
 
 ## Architecture
-- Frontend: HTML, CSS and vanilla JavaScript.
-- Hosting/runtime: Cloudflare Pages + Workers.
-- Database: Neon PostgreSQL (development schema prepared; Preview connection secret pending).
-- Assets: private Cloudflare R2 bucket (Preview binding prepared; upload workflows pending).
-- CI and test automation: GitHub Actions.
+
+- Frontend: static HTML, CSS and JavaScript, built into `dist/`.
+- Frontend hosting: Cloudflare Pages project `erp-perfume`, production branch `main`.
+- API: standalone Cloudflare Worker `jb-parfums-erp-api`, called from the frontend through its configured API base URL.
+- Database: Neon PostgreSQL, `erp_perfume` on the `development` branch during validation.
+- Identity: Neon Managed Auth; JWT verification and ERP role checks run in the Worker.
+- Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
+- CI/CD: GitHub Actions builds and deploys the Worker from `main`; Pages continues to publish the static frontend.
 - Browser automation: Playwright with Chromium.
-- Optional AI repair: OpenAI Responses API, disabled by default.
+- Optional AI repair: disabled by default.
 
-## Quality gate
-Pull Requests run:
-1. JavaScript syntax validation.
-2. Static HTML, CSS, navigation and asset checks.
-3. Browser end-to-end tests.
+## Backend scope
 
-See docs/qa-agent.md for capabilities, guardrails, activation and cost controls.
+The Worker currently exposes:
+- `GET /api/config` — frontend authentication configuration.
+- `GET /api/health` — Neon connection and R2 binding health.
+- `GET /api/auth/profile` — authenticated ERP profile and role.
+- `GET /api/hr/employees` and `POST /api/hr/employees` — protected employee list and creation.
 
-## Development principles
-- No program installation on the work PC is required.
-- No database or storage calls from the browser during the UI phase.
-- No credentials are committed to the repository.
-- Work in feature branches and use Pull Requests.
-- AI repairs are restricted to low-risk UI files and always require human review.
-- No automatic merge or production deployment from the AI agent.
-- Monitor Free-tier usage before adding integrations.
+Employee access requires a verified Neon Auth account and the ERP role `owner`, `admin`, or `hr`. Salary records remain in córdobas (NIO). RR. HH. stays visible in the interface.
 
-## Status
-The interface is not production-ready. Authentication, shared database persistence, fiscal invoicing, full accounts receivable/payable and advanced HR workflows still need implementation and validation. Inventory order outflows and reversals are available in the DEMO workflow only.
+Products, inventory, orders, purchases, suppliers, expenses, finance, and the remaining HR workflows are still browser-local DEMO features until each module receives its own tested database/API migration. Do not enter real commercial records into those DEMO modules.
 
+## Main and database workflow
 
-## Functional prototype status
+- This repository is maintained directly on `main`; no integration Preview branch is required for normal work.
+- Cloudflare Pages serves the UI from `main`.
+- The API Worker initially connects only to Neon `development`.
+- Neon `production` is not configured or used by this integration. A production database cutover requires a separate review and explicit authorization.
+- Secrets are never committed to GitHub.
 
-Products and inventory support browser-local DEMO persistence (localStorage), product create/edit/view/deactivate/delete with historical-record protection, stock entries/exits/adjustments, automatic order-confirmation outflows with reversals, an inventory ledger and CSV export. This is not a production database: it is isolated to the current browser and is not synchronized with Neon or R2. Do not enter real customer, employee or business records.
+## Build and tests
 
+```sh
+npm install
+npm run build
+npm test
+```
 
-## Operational DEMO modules
-
-The feature branch adds browser-local workflows for customers, orders, suppliers, purchases, expenses, cash/bank movements, internal non-fiscal vouchers, abonos and employee records. Internal voucher previews are built from the linked order and show customer/contact, item names, quantities, unit prices, subtotal, discount, delivery, total, selected currency and the exchange rate used. Saved vouchers keep their line-item and currency snapshots. Purchase receipts update demo stock. Business transactions preserve original currency, USD equivalent and exchange rate used. USD is the reporting base; payroll is NIO-only. The exchange rate is editable in Settings and defaults to C$36.60 per US$1. All records remain local to the browser and are not synchronized.
-
-
-## Backend integration status (development only)
-
-The backend foundation is being introduced on the `feat/neon-cloudflare-backend-final` branch and the Neon `development` branch. The production Pages environment and Neon production branch are not enabled by this work.
-
-- Cloudflare Pages Functions provide server-side API routes.
-- Neon PostgreSQL stores operational records; `DATABASE_URL` remains a Cloudflare Preview secret and is never shipped to the browser.
-- Neon Managed Auth validates sessions. The HR API currently allows `owner`, `admin`, and `hr` roles.
-- RR. HH. remains visible in the navigation. Employee and salary records are protected and use NIO.
-- The private R2 bucket is bound to Pages Preview as `ERP_ASSETS`; product/document upload workflows are not wired yet.
-- Without all required preview variables, the app stays in local DEMO mode.
-
-See [Backend setup](docs/backend-setup.md) for the preview-only setup and promotion checklist.
+See [Backend setup](docs/backend-setup.md) for the Worker deployment and secret configuration.
