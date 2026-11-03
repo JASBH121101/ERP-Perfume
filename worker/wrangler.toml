@@ -1,4 +1,3 @@
-[name]
 name = "jb-parfums-erp-api"
 main = "src/index.js"
 compatibility_date = "2026-11-03"
