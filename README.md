@@ -4,7 +4,7 @@ ERP web application for JB PARFUMS.
 
 ## Current phase
 
-The ERP interface and browser-local DEMO workflows are available. The standalone API Worker is prepared in the repository; its deployment and Neon Development connection must be completed before authenticated records can be used.
+The ERP frontend is gated by Neon Auth: it does not render the dashboard or load application modules until the Worker validates an authenticated ERP profile. Browser-local DEMO modules remain clearly identified and are not a substitute for database-backed production workflows.
 
 ## Currency policy
 
@@ -19,7 +19,8 @@ The ERP interface and browser-local DEMO workflows are available. The standalone
 - Frontend hosting: Cloudflare Pages project `erp-perfume`, production branch `main`.
 - API: standalone Cloudflare Worker `jb-parfums-erp-api`, called from the frontend through its configured API base URL.
 - Database: Neon PostgreSQL, `erp_perfume` on the `development` branch during validation.
-- Identity: Neon Managed Auth; JWT verification and ERP role checks run in the Worker.
+- Identity: Neon Managed Auth; the production Pages origin is allowlisted, JWT verification and ERP role checks run in the Worker, and the frontend stays locked until a valid profile is returned.
+- Branding: JB monogram favicon and a subtle JB PARFUMS watermark on invoice preview/print.
 - Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
 - CI/CD: GitHub Actions builds and deploys the Worker from `main`; Pages continues to publish the static frontend.
 - Browser automation: Playwright with Chromium.
