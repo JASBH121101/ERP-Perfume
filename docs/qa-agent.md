@@ -102,7 +102,7 @@ The ERP pull-request workflow also runs the private **JB Expert QA 0.4.0** proje
 - The token must be a fine-grained PAT restricted to that single repository with `Contents: read-only`. It is used only by the secondary checkout step and is never written to the workspace or report.
 - The ERP keeps its own `jb-expert-qa.config.json` policy: profile `jb-parfums-erp`, minimum score **90/100**, and a security weight of **45%**. The workflow passes this file to the auditor; other projects continue using the shared general profile unless they supply their own.
 - CI requires the exact `jb-parfums-erp` profile and blocks on a score below its configured minimum (at least 90/100), critical findings, rule errors, or incomplete scans.
-- The engine is pinned to commit `6e81024e2823deefbee30c7cf224159e58483ce5` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
+- The engine is pinned to commit `7452320d4fe61bf5e5574899513b1f7e6704af8d` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
 - The job runs the local static project auditor on a clean archive of the exact ERP pull-request revision. The engine itself is kept outside that scan snapshot.
 - This integration does **not** install ERP dependencies, execute ERP code, call Gemini, Cloudflare Workers AI, OpenAI, Neon, R2, or Supabase, and does not connect to production data.
 - The scanner skips environment files and credential material without opening their contents. The report records file paths and findings, not copied source contents or secret values.
