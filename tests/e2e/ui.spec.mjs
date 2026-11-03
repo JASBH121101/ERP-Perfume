@@ -641,3 +641,25 @@ test('editing a product on mobile keeps dialog and inputs within screen width', 
   expect(metrics.inputRight).toBeLessThanOrEqual(metrics.viewport);
   expect(metrics.footerRight).toBeLessThanOrEqual(metrics.viewport);
 });
+
+
+test('all operational list tables reflow inside a 390px mobile viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const views = ['products','orders','customers','billing','suppliers','purchases','expenses','cash','hr'];
+  for (const view of views) {
+    await page.locator('#sidebar button[data-view="' + view + '"]').click();
+    const measurements = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+      tables: Array.from(document.querySelectorAll('.mobile-record-table')).map(table => ({
+        client: table.clientWidth,
+        scroll: table.scrollWidth
+      }))
+    }));
+    expect(measurements.document, view + ' page document width').toBeLessThanOrEqual(measurements.viewport + 1);
+    for (const table of measurements.tables) {
+      expect(table.scroll, view + ' table width').toBeLessThanOrEqual(table.client + 1);
+    }
+  }
+});
