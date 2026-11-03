@@ -1,3 +1,4 @@
+// Production deployment is gated through GitHub Actions from main.
 import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
