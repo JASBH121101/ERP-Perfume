@@ -100,7 +100,7 @@ The ERP pull-request workflow runs **JB Expert QA 0.7.0** in two complementary s
 
 - GitHub Actions reads the private `JASBH121101/JB-Expert-QA` repository using the repository secret `JBQA_REPO_READ_TOKEN`.
 - The token is a fine-grained PAT restricted to that repository with `Contents: read-only`. It is never written to the workspace or any report.
-- The engine is pinned to commit `7d7787278496cd9191eaba527522a1c70fe51f42` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
+- The engine is pinned to commit `bc88596104f3c996eedc2dd775e0661aade76fd8` for reproducible builds. Updating the engine requires a reviewed commit change in `.github/workflows/ui-checks.yml`.
 - The ERP keeps its own `jb-expert-qa.config.json` policy: profile `jb-parfums-erp`, minimum score **90/100**, and a security weight of **45%**. The workflow passes this file to the auditor; other projects continue using the shared general profile unless they supply their own.
 - The static audit examines a clean archive of the exact ERP pull-request revision. It does not execute code, install ERP packages, or connect to the database.
 - The optional OSV.dev step sends only exact npm package names and versions. The ERP has no root npm lockfile, so current advisory coverage is partial and does not include transitive dependencies.
