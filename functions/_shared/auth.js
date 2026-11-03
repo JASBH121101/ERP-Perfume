@@ -25,7 +25,7 @@ export async function requireUser(request, env, allowedRoles = []) {
     const verified = await jwtVerify(
       authorization.slice(7),
       getKeySet(env.NEON_AUTH_JWKS_URL),
-      { issuer, algorithms: ["EdDSA"] }
+      { issuer: env.NEON_AUTH_BASE_URL, algorithms: ["EdDSA"] }
     );
     identity = verified.payload;
   } catch {
