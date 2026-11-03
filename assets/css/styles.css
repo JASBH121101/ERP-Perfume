@@ -610,3 +610,77 @@ body.auth-locked .app-shell {
     print-color-adjust: exact;
   }
 }
+
+
+/* Accessibility pass: enforce strong, consistent contrast in the light auth modal. */
+.auth-modal .auth-mode-switch {
+  border-color: #d9cbb5;
+  background: #f5efe4;
+}
+.auth-modal .auth-mode-switch button {
+  color: #544a3b !important;
+  background: #fffdf9;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 1 !important;
+}
+.auth-modal .auth-mode-switch button:hover {
+  color: #332719 !important;
+  background: #f1e7d5;
+}
+.auth-modal .auth-mode-switch button.active {
+  color: #312414 !important;
+  background: #e8d8b9;
+  box-shadow: inset 0 0 0 1px #c6a46d;
+}
+.auth-modal .auth-mode-switch button:focus-visible,
+.auth-modal input:focus-visible,
+.auth-modal .button:focus-visible {
+  outline: 3px solid #9a7137;
+  outline-offset: 2px;
+}
+.auth-modal .form-field,
+.auth-modal .form-field > span {
+  color: #514737 !important;
+  font-size: 11px;
+  font-weight: 650;
+}
+.auth-modal .form-field input {
+  color: #30291f !important;
+  background: #fffefa;
+  border-color: #d8cbb7;
+  font-size: 13px;
+}
+.auth-modal .form-field input::placeholder {
+  color: #786f61 !important;
+  opacity: 1;
+}
+.auth-modal .modal-heading h2 {
+  color: #28231c !important;
+}
+.auth-modal .modal-note,
+.auth-modal .auth-gate-note {
+  color: #514635 !important;
+  background: #f4ecde;
+  border-left-color: #a47d43;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.auth-modal .auth-feedback {
+  color: #514737;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.55;
+}
+.auth-modal .auth-feedback.is-error {
+  color: #8e3028 !important;
+}
+.auth-modal .button-primary {
+  color: #21180b !important;
+  font-weight: 700;
+}
+.auth-modal .button-quiet {
+  color: #514737 !important;
+  background: #fffdf9;
+  border-color: #d8cbb7;
+}
