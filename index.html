@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/styles.css">
-  <script src="assets/js/app.js" defer></script>
+  <script type="module" src="assets/js/bootstrap.mjs"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -100,7 +100,7 @@
             <span id="font-scale-label" aria-live="polite">110%</span>
             <button type="button" id="font-increase" aria-label="Aumentar tamaño de letra" title="Aumentar letra">A+</button>
           </div>
-          <span class="demo-pill"><i></i> MODO DEMO</span>
+          <button class="button button-quiet button-small auth-control" id="auth-control" type="button" hidden>Iniciar sesión</button><span class="demo-pill" id="connection-pill"><i></i> MODO DEMO</span>
           <button class="icon-button notification-button" type="button" aria-label="Notificaciones"><span data-icon="bell"></span><i></i></button>
           <span class="topbar-divider"></span>
           <button class="top-avatar" type="button" aria-label="Perfil del administrador">JB</button>
@@ -242,6 +242,24 @@
         <button type="button" class="button button-primary" data-action="print-invoice">Imprimir factura</button>
       </div>
     </div>
+  </dialog>
+  <dialog class="modal auth-modal" id="auth-dialog" aria-labelledby="auth-title">
+    <form id="auth-form" class="modal-card auth-modal-card">
+      <div class="modal-heading">
+        <div><span class="eyebrow">JB PARFUMS · ACCESO SEGURO</span><h2 id="auth-title">Acceso al ERP</h2></div>
+        <button type="button" class="icon-button modal-close" id="auth-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="modal-note">La cuenta se valida con Neon Auth. Los datos operativos nunca se conectan directamente desde el navegador a PostgreSQL.</p>
+      <div class="auth-mode-switch" role="group" aria-label="Tipo de acceso">
+        <button type="button" class="active" id="auth-mode-signin">Iniciar sesión</button>
+        <button type="button" id="auth-mode-signup">Crear cuenta</button>
+      </div>
+      <label class="form-field" id="auth-name-field" hidden><span>Nombre</span><input id="auth-name" name="name" type="text" maxlength="100" autocomplete="name"></label>
+      <label class="form-field"><span>Correo electrónico</span><input name="email" type="email" maxlength="180" autocomplete="email" required></label>
+      <label class="form-field"><span>Contraseña</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required></label>
+      <p class="auth-feedback" id="auth-feedback" role="status" aria-live="polite"></p>
+      <div class="modal-actions"><button type="submit" class="button button-primary" id="auth-submit">Iniciar sesión</button></div>
+    </form>
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
   <noscript><div class="noscript-message">Activa JavaScript para utilizar el panel de demostración.</div></noscript>
