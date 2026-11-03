@@ -15,6 +15,7 @@ on:
       - "scripts/**"
       - "tests/**"
       - "package.json"
+      - "jb-expert-qa.config.json"
       - "playwright.config.mjs"
       - ".github/workflows/**"
 
@@ -159,3 +160,190 @@ jobs:
           - Full static and browser test suite passed again after the patch.
 
           Human review is required. This PR is not merged automatically."
+
+  jb-expert-qa:
+    name: JB Expert QA — deterministic source audit
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact ERP pull request revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Verify private QA repository token is configured
+        env:
+          JBQA_REPO_READ_TOKEN: ${{ secrets.JBQA_REPO_READ_TOKEN }}
+        run: |
+          if [ -z "$JBQA_REPO_READ_TOKEN" ]; then
+            echo "::error::Missing JBQA_REPO_READ_TOKEN. Add the fine-grained read-only token to ERP-Perfume Actions secrets."
+            exit 1
+          fi
+
+      - name: Checkout pinned JB Expert QA engine
+        uses: actions/checkout@v4
+        with:
+          repository: JASBH121101/JB-Expert-QA
+          ref: 92f23fafd679c31dcbe496a4e1b3801d3f14fb7f
+          token: ${{ secrets.JBQA_REPO_READ_TOKEN }}
+          path: .jb-expert-qa
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install JB Expert QA browser dependencies without lifecycle scripts
+        run: npm --prefix .jb-expert-qa install --ignore-scripts --no-audit --no-fund --package-lock=false
+
+      - name: Install Chromium for JB Expert QA
+        run: .jb-expert-qa/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Create clean ERP source snapshot
+        run: |
+          mkdir -p "$RUNNER_TEMP/erp-project"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/erp-project"
+
+      - name: Run JB Expert QA local static audit
+        id: jbqa-audit
+        run: |
+          mkdir -p "$RUNNER_TEMP/jb-expert-qa-report"
+          set +e
+          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
+            --format=json \
+            --output="$RUNNER_TEMP/jb-expert-qa-report/report.json"
+          json_status=$?
+          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
+            --format=markdown \
+            --output="$RUNNER_TEMP/jb-expert-qa-report/report.md"
+          markdown_status=$?
+          set -e
+          if [ ! -s "$RUNNER_TEMP/jb-expert-qa-report/report.json" ] || [ ! -s "$RUNNER_TEMP/jb-expert-qa-report/report.md" ]; then
+            echo "::error::JB Expert QA failed to generate both report formats."
+            exit 1
+          fi
+          echo "Report generation completed (JSON exit: $json_status; Markdown exit: $markdown_status). The gate below decides whether findings block CI."
+
+      - name: Run JB Expert QA visual audit on isolated local ERP preview
+        run: node scripts/jb-expert-qa-visual.mjs
+
+      - name: Upload JB Expert QA visual report and screenshots
+        if: always() && hashFiles('.ai-output/jb-expert-qa-visual/report.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: jb-expert-qa-visual-report
+          path: .ai-output/jb-expert-qa-visual/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload JB Expert QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jb-expert-qa-report
+          path: ${{ runner.temp }}/jb-expert-qa-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Enforce critical findings and scan completeness
+        if: always()
+        env:
+          REPORT_PATH: ${{ runner.temp }}/jb-expert-qa-report/report.json
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          let report;
+          try {
+            report = JSON.parse(readFileSync(process.env.REPORT_PATH, "utf8"));
+          } catch {
+            console.error("JB Expert QA did not produce a readable JSON report.");
+            process.exit(1);
+          }
+
+          const critical = (report.diagnostics ?? []).filter((item) => item.severity === "critical");
+          const ruleErrors = (report.execution ?? []).filter((item) => item.status !== "passed");
+          const complete = report.analysisScope?.complete === true;
+          const score = report.scoring?.score;
+          const minimum = report.scoring?.minimumScore;
+          const expectedProfile = "jb-parfums-erp";
+          const profileMatches = report.profile === expectedProfile;
+          const advisoryScan = report.dependencyAdvisories ?? {};
+          const advisoryBlockers = (report.diagnostics ?? []).filter((item) =>
+            item.metadata?.advisoryId && ["critical", "high"].includes(item.severity));
+          const thresholdConfigured = Number.isFinite(minimum) && minimum >= 90;
+          const scorePassed = Number.isFinite(score) && thresholdConfigured && score >= minimum &&
+            report.scoring?.passed === true;
+
+          console.log("JB Expert QA version:", report.version ?? "unknown");
+          console.log("Profile:", report.profile ?? "unknown");
+          console.log("Files analyzed:", report.analysisScope?.filesAnalyzed ?? 0);
+          console.log("Findings:", report.summary?.findings ?? 0);
+          console.log("Score:", score ?? "not calculated", "/", minimum ?? "n/a");
+          console.log("Critical findings:", critical.length);
+          console.log("Rule execution errors:", ruleErrors.length);
+          console.log("Scan complete:", complete);
+          console.log("OSV advisory status:", advisoryScan.status ?? "not reported");
+          console.log("Dependency package versions queried:", advisoryScan.packagesQueried ?? 0);
+          console.log("Known OSV advisories:", advisoryScan.vulnerabilitiesFound ?? 0);
+          console.log("OSV network requests:", advisoryScan.networkRequests ?? 0);
+          console.log("High/critical dependency advisories:", advisoryBlockers.length);
+
+          await import("node:fs").then(({ appendFileSync }) => {
+            const lines = [
+              "### JB Expert QA",
+              "",
+              `- Engine: ${report.version ?? "unknown"}`,
+              `- Files analyzed: ${report.analysisScope?.filesAnalyzed ?? 0}`,
+              `- Findings: ${report.summary?.findings ?? 0}`,
+              `- Score: ${score ?? "n/a"}/100 (minimum: ${minimum ?? "n/a"})`,
+              `- Critical findings: ${critical.length}`,
+              `- Scan complete: ${complete ? "yes" : "no"}`,
+              `- OSV advisory lookup: ${advisoryScan.status ?? "not reported"}`,
+              `- Dependency package versions queried: ${advisoryScan.packagesQueried ?? 0}`,
+              `- Known OSV advisories: ${advisoryScan.vulnerabilitiesFound ?? 0}`,
+              `- High/critical dependency advisories: ${advisoryBlockers.length}`,
+              ""
+            ].join("\n");
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines);
+          });
+
+          if (!profileMatches) {
+            console.error("JB Expert QA blocked this check: expected profile " + expectedProfile + ", received " + (report.profile ?? "unknown") + ".");
+            process.exit(1);
+          }
+
+          if (!complete || critical.length > 0 || ruleErrors.length > 0) {
+            console.error("JB Expert QA blocked this check: incomplete scan, critical finding, or rule execution error.");
+            process.exit(1);
+          }
+
+          if (advisoryScan.required === true && advisoryScan.complete !== true) {
+            console.error("JB Expert QA blocked this check: required OSV dependency coverage is incomplete.");
+            process.exit(1);
+          }
+
+          if (advisoryBlockers.length > 0) {
+            console.error("JB Expert QA blocked this check: OSV reported high or critical dependency vulnerabilities.");
+            process.exit(1);
+          }
+
+          if (advisoryScan.enabled === true && advisoryScan.status !== "complete") {
+            console.warn("OSV dependency coverage is partial or unavailable. Review the advisory status and lockfile coverage; this profile does not block on provider availability.");
+          }
+
+          if (!scorePassed) {
+            console.error("JB Expert QA blocked this check: score is below the configured minimum, the minimum is less than 90, or scoring did not pass.");
+            process.exit(1);
+          }
+
+          console.log("JB Expert QA gate passed.");
+          NODE
