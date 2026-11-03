@@ -35,6 +35,13 @@ jobs:
       - name: Install pinned ERP dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Validate JavaScript syntax
+        run: |
+          node --check assets/js/bootstrap.mjs
+          node --check assets/js/app.js
+          node --input-type=module --check < worker/src/index.js
+          echo "Frontend and Worker JavaScript syntax checks passed."
+
       - name: Validate frontend build
         run: npm run build
 
