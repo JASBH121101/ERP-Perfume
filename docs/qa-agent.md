@@ -14,7 +14,7 @@ The agent receives only:
 
 It does not receive screenshots, images, video, audio, customer records, employee records, database contents, storage objects, environment files or secrets other than its own API key.
 
-The agent cannot call Neon, Cloudflare, R2, Supabase, public websites, external tools or shell commands. It can only request one structured text response from the OpenAI Responses API.
+The supervised UI-repair agent cannot call Neon, Cloudflare, R2, Supabase, public websites, external tools or shell commands. The separate deterministic dependency-audit step may call only the fixed OSV.dev advisory API when `advisories.enabled` is true; it sends npm package names and exact versions only, never source files, secrets or customer data. It does not install packages or execute lifecycle scripts.
 
 ## Automatic repair boundary
 
@@ -111,4 +111,8 @@ The ERP pull-request workflow also runs the private **JB Expert QA 0.4.0** proje
 - The integration runs for pull requests originating from this repository. Pull requests from forks skip the job because GitHub does not expose repository secrets to fork workflows.
 
 The existing Playwright/static validation job remains independent. JB Expert QA supplements it; it does not replace browser tests or certify live database state.
+
+## Supply-chain advisory lookup
+
+The ERP's `jb-parfums-erp` profile enables OSV.dev lookup for npm package versions. The ERP currently has no root npm lockfile, so the first pass can check exact pinned direct dependencies from `package.json` but will explicitly report partial coverage: transitive dependencies are not evaluated until a supported lockfile is committed. The lookup is best-effort (`required: false`) so a temporary external advisory-service outage does not masquerade as a clean result or block unrelated browser tests. Any returned high or critical OSV advisory blocks the QA gate; a critical result also fails the engine's scoring gate.
 
