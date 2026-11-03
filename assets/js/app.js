@@ -80,6 +80,7 @@
     analytics: { title: 'Informes', eyebrow: 'RENDIMIENTO', heading: 'Informes y análisis', subtitle: 'Indicadores preparados para tomar decisiones.' },
     settings: { title: 'Configuración', eyebrow: 'SISTEMA', heading: 'Configuración', subtitle: 'Preferencias y conexiones de JB PARFUMS ERP.' },
     purchases: { title: 'Compras', eyebrow: 'ABASTECIMIENTO', heading: 'Compras', subtitle: 'Registra adquisiciones y recepción de productos.' },
+    payables: { title: 'Cuentas por pagar', eyebrow: 'ABASTECIMIENTO', heading: 'Cuentas por pagar', subtitle: 'Controla saldos y abonos pendientes con tus proveedores.' },
     suppliers: { title: 'Proveedores', eyebrow: 'ABASTECIMIENTO', heading: 'Proveedores', subtitle: 'Administra proveedores y monedas habituales.' },
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
@@ -714,7 +715,14 @@
     if(type==='purchase'){
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
       if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
-      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
+      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+formField('Pago inicial','initialPayment','number',false,'min="0" step="0.01" value="0"')+selectField('Cuenta para pago inicial','initialAccount','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',false)+'</div><p class="form-helper">El importe inicial se registra como salida de caja. La diferencia queda como saldo pendiente con el proveedor.</p>';
+    }
+    if(type==='purchase-payment'){
+      const purchase=purchases.find(item=>String(item.id)===String(recordId));
+      if(!purchase){toast('No se encontró la compra seleccionada.');return;}
+      const balance=Math.max(0,Number(purchase.totalUsd||0)-Number(purchase.paidUsd||0));
+      if(balance<=0.001){toast('Esta compra ya está pagada.');return;}
+      body='<div class="form-grid"><div class="detail-field full-field"><span>Proveedor · '+esc(purchase.supplier)+'</span><strong>Saldo pendiente: '+money(balance)+'</strong><small>'+esc(purchase.product)+' · '+purchase.quantity+' unidades</small></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div><p class="form-helper">El abono se convierte con el tipo de cambio vigente y se registra en Caja y bancos sin modificar inventario.</p>';
     }
     if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
     if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
@@ -746,9 +754,9 @@
       body='<div class="form-grid"><div class="detail-field full-field"><span>Saldo pendiente</span><strong>'+money(balance)+'</strong></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div>';
     }
     if(type==='employee')body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+'</div><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
-    document.getElementById('business-modal-title').textContent=titles[type]||'Nuevo registro';
+    document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
-    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'?'Registrar abono':'Guardar en demo');
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en demo');
     if(type==='invoice'){refreshInvoiceSourceUI();renderInvoiceCart();}
     if(typeof businessDialog.showModal==='function')businessDialog.showModal();
   }
@@ -779,7 +787,14 @@
       const unitUsd=toUsd(unitCost,currency),previous=product.stock,nextStock=previous+quantity;
       const previousPurchaseCost=Number(product.purchaseCost||0),additionalCost=Number(product.additionalCost||0);
       const weightedPurchaseCost=nextStock>0?roundMoney((previousPurchaseCost*previous+unitUsd*quantity)/nextStock):unitUsd;
-      purchases.unshift({id,supplier:supplier.name,productId:product.id,product:product.name,quantity,currency,originalUnitCost:unitCost,originalTotal:roundMoney(unitCost*quantity),exchangeRate:rate,unitCostUsd:unitUsd,totalUsd:roundMoney(unitUsd*quantity),createdAt:new Date().toISOString()});
+      const totalUsd=roundMoney(unitUsd*quantity),initialPayment=num('initialPayment'),initialAccount=get('initialAccount')||'Caja USD';
+      const initialPaidUsd=initialPayment>0?toUsd(initialPayment,currency):0;
+      const initialAccountCurrency=/NIO$/.test(initialAccount)?'NIO':'USD';
+      if(!Number.isFinite(initialPayment)||initialPayment<0||initialPaidUsd>totalUsd+0.001){toast('El pago inicial debe estar entre cero y el total de la compra.');return;}
+      if(initialPayment>0&&initialAccountCurrency!==currency){toast('La moneda de la cuenta debe coincidir con la moneda del pago inicial.');return;}
+      const purchase={id,supplier:supplier.name,productId:product.id,product:product.name,quantity,currency,originalUnitCost:unitCost,originalTotal:roundMoney(unitCost*quantity),exchangeRate:rate,unitCostUsd:unitUsd,totalUsd,paidUsd:initialPaidUsd,status:initialPaidUsd>=totalUsd-0.001?'Pagado':(initialPaidUsd>0?'Abono parcial':'Pendiente'),payments:[],createdAt:new Date().toISOString()};
+      if(initialPayment>0){purchase.payments.push({amount:initialPayment,currency,exchangeRate:rate,amountUsd:initialPaidUsd,account:initialAccount,createdAt:new Date().toISOString()});cashEntries.unshift({id:Date.now()+1,direction:'expense',concept:'Pago inicial de compra a '+supplier.name,currency,originalAmount:initialPayment,exchangeRate:rate,amountUsd:initialPaidUsd,account:initialAccount,supplier:supplier.name,sourceType:'purchase',sourceId:String(id),createdAt:new Date().toISOString()});}
+      purchases.unshift(purchase);
       product.purchaseCost=weightedPurchaseCost;product.unitCost=roundMoney(weightedPurchaseCost+additionalCost);product.profit=roundMoney(Number(product.price||0)-product.unitCost);product.margin=product.price>0?roundMoney(product.profit/product.price*100):0;product.stock=nextStock;
       inventoryMovements.unshift({id,productId:product.id,productName:product.name,sku:product.sku,type:'Entrada por compra',quantity,delta:quantity,previousStock:previous,newStock:nextStock,note:'Compra a '+supplier.name,createdAt:new Date().toISOString()});
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Compra registrada; costo y existencias actualizados en DEMO.');
@@ -787,7 +802,7 @@
       const amount=num('amount');if(!get('description')||!Number.isFinite(amount)||amount<=0){toast('Revisa descripción e importe.');return;}
       expenses.unshift({id,category:get('category'),description:get('description'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),createdAt:new Date().toISOString()});
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Gasto guardado con moneda y tasa de conversión.');
-    }else if(type==='cash'||type==='payment'){
+    }else if(type==='cash'||type==='payment'||type==='purchase-payment'){
       const amount=num('amount'),account=get('account'),accountCurrency=/NIO$/.test(account)?'NIO':'USD';
       if(type==='cash'&&!get('concept')){toast('Escribe un concepto para el movimiento.');return;}
       if(!Number.isFinite(amount)||amount<=0){toast('Introduce un importe válido.');return;}
@@ -798,11 +813,19 @@
         if(amountUsd>balance+0.001){toast('El abono supera el saldo pendiente.');return;}
         invoice.paidUsd=roundMoney(Number(invoice.paidUsd||0)+amountUsd);invoice.status=invoice.paidUsd>=invoice.totalUsd-0.001?'Pagado':'Abono parcial';
         cashEntries.unshift({id,direction:'income',concept:'Abono '+invoice.id,currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,createdAt:new Date().toISOString()});
+      }else if(type==='purchase-payment'){
+        const purchase=purchases.find(p=>String(p.id)===String(businessForm.dataset.recordId));if(!purchase){toast('No se encontró la compra seleccionada.');return;}
+        const amountUsd=toUsd(amount,currency),balance=roundMoney(Number(purchase.totalUsd||0)-Number(purchase.paidUsd||0));
+        if(amountUsd>balance+0.001){toast('El abono supera el saldo pendiente de la compra.');return;}
+        purchase.paidUsd=roundMoney(Number(purchase.paidUsd||0)+amountUsd);purchase.status=purchase.paidUsd>=purchase.totalUsd-0.001?'Pagado':'Abono parcial';
+        purchase.payments=Array.isArray(purchase.payments)?purchase.payments:[];
+        purchase.payments.push({amount,currency,exchangeRate:rate,amountUsd,account,createdAt:new Date().toISOString()});
+        cashEntries.unshift({id,direction:'expense',concept:'Abono a compra '+purchase.id+' · '+purchase.supplier,currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,supplier:purchase.supplier,sourceType:'purchase',sourceId:String(purchase.id),createdAt:new Date().toISOString()});
       }else{
         const supplier=get('supplierIndex')===''?null:suppliers[num('supplierIndex')];
         cashEntries.unshift({id,direction:get('direction'),concept:get('concept'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),account,supplier:supplier?supplier.name:'',createdAt:new Date().toISOString()});
       }
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':(type==='purchase-payment'?'Abono al proveedor registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.'));
     }else if(type==='invoice'){
       const source=get('saleSource')==='web'?'web':'store';
       const orderId=get('orderId'),order=source==='web'?orders.find(o=>String(o.id)===orderId):null;
@@ -903,13 +926,35 @@
     const sales=orders.reduce((s,o)=>s+Number(o.amount||0),0),inventory=products.reduce((s,p)=>s+Number(p.unitCost||0)*Number(p.stock||0),0),potential=products.reduce((s,p)=>s+Math.max(0,costSummary(p).profit)*Number(p.stock||0),0),totalExpenses=expenses.reduce((s,e)=>s+Number(e.amountUsd||0),0),totalPurchases=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
     return heading(views.analytics,'')+'<div class="metric-grid">'+metric('Ventas de pedidos',money(sales),'chart',orders.length+' pedidos','total USD DEMO',false)+metric('Valor del inventario',money(inventory),'boxes',products.length+' referencias','a costo unitario',false)+metric('Margen potencial',money(potential),'spark','estimado','no es utilidad realizada',true)+metric('Gastos registrados',money(totalExpenses),'receipt',expenses.length+' movimientos','equivalente USD',false)+'</div><div class="summary-strip"><div class="summary-mini"><span>Compras USD</span><strong>'+money(totalPurchases)+'</strong></div><div class="summary-mini"><span>Pedidos sin completar</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Movimientos de stock</span><strong>'+inventoryMovements.length+'</strong></div></div><div class="notice-panel">'+svg('warning')+'<div><strong>Informes calculados sobre datos DEMO</strong><p>La utilidad real debe conciliar ventas cobradas, costo de venta, gastos, impuestos, devoluciones y ajustes; esta vista no constituye contabilidad oficial.</p></div></div>';
   }
+  function supplierPayablesUsd(supplierName){
+    return purchases.filter(p=>p.supplier===supplierName).reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
+  }
   function renderSuppliers(){
-    const rows=suppliers.map(s=>'<tr><td data-label="Proveedor / contacto" class="table-primary">'+esc(s.name)+'<small class="table-secondary">'+esc(s.contact||s.email||'Sin contacto')+'</small></td><td data-label="Teléfono">'+esc(s.phone||'—')+'</td><td data-label="Moneda habitual">'+(s.currency==='NIO'?'NIO · Córdoba':'USD · Dólar')+'</td><td data-label="Compras">'+purchases.filter(p=>p.supplier===s.name).length+'</td></tr>').join('');
-    return heading(views.suppliers,'<button class="button button-primary" data-action="new-supplier">'+svg('plus')+' Nuevo proveedor</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Proveedores</span><strong>'+suppliers.length+'</strong></div><div class="summary-mini"><span>Compras vinculadas</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Monedas</span><strong>USD / NIO</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PROVEEDOR / CONTACTO</th><th>TELÉFONO</th><th>MONEDA HABITUAL</th><th>COMPRAS</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
+    const rows=suppliers.map(s=>'<tr><td data-label="Proveedor / contacto" class="table-primary">'+esc(s.name)+'<small class="table-secondary">'+esc(s.contact||s.email||'Sin contacto')+'</small></td><td data-label="Teléfono">'+esc(s.phone||'—')+'</td><td data-label="Moneda habitual">'+(s.currency==='NIO'?'NIO · Córdoba':'USD · Dólar')+'</td><td data-label="Compras">'+purchases.filter(p=>p.supplier===s.name).length+'</td><td data-label="Saldo por pagar">'+money(supplierPayablesUsd(s.name))+'</td></tr>').join('');
+    const outstanding=purchases.reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
+    return heading(views.suppliers,'<button class="button button-primary" data-action="new-supplier">'+svg('plus')+' Nuevo proveedor</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Proveedores</span><strong>'+suppliers.length+'</strong></div><div class="summary-mini"><span>Compras vinculadas</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Saldo por pagar USD</span><strong>'+money(outstanding)+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PROVEEDOR / CONTACTO</th><th>TELÉFONO</th><th>MONEDA HABITUAL</th><th>COMPRAS</th><th>SALDO USD</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
   }
   function renderPurchases(){
-    const rows=purchases.map(p=>'<tr><td data-label="Fecha">'+dateText(p.createdAt)+'</td><td data-label="Proveedor" class="table-primary">'+esc(p.supplier)+'</td><td data-label="Perfume">'+esc(p.product)+'</td><td data-label="Unidades">'+p.quantity+'</td><td data-label="Importe / USD">'+moneyInCurrency(p.originalTotal,p.currency)+'<small class="table-secondary">'+money(p.totalUsd)+' · '+rateLabel(p.exchangeRate)+'</small></td></tr>').join('');
-    return heading(views.purchases,'<button class="button button-primary" data-action="new-purchase">'+svg('plus')+' Registrar compra</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Compras</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Total USD</span><strong>'+money(purchases.reduce((s,p)=>s+p.totalUsd,0))+'</strong></div><div class="summary-mini"><span>Tasa actual</span><strong>'+rateLabel(exchangeRate)+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>PROVEEDOR</th><th>PRODUCTO</th><th>UNIDADES</th><th>IMPORTE ORIGINAL / USD</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay compras registradas.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Recepción de compras DEMO</strong><p>Registrar una compra incrementa existencias, actualiza el costo unitario y conserva importe original, moneda y tipo de cambio.</p></div></div>';
+    const total=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
+    const paid=purchases.reduce((s,p)=>s+Number(p.paidUsd||0),0);
+    const due=Math.max(0,total-paid);
+    const rows=purchases.map(p=>{
+      const balance=Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0));
+      const status=balance<=0.001?'Pagado':(Number(p.paidUsd||0)>0?'Abono parcial':'Pendiente');
+      return '<tr><td data-label="Fecha">'+dateText(p.createdAt)+'</td><td data-label="Proveedor" class="table-primary">'+esc(p.supplier)+'</td><td data-label="Perfume">'+esc(p.product)+'</td><td data-label="Unidades">'+p.quantity+'</td><td data-label="Total">'+moneyInCurrency(p.originalTotal,p.currency)+'<small class="table-secondary">'+money(p.totalUsd)+' USD</small></td><td data-label="Pagado">'+money(p.paidUsd||0)+'</td><td data-label="Saldo">'+money(balance)+'</td><td data-label="Estado"><span class="status-chip '+(balance<=0.001?'status-success':'status-pending')+'">'+status+'</span></td><td data-label="Acción">'+(balance>0.001?'<button class="button button-quiet button-small" data-action="new-purchase-payment" data-id="'+esc(p.id)+'">Abonar</button>':'—')+'</td></tr>';
+    }).join('');
+    return heading(views.purchases,'<button class="button button-primary" data-action="new-purchase">'+svg('plus')+' Registrar compra</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Compras</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Compras USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Pagado USD</span><strong>'+money(paid)+'</strong></div><div class="summary-mini"><span>Por pagar USD</span><strong>'+money(due)+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FECHA</th><th>PROVEEDOR</th><th>PERFUME</th><th>UNIDADES</th><th>TOTAL</th><th>PAGADO USD</th><th>SALDO USD</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">No hay compras registradas.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Recepción de compras DEMO</strong><p>Registrar una compra incrementa existencias y actualiza el costo promedio. Los abonos se registran aparte y nunca modifican el inventario.</p></div></div>';
+  }
+  function renderPayables(){
+    const open=purchases.filter(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001);
+    const total=open.reduce((s,p)=>s+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
+    const suppliersOpen=new Set(open.map(p=>p.supplier)).size;
+    const rows=open.map(p=>{
+      const balance=Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0));
+      const status=Number(p.paidUsd||0)>0?'Abono parcial':'Pendiente';
+      return '<tr><td data-label="Compra / fecha" class="table-primary"><strong>'+esc(p.id)+'</strong><small class="table-secondary">'+dateText(p.createdAt)+'</small></td><td data-label="Proveedor">'+esc(p.supplier)+'</td><td data-label="Producto">'+esc(p.product)+' · '+p.quantity+' uds.</td><td data-label="Total">'+money(Number(p.totalUsd||0))+'</td><td data-label="Abonado">'+money(Number(p.paidUsd||0))+'</td><td data-label="Saldo"><strong>'+money(balance)+'</strong></td><td data-label="Estado"><span class="status-chip status-pending">'+status+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="new-purchase-payment" data-id="'+esc(p.id)+'">Registrar abono</button></td></tr>';
+    }).join('');
+    return heading(views.payables,'<button class="button button-quiet" data-view="purchases">Ver compras</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Proveedores pendientes</span><strong>'+suppliersOpen+'</strong></div><div class="summary-mini"><span>Compras con saldo</span><strong>'+open.length+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COMPRA / FECHA</th><th>PROVEEDOR</th><th>PRODUCTO</th><th>TOTAL USD</th><th>ABONADO</th><th>SALDO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">No hay cuentas pendientes con proveedores.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Cuentas por pagar DEMO</strong><p>Los saldos se calculan en USD. Cada abono conserva su moneda, tipo de cambio y cuenta de salida en el libro de caja local.</p></div></div>';
   }
   function renderExpenses(){
     const rows=expenses.map(e=>'<tr><td data-label="Fecha">'+dateText(e.createdAt)+'</td><td data-label="Categoría">'+esc(e.category)+'</td><td data-label="Descripción" class="table-primary">'+esc(e.description)+'</td><td data-label="Importe / conversión">'+moneyInCurrency(e.originalAmount,e.currency)+'<small class="table-secondary">'+money(e.amountUsd)+' · '+rateLabel(e.exchangeRate)+'</small></td></tr>').join('');
@@ -941,6 +986,7 @@
       analytics: renderAnalytics,
       settings: renderSettings,
       purchases: renderPurchases,
+      payables: renderPayables,
       suppliers: renderSuppliers,
       expenses: renderExpenses,
       cash: renderCash
@@ -1276,6 +1322,7 @@
     const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-expense':'expense','new-cash':'cash','new-invoice':'invoice','new-employee':'employee'};
     if(types[name])openBusinessDialog(types[name]);
     else if(name==='new-payment')openBusinessDialog('payment',action.getAttribute('data-id'));
+    else if(name==='new-purchase-payment')openBusinessDialog('purchase-payment',action.getAttribute('data-id'));
     else if(name==='add-invoice-product'){
       if(businessForm.dataset.recordType!=='invoice')return;
       const hidden=businessForm.querySelector('[name="draftProductId"]'),product=products.find(p=>String(p.id)===String(hidden?.value||''));
