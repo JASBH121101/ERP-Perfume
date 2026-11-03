@@ -67,6 +67,7 @@
   let expenses=[];
   let cashEntries=[];
   let invoices=[];
+  let invoiceDraftItems=[];
   let employees=[];
   const views = {
     dashboard: { title: 'Resumen', eyebrow: 'CENTRO DE CONTROL', heading: 'Buenos días', subtitle: 'Una mirada clara al movimiento de tu negocio.' },
@@ -451,6 +452,28 @@
     });
     return {items:requirement.items};
   }
+  function recordInvoiceInventory(invoice){
+    const prior=inventoryMovements.some(m=>m.sourceType==='invoice'&&String(m.sourceId)===String(invoice.id)&&Number(m.delta)<0);
+    if(invoice.inventoryAppliedAt||prior){invoice.inventoryAppliedAt=invoice.inventoryAppliedAt||new Date().toISOString();return {already:true};}
+    const grouped=new Map();
+    for(const item of invoice.items||[]){
+      const product=resolveOrderProduct(item),quantity=Number(item.quantity);
+      if(!product||!Number.isInteger(quantity)||quantity<1)return {error:'No se pudo vincular un perfume con el inventario o la cantidad es inválida.'};
+      const current=grouped.get(String(product.id));
+      if(current)current.quantity+=quantity;else grouped.set(String(product.id),{product,quantity});
+    }
+    const lines=Array.from(grouped.values());
+    const insufficient=lines.find(line=>line.product.active===false||Number(line.product.stock||0)<line.quantity);
+    if(insufficient)return {error:insufficient.product.active===false?'El perfume '+insufficient.product.name+' está desactivado.':'Stock insuficiente para '+insufficient.product.name+'. Disponible: '+insufficient.product.stock+'; solicitado: '+insufficient.quantity+'.'};
+    const timestamp=new Date().toISOString();
+    lines.forEach((line,index)=>{
+      const product=line.product,previous=Number(product.stock||0),next=previous-line.quantity;
+      product.stock=next;
+      inventoryMovements.unshift({id:Date.now()+index,productId:product.id,productName:product.name,sku:product.sku,type:'Venta por factura',quantity:line.quantity,delta:-line.quantity,previousStock:previous,newStock:next,note:'Factura '+invoice.id,sourceType:'invoice',sourceId:String(invoice.id),createdAt:timestamp});
+    });
+    invoice.inventoryAppliedAt=timestamp;
+    return {items:lines};
+  }
   function saveOrderStatus() {
     const button=document.getElementById('save-order-status'),order=orders.find(item=>String(item.id)===button.getAttribute('data-id'));
     const nextStatus=document.getElementById('order-status-select').value;
@@ -485,7 +508,7 @@
   function lookupItems(type){
     if(type==='customer')return customers.map((item,index)=>({value:String(index),label:item.name,meta:item.contact||'Sin contacto',search:[item.name,item.contact].join(' ')}));
     if(type==='supplier')return suppliers.map((item,index)=>({value:String(index),label:item.name,meta:[item.contact,item.phone].filter(Boolean).join(' · ')||'Proveedor',search:[item.name,item.contact,item.phone,item.email].join(' ')}));
-    if(type==='product')return products.filter(item=>item.active!==false).map(item=>({value:String(item.id),label:item.name,meta:[item.sku,money(item.price)].filter(Boolean).join(' · '),search:[item.name,item.sku,item.brand,item.category].join(' ')}));
+    if(type==='product')return products.filter(item=>item.active!==false).map(item=>({value:String(item.id),label:item.name,meta:[item.sku,item.barcode,money(item.price),'Stock '+item.stock].filter(Boolean).join(' · '),search:[item.name,item.sku,item.barcode,item.brand,item.category].join(' ')}));
     if(type==='order')return orders.filter(item=>!invoices.some(invoice=>invoice.orderId===item.id)).map(item=>({value:item.id,label:item.id,meta:item.customer+' · '+money(item.amount),search:[item.id,item.customer,item.phone].join(' ')}));
     return [];
   }
@@ -507,7 +530,7 @@
     const input=field.querySelector('[data-lookup]'),hidden=field.querySelector('input[type="hidden"]');
     if(!input||!hidden)return;
     input.value=label;hidden.value=value;input.setCustomValidity('');closeLookupResults(field);
-    if(input.dataset.lookup==='order'&&businessForm.dataset.recordType==='invoice')updateInvoicePreview();
+    if(input.dataset.lookup==='order'&&businessForm.dataset.recordType==='invoice')loadInvoiceOrderIntoDraft(value);
   }
   function selectLookupValue(input,value){
     const item=lookupItems(input.dataset.lookup).find(entry=>String(entry.value)===String(value));
@@ -532,32 +555,142 @@
   function invoiceCurrencyAmount(amountUsd,currency,rate){
     return moneyInCurrency(currency==='NIO'?roundMoney(amountUsd*rate):amountUsd,currency);
   }
+  function invoiceSelectedCurrency(){
+    return businessForm.querySelector('[name="currency"]')?.value==='NIO'?'NIO':'USD';
+  }
+  function invoiceSuggestedPrice(product){
+    const customerType=businessForm.querySelector('[name="customerType"]')?.value||'particular';
+    const wholesale=Number(product.wholesalePrice||0);
+    return customerType==='business'&&wholesale>0?wholesale:Number(product.price||0);
+  }
+  function invoiceDraftTotals(){
+    if(!invoiceDraftItems.length)return {error:'Agrega al menos un perfume a la factura.'};
+    const items=[];
+    for(const line of invoiceDraftItems){
+      const quantity=Number(line.quantity),unitPriceUsd=Number(line.unitPriceUsd);
+      if(!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitPriceUsd)||unitPriceUsd<0)return {error:'Revisa las cantidades y los precios unitarios.'};
+      items.push(Object.assign({},line,{quantity,unitPriceUsd:roundMoney(unitPriceUsd),lineTotalUsd:roundMoney(quantity*unitPriceUsd)}));
+    }
+    const subtotalUsd=roundMoney(items.reduce((sum,item)=>sum+item.lineTotalUsd,0));
+    const discountUsd=roundMoney(Number(businessForm.querySelector('[name="discountUsd"]')?.value||0));
+    const deliveryFeeUsd=roundMoney(Number(businessForm.querySelector('[name="deliveryFeeUsd"]')?.value||0));
+    if(!Number.isFinite(discountUsd)||!Number.isFinite(deliveryFeeUsd)||discountUsd<0||deliveryFeeUsd<0||discountUsd>subtotalUsd)return {error:'El descuento o el cargo de entrega no es válido.'};
+    const totalUsd=roundMoney(subtotalUsd-discountUsd+deliveryFeeUsd);
+    if(totalUsd<=0)return {error:'El total de la factura debe ser mayor que cero.'};
+    return {items,subtotalUsd,discountUsd,deliveryFeeUsd,totalUsd};
+  }
+  function renderInvoiceCart(){
+    if(businessForm.dataset.recordType!=='invoice')return;
+    const target=businessForm.querySelector('#invoice-cart');
+    if(!target)return;
+    const source=businessForm.querySelector('[name="saleSource"]')?.value||'store';
+    const count=businessForm.querySelector('#invoice-item-count');
+    if(count)count.textContent=invoiceDraftItems.length+' '+(invoiceDraftItems.length===1?'artículo':'artículos');
+    if(!invoiceDraftItems.length){
+      target.innerHTML='<div class="invoice-preview-empty">Todavía no hay perfumes agregados. Busca por nombre, SKU o código de barras.</div>';
+      updateInvoicePreview();
+      return;
+    }
+    target.innerHTML='<div class="invoice-cart-list">'+invoiceDraftItems.map((line,index)=>{
+      const product=products.find(item=>String(item.id)===String(line.productId));
+      const stock=product?Number(product.stock||0):'—';
+      return '<div class="invoice-cart-row"><div class="invoice-cart-product"><strong>'+esc(line.name)+'</strong><small>'+esc(line.sku||'Sin SKU')+(line.barcode?' · '+esc(line.barcode):'')+' · Stock: '+esc(stock)+'</small></div>'+
+        '<label><span>Cantidad</span><input type="number" min="1" step="1" value="'+esc(line.quantity)+'" data-invoice-quantity="'+index+'" aria-label="Cantidad de '+esc(line.name)+'" '+(source==='web'?'readonly':'')+'></label>'+
+        '<label><span>Precio unitario USD</span><input type="number" min="0" step="0.01" value="'+esc(line.unitPriceUsd)+'" data-invoice-price="'+index+'" aria-label="Precio unitario de '+esc(line.name)+'" '+(source==='web'?'readonly':'')+'></label>'+
+        (source==='web'?'':'<button type="button" class="table-action invoice-remove-line" data-action="remove-invoice-product" data-index="'+index+'" aria-label="Quitar '+esc(line.name)+'">×</button>')+'</div>';
+    }).join('')+'</div>';
+    updateInvoicePreview();
+  }
+  function loadInvoiceOrderIntoDraft(orderId){
+    if(businessForm.dataset.recordType!=='invoice')return;
+    const order=orders.find(item=>String(item.id)===String(orderId));
+    if(!order)return;
+    const set=(name,value)=>{const field=businessForm.querySelector('[name="'+name+'"]');if(field)field.value=value==null?'':String(value);};
+    set('customerName',order.customer||'');
+    set('customerPhone',order.phone||'');
+    set('customerType',order.customerType||'particular');
+    set('currency',order.paymentCurrency==='NIO'?'NIO':'USD');
+    set('paymentMethod',order.paymentMethod||'Pendiente / crédito');
+    set('discountUsd',Number(order.discount||0));
+    set('deliveryFeeUsd',Number(order.deliveryFee||0));
+    invoiceDraftItems=(Array.isArray(order.items)?order.items:[]).map(item=>{
+      const product=resolveOrderProduct(item);
+      return {productId:product?product.id:(item.productId==null?null:item.productId),name:String(item.name||product?.name||'Perfume'),sku:String(item.sku||product?.sku||''),barcode:String(product?.barcode||''),quantity:Number(item.quantity||1),unitPriceUsd:roundMoney(Number(item.unitPrice||product?.price||0))};
+    });
+    const totals=invoiceDraftTotals();
+    const isPaid=String(order.paymentStatus||'').toLocaleLowerCase('es').includes('pagado');
+    const paid= isPaid ? (totals.totalUsd||Number(order.amount||0)) : Number(order.paymentAmount||0);
+    const paidCurrency=order.paymentCurrency==='NIO'?'NIO':'USD';
+    set('amountReceived',paidCurrency==='NIO'?roundMoney(paid*Number(order.exchangeRate||exchangeRate)):paid);
+    renderInvoiceCart();
+    refreshInvoiceSourceUI();
+  }
+  function refreshInvoiceSourceUI(){
+    if(businessForm.dataset.recordType!=='invoice')return;
+    const source=businessForm.querySelector('[name="saleSource"]')?.value||'store';
+    const orderField=businessForm.querySelector('#invoice-order-field');
+    const addPanel=businessForm.querySelector('[data-search="invoice-product"]');
+    const addButton=businessForm.querySelector('[data-action="add-invoice-product"]');
+    if(orderField)orderField.hidden=source!=='web';
+    if(addPanel)addPanel.hidden=source==='web';
+    if(addButton)addButton.hidden=source==='web';
+    if(source==='store'){
+      const hidden=businessForm.querySelector('[name="orderId"]');
+      const visible=businessForm.querySelector('[data-lookup="order"]');
+      if(hidden)hidden.value='';
+      if(visible)visible.value='';
+      invoiceDraftItems=[];
+      renderInvoiceCart();
+    }else{
+      renderInvoiceCart();
+    }
+  }
   function updateInvoicePreview(){
     if(businessForm.dataset.recordType!=='invoice')return;
     const preview=businessForm.querySelector('#invoice-preview');
     if(!preview)return;
-    const orderId=businessForm.querySelector('input[name="orderId"]')?.value||'';
-    const order=orders.find(item=>String(item.id)===String(orderId));
-    if(!order){preview.innerHTML='<div class="invoice-preview-empty">Busca y selecciona un pedido para cargar el cliente, los perfumes y los importes.</div>';return;}
-    const totals=invoiceOrderTotals(order);
-    if(totals.error){preview.innerHTML='<div class="invoice-preview-empty invoice-preview-error">'+esc(totals.error)+'</div>';return;}
-    const currency=businessForm.querySelector('[name="currency"]')?.value==='NIO'?'NIO':'USD',rate=exchangeRate;
+    const totals=invoiceDraftTotals();
+    if(totals.error){preview.innerHTML='<div class="invoice-preview-empty">'+esc(totals.error)+'</div>';return;}
+    const currency=invoiceSelectedCurrency(),rate=exchangeRate;
+    const customer=businessForm.querySelector('[name="customerName"]')?.value||'Cliente sin nombre';
+    const phone=businessForm.querySelector('[name="customerPhone"]')?.value||'No registrado';
+    const source=businessForm.querySelector('[name="saleSource"]')?.value==='web'?'Pedido de página web':'Venta presencial';
     const lineRows=totals.items.map(item=>
       '<div class="invoice-preview-line"><div class="invoice-line-product"><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'Sin SKU')+'</small></div><span class="invoice-line-quantity">'+item.quantity+' uds.</span><div class="invoice-line-unit"><strong>'+invoiceCurrencyAmount(item.unitPriceUsd,currency,rate)+'</strong><small>'+money(item.unitPriceUsd)+' / unidad</small></div><div class="invoice-line-total"><strong>'+invoiceCurrencyAmount(item.lineTotalUsd,currency,rate)+'</strong><small>'+money(item.lineTotalUsd)+' base USD</small></div></div>'
     ).join('');
-    const totalOriginal=currency==='NIO'?roundMoney(totals.totalUsd*rate):totals.totalUsd;
-    preview.innerHTML=
-      '<div class="invoice-preview-heading"><div><span class="invoice-kicker">RESUMEN DEL COMPROBANTE</span><strong>'+esc(order.id)+'</strong></div><span class="invoice-demo-chip">DEMO · NO FISCAL</span></div>'+
-      '<div class="invoice-preview-meta"><div><span>CLIENTE</span><strong>'+esc(order.customer||'Sin cliente')+'</strong></div><div><span>CONTACTO</span><strong>'+esc(order.phone||'No registrado')+'</strong></div><div><span>FECHA DEL PEDIDO</span><strong>'+esc(order.date||'—')+'</strong></div><div><span>ESTADO</span><strong>'+esc(order.status||'Pendiente')+'</strong></div></div>'+
-      '<div class="invoice-lines-heading"><span>PRODUCTO</span><span>CANT.</span><span>PRECIO</span><span>IMPORTE</span></div>'+
-      '<div class="invoice-preview-lines">'+lineRows+'</div>'+
+    preview.innerHTML='<div class="invoice-preview-heading"><div><span class="invoice-kicker">VISTA PREVIA DE FACTURA</span><strong>'+esc(customer)+'</strong></div><span class="invoice-demo-chip">DEMO · NO FISCAL</span></div>'+
+      '<div class="invoice-preview-meta"><div><span>CLIENTE</span><strong>'+esc(customer)+'</strong></div><div><span>CONTACTO</span><strong>'+esc(phone)+'</strong></div><div><span>ORIGEN</span><strong>'+source+'</strong></div><div><span>FECHA</span><strong>'+new Date().toLocaleDateString('es-NI')+'</strong></div></div>'+
+      '<div class="invoice-lines-heading"><span>PRODUCTO</span><span>CANT.</span><span>PRECIO</span><span>IMPORTE</span></div><div class="invoice-preview-lines">'+lineRows+'</div>'+
       '<div class="invoice-preview-totals"><div><span>Subtotal</span><strong>'+invoiceCurrencyAmount(totals.subtotalUsd,currency,rate)+'</strong></div>'+
       (totals.discountUsd?'<div><span>Descuento</span><strong>− '+invoiceCurrencyAmount(totals.discountUsd,currency,rate)+'</strong></div>':'')+
       (totals.deliveryFeeUsd?'<div><span>Entrega</span><strong>'+invoiceCurrencyAmount(totals.deliveryFeeUsd,currency,rate)+'</strong></div>':'')+
-      '<div class="invoice-grand-total"><span>Total a cobrar</span><strong>'+moneyInCurrency(totalOriginal,currency)+'</strong></div>'+
-      '<div class="invoice-total-reference"><span>Equivalente base</span><strong>'+money(totals.totalUsd)+' USD</strong></div></div>'+
-      '<div class="invoice-exchange-row"><span>Tipo de cambio aplicado</span><strong>'+rateLabel(rate)+'</strong></div>'+
-      '<p class="invoice-preview-note">El importe se calcula desde el pedido y la tasa actual. No incluye impuestos ni constituye una factura fiscal autorizada.</p>';
+      '<div class="invoice-grand-total"><span>Total</span><strong>'+invoiceCurrencyAmount(totals.totalUsd,currency,rate)+'</strong></div></div>'+
+      '<div class="invoice-exchange-row"><span>Tipo de cambio aplicado</span><strong>'+rateLabel(rate)+'</strong></div>';
+  }
+  function invoiceDocumentMarkup(invoice){
+    const currency=invoice.currency==='NIO'?'NIO':'USD',rate=Number(invoice.exchangeRate||exchangeRate);
+    const lines=(invoice.items||[]).map(item=>'<tr><td><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'')+(item.barcode?' · '+esc(item.barcode):'')+'</small></td><td>'+Number(item.quantity||0)+'</td><td>'+invoiceCurrencyAmount(item.unitPriceUsd,currency,rate)+'</td><td>'+invoiceCurrencyAmount(item.lineTotalUsd==null?Number(item.quantity||0)*Number(item.unitPriceUsd||0):item.lineTotalUsd,currency,rate)+'</td></tr>').join('');
+    const balance=Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0));
+    const source=invoice.source==='web'?'Página web':'Tienda física';
+    return '<article class="invoice-paper"><header class="invoice-paper-header"><div class="invoice-paper-brand"><span class="invoice-paper-monogram">JB</span><div><strong>JB PARFUMS</strong><small>FRAGANCIAS · PERFUMERÍA</small></div></div><div class="invoice-paper-number"><span>COMPROBANTE INTERNO</span><strong>'+esc(invoice.id)+'</strong><small>'+esc(dateText(invoice.createdAt))+'</small></div></header>'+
+      '<div class="invoice-paper-status"><span>DEMO · NO FISCAL</span><strong>'+esc(invoice.status||'Pendiente')+'</strong></div>'+
+      '<section class="invoice-paper-parties"><div><small>FACTURAR A</small><strong>'+esc(invoice.customer||'Cliente general')+'</strong><span>'+esc(invoice.phone||'Sin contacto')+'</span><span>'+esc(invoice.customerType==='business'?'Cliente negocio':'Cliente particular')+'</span></div><div><small>ORIGEN DE VENTA</small><strong>'+source+'</strong><span>'+(invoice.orderId?'Pedido '+esc(invoice.orderId):'Venta directa')+'</span><span>Moneda: '+currency+'</span></div></section>'+
+      '<table class="invoice-paper-table"><thead><tr><th>PRODUCTO / CÓDIGO</th><th>CANT.</th><th>PRECIO UNIT.</th><th>IMPORTE</th></tr></thead><tbody>'+lines+'</tbody></table>'+
+      '<section class="invoice-paper-summary"><div><span>Subtotal</span><strong>'+invoiceCurrencyAmount(invoice.subtotalUsd,currency,rate)+'</strong></div>'+
+      (Number(invoice.discountUsd)>0?'<div><span>Descuento</span><strong>− '+invoiceCurrencyAmount(invoice.discountUsd,currency,rate)+'</strong></div>':'')+
+      (Number(invoice.deliveryFeeUsd)>0?'<div><span>Entrega</span><strong>'+invoiceCurrencyAmount(invoice.deliveryFeeUsd,currency,rate)+'</strong></div>':'')+
+      '<div class="invoice-paper-total"><span>TOTAL</span><strong>'+invoiceCurrencyAmount(invoice.totalUsd,currency,rate)+'</strong></div>'+
+      '<div><span>Abonado</span><strong>'+invoiceCurrencyAmount(invoice.paidUsd||0,currency,rate)+'</strong></div><div><span>Saldo pendiente</span><strong>'+invoiceCurrencyAmount(balance,currency,rate)+'</strong></div></section>'+
+      '<footer class="invoice-paper-footer"><div><strong>Método de pago:</strong> '+esc(invoice.paymentMethod||'Pendiente')+'</div><div>Tipo de cambio aplicado: '+rateLabel(rate)+'</div><p>Documento generado por JB PARFUMS ERP en modo DEMO. No es una factura fiscal autorizada.</p></footer></article>';
+  }
+  function showInvoicePreview(invoiceId){
+    const invoice=invoices.find(item=>String(item.id)===String(invoiceId));
+    const previewDialog=document.getElementById('invoice-preview-dialog');
+    const content=document.getElementById('invoice-print-document');
+    if(!invoice||!previewDialog||!content)return;
+    content.innerHTML=invoiceDocumentMarkup(invoice);
+    document.getElementById('invoice-preview-title').textContent='Factura '+invoice.id;
+    if(typeof previewDialog.showModal==='function')previewDialog.showModal();
   }
   function openBusinessDialog(type,recordId){
     const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra',expense:'Registrar gasto',cash:'Registrar recibo o pago',invoice:'Crear comprobante interno',payment:'Registrar abono',employee:'Agregar colaborador'};
@@ -577,9 +710,26 @@
     if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
     if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
     if(type==='invoice'){
-      const choices=orders.filter(o=>!invoices.some(f=>f.orderId===o.id));
-      if(!choices.length){toast('No hay pedidos disponibles para crear un comprobante.');return;}
-      body='<div class="form-grid">'+searchableField('Pedido','orderId','order',true)+currencyField('USD')+'</div><section class="invoice-preview" id="invoice-preview" aria-live="polite"><div class="invoice-preview-empty">Busca y selecciona un pedido para cargar el cliente, los perfumes y los importes.</div></section><p class="form-helper">Comprobante interno DEMO. La tasa se conserva al guardar; no incluye impuestos ni sustituye una factura fiscal autorizada.</p>';
+      invoiceDraftItems=[];
+      const customerOptions=customers.map(item=>'<option value="'+esc(item.name)+'"></option>').join('');
+      body='<div class="form-grid invoice-form-grid">'+
+        selectField('Origen de venta','saleSource','<option value="store" selected>Tienda física / venta directa</option><option value="web">Pedido de página web</option>',true)+
+        '<div id="invoice-order-field" class="full-field" hidden>'+searchableField('Buscar pedido web (número o cliente)','orderId','order',false)+'</div>'+
+        formField('Nombre del cliente','customerName','text',true,'list="invoice-customer-options" maxlength="100" autocomplete="off"')+
+        selectField('Tipo de cliente','customerType','<option value="particular" selected>Particular · precio normal</option><option value="business">Negocio · precio mayorista si existe</option>',true)+
+        formField('Teléfono o contacto','customerPhone','tel',false,'maxlength="40"')+
+        '<datalist id="invoice-customer-options">'+customerOptions+'</datalist>'+
+        '<div class="invoice-product-add full-field" data-search="invoice-product">'+searchableField('Perfume (nombre, SKU o código de barras)','draftProductId','product',false)+
+        '<button type="button" class="button button-secondary" data-action="add-invoice-product">Agregar producto</button></div>'+
+        '<div class="full-field"><div class="invoice-cart-heading"><strong>Productos de la factura</strong><span id="invoice-item-count">0 artículos</span></div><div id="invoice-cart" class="invoice-cart"><div class="invoice-preview-empty">Busca y agrega uno o varios perfumes.</div></div></div>'+
+        formField('Descuento (USD)','discountUsd','number',false,'min="0" step="0.01" value="0"')+
+        formField('Cargo de entrega (USD)','deliveryFeeUsd','number',false,'min="0" step="0.01" value="0"')+
+        currencyField('USD')+
+        selectField('Método de pago','paymentMethod','<option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Pago móvil</option><option>Cheque</option><option selected>Pendiente / crédito</option><option>Otro</option>',true)+
+        formField('Importe recibido (moneda de factura)','amountReceived','number',false,'min="0" step="0.01" value="0"')+
+        '<p class="form-helper full-field">Para clientes de negocio se utilizará el precio mayorista del producto cuando esté configurado; de lo contrario se conserva el precio normal. La factura guarda una copia del precio aplicado.</p>'+
+        '<section class="invoice-preview full-field" id="invoice-preview" aria-live="polite"><div class="invoice-preview-empty">Agrega perfumes para calcular la factura.</div></section>'+
+        '<p class="form-helper full-field">Comprobante interno DEMO, no fiscal. La factura se guardará en este navegador y actualizará el inventario una sola vez.</p></div>';
     }
     if(type==='payment'){
       const invoice=invoices.find(f=>f.id===recordId);if(!invoice){toast('No se encontró el comprobante.');return;}
@@ -589,8 +739,8 @@
     if(type==='employee')body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+'</div><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
     document.getElementById('business-modal-title').textContent=titles[type]||'Nuevo registro';
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
-    document.getElementById('business-save').textContent=type==='invoice'?'Crear comprobante demo':(type==='payment'?'Registrar abono':'Guardar en demo');
-    if(type==='invoice')updateInvoicePreview();
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'?'Registrar abono':'Guardar en demo');
+    if(type==='invoice'){refreshInvoiceSourceUI();renderInvoiceCart();}
     if(typeof businessDialog.showModal==='function')businessDialog.showModal();
   }
   function saveBusinessRecord(event){
@@ -645,18 +795,69 @@
       }
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.');
     }else if(type==='invoice'){
-      const order=orders.find(o=>String(o.id)===get('orderId'));
-      if(!order||invoices.some(f=>f.orderId===order.id)){toast('Pedido no disponible o ya facturado.');return;}
-      const totals=invoiceOrderTotals(order);
-      if(totals.error){toast(totals.error);return;}
-      const originalAmount=currency==='NIO'?roundMoney(totals.totalUsd*rate):totals.totalUsd;
-      invoices.unshift({
-        id:'JBI-'+String(id).slice(-6),orderId:order.id,customer:order.customer,phone:order.phone||'',
-        items:totals.items,subtotalUsd:totals.subtotalUsd,discountUsd:totals.discountUsd,deliveryFeeUsd:totals.deliveryFeeUsd,
-        currency:currency,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:originalAmount,
-        paidUsd:0,status:'Pendiente',createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO',taxIncluded:false
-      });
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Comprobante interno DEMO creado con detalle e importe calculado.');
+      const source=get('saleSource')==='web'?'web':'store';
+      const orderId=get('orderId'),order=source==='web'?orders.find(o=>String(o.id)===orderId):null;
+      if(source==='web'&&(!order||invoices.some(f=>String(f.orderId)===String(order.id)))){toast('Selecciona un pedido web disponible que todavía no tenga factura.');return;}
+      const customerName=(source==='web'?(order?.customer||get('customerName')):get('customerName')).trim();
+      if(!customerName){toast('Escribe o selecciona el nombre del cliente.');return;}
+      const totals=invoiceDraftTotals();if(totals.error){toast(totals.error);return;}
+      const customerType=get('customerType')==='business'?'business':'particular';
+      const phone=source==='web'?(order?.phone||get('customerPhone')):get('customerPhone');
+      const received=num('amountReceived');
+      if(!Number.isFinite(received)||received<0){toast('El importe recibido no puede ser negativo.');return;}
+      const totalOriginal=currency==='NIO'?roundMoney(totals.totalUsd*rate):totals.totalUsd;
+      const paidUsd=toUsd(received,currency);
+      if(paidUsd>totals.totalUsd+0.001){toast('El abono inicial supera el total de la factura.');return;}
+      const nextNumber=Math.max(0,...invoices.map(f=>Number(String(f.id||'').match(/(\d+)$/)?.[1]||0)))+1;
+      const invoiceId='JBI-'+String(nextNumber).padStart(6,'0');
+      const invoice={
+        id:invoiceId,orderId:source==='web'?order.id:'',source,customer:customerName,customerType,phone:phone||'',
+        items:totals.items.map(item=>({productId:item.productId,name:item.name,sku:item.sku||'',barcode:item.barcode||'',quantity:item.quantity,unitPriceUsd:item.unitPriceUsd,lineTotalUsd:item.lineTotalUsd})),
+        subtotalUsd:totals.subtotalUsd,discountUsd:totals.discountUsd,deliveryFeeUsd:totals.deliveryFeeUsd,
+        currency,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:totalOriginal,paidUsd,
+        paymentMethod:get('paymentMethod')||'Pendiente',status:paidUsd>=totals.totalUsd-0.001?'Pagado':(paidUsd>0?'Abono parcial':'Pendiente'),
+        createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO',taxIncluded:false,inventoryAppliedAt:null
+      };
+      if(source==='web'){
+        const previousMovement=inventoryMovements.some(m=>m.sourceType==='order'&&String(m.sourceId)===String(order.id)&&Number(m.delta)<0);
+        const alreadyApplied=Boolean(order.inventoryAppliedAt)||previousMovement||order.status!=='Pendiente';
+        if(!alreadyApplied){
+          const stockResult=recordOrderInventory(order,false);
+          if(stockResult.error){toast(stockResult.error);return;}
+          order.inventoryAppliedAt=new Date().toISOString();
+          order.status='En preparación';
+        }else if(!order.inventoryAppliedAt){
+          order.inventoryAppliedAt='confirmed-before-invoice';
+        }
+        invoice.inventoryAppliedAt=order.inventoryAppliedAt||'order-stock-already-applied';
+        invoice.inventorySourceType='order';
+        invoice.inventorySourceId=String(order.id);
+        order.invoiceId=invoice.id;
+        order.paymentStatus=invoice.status;
+        order.paymentAmount=received;
+        order.paymentCurrency=currency;
+        order.paymentMethod=invoice.paymentMethod;
+      }else{
+        const stockResult=recordInvoiceInventory(invoice);
+        if(stockResult.error){toast(stockResult.error);return;}
+        const existingCustomer=customers.find(item=>String(item.name||'').trim().toLocaleLowerCase('es')===customerName.toLocaleLowerCase('es'));
+        if(existingCustomer){
+          existingCustomer.customerType=customerType;
+          if(phone)existingCustomer.contact=phone;
+          existingCustomer.orders=Number(existingCustomer.orders||0)+1;
+          existingCustomer.spent=roundMoney(Number(existingCustomer.spent||0)+totals.totalUsd);
+        }else{
+          customers.unshift({name:customerName,contact:phone||'',customerType,orders:1,spent:totals.totalUsd,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
+        }
+      }
+      if(paidUsd>0){
+        const account=(invoice.paymentMethod==='Transferencia'?'Banco ':'Caja ')+currency;
+        cashEntries.unshift({id:Date.now(),direction:'income',concept:'Cobro inicial '+invoice.id,currency,originalAmount:received,exchangeRate:rate,amountUsd:paidUsd,account,paymentMethod:invoice.paymentMethod,createdAt:new Date().toISOString()});
+      }
+      invoices.unshift(invoice);
+      if(!persistBusinessChanges())return;
+      businessDialog.close();renderView();toast('Factura '+invoice.id+' generada. Inventario actualizado sin duplicar salidas.');
+      showInvoicePreview(invoice.id);
     }else if(type==='employee'){
       const salary=num('salaryNio');if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0){toast('Revisa los datos y el salario.');return;}
       employees.unshift({id,name:get('name'),position:get('position'),department:get('department'),salaryNio:salary,status:'Activo'});
@@ -673,8 +874,15 @@
     return heading(views.orders,'<button class="button button-primary" data-action="new-order">'+svg('plus')+' Nuevo pedido</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Pedidos</span><strong>'+orders.length+'</strong></div><div class="summary-mini"><span>Pendientes</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(orders.reduce((s,o)=>s+Number(o.amount||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL / COBRO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Sin pedidos.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Pedidos DEMO</strong><p>El inventario se descuenta al confirmar el pedido (estado «En preparación» o posterior). Si vuelve a «Pendiente», se registra el reingreso correspondiente.</p></div></div>';
   }
   function renderBilling(){
-    const rows=invoices.map(f=>{const paid=Number(f.paidUsd||0),balance=Math.max(0,f.totalUsd-paid);return '<tr><td data-label="Referencia" class="table-primary">'+esc(f.id)+'</td><td data-label="Pedido">'+esc(f.orderId)+'</td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Total / conversión">'+money(f.totalUsd)+'<small class="table-secondary">'+moneyInCurrency(f.originalAmount,f.currency)+' · '+rateLabel(f.exchangeRate)+'</small></td><td data-label="Abonos">'+money(paid)+' pagado <small class="table-secondary">'+money(balance)+' pendiente</small></td><td data-label="Estado"><span class="status-chip '+(balance===0?'status-success':'status-pending')+'">'+esc(f.status)+'</span></td><td data-label="Acción">'+(balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Registrar abono</button>':'—')+'</td></tr>';}).join('');
-    return heading(views.billing,'<button class="button button-primary" data-action="new-invoice">'+svg('plus')+' Nuevo comprobante</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Comprobantes internos</span><strong>'+invoices.length+'</strong></div><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(invoices.reduce((s,f)=>s+Math.max(0,f.totalUsd-Number(f.paidUsd||0)),0))+'</strong></div><div class="summary-mini"><span>Importe total USD</span><strong>'+money(invoices.reduce((s,f)=>s+f.totalUsd,0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>REFERENCIA</th><th>PEDIDO</th><th>CLIENTE</th><th>TOTAL / CONVERSIÓN</th><th>ABONOS</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay comprobantes internos.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Comprobantes internos DEMO, no fiscales</strong><p>Esta pantalla no emite facturas fiscales reales. Numeración, impuestos, formatos y notas de crédito requieren validación fiscal antes de producción.</p></div></div>';
+    const rows=invoices.map(f=>{
+      const paid=Number(f.paidUsd||0),balance=Math.max(0,Number(f.totalUsd||0)-paid);
+      const origin=f.source==='web'?'Página web':'Tienda física';
+      return '<tr><td data-label="Factura / origen" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Fecha">'+dateText(f.createdAt)+'</td><td data-label="Total">'+moneyInCurrency(f.originalAmount,f.currency)+'<small class="table-secondary">'+money(f.totalUsd)+' USD · '+rateLabel(f.exchangeRate)+'</small></td><td data-label="Abonos">'+money(paid)+' pagado <small class="table-secondary">'+money(balance)+' pendiente</small></td><td data-label="Estado"><span class="status-chip '+(balance===0?'status-success':'status-pending')+'">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="view-invoice" data-id="'+esc(f.id)+'">Ver / imprimir</button>'+(balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Abonar</button>':'')+'</td></tr>';
+    }).join('');
+    return heading(views.billing,'<button class="button button-primary" data-action="new-invoice">'+svg('plus')+' Nueva factura</button>')+
+      '<div class="summary-strip"><div class="summary-mini"><span>Facturas DEMO</span><strong>'+invoices.length+'</strong></div><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(invoices.reduce((s,f)=>s+Math.max(0,f.totalUsd-Number(f.paidUsd||0)),0))+'</strong></div><div class="summary-mini"><span>Venta facturada USD</span><strong>'+money(invoices.reduce((s,f)=>s+f.totalUsd,0))+'</strong></div></div>'+
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FACTURA / ORIGEN</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ABONOS</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Todavía no hay facturas DEMO.</td></tr>')+'</tbody></table></div></article>'+
+      '<div class="notice-panel">'+svg('warning')+'<div><strong>Comprobantes internos DEMO, no fiscales</strong><p>La vista previa permite imprimir en formato A4. No tiene autorización tributaria ni sustituye una factura fiscal.</p></div></div>';
   }
   function renderHR(){
     const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip status-success">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
@@ -767,7 +975,7 @@
     const product = productId == null ? null : products.find(function (item) { return String(item.id) === String(productId); });
     if (productId != null && !product) return;
     form.reset(); form.dataset.editingId = product ? String(product.id) : '';
-    const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','supplier','purchaseCost','additionalCost','price','stock','minStock','location','notes'];
+    const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','supplier','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
     if (product) fields.forEach(function (field) { if (form.elements[field]) form.elements[field].value = product[field] == null ? '' : String(product[field]); });
     form.elements.stock.readOnly = Boolean(product);
     form.elements.stock.value = product ? String(product.stock) : (form.elements.stock.value || '');
@@ -982,7 +1190,9 @@
     if (products.some(function (product) { return String(product.sku).toLowerCase() === sku.toLowerCase() && (!existing || String(product.id) !== String(existing.id)); })) {
       toast('Ese SKU ya existe. Utiliza un código diferente.'); form.elements.sku.focus(); return;
     }
-    const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
+    const wholesalePrice=number('wholesalePrice');
+    if(!Number.isFinite(wholesalePrice)||wholesalePrice<0){toast('El precio mayorista debe ser cero o mayor.');return;}
+    const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,wholesalePrice:wholesalePrice||null,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
     const snapshot=captureDemoState();
     if (existing) {
       Object.assign(existing,fields); if(!persistDemoData()){restoreDemoState(snapshot);return;} form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false;
@@ -1018,7 +1228,22 @@
     toast(label+' registrada: '+product.name+' · '+(delta>0?'+':'')+delta+' unidades.');
   });
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);
-  businessForm.addEventListener('change',function(event){if(event.target.name==='currency'&&businessForm.dataset.recordType==='invoice')updateInvoicePreview();});
+  businessForm.addEventListener('change',function(event){
+    if(businessForm.dataset.recordType!=='invoice')return;
+    if(event.target.name==='saleSource')refreshInvoiceSourceUI();
+    if(['currency','customerName','customerType','discountUsd','deliveryFeeUsd','amountReceived'].includes(event.target.name))updateInvoicePreview();
+  });
+  businessForm.addEventListener('input',function(event){
+    if(businessForm.dataset.recordType!=='invoice')return;
+    const quantity=event.target.getAttribute('data-invoice-quantity'),price=event.target.getAttribute('data-invoice-price');
+    if(quantity!==null){invoiceDraftItems[Number(quantity)].quantity=Number(event.target.value);updateInvoicePreview();return;}
+    if(price!==null){invoiceDraftItems[Number(price)].unitPriceUsd=Number(event.target.value);updateInvoicePreview();return;}
+    if(['customerName','customerPhone','discountUsd','deliveryFeeUsd','amountReceived'].includes(event.target.name))updateInvoicePreview();
+    if(event.target.name==='customerName'){
+      const match=customers.find(item=>String(item.name||'').toLocaleLowerCase('es')===event.target.value.trim().toLocaleLowerCase('es'));
+      if(match){const phone=businessForm.querySelector('[name="customerPhone"]');const type=businessForm.querySelector('[name="customerType"]');if(phone&&!phone.value)phone.value=match.contact||'';if(type)type.value=match.customerType||'particular';}
+    }
+  });
   businessForm.addEventListener('submit',saveBusinessRecord);
   document.addEventListener('focusin',function(event){const input=event.target.closest('[data-lookup]');if(input)renderLookupResults(input);});
   document.addEventListener('input',function(event){const input=event.target.closest('[data-lookup]');if(!input)return;const hidden=input.closest('[data-search-field]').querySelector('input[type="hidden"]');hidden.value='';input.setCustomValidity(input.value.trim()?'Selecciona un resultado de la lista.':'');renderLookupResults(input);if(input.dataset.lookup==='order'&&businessForm.dataset.recordType==='invoice')updateInvoicePreview();});
@@ -1037,7 +1262,22 @@
     const action=event.target.closest('[data-action]');
     if(!action){if(event.target.closest('#business-close')||event.target.closest('#business-cancel'))businessDialog.close();return;}
     const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-expense':'expense','new-cash':'cash','new-invoice':'invoice','new-employee':'employee'};
-    if(types[name])openBusinessDialog(types[name]);else if(name==='new-payment')openBusinessDialog('payment',action.getAttribute('data-id'));
+    if(types[name])openBusinessDialog(types[name]);
+    else if(name==='new-payment')openBusinessDialog('payment',action.getAttribute('data-id'));
+    else if(name==='add-invoice-product'){
+      if(businessForm.dataset.recordType!=='invoice')return;
+      const hidden=businessForm.querySelector('[name="draftProductId"]'),product=products.find(p=>String(p.id)===String(hidden?.value||''));
+      if(!product){toast('Busca y selecciona un perfume antes de agregarlo.');return;}
+      const existing=invoiceDraftItems.find(item=>String(item.productId)===String(product.id));
+      if(existing)existing.quantity=Number(existing.quantity||0)+1;
+      else invoiceDraftItems.push({productId:product.id,name:product.name,sku:product.sku||'',barcode:product.barcode||'',quantity:1,unitPriceUsd:invoiceSuggestedPrice(product)});
+      const visible=businessForm.querySelector('[data-lookup="product"]');if(visible){visible.value='';visible.setCustomValidity('');}
+      if(hidden)hidden.value='';renderInvoiceCart();
+    }else if(name==='remove-invoice-product'){
+      const index=Number(action.getAttribute('data-index'));if(Number.isInteger(index)&&index>=0){invoiceDraftItems.splice(index,1);renderInvoiceCart();}
+    }else if(name==='view-invoice')showInvoicePreview(action.getAttribute('data-id'));
+    else if(name==='print-invoice')window.print();
+    else if(name==='close-invoice-preview')document.getElementById('invoice-preview-dialog').close();
   });
   document.addEventListener('submit',function(event){
     if(!event.target||event.target.id!=='exchange-rate-form')return;
