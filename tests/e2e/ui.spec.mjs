@@ -1,20 +1,29 @@
 import { test, expect } from '@playwright/test';
 
+async function navigateToView(page, view) {
+  const sidebar = page.locator('#sidebar');
+  const isMobile = await page.evaluate(() => window.matchMedia('(max-width: 720px)').matches);
+  if (isMobile && !(await sidebar.evaluate(node => node.classList.contains('open')))) {
+    await page.locator('#menu-toggle').click();
+  }
+  await sidebar.locator('button[data-view="' + view + '"]').click();
+}
+
 test('ERP renders the dashboard and all primary modules', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/JB PARFUMS/);
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
 
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await expect(page.getByRole('heading', { name: 'Catálogo de productos' })).toBeVisible();
 
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await expect(page.getByRole('heading', { name: 'Facturación' })).toBeVisible();
   await expect(page.getByText(/no tiene autorización tributaria/i)).toBeVisible();
 
-  await page.locator('#sidebar button[data-view="hr"]').click();
+  await navigateToView(page, 'hr');
   await expect(page.getByRole('heading', { name: 'Recursos Humanos' })).toBeVisible();
-  await expect(page.getByText(/no contiene empleados reales/i)).toBeVisible();
+  await expect(page.getByText(/no hay colaboradores demo/i)).toBeVisible();
 });
 
 test('desktop sidebar collapses and remembers its state', async ({ page }) => {
@@ -52,7 +61,7 @@ test('font size controls default to 110 percent and persist the selected level',
 
 test('product search and stock filter return matching records', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
 
   await page.getByLabel('Buscar productos').fill('Khamrah');
   await expect(page.locator('#product-table-body')).toContainText('Khamrah Lattafa');
@@ -65,7 +74,7 @@ test('product search and stock filter return matching records', async ({ page })
 
 test('a new product can be added to the demo session', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
 
   const dialog = page.locator('#product-dialog');
@@ -86,7 +95,7 @@ test('a new product can be added to the demo session', async ({ page }) => {
 
 test('product master calculates unit cost, profit and gross margin', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
 
   const dialog = page.locator('#product-dialog');
@@ -119,7 +128,7 @@ test('product master calculates unit cost, profit and gross margin', async ({ pa
 
 test('inventory alerts use each product minimum stock', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await navigateToView(page, 'inventory');
 
   const inventory = page.locator('#view-root');
   await expect(inventory).toContainText('Stock mínimo configurable por producto');
@@ -132,7 +141,7 @@ test('inventory alerts use each product minimum stock', async ({ page }) => {
 
 test('product catalog filters by fragrance category', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
 
   await page.getByLabel('Filtrar por categoría').selectOption('Diseñador');
   await expect(page.locator('#product-table-body')).toContainText('Club de Nuit Intense Man');
@@ -141,7 +150,7 @@ test('product catalog filters by fragrance category', async ({ page }) => {
 
 test('product names are rendered as text, not executable markup', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
   const dialog = page.locator('#product-dialog');
 
@@ -168,7 +177,7 @@ test('mobile navigation opens and closes after selecting a module', async ({ pag
 
   await page.getByRole('button', { name: 'Abrir menú' }).click();
   await expect(page.locator('#sidebar')).toHaveClass(/open/);
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
 
   await expect(page.getByRole('heading', { name: 'Facturación' })).toBeVisible();
   await expect(page.locator('#sidebar')).not.toHaveClass(/open/);
@@ -176,7 +185,7 @@ test('mobile navigation opens and closes after selecting a module', async ({ pag
 
 
 test('product creation and edits persist locally after reload without changing stock', async ({ page }) => {
-  await page.goto('/'); await page.locator('#sidebar button[data-view="products"]').click();
+  await page.goto('/'); await navigateToView(page, 'products');
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
   const dialog=page.locator('#product-dialog');
   await dialog.getByLabel('Nombre del perfume').fill('QA Persistente');
@@ -184,7 +193,7 @@ test('product creation and edits persist locally after reload without changing s
   await dialog.getByLabel('Precio de venta (USD)').fill('1500');
   await dialog.getByLabel('Existencias iniciales').fill('6');
   await dialog.getByRole('button', { name: /Agregar a demo/ }).click();
-  await page.reload(); await page.locator('#sidebar button[data-view="products"]').click();
+  await page.reload(); await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente');
   await page.getByRole('button', { name: 'Editar QA Persistente' }).click();
   await dialog.getByLabel('Nombre del perfume').fill('QA Persistente Editado');
@@ -193,12 +202,12 @@ test('product creation and edits persist locally after reload without changing s
   await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente Editado');
   await expect(page.locator('#product-table-body')).toContainText('6 uds.');
-  await page.reload(); await page.locator('#sidebar button[data-view="products"]').click();
+  await page.reload(); await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente Editado');
 });
 
 test('products can be deactivated and reactivated from the catalogue', async ({ page }) => {
-  await page.goto('/'); await page.locator('#sidebar button[data-view="products"]').click();
+  await page.goto('/'); await navigateToView(page, 'products');
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: 'Desactivar Yara Lattafa' }).click();
   await expect(page.locator('#product-count')).toHaveText('07');
@@ -211,7 +220,7 @@ test('products can be deactivated and reactivated from the catalogue', async ({ 
 });
 
 test('inventory movements update stock, block negative balances, and persist', async ({ page }) => {
-  await page.goto('/'); await page.locator('#sidebar button[data-view="inventory"]').click();
+  await page.goto('/'); await navigateToView(page, 'inventory');
   const inventory=page.locator('#view-root');
   await inventory.locator('tr').filter({ hasText: 'Yara Lattafa' }).getByRole('button', { name: 'Movimiento' }).click();
   const stockDialog=page.locator('#stock-dialog');
@@ -238,13 +247,13 @@ test('inventory movements update stock, block negative balances, and persist', a
   await expect(inventory.locator('.ledger-panel')).toContainText('Entrada');
   await expect(inventory.locator('.ledger-panel')).toContainText('Salida');
   await expect(inventory.locator('.ledger-panel')).toContainText('Ajuste');
-  await page.reload(); await page.locator('#sidebar button[data-view="inventory"]').click();
+  await page.reload(); await navigateToView(page, 'inventory');
   await expect(page.locator('#view-root')).toContainText('7 unidades');
   await expect(page.locator('.ledger-panel')).toContainText('Ajuste');
 });
 
 test('inventory CSV export is available', async ({ page }) => {
-  await page.goto('/'); await page.locator('#sidebar button[data-view="inventory"]').click();
+  await page.goto('/'); await navigateToView(page, 'inventory');
   const download=page.waitForEvent('download');
   await page.getByRole('button', { name: /Exportar CSV/ }).click();
   const file=await download;
@@ -280,7 +289,7 @@ test('mobile drawer scroll responds to wheel input without moving the page', asy
 test('the DEMO catalogue still contains the eight original sample perfumes', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#product-count')).toHaveText('08');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body tr')).toHaveCount(8);
   await expect(page.locator('#product-table-body')).toContainText('Club de Nuit Intense Man');
   await expect(page.locator('#product-table-body')).toContainText('Yara Lattafa');
@@ -302,7 +311,7 @@ test('form fields have no placeholder or optional copy; required fields use a re
   }
 
   await productDialog.getByRole('button', { name: 'Cancelar' }).click();
-  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await navigateToView(page, 'inventory');
   await page.locator('#view-root button[data-action="stock-new"]').click();
   const stockDialog = page.locator('#stock-dialog');
   await expect(stockDialog.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
@@ -318,10 +327,10 @@ test('business amounts display in USD and configuration shows the configurable r
   await page.goto('/');
   await expect(page.locator('#view-root')).toContainText('$359.30');
   await expect(page.locator('#view-root')).not.toContainText('C' + '$');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body')).toContainText('$66.94');
   await expect(page.locator('#view-root')).not.toContainText('C' + '$');
-  await page.locator('#sidebar button[data-view="settings"]').click();
+  await navigateToView(page, 'settings');
   await expect(page.locator('#view-root')).toContainText('Moneda base: USD');
   await expect(page.locator('#view-root')).toContainText('C' + '$' + ' 36.60 por US$ 1');
 });
@@ -336,7 +345,7 @@ test('legacy DEMO data is converted once from córdobas to USD at 36.60', async 
     }));
   });
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body')).toContainText('$10.00');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
   expect(saved.version).toBe(3);
@@ -350,7 +359,7 @@ test('legacy DEMO data is converted once from córdobas to USD at 36.60', async 
 
 test('order eye opens detailed demo record and displays matching item and total amounts', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   await expect(page.getByRole('heading', { name: 'Pedidos y ventas' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Ver pedido JP-1048' }).click();
@@ -368,7 +377,7 @@ test('order eye opens detailed demo record and displays matching item and total 
 
 test('order status changes are validated and persist locally after reload', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
 
   const detail = page.locator('#order-detail-dialog');
@@ -382,7 +391,7 @@ test('order status changes are validated and persist locally after reload', asyn
   await expect(page.locator('#toast-region')).toContainText(/actualizado en DEMO local/i);
 
   await page.reload();
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   const orderRow = page.locator('#view-root tr').filter({ hasText: 'JP-1047' });
   await expect(orderRow).toContainText('En preparación');
   await page.getByRole('button', { name: 'Ver pedido JP-1047' }).click();
@@ -391,7 +400,7 @@ test('order status changes are validated and persist locally after reload', asyn
 
 test('each sample order opens its own detail record', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
 
   for (const orderId of ['JP-1048', 'JP-1047', 'JP-1046', 'JP-1045', 'JP-1044']) {
     await page.getByRole('button', { name: 'Ver pedido ' + orderId }).click();
@@ -402,34 +411,34 @@ test('each sample order opens its own detail record', async ({ page }) => {
 
 
 test('exchange rate is configurable and persists to DEMO settings',async({page})=>{
- await page.goto('/');await page.locator('#sidebar button[data-view="settings"]').click();
+ await page.goto('/');await navigateToView(page, 'settings');
  const rate=page.locator('#exchange-rate-form input[name="exchangeRate"]');await expect(rate).toHaveValue('36.6000');
  await rate.fill('37.25');await page.getByRole('button',{name:'Guardar tipo de cambio'}).click();
- await expect(page.locator('#view-root')).toContainText('C$ 37.25 por US$ 1');await page.reload();await page.locator('#sidebar button[data-view="settings"]').click();
+ await expect(page.locator('#view-root')).toContainText('C$ 37.25 por US$ 1');await page.reload();await navigateToView(page, 'settings');
  await expect(page.locator('#exchange-rate-form input[name="exchangeRate"]')).toHaveValue('37.2500');
 });
 test('purchase in córdobas retains rate and updates demo stock and cost',async({page})=>{
- await page.goto('/');await page.locator('#sidebar button[data-view="suppliers"]').click();await page.getByRole('button',{name:/Nuevo proveedor/}).click();
+ await page.goto('/');await navigateToView(page, 'suppliers');await page.getByRole('button',{name:/Nuevo proveedor/}).click();
  const dialog=page.locator('#business-dialog');await dialog.locator('input[name="name"]').fill('Proveedor QA');await dialog.locator('select[name="currency"]').selectOption('NIO');
- await dialog.getByRole('button',{name:'Guardar en demo'}).click();await page.locator('#sidebar button[data-view="purchases"]').click();await page.getByRole('button',{name:/Registrar compra/}).click();
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();await navigateToView(page, 'purchases');await page.getByRole('button',{name:/Registrar compra/}).click();
  await dialog.locator('[data-lookup="supplier"]').fill('Proveedor QA');await dialog.getByRole('option',{name:/Proveedor QA/}).click();
  await dialog.locator('[data-lookup="product"]').fill('JBP-002');await dialog.getByRole('option',{name:/Yara Lattafa/}).click();
  await dialog.locator('input[name="quantity"]').fill('2');await dialog.locator('input[name="unitCost"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$20.00');
- await page.locator('#sidebar button[data-view="inventory"]').click();await expect(page.locator('.inventory-stock-table tbody tr').filter({hasText:'Yara Lattafa'})).toContainText('10 unidades');
+ await navigateToView(page, 'inventory');await expect(page.locator('.inventory-stock-table tbody tr').filter({hasText:'Yara Lattafa'})).toContainText('10 unidades');
 });
 test('payroll is NIO-only',async({page})=>{
- await page.goto('/');await page.locator('#sidebar button[data-view="hr"]').click();await page.getByRole('button',{name:/Agregar colaborador/}).click();
+ await page.goto('/');await navigateToView(page, 'hr');await page.getByRole('button',{name:/Agregar colaborador/}).click();
  const dialog=page.locator('#business-dialog');await expect(dialog.locator('select[name="currency"]')).toHaveCount(0);
  await dialog.locator('input[name="name"]').fill('Colaborador QA');await dialog.locator('input[name="position"]').fill('Asistente');await dialog.locator('input[name="salaryNio"]').fill('15000');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('Colaborador QA');await expect(page.locator('#view-root')).toContainText('15,000.00');
 });
 test('expenses support two currencies and cash account enforces currency match',async({page})=>{
- await page.goto('/');await page.locator('#sidebar button[data-view="expenses"]').click();await page.getByRole('button',{name:/Nuevo gasto/}).click();
+ await page.goto('/');await navigateToView(page, 'expenses');await page.getByRole('button',{name:/Nuevo gasto/}).click();
  const dialog=page.locator('#business-dialog');await dialog.locator('select[name="category"]').selectOption({label:'Transporte'});
  await dialog.locator('input[name="description"]').fill('Transporte QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$10.00');
- await page.locator('#sidebar button[data-view="cash"]').click();await page.getByRole('button',{name:/Registrar movimiento/}).click();
+ await navigateToView(page, 'cash');await page.getByRole('button',{name:/Registrar movimiento/}).click();
  await dialog.locator('input[name="concept"]').fill('Cobro QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.locator('select[name="account"]').selectOption({label:'Caja USD'});await dialog.getByRole('button',{name:'Guardar en demo'}).click();
  await expect(dialog).toBeVisible();await expect(page.locator('#toast-region')).toContainText(/debe coincidir/i);
@@ -438,13 +447,13 @@ test('expenses support two currencies and cash account enforces currency match',
 
 test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await page.goto('/');
- await page.locator('#sidebar button[data-view="customers"]').click();
+ await navigateToView(page, 'customers');
  await page.getByRole('button',{name:/Nuevo cliente/}).click();
  const dialog=page.locator('#business-dialog');
  await dialog.locator('input[name="name"]').fill('Cliente Flujo QA');
  await dialog.locator('input[name="contact"]').fill('88880000');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();
- await page.locator('#sidebar button[data-view="orders"]').click();
+ await navigateToView(page, 'orders');
  await page.getByRole('button',{name:/Nuevo pedido/}).click();
  await dialog.locator('[data-lookup="customer"]').fill('Cliente Flujo');
  await dialog.getByRole('option',{name:/Cliente Flujo QA/}).click();
@@ -455,7 +464,7 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();
  await expect(page.locator('#view-root')).toContainText('JP-1049');
  await expect(page.locator('#view-root')).toContainText('C$');
- await page.locator('#sidebar button[data-view="billing"]').click();
+ await navigateToView(page, 'billing');
  await page.getByRole('button',{name:/Nueva factura/}).click();
  await dialog.locator('[name="saleSource"]').selectOption('web');
  await dialog.locator('[name="saleSource"]').selectOption('web');await dialog.locator('[data-lookup="order"]').fill('JP-1049');
@@ -467,7 +476,7 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await expect(dialog.locator('#invoice-preview')).toContainText('36.60');
  await dialog.getByRole('button',{name:'Generar factura'}).click();
  await page.locator('#invoice-preview-dialog').getByRole('button',{name:'Cerrar'}).click();
- await page.locator('#sidebar button[data-view="billing"]').click();
+ await navigateToView(page, 'billing');
  const voucher=page.locator('#view-root tbody tr').filter({hasText:'Cliente Flujo QA'});
  await expect(voucher).toContainText('Pendiente');
  await expect(voucher).toContainText('JP-1049');
@@ -482,7 +491,7 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
 
 test('new order starts empty and requires searchable customer and perfume selections', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   await page.getByRole('button', { name: /Nuevo pedido/ }).click();
   const dialog = page.locator('#business-dialog');
   const customerSearch = dialog.locator('[data-lookup="customer"]');
@@ -504,7 +513,7 @@ test('new order starts empty and requires searchable customer and perfume select
 
 test('new internal voucher starts without a preselected sample order', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[name="saleSource"]').selectOption('web');
@@ -533,7 +542,7 @@ test('sidebar clearly identifies demo storage and pending integrations without f
 
 test('invoice preview recalculates from linked order and selected exchange currency', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[name="saleSource"]').selectOption('web');
@@ -555,7 +564,7 @@ test('invoice preview recalculates from linked order and selected exchange curre
 
 test('saved internal invoice keeps line items, computed totals and the exchange rate used', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[name="saleSource"]').selectOption('web');
@@ -565,14 +574,14 @@ test('saved internal invoice keeps line items, computed totals and the exchange 
   await expect(dialog.locator('#invoice-preview')).toContainText('C$');
   await dialog.getByRole('button', { name: 'Generar factura' }).click();
   const row = page.locator('#view-root tr').filter({ hasText: 'JP-1048' });
-  await expect(row).toContainText('Pendiente');
+  await expect(row).toContainText('Pagado');
   await expect(row).toContainText('C$');
   await expect(page.locator('#view-root')).toContainText('110.66');
 });
 
 test('confirming a pending order deducts stock once and returning it to pending restores stock', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   await page.getByRole('button', { name: /Nuevo pedido/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[data-lookup="customer"]').fill('María');
@@ -584,27 +593,27 @@ test('confirming a pending order deducts stock once and returning it to pending 
   await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
   await page.locator('#order-status-select').selectOption('En preparación');
   await page.getByRole('button', { name: 'Guardar estado' }).click();
-  await page.locator('#sidebar button[data-view="inventory"]').click();
-  await expect(page.locator('#view-root tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#view-root .inventory-stock-table tbody tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
   await expect(page.locator('.ledger-panel')).toContainText('Salida por pedido');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
   await page.locator('#order-status-select').selectOption('Listo para entrega');
   await page.getByRole('button', { name: 'Guardar estado' }).click();
-  await page.locator('#sidebar button[data-view="inventory"]').click();
-  await expect(page.locator('#view-root tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#view-root .inventory-stock-table tbody tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('12 unidades');
+  await navigateToView(page, 'orders');
   await page.getByRole('button', { name: 'Ver pedido JP-1049' }).click();
   await page.locator('#order-status-select').selectOption('Pendiente');
   await page.getByRole('button', { name: 'Guardar estado' }).click();
-  await page.locator('#sidebar button[data-view="inventory"]').click();
-  await expect(page.locator('#view-root tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('14 unidades');
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#view-root .inventory-stock-table tbody tr').filter({ hasText: 'Club de Nuit Intense Man' })).toContainText('14 unidades');
   await expect(page.locator('.ledger-panel')).toContainText('Reingreso por pedido');
 });
 
 test('order confirmation blocks insufficient stock without changing order or inventory', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   await page.getByRole('button', { name: /Nuevo pedido/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[data-lookup="customer"]').fill('María');
@@ -619,14 +628,14 @@ test('order confirmation blocks insufficient stock without changing order or inv
   await expect(page.locator('#toast-region')).toContainText(/stock insuficiente/i);
   await expect(page.locator('#order-status-select')).toHaveValue('En preparación');
   await page.locator('#order-detail-cancel').click();
-  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await navigateToView(page, 'inventory');
   await expect(page.locator('#view-root tr').filter({ hasText: 'Khamrah Lattafa' })).toContainText('3 unidades');
   await expect(page.locator('.ledger-panel')).not.toContainText('Salida por pedido');
 });
 
 test('completed orders cannot be reopened through the status editor', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="orders"]').click();
+  await navigateToView(page, 'orders');
   await page.getByRole('button', { name: 'Ver pedido JP-1048' }).click();
   await page.locator('#order-status-select').selectOption('Pendiente');
   await page.getByRole('button', { name: 'Guardar estado' }).click();
@@ -638,7 +647,7 @@ test('completed orders cannot be reopened through the status editor', async ({ p
 test('mobile product modal keeps the complete action footer visible while scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
   const dialog = page.locator('#product-dialog');
   await dialog.evaluate(element => { element.scrollTop = element.scrollHeight; });
@@ -658,7 +667,7 @@ test('mobile product modal keeps the complete action footer visible while scroll
 test('mobile inventory tables fit the viewport without horizontal scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="inventory"]').click();
+  await navigateToView(page, 'inventory');
   const dimensions = await page.evaluate(() => {
     const stock = document.querySelector('.inventory-stock-table');
     const ledger = document.querySelector('.inventory-ledger-table');
@@ -683,7 +692,7 @@ test('mobile inventory tables fit the viewport without horizontal scrolling', as
 test('editing a product on mobile keeps dialog and inputs within screen width', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="products"]').click();
+  await navigateToView(page, 'products');
   await page.getByRole('button', { name: 'Editar Club de Nuit Intense Man' }).click();
   const dialog = page.locator('#product-dialog');
   const metrics = await dialog.evaluate(element => {
@@ -710,7 +719,7 @@ test('all operational list tables reflow inside a 390px mobile viewport', async 
   await page.goto('/');
   const views = ['products','orders','customers','billing','suppliers','purchases','expenses','cash','hr'];
   for (const view of views) {
-    await page.locator('#sidebar button[data-view="' + view + '"]').click();
+    await navigateToView(page, '' + view + '');
     const measurements = await page.evaluate(() => ({
       viewport: window.innerWidth,
       document: document.documentElement.scrollWidth,
@@ -729,7 +738,7 @@ test('all operational list tables reflow inside a 390px mobile viewport', async 
 
 test('in-store invoice creates the customer, updates stock once and opens a printable A4 preview', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
 
   const modal = page.locator('#business-dialog');
@@ -760,7 +769,7 @@ test('in-store invoice creates the customer, updates stock once and opens a prin
 
 test('web order invoice links the order and does not apply stock twice', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
 
   const modal = page.locator('#business-dialog');
@@ -790,7 +799,7 @@ test('web order invoice links the order and does not apply stock twice', async (
 
 test('in-store invoice blocks sales that exceed available stock', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
 
   const modal = page.locator('#business-dialog');
@@ -811,14 +820,14 @@ test('in-store invoice blocks sales that exceed available stock', async ({ page 
 
 test('supplier purchases support initial payments, partial balances and final settlement without duplicate stock', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="suppliers"]').click();
+  await navigateToView(page, 'suppliers');
   await page.getByRole('button', { name: /Nuevo proveedor/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('input[name="name"]').fill('Proveedor CXP QA');
   await dialog.locator('select[name="currency"]').selectOption('USD');
   await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
 
-  await page.locator('#sidebar button[data-view="purchases"]').click();
+  await navigateToView(page, 'purchases');
   await page.getByRole('button', { name: /Registrar compra/ }).click();
   await dialog.locator('[data-lookup="supplier"]').fill('Proveedor CXP');
   await dialog.getByRole('option', { name: /Proveedor CXP QA/ }).click();
@@ -830,7 +839,7 @@ test('supplier purchases support initial payments, partial balances and final se
   await dialog.locator('input[name="initialPayment"]').fill('2');
   await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
 
-  await page.locator('#sidebar button[data-view="payables"]').click();
+  await navigateToView(page, 'payables');
   const payableRow = page.locator('#view-root tbody tr').filter({ hasText: 'Proveedor CXP QA' });
   await expect(payableRow).toContainText('Abono parcial');
   await expect(payableRow).toContainText('$8.00');
@@ -868,7 +877,7 @@ test('supplier purchases support initial payments, partial balances and final se
 
 test('customer receivables track an initial payment, partial abono and final settlement', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#sidebar button[data-view="billing"]').click();
+  await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('input[name="customerName"]').fill('Cliente CXC QA');
@@ -879,7 +888,7 @@ test('customer receivables track an initial payment, partial abono and final set
   await dialog.getByRole('button', { name: 'Generar factura' }).click();
 
   await page.locator('#invoice-preview-dialog').getByRole('button', { name: 'Cerrar' }).click();
-  await page.locator('#sidebar button[data-view="receivables"]').click();
+  await navigateToView(page, 'receivables');
   const row = page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' });
   await expect(row).toContainText('Abono parcial');
   await expect(row).toContainText('1 abono(s)');

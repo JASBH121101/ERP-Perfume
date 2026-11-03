@@ -633,6 +633,8 @@
     const isPaid=String(order.paymentStatus||'').toLocaleLowerCase('es').includes('pagado');
     const paid=isPaid?(paidCurrency==='NIO'?roundMoney((totals.totalUsd||0)*orderRate):(totals.totalUsd||0)):Number(order.paidAmount||0);
     set('amountReceived',paid);
+    businessForm.dataset.invoiceCurrency=paidCurrency;
+    businessForm.dataset.invoiceReceivedRate=String(orderRate);
     renderInvoiceCart();
     refreshInvoiceSourceUI();
   }
@@ -645,7 +647,7 @@
     if(orderField)orderField.hidden=source!=='web';
     if(addPanel)addPanel.hidden=source==='web';
     if(addButton)addButton.hidden=source==='web';
-    if(source==='store'){
+    if(source!=='web'){
       const hidden=businessForm.querySelector('[name="orderId"]');
       const visible=businessForm.querySelector('[data-lookup="order"]');
       if(hidden)hidden.value='';
@@ -665,7 +667,8 @@
     const currency=invoiceSelectedCurrency(),rate=exchangeRate;
     const customer=businessForm.querySelector('[name="customerName"]')?.value||'Cliente sin nombre';
     const phone=businessForm.querySelector('[name="customerPhone"]')?.value||'No registrado';
-    const source=businessForm.querySelector('[name="saleSource"]')?.value==='web'?'Pedido de página web':'Venta presencial';
+    const selectedSource=businessForm.querySelector('[name="saleSource"]')?.value||'store';
+    const source=selectedSource==='web'?'Pedido de página web':(selectedSource==='manual'?'Venta manual':'Venta presencial');
     const lineRows=totals.items.map(item=>
       '<div class="invoice-preview-line"><div class="invoice-line-product"><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'Sin SKU')+'</small></div><span class="invoice-line-quantity">'+item.quantity+' uds.</span><div class="invoice-line-unit"><strong>'+invoiceCurrencyAmount(item.unitPriceUsd,currency,rate)+'</strong><small>'+money(item.unitPriceUsd)+' / unidad</small></div><div class="invoice-line-total"><strong>'+invoiceCurrencyAmount(item.lineTotalUsd,currency,rate)+'</strong><small>'+money(item.lineTotalUsd)+' base USD</small></div></div>'
     ).join('');
@@ -682,7 +685,7 @@
     const currency=invoice.currency==='NIO'?'NIO':'USD',rate=Number(invoice.exchangeRate||exchangeRate);
     const lines=(invoice.items||[]).map(item=>'<tr><td><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'')+(item.barcode?' · '+esc(item.barcode):'')+'</small></td><td>'+Number(item.quantity||0)+'</td><td>'+invoiceCurrencyAmount(item.unitPriceUsd,currency,rate)+'</td><td>'+invoiceCurrencyAmount(item.lineTotalUsd==null?Number(item.quantity||0)*Number(item.unitPriceUsd||0):item.lineTotalUsd,currency,rate)+'</td></tr>').join('');
     const balance=Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0));
-    const source=invoice.source==='web'?'Página web':'Tienda física';
+    const source=invoice.source==='web'?'Página web':(invoice.source==='manual'?'Venta manual':'Tienda física');
     return '<article class="invoice-paper"><header class="invoice-paper-header"><div class="invoice-paper-brand"><span class="invoice-paper-monogram">JB</span><div><strong>JB PARFUMS</strong><small>FRAGANCIAS · PERFUMERÍA</small></div></div><div class="invoice-paper-number"><span>COMPROBANTE INTERNO</span><strong>'+esc(invoice.id)+'</strong><small>'+esc(dateText(invoice.createdAt))+'</small></div></header>'+
       '<div class="invoice-paper-status"><span>DEMO · NO FISCAL</span><strong>'+esc(invoice.status||'Pendiente')+'</strong></div>'+
       '<section class="invoice-paper-parties"><div><small>FACTURAR A</small><strong>'+esc(invoice.customer||'Cliente general')+'</strong><span>'+esc(invoice.phone||'Sin contacto')+'</span><span>'+esc(invoice.customerType==='business'?'Cliente negocio':'Cliente particular')+'</span></div><div><small>ORIGEN DE VENTA</small><strong>'+source+'</strong><span>'+(invoice.orderId?'Pedido '+esc(invoice.orderId):'Venta directa')+'</span><span>Moneda: '+currency+'</span></div></section>'+
@@ -731,7 +734,7 @@
       invoiceDraftItems=[];
       const customerOptions=customers.map(item=>'<option value="'+esc(item.name)+'"></option>').join('');
       body='<div class="form-grid invoice-form-grid">'+
-        selectField('Origen de venta','saleSource','<option value="store" selected>Tienda física / venta directa</option><option value="web">Pedido de página web</option>',true)+
+        selectField('Origen de venta','saleSource','<option value="store" selected>Tienda física / venta directa</option><option value="web">Pedido de página web</option><option value="manual">Venta manual</option>',true)+
         '<div id="invoice-order-field" class="full-field" hidden>'+searchableField('Buscar pedido web (número o cliente)','orderId','order',false)+'</div>'+
         formField('Nombre del cliente','customerName','text',true,'list="invoice-customer-options" maxlength="100" autocomplete="off"')+
         selectField('Tipo de cliente','customerType','<option value="particular" selected>Particular · precio normal</option><option value="business">Negocio · precio mayorista si existe</option>',true)+
@@ -742,7 +745,7 @@
         '<div class="full-field"><div class="invoice-cart-heading"><strong>Productos de la factura</strong><span id="invoice-item-count">0 artículos</span></div><div id="invoice-cart" class="invoice-cart"><div class="invoice-preview-empty">Busca y agrega uno o varios perfumes.</div></div></div>'+
         formField('Descuento (USD)','discountUsd','number',false,'min="0" step="0.01" value="0"')+
         formField('Cargo de entrega (USD)','deliveryFeeUsd','number',false,'min="0" step="0.01" value="0"')+
-        currencyField('USD')+
+        currencyField('NIO')+
         selectField('Método de pago','paymentMethod','<option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Pago móvil</option><option>Cheque</option><option selected>Pendiente / crédito</option><option>Otro</option>',true)+
         formField('Importe recibido (moneda de factura)','amountReceived','number',false,'min="0" step="0.01" value="0"')+
         '<p class="form-helper full-field">Para clientes de negocio se utilizará el precio mayorista del producto cuando esté configurado; de lo contrario se conserva el precio normal. La factura guarda una copia del precio aplicado.</p>'+
@@ -758,7 +761,11 @@
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
     document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en demo');
-    if(type==='invoice'){refreshInvoiceSourceUI();renderInvoiceCart();}
+    if(type==='invoice'){
+      businessForm.dataset.invoiceCurrency=businessForm.querySelector('[name="currency"]')?.value||'NIO';
+      businessForm.dataset.invoiceReceivedRate=String(exchangeRate);
+      refreshInvoiceSourceUI();renderInvoiceCart();
+    }
     if(typeof businessDialog.showModal==='function')businessDialog.showModal();
   }
   function saveBusinessRecord(event){
@@ -830,7 +837,8 @@
       }
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':(type==='purchase-payment'?'Abono al proveedor registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.'));
     }else if(type==='invoice'){
-      const source=get('saleSource')==='web'?'web':'store';
+      const selectedSource=get('saleSource');
+      const source=selectedSource==='web'?'web':(selectedSource==='manual'?'manual':'store');
       const orderId=get('orderId'),order=source==='web'?orders.find(o=>String(o.id)===orderId):null;
       if(source==='web'&&(!order||invoices.some(f=>String(f.orderId)===String(order.id)))){toast('Selecciona un pedido web disponible que todavía no tenga factura.');return;}
       const customerName=(source==='web'?(order?.customer||get('customerName')):get('customerName')).trim();
@@ -880,7 +888,7 @@
       if(existingCustomer){
         existingCustomer.customerType=customerType;
         if(phone)existingCustomer.contact=phone;
-        if(source==='store'){
+        if(source!=='web'){
           existingCustomer.orders=Number(existingCustomer.orders||0)+1;
           existingCustomer.spent=roundMoney(Number(existingCustomer.spent||0)+totals.totalUsd);
         }
@@ -914,7 +922,7 @@
   function renderBilling(){
     const rows=invoices.map(f=>{
       const paid=Number(f.paidUsd||0),balance=Math.max(0,Number(f.totalUsd||0)-paid);
-      const origin=f.source==='web'?'Página web':'Tienda física';
+      const origin=f.source==='web'?'Página web':(f.source==='manual'?'Venta manual':'Tienda física');
       return '<tr><td data-label="Factura / origen" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Fecha">'+dateText(f.createdAt)+'</td><td data-label="Total">'+moneyInCurrency(f.originalAmount,f.currency)+'<small class="table-secondary">'+money(f.totalUsd)+' USD · '+rateLabel(f.exchangeRate)+'</small></td><td data-label="Abonos">'+money(paid)+' pagado <small class="table-secondary">'+money(balance)+' pendiente</small></td><td data-label="Estado"><span class="status-chip '+(balance===0?'status-success':'status-pending')+'">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="view-invoice" data-id="'+esc(f.id)+'">Ver / imprimir</button>'+(balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Abonar</button>':'')+'</td></tr>';
     }).join('');
     return heading(views.billing,'<button class="button button-primary" data-action="new-invoice">'+svg('plus')+' Nueva factura</button>')+
@@ -928,7 +936,7 @@
     const clients=new Set(open.map(f=>String(f.customer||'').trim().toLocaleLowerCase('es'))).size;
     const rows=open.map(f=>{
       const balance=Math.max(0,Number(f.totalUsd||0)-Number(f.paidUsd||0));
-      const origin=f.source==='web'?'Página web':'Tienda física';
+      const origin=f.source==='web'?'Página web':(f.source==='manual'?'Venta manual':'Tienda física');
       const paymentCount=Array.isArray(f.payments)?f.payments.length:(Number(f.paidUsd||0)>0?1:0);
       return '<tr><td data-label="Factura / fecha" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+dateText(f.createdAt)+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Origen">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</td><td data-label="Total">'+money(Number(f.totalUsd||0))+'</td><td data-label="Abonado">'+money(Number(f.paidUsd||0))+'<small class="table-secondary">'+paymentCount+' abono(s)</small></td><td data-label="Saldo"><strong>'+money(balance)+'</strong></td><td data-label="Estado"><span class="status-chip status-pending">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Registrar abono</button></td></tr>';
     }).join('');
@@ -1309,6 +1317,19 @@
     if(businessForm.dataset.recordType!=='invoice')return;
     if(event.target.name==='saleSource')refreshInvoiceSourceUI();
     if(event.target.name==='customerType')applyInvoiceCustomerPricing();
+    if(event.target.name==='currency'){
+      const nextCurrency=event.target.value==='NIO'?'NIO':'USD';
+      const previousCurrency=businessForm.dataset.invoiceCurrency||nextCurrency;
+      const previousRate=Number(businessForm.dataset.invoiceReceivedRate||exchangeRate);
+      const received=businessForm.querySelector('[name="amountReceived"]');
+      if(received&&previousCurrency!==nextCurrency){
+        const previousAmount=Number(received.value||0);
+        const amountUsd=previousCurrency==='NIO'?previousAmount/(previousRate>0?previousRate:exchangeRate):previousAmount;
+        received.value=String(nextCurrency==='NIO'?roundMoney(amountUsd*exchangeRate):roundMoney(amountUsd));
+      }
+      businessForm.dataset.invoiceCurrency=nextCurrency;
+      businessForm.dataset.invoiceReceivedRate=String(exchangeRate);
+    }
     if(['currency','customerName','customerType','discountUsd','deliveryFeeUsd','amountReceived'].includes(event.target.name))updateInvoicePreview();
   });
   businessForm.addEventListener('input',function(event){
