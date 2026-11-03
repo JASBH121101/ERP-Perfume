@@ -228,7 +228,7 @@ test('inventory movements update stock, block negative balances, and persist', a
   await stockDialog.locator('input[name="quantity"]').fill('2');
   await stockDialog.getByRole('button', { name: 'Guardar movimiento' }).click();
   await expect(inventory).toContainText('10 unidades');
-  await inventory.getByRole('button', { name: 'Registrar movimiento' }).click();
+  await inventory.locator('button[data-action="stock-new"]').click();
   await stockDialog.locator('[data-lookup="product"]').fill('Yara');
   await stockDialog.getByRole('option', { name: /Yara Lattafa/ }).click();
   await stockDialog.locator('select[name="type"]').selectOption('adjustment');
@@ -303,7 +303,7 @@ test('form fields have no placeholder or optional copy; required fields use a re
 
   await productDialog.getByRole('button', { name: 'Cancelar' }).click();
   await page.locator('#sidebar button[data-view="inventory"]').click();
-  await page.getByRole('button', { name: /Registrar movimiento/ }).click();
+  await page.locator('#view-root button[data-action="stock-new"]').click();
   const stockDialog = page.locator('#stock-dialog');
   await expect(stockDialog.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
   await expect(stockDialog.locator('label').filter({ hasText: /opcional/i })).toHaveCount(0);
