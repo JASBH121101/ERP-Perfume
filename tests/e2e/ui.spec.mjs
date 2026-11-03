@@ -805,3 +805,60 @@ test('in-store invoice blocks sales that exceed available stock', async ({ page 
   expect(saved.invoices).toHaveLength(0);
   expect(saved.products.find(product => product.name === 'Khamrah Lattafa').stock).toBe(3);
 });
+
+
+test('supplier purchases support initial payments, partial balances and final settlement without duplicate stock', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="suppliers"]').click();
+  await page.getByRole('button', { name: /Nuevo proveedor/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('input[name="name"]').fill('Proveedor CXP QA');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+
+  await page.locator('#sidebar button[data-view="purchases"]').click();
+  await page.getByRole('button', { name: /Registrar compra/ }).click();
+  await dialog.locator('[data-lookup="supplier"]').fill('Proveedor CXP');
+  await dialog.getByRole('option', { name: /Proveedor CXP QA/ }).click();
+  await dialog.locator('[data-lookup="product"]').fill('JBP-002');
+  await dialog.getByRole('option', { name: /Yara Lattafa/ }).click();
+  await dialog.locator('input[name="quantity"]').fill('2');
+  await dialog.locator('input[name="unitCost"]').fill('5');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('input[name="initialPayment"]').fill('2');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+
+  await page.locator('#sidebar button[data-view="payables"]').click();
+  const payableRow = page.locator('#view-root tbody tr').filter({ hasText: 'Proveedor CXP QA' });
+  await expect(payableRow).toContainText('Abono parcial');
+  await expect(payableRow).toContainText('$8.00');
+
+  await payableRow.getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('3');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+  await expect(page.locator('#view-root')).toContainText('$5.00');
+
+  const stockBeforeSettlement = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('jbparfums-demo-data-v2'));
+    return saved.products.find(product => product.sku === 'JBP-002').stock;
+  });
+
+  const updatedRow = page.locator('#view-root tbody tr').filter({ hasText: 'Proveedor CXP QA' });
+  await updatedRow.getByRole('button', { name: 'Registrar abono' }).click();
+  await dialog.locator('input[name="amount"]').fill('5');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.locator('select[name="account"]').selectOption({ label: 'Caja USD' });
+  await dialog.getByRole('button', { name: 'Registrar abono' }).click();
+
+  await expect(page.locator('#view-root')).toContainText('No hay cuentas pendientes con proveedores.');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const purchase = saved.purchases.find(item => item.supplier === 'Proveedor CXP QA');
+  expect(purchase.paidUsd).toBe(10);
+  expect(purchase.status).toBe('Pagado');
+  expect(purchase.payments).toHaveLength(3);
+  expect(saved.cashEntries.filter(item => item.sourceType === 'purchase' && item.sourceId === String(purchase.id))).toHaveLength(3);
+  expect(saved.cashEntries.filter(item => item.sourceType === 'purchase' && item.sourceId === String(purchase.id)).reduce((sum,item)=>sum+item.amountUsd,0)).toBe(10);
+  expect(saved.products.find(product => product.sku === 'JBP-002').stock).toBe(stockBeforeSettlement);
+});
