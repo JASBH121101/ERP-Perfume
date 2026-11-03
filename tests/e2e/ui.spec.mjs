@@ -556,6 +556,7 @@ test('saved internal invoice keeps line items, computed totals and the exchange 
   await page.locator('#sidebar button[data-view="billing"]').click();
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
+  await dialog.locator('[name="saleSource"]').selectOption('web');
   await dialog.locator('[data-lookup="order"]').fill('JP-1048');
   await dialog.getByRole('option', { name: /JP-1048/ }).click();
   await dialog.locator('select[name="currency"]').selectOption('NIO');
