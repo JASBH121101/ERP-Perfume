@@ -250,15 +250,19 @@
         <button type="button" class="icon-button modal-close" id="auth-close" aria-label="Cerrar">×</button>
       </div>
       <p class="modal-note">La cuenta se valida con Neon Auth. Los datos operativos nunca se conectan directamente desde el navegador a PostgreSQL.</p>
-      <div class="auth-mode-switch" role="group" aria-label="Tipo de acceso">
+      <div class="auth-mode-switch" id="auth-mode-switch" role="group" aria-label="Tipo de acceso">
         <button type="button" class="active" id="auth-mode-signin">Iniciar sesión</button>
         <button type="button" id="auth-mode-signup">Crear cuenta</button>
       </div>
       <label class="form-field" id="auth-name-field" hidden><span>Nombre</span><input id="auth-name" name="name" type="text" maxlength="100" autocomplete="name"></label>
-      <label class="form-field"><span>Correo electrónico</span><input name="email" type="email" maxlength="180" autocomplete="email" required></label>
-      <label class="form-field"><span>Contraseña</span><input name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required></label>
+      <label class="form-field" id="auth-email-field"><span>Correo electrónico</span><input id="auth-email" name="email" type="email" maxlength="180" autocomplete="email" required></label>
+      <label class="form-field" id="auth-password-field"><span>Contraseña</span><input id="auth-password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required></label>
+      <label class="form-field" id="auth-otp-field" hidden><span>Código de verificación</span><input id="auth-otp" name="otp" type="text" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code"></label>
       <p class="auth-feedback" id="auth-feedback" role="status" aria-live="polite"></p>
-      <div class="modal-actions"><button type="submit" class="button button-primary" id="auth-submit">Iniciar sesión</button></div>
+      <div class="modal-actions">
+        <button type="button" class="button button-quiet" id="auth-resend-code" hidden>Enviar código</button>
+        <button type="submit" class="button button-primary" id="auth-submit">Iniciar sesión</button>
+      </div>
     </form>
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
