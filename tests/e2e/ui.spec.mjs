@@ -756,6 +756,22 @@ test('all operational list tables reflow inside a 390px mobile viewport', async 
 });
 
 
+test('mobile topbar stays within a 320px viewport on long section names', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/');
+  await navigateToView(page, 'billing');
+  const bounds = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    actionsRight: document.querySelector('.topbar-actions').getBoundingClientRect().right,
+    headingRight: document.querySelector('.breadcrumb').getBoundingClientRect().right
+  }));
+  expect(bounds.document).toBeLessThanOrEqual(bounds.viewport + 1);
+  expect(bounds.actionsRight).toBeLessThanOrEqual(bounds.viewport - 12);
+  expect(bounds.headingRight).toBeLessThanOrEqual(bounds.viewport - 12);
+});
+
+
 test('in-store invoice creates the customer, updates stock once and opens a printable A4 preview', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'billing');
