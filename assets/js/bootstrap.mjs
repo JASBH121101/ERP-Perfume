@@ -37,7 +37,7 @@ async function refreshProfile() {
     try {
       const token = await getToken();
       if (token) {
-        const response = await fetch("/api/auth/profile", {
+        const response = await fetch(apiUrl("/api/auth/profile"), {
           headers: { authorization: "Bearer " + token },
           cache: "no-store"
         });
