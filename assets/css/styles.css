@@ -477,3 +477,7 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
   .invoice-preview-actions,.invoice-preview-actions-heading{display:none!important}
   .invoice-paper{width:100%!important;min-height:0!important;padding:0!important;box-shadow:none!important}
 }
+
+
+/* On mobile the collapsed desktop sidebar must not reserve horizontal space. */
+@media(max-width:720px){body.sidebar-collapsed .main-panel{width:100%;margin-left:0}}
