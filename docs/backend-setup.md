@@ -8,7 +8,7 @@ This guide describes the integration branch. It does not authorize a production 
 - API: Cloudflare Pages Functions under `functions/api/`.
 - Database: Neon PostgreSQL database `erp_perfume`, development branch only.
 - Identity: Neon Managed Better Auth on the same development branch.
-- Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to Pages Preview as `ASSETS`.
+- Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to Pages Preview as `ERP_ASSETS`.
 - Database access: `jb_erp_runtime_sql`, a dedicated SQL-created login with `NOINHERIT`, no administrative capabilities, and column-level grants only for the current authentication and HR API. Do not use a database-owner URL or a Neon-managed superuser role from application code.
 
 ## Preview-only Cloudflare variables
