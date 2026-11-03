@@ -12,9 +12,12 @@ on:
     paths:
       - "index.html"
       - "assets/**"
+      - "functions/**"
+      - "db/**"
       - "scripts/**"
       - "tests/**"
       - "package.json"
+      - "playwright.config.mjs"
       - "jb-expert-qa.config.json"
       - "playwright.config.mjs"
       - ".github/workflows/**"
