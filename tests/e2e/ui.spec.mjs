@@ -540,24 +540,29 @@ test('sidebar clearly identifies demo storage and pending integrations without f
   await expect(card.locator('.storage-connection')).toHaveCount(3);
 });
 
-test('invoice preview recalculates from linked order and selected exchange currency', async ({ page }) => {
+test('invoice preview recalculates from linked order while keeping USD primary', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'billing');
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[name="saleSource"]').selectOption('web');
-  await dialog.locator('[name="saleSource"]').selectOption('web');await dialog.locator('[data-lookup="order"]').fill('JP-1048');
-  await dialog.getByRole('option', { name: /JP-1048/ }).click();
+  await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await page.getByRole('option', { name: /JP-1048/ }).click();
   const preview = dialog.locator('#invoice-preview');
   await expect(preview).toContainText('María Gutiérrez');
   await expect(preview).toContainText('Yara Lattafa');
   await expect(preview).toContainText('Eclaire Lattafa');
   await expect(preview).toContainText('Subtotal');
   await expect(preview).toContainText('Entrega');
-  await expect(preview).toContainText('Total a cobrar');
+  await expect(preview).toContainText('Total en dólares (USD)');
   await expect(preview).toContainText('Tipo de cambio aplicado');
   await dialog.locator('select[name="currency"]').selectOption('NIO');
-  await expect(preview).toContainText('C
+  await expect(preview).toContainText('C');
+  await expect(preview).toContainText('110.66');
+  await expect(preview.locator('.invoice-line-unit strong').first()).toContainText('50.55');
+  await expect(preview.locator('.invoice-line-unit small').first()).toContainText('1,850.00');
+  await expect(preview.locator('.invoice-grand-total strong')).toContainText('110.66');
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
 });
 
 
