@@ -490,3 +490,13 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 
 /* On mobile the collapsed desktop sidebar must not reserve horizontal space. */
 @media(max-width:720px){body.sidebar-collapsed .main-panel{width:100%;margin-left:0}}
+
+/* Compact mobile topbar: long section names must not push actions past the viewport. */
+@media(max-width:420px){
+  .topbar{gap:8px}
+  .topbar-left{flex:1 1 auto;min-width:0;overflow:hidden}
+  .breadcrumb{min-width:0;overflow:hidden}
+  .breadcrumb strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .topbar-actions{flex:0 1 auto;min-width:0;gap:5px}
+  .global-search{flex:0 1 auto;width:min(42vw,150px);min-width:0}
+}
