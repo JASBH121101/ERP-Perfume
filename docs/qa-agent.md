@@ -80,7 +80,9 @@ To run the same checks on a developer machine that already has Node.js 22+, Pyth
 - Searchable customer, supplier, perfume and order selectors; new order and voucher selectors start empty.
 - Inventory entries, exits, adjustments, stock guards and persisted movement ledger.
 - Order confirmation stock outflow, insufficient-stock blocking, no duplicate deduction on later status changes, and stock reversal when returned to pending.
-- Mobile product-modal footer visibility and accessible button sizing.
+- Mobile inventory stock and movement-ledger card layouts without horizontal panning.
+- Mobile product-editor dialog width, input bounds, visible footer and accessible button sizing.
+- Responsive record cards for products, orders, customers, internal vouchers, suppliers, purchases, expenses, cash and HR lists.
 - Currency conversion, preserved transaction rates, purchase cost averaging, NIO-only payroll, cash account currency validation and internal voucher/abono workflow.
 - Escaping of user-entered product names.
 - Static HTML IDs, navigation, local assets, CSS structure and JavaScript syntax hooks.
