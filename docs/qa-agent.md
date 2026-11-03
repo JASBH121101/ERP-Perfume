@@ -84,6 +84,8 @@ To run the same checks on a developer machine that already has Node.js 22+, Pyth
 - Mobile product-editor dialog width, input bounds, visible footer and accessible button sizing.
 - Responsive record cards for products, orders, customers, internal vouchers, suppliers, purchases, expenses, cash and HR lists.
 - Currency conversion, preserved transaction rates, purchase cost averaging, NIO-only payroll, cash account currency validation and internal voucher/abono workflow.
+- Invoice preview from linked order items, customer/contact, unit prices, subtotals, discounts, delivery fees, total, selected currency and rate preservation.
+- Sidebar integration state labels without simulated progress meters.
 - Escaping of user-entered product names.
 - Static HTML IDs, navigation, local assets, CSS structure and JavaScript syntax hooks.
 
