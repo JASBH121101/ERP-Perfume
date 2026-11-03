@@ -6,7 +6,7 @@ const output = new URL("../dist/", import.meta.url);
 const outDir = new URL("../dist/", import.meta.url);
 
 await rm(outDir, { recursive: true, force: true });
-await mkdir(new URL("../dist/assets/", import.meta.url), { recursive: true });
+await mkdir(new URL("../dist/assets/js/", import.meta.url), { recursive: true });
 await cp(new URL("../index.html", import.meta.url), new URL("../dist/index.html", import.meta.url));
 await cp(new URL("../assets/css/", import.meta.url), new URL("../dist/assets/css/", import.meta.url), { recursive: true });
 
