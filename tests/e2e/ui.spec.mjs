@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test('ERP renders the dashboard and all primary modules', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/JB PARFUMS/);
-  await expect(page.getByRole('heading', { name: /Buenos días/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
 
   await page.locator('#sidebar button[data-view="products"]').click();
   await expect(page.getByRole('heading', { name: 'Catálogo de productos' })).toBeVisible();
@@ -416,7 +416,7 @@ test('purchase in córdobas retains rate and updates demo stock and cost',async(
  await dialog.locator('[data-lookup="product"]').fill('JBP-002');await dialog.getByRole('option',{name:/Yara Lattafa/}).click();
  await dialog.locator('input[name="quantity"]').fill('2');await dialog.locator('input[name="unitCost"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$20.00');
- await page.locator('#sidebar button[data-view="inventory"]').click();await expect(page.locator('#view-root').locator('tr').filter({hasText:'Yara Lattafa'})).toContainText('10 unidades');
+ await page.locator('#sidebar button[data-view="inventory"]').click();await expect(page.locator('.inventory-stock-table tbody tr').filter({hasText:'Yara Lattafa'})).toContainText('10 unidades');
 });
 test('payroll is NIO-only',async({page})=>{
  await page.goto('/');await page.locator('#sidebar button[data-view="hr"]').click();await page.getByRole('button',{name:/Agregar colaborador/}).click();
@@ -458,7 +458,7 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await page.locator('#sidebar button[data-view="billing"]').click();
  await page.getByRole('button',{name:/Nueva factura/}).click();
  await dialog.locator('[name="saleSource"]').selectOption('web');
- await dialog.locator('[data-lookup="order"]').fill('JP-1049');
+ await dialog.locator('[name="saleSource"]').selectOption('web');await dialog.locator('[data-lookup="order"]').fill('JP-1049');
  await dialog.getByRole('option',{name:/JP-1049/}).click();
  await expect(dialog.locator('#invoice-preview')).toContainText('Club de Nuit Intense Man');
  await expect(dialog.locator('#invoice-preview')).toContainText('133.88');
@@ -508,7 +508,7 @@ test('new internal voucher starts without a preselected sample order', async ({ 
   await dialog.locator('[name="saleSource"]').selectOption('web');
   await expect(dialog.locator('[data-lookup="order"]')).toHaveValue('');
   await expect(dialog.locator('input[type="hidden"][name="orderId"]')).toHaveValue('');
-  await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await dialog.locator('[name="saleSource"]').selectOption('web');await dialog.locator('[data-lookup="order"]').fill('JP-1048');
   await expect(dialog.getByRole('option', { name: /JP-1048/ })).toBeVisible();
   await dialog.getByRole('option', { name: /JP-1048/ }).click();
   await expect(dialog.locator('input[type="hidden"][name="orderId"]')).toHaveValue('JP-1048');
@@ -535,7 +535,7 @@ test('invoice preview recalculates from linked order and selected exchange curre
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[name="saleSource"]').selectOption('web');
-  await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await dialog.locator('[name="saleSource"]').selectOption('web');await dialog.locator('[data-lookup="order"]').fill('JP-1048');
   await dialog.getByRole('option', { name: /JP-1048/ }).click();
   const preview = dialog.locator('#invoice-preview');
   await expect(preview).toContainText('María Gutiérrez');
@@ -557,7 +557,7 @@ test('saved internal invoice keeps line items, computed totals and the exchange 
   await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[name="saleSource"]').selectOption('web');
-  await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await dialog.locator('[name="saleSource"]').selectOption('web');await dialog.locator('[data-lookup="order"]').fill('JP-1048');
   await dialog.getByRole('option', { name: /JP-1048/ }).click();
   await dialog.locator('select[name="currency"]').selectOption('NIO');
   await expect(dialog.locator('#invoice-preview')).toContainText('C$');
