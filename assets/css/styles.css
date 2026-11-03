@@ -389,6 +389,15 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 .invoice-preview-totals{display:grid;gap:8px;margin:13px 0 10px auto;width:min(100%,280px)}
 .invoice-preview-totals>div{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#827969;font-size:9px}
 .invoice-preview-totals>div strong{color:#514a3e;font-size:10px}
+.invoice-money-stack{display:grid;justify-items:end;gap:3px;text-align:right;line-height:1.2}
+.invoice-money-stack small,.invoice-paper-reference{display:block;color:#9a9080;font-size:8px;font-weight:500;line-height:1.2;white-space:nowrap}
+.invoice-preview-totals .invoice-grand-total .invoice-money-stack{font-size:17px}
+.invoice-preview-totals .invoice-grand-total .invoice-money-stack small{font-size:8px;color:#97896f}
+.invoice-paper-summary .invoice-money-stack{font-size:10px}
+.invoice-paper-summary .invoice-paper-total .invoice-money-stack{font-size:17px}
+.invoice-paper-summary .invoice-paper-total .invoice-money-stack small{font-size:8px;color:#9b8a6c}
+.invoice-paper-table td .invoice-paper-usd{display:block;color:#4d463b;font-weight:700}
+.invoice-paper-table td .invoice-paper-reference{margin-top:4px;color:#9c907e;font-weight:400;font-size:8px}
 .invoice-preview-totals .invoice-grand-total{padding-top:9px;border-top:1px solid #e9e1d4;color:#51412c;font-weight:700}
 .invoice-preview-totals .invoice-grand-total strong{color:#3c2d18;font-size:16px}
 .invoice-preview-totals .invoice-total-reference{color:#a09787;font-size:8px}
