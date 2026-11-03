@@ -459,7 +459,11 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await page.getByRole('button',{name:/Nuevo comprobante/}).click();
  await dialog.locator('[data-lookup="order"]').fill('JP-1049');
  await dialog.getByRole('option',{name:/JP-1049/}).click();
+ await expect(dialog.locator('#invoice-preview')).toContainText('Club de Nuit Intense Man');
+ await expect(dialog.locator('#invoice-preview')).toContainText('133.88');
  await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await expect(dialog.locator('#invoice-preview')).toContainText('C$');
+ await expect(dialog.locator('#invoice-preview')).toContainText('36.60');
  await dialog.getByRole('button',{name:'Crear comprobante demo'}).click();
  const voucher=page.locator('#view-root').locator('tr').filter({hasText:'JP-1049'});
  await expect(voucher).toContainText('Pendiente');
@@ -506,6 +510,57 @@ test('new internal voucher starts without a preselected sample order', async ({ 
   await dialog.getByRole('option', { name: /JP-1048/ }).click();
   await expect(dialog.locator('input[type="hidden"][name="orderId"]')).toHaveValue('JP-1048');
   await dialog.getByRole('button', { name: 'Cancelar' }).click();
+});
+
+
+test('sidebar clearly identifies demo storage and pending integrations without fake progress', async ({ page }) => {
+  await page.goto('/');
+  const card = page.locator('.storage-card');
+  await expect(card).toContainText('MODO DEMO ACTIVO');
+  await expect(card).toContainText('Almacenamiento local');
+  await expect(card).toContainText('Activo');
+  await expect(card).toContainText('Neon PostgreSQL');
+  await expect(card).toContainText('Cloudflare R2');
+  await expect(card).toContainText('Pendiente');
+  await expect(card.locator('.storage-meter')).toHaveCount(0);
+  await expect(card.locator('.storage-connection')).toHaveCount(3);
+});
+
+test('invoice preview recalculates from linked order and selected exchange currency', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="billing"]').click();
+  await page.getByRole('button', { name: /Nuevo comprobante/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await dialog.getByRole('option', { name: /JP-1048/ }).click();
+  const preview = dialog.locator('#invoice-preview');
+  await expect(preview).toContainText('María Gutiérrez');
+  await expect(preview).toContainText('Yara Lattafa');
+  await expect(preview).toContainText('Eclaire Lattafa');
+  await expect(preview).toContainText('Subtotal');
+  await expect(preview).toContainText('Entrega');
+  await expect(preview).toContainText('Total a cobrar');
+  await expect(preview).toContainText('Tipo de cambio aplicado');
+  await dialog.locator('select[name="currency"]').selectOption('NIO');
+  await expect(preview).toContainText('C$');
+  await expect(preview).toContainText('110.66');
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
+});
+
+test('saved internal invoice keeps line items, computed totals and the exchange rate used', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="billing"]').click();
+  await page.getByRole('button', { name: /Nuevo comprobante/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[data-lookup="order"]').fill('JP-1048');
+  await dialog.getByRole('option', { name: /JP-1048/ }).click();
+  await dialog.locator('select[name="currency"]').selectOption('NIO');
+  await expect(dialog.locator('#invoice-preview')).toContainText('C$');
+  await dialog.getByRole('button', { name: 'Crear comprobante demo' }).click();
+  const row = page.locator('#view-root tr').filter({ hasText: 'JP-1048' });
+  await expect(row).toContainText('Pendiente');
+  await expect(row).toContainText('C$');
+  await expect(page.locator('#view-root')).toContainText('110.66');
 });
 
 test('confirming a pending order deducts stock once and returning it to pending restores stock', async ({ page }) => {
