@@ -504,7 +504,11 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 
 /* Secure Neon Auth controls */
 .auth-control[hidden],
-#auth-name-field[hidden] { display: none !important; }
+#auth-name-field[hidden],
+#auth-password-field[hidden],
+#auth-otp-field[hidden],
+#auth-mode-switch[hidden],
+#auth-resend-code[hidden] { display: none !important; }
 .auth-control { white-space: nowrap; }
 .demo-pill.connected { color: #b9e8d0; border-color: rgba(91, 180, 134, .32); background: rgba(42, 114, 82, .16); }
 .demo-pill.connected i { background: #62c995; box-shadow: 0 0 0 3px rgba(98, 201, 149, .13); }
