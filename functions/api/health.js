@@ -14,7 +14,7 @@ export async function onRequestGet({ env }) {
       services: {
         database: Boolean(rows[0] && rows[0].ok === 1),
         authentication: Boolean(env.NEON_AUTH_BASE_URL && env.NEON_AUTH_JWKS_URL),
-        storage: Boolean(env.ASSETS)
+        storage: Boolean(env.ERP_ASSETS)
       },
       environment: env.ERP_ENVIRONMENT || "unknown"
     });
