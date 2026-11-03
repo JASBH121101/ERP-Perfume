@@ -724,12 +724,31 @@ test('all operational list tables reflow inside a 390px mobile viewport', async 
     const measurements = await page.evaluate(() => ({
       viewport: window.innerWidth,
       document: document.documentElement.scrollWidth,
+      overflowElements: Array.from(document.querySelectorAll('body *')).map(element => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          tag: element.tagName.toLowerCase(),
+          id: element.id || null,
+          className: typeof element.className === 'string' ? element.className.slice(0, 100) : null,
+          left: Math.round(rect.left * 10) / 10,
+          right: Math.round(rect.right * 10) / 10,
+          width: Math.round(rect.width * 10) / 10,
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          position: style.position,
+          whiteSpace: style.whiteSpace
+        };
+      }).filter(item => item.right > window.innerWidth + 1 && item.width > 0).slice(0, 20),
       tables: Array.from(document.querySelectorAll('.mobile-record-table')).map(table => ({
         client: table.clientWidth,
         scroll: table.scrollWidth
       }))
     }));
-    expect(measurements.document, view + ' page document width').toBeLessThanOrEqual(measurements.viewport + 1);
+    expect(
+      measurements.document,
+      view + ' page document width; overflowing elements: ' + JSON.stringify(measurements.overflowElements)
+    ).toBeLessThanOrEqual(measurements.viewport + 1);
     for (const table of measurements.tables) {
       expect(table.scroll, view + ' table width').toBeLessThanOrEqual(table.client + 1);
     }
