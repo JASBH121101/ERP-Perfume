@@ -50,14 +50,24 @@ async function refreshProfile() {
   return erpProfile;
 }
 
-function setAuthMode(mode) {
+function setAuthMode(mode, email = "") {
   if (!authForm) return;
-  authForm.dataset.mode = mode;
   const signUp = mode === "signup";
+  const verifying = mode === "verify";
+  authForm.dataset.mode = mode;
+  $("#auth-mode-switch").hidden = verifying;
   $("#auth-name-field").hidden = !signUp;
   $("#auth-name").required = signUp;
-  $("#auth-submit").textContent = signUp ? "Crear cuenta" : "Iniciar sesión";
-  $("#auth-mode-signin").classList.toggle("active", !signUp);
+  $("#auth-password-field").hidden = verifying;
+  $("#auth-password").required = !verifying;
+  $("#auth-otp-field").hidden = !verifying;
+  $("#auth-otp").required = verifying;
+  $("#auth-resend-code").hidden = !verifying;
+  $("#auth-email").readOnly = verifying;
+  if (email) $("#auth-email").value = email;
+  if (!verifying) $("#auth-otp").value = "";
+  $("#auth-submit").textContent = verifying ? "Verificar correo" : (signUp ? "Crear cuenta" : "Iniciar sesión");
+  $("#auth-mode-signin").classList.toggle("active", mode === "signin");
   $("#auth-mode-signup").classList.toggle("active", signUp);
   if (authFeedback) authFeedback.textContent = "";
 }
@@ -123,6 +133,21 @@ async function initialize() {
       await refreshProfile();
       return result;
     },
+    async sendVerificationCode(email) {
+      const method = authClient?.emailOtp?.sendVerificationOtp;
+      if (typeof method !== "function") throw new Error("Neon Auth no expone el envío de códigos OTP en esta configuración.");
+      const result = await method({ email, type: "email-verification" });
+      if (result?.error) throw new Error(result.error.message || "No se pudo enviar el código.");
+      return result;
+    },
+    async verifyEmail(email, otp) {
+      const method = authClient?.emailOtp?.verifyEmail;
+      if (typeof method !== "function") throw new Error("Neon Auth no expone la verificación OTP en esta configuración.");
+      const result = await method({ email, otp });
+      if (result?.error) throw new Error(result.error.message || "El código no es válido o ha expirado.");
+      await refreshProfile();
+      return result;
+    },
     async signOut() {
       if (!authClient) return;
       const result = await authClient.signOut();
@@ -164,34 +189,65 @@ async function initialize() {
     if (!authClient || !authForm.reportValidity()) return;
     const data = new FormData(authForm);
     const mode = authForm.dataset.mode;
+    const email = String(data.get("email") || "").trim();
     const submit = $("#auth-submit");
     submit.disabled = true;
-    if (authFeedback) authFeedback.textContent = "Conectando con Neon Auth…";
+    if (authFeedback) authFeedback.textContent = mode === "verify" ? "Verificando correo…" : "Conectando con Neon Auth…";
     try {
       if (mode === "signup") {
         await window.JBAuth.signUp(
           String(data.get("name") || "").trim(),
-          String(data.get("email") || "").trim(),
+          email,
           String(data.get("password") || "")
         );
+        if (erpProfile) {
+          authDialog.close();
+          authForm.reset();
+        } else {
+          setAuthMode("verify", email);
+          if (authFeedback) authFeedback.textContent = "Cuenta creada. Revisa tu correo e introduce el código de verificación que te envió Neon Auth.";
+        }
+      } else if (mode === "verify") {
+        await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
+        updateAuthControls();
+        window.dispatchEvent(new CustomEvent("jb:auth-changed"));
+        if (erpProfile) {
+          authDialog.close();
+          authForm.reset();
+        } else if (authFeedback) {
+          authFeedback.textContent = profileError || "Correo verificado. Inicia sesión nuevamente para abrir el ERP.";
+        }
       } else {
-        await window.JBAuth.signIn(
-          String(data.get("email") || "").trim(),
-          String(data.get("password") || "")
-        );
-      }
-      updateAuthControls();
-      window.dispatchEvent(new CustomEvent("jb:auth-changed"));
-      if (erpProfile) {
-        authDialog.close();
-        authForm.reset();
-      } else {
-        if (authFeedback) authFeedback.textContent = profileError || "Sesión iniciada. Verifica tu correo y vuelve a iniciar sesión para activar el perfil.";
+        await window.JBAuth.signIn(email, String(data.get("password") || ""));
+        updateAuthControls();
+        window.dispatchEvent(new CustomEvent("jb:auth-changed"));
+        if (erpProfile) {
+          authDialog.close();
+          authForm.reset();
+        } else if (authFeedback) {
+          authFeedback.textContent = profileError || "Sesión iniciada. Verifica tu correo para activar el perfil.";
+        }
       }
     } catch (error) {
       if (authFeedback) authFeedback.textContent = error?.message || "No se pudo completar la operación.";
     } finally {
       submit.disabled = false;
+    }
+  });
+
+  $("#auth-resend-code")?.addEventListener("click", async () => {
+    const email = String($("#auth-email")?.value || "").trim();
+    const resend = $("#auth-resend-code");
+    if (!email || !authClient || authForm?.dataset.mode !== "verify") return;
+    resend.disabled = true;
+    if (authFeedback) authFeedback.textContent = "Enviando código…";
+    try {
+      await window.JBAuth.sendVerificationCode(email);
+      if (authFeedback) authFeedback.textContent = "Código enviado. Revisa también la carpeta de spam.";
+    } catch (error) {
+      if (authFeedback) authFeedback.textContent = error?.message || "No se pudo enviar el código.";
+    } finally {
+      resend.disabled = false;
     }
   });
 
