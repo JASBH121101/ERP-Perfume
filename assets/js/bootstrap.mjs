@@ -20,9 +20,31 @@ async function readJson(response) {
 
 async function getToken() {
   if (!authClient) return null;
-  const result = await authClient.token();
-  if (result?.error) throw new Error(result.error.message || "No se pudo renovar la sesión.");
-  return result?.data?.token || result?.token || null;
+
+  let sdkToken = null;
+  let sdkError = null;
+  try {
+    if (typeof authClient.token === "function") {
+      const result = await authClient.token();
+      if (result?.error) throw new Error(result.error.message || "No se pudo renovar la sesión.");
+      sdkToken = result?.data?.token || result?.token || result?.data?.access_token || result?.access_token || null;
+    }
+  } catch (error) {
+    sdkError = error;
+  }
+
+  // Neon Auth 0.7 exposes the JWT through token(). Some session responses
+  // also include the short-lived JWT directly as session.access_token.
+  const sessionToken =
+    authSession?.access_token ||
+    authSession?.session?.access_token ||
+    authSession?.data?.session?.access_token ||
+    null;
+
+  const token = sdkToken || sessionToken;
+  if (token) return token;
+  if (sdkError) throw new Error(sdkError.message || "No se pudo renovar la sesión.");
+  return null;
 }
 
 async function refreshProfile() {
