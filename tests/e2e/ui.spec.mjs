@@ -883,7 +883,7 @@ test('customer receivables track an initial payment, partial abono and final set
   const row = page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' });
   await expect(row).toContainText('Abono parcial');
   await expect(row).toContainText('1 abono(s)');
-  const stockAfterInvoice = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')).products.find(p=>p.sku==='JBP-002').stock;
+  const stockAfterInvoice = await page.evaluate(() => { const saved = JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')); return saved.products.find(p=>p.sku==='JBP-002').stock; });
 
   await row.getByRole('button', { name: 'Registrar abono' }).click();
   await dialog.locator('input[name="amount"]').fill('10');
@@ -893,7 +893,7 @@ test('customer receivables track an initial payment, partial abono and final set
 
   await expect(page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' })).toContainText('Abono parcial');
   await expect(page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' })).toContainText('2 abono(s)');
-  const afterPartial = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')).products.find(p=>p.sku==='JBP-002').stock;
+  const afterPartial = await page.evaluate(() => { const saved = JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')); return saved.products.find(p=>p.sku==='JBP-002').stock; });
   expect(afterPartial).toBe(stockAfterInvoice);
 
   await page.locator('#view-root tbody tr').filter({ hasText: 'Cliente CXC QA' }).getByRole('button', { name: 'Registrar abono' }).click();

@@ -890,7 +890,7 @@
       if(paidUsd>0){
         const account=(invoice.paymentMethod==='Transferencia'?'Banco ':'Caja ')+currency;
         invoice.payments.push({amount:received,currency,exchangeRate:rate,amountUsd:paidUsd,account,createdAt:new Date().toISOString()});
-        cashEntries.unshift({id:Date.now(),direction:'income',concept:'Cobro inicial '+invoice.id,currency,originalAmount:received,exchangeRate:rate,amountUsd:paidUsd,account,paymentMethod:invoice.paymentMethod,createdAt:new Date().toISOString()});
+        cashEntries.unshift({id:Date.now(),direction:'income',concept:'Cobro inicial '+invoice.id,currency,originalAmount:received,exchangeRate:rate,amountUsd:paidUsd,account,paymentMethod:invoice.paymentMethod,sourceType:'invoice',sourceId:String(invoice.id),createdAt:new Date().toISOString()});
       }
       invoices.unshift(invoice);
       if(!persistBusinessChanges())return;
