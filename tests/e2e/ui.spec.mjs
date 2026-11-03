@@ -10,7 +10,7 @@ test('ERP renders the dashboard and all primary modules', async ({ page }) => {
 
   await page.locator('#sidebar button[data-view="billing"]').click();
   await expect(page.getByRole('heading', { name: 'Facturación' })).toBeVisible();
-  await expect(page.getByText(/no emite comprobantes fiscales reales/i)).toBeVisible();
+  await expect(page.getByText(/no tiene autorización tributaria/i)).toBeVisible();
 
   await page.locator('#sidebar button[data-view="hr"]').click();
   await expect(page.getByRole('heading', { name: 'Recursos Humanos' })).toBeVisible();
@@ -717,4 +717,86 @@ test('all operational list tables reflow inside a 390px mobile viewport', async 
       expect(table.scroll, view + ' table width').toBeLessThanOrEqual(table.client + 1);
     }
   }
+});
+
+
+test('in-store invoice creates the customer, updates stock once and opens a printable A4 preview', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="billing"]').click();
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+
+  const modal = page.locator('#business-dialog');
+  await expect(modal).toBeVisible();
+  await modal.getByLabel('Nombre del cliente').fill('Cliente QA Presencial');
+  await modal.getByLabel('Perfume (nombre, SKU o código de barras)').fill('Yara Lattafa');
+  await modal.locator('[data-lookup-select]').filter({ hasText: 'Yara Lattafa' }).click();
+  await modal.getByRole('button', { name: 'Agregar producto' }).click();
+  await modal.getByLabel('Cantidad de Yara Lattafa').fill('2');
+  await modal.getByLabel('Importe recibido (moneda de factura)').fill('3700');
+  await modal.getByRole('button', { name: 'Generar factura' }).click();
+
+  const preview = page.locator('#invoice-preview-dialog');
+  await expect(preview).toBeVisible();
+  await expect(page.locator('#invoice-print-document')).toContainText('JB PARFUMS');
+  await expect(page.locator('#invoice-print-document')).toContainText('Cliente QA Presencial');
+  await expect(page.locator('#invoice-print-document')).toContainText('Yara Lattafa');
+  await expect(preview.getByRole('button', { name: /Imprimir factura/ })).toBeVisible();
+
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const yara = saved.products.find(product => product.name === 'Yara Lattafa');
+  expect(yara.stock).toBe(6);
+  expect(saved.invoices[0].source).toBe('store');
+  expect(saved.invoices[0].status).toBe('Pagado');
+  expect(saved.customers.some(customer => customer.name === 'Cliente QA Presencial')).toBe(true);
+  expect(saved.inventoryMovements.filter(movement => movement.sourceType === 'invoice' && movement.sourceId === saved.invoices[0].id)).toHaveLength(1);
+});
+
+test('web order invoice links the order and does not apply stock twice', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="billing"]').click();
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+
+  const modal = page.locator('#business-dialog');
+  await modal.locator('[name="saleSource"]').selectOption('web');
+  const orderSearch = modal.getByLabel('Buscar pedido web (número o cliente)');
+  await expect(orderSearch).toBeVisible();
+  await orderSearch.fill('JP-1047');
+  await modal.locator('[data-lookup-select]').filter({ hasText: 'JP-1047' }).click();
+  await expect(modal.getByLabel('Nombre del cliente')).toHaveValue('Carlos Mendoza');
+  await expect(modal.locator('#invoice-cart')).toContainText('Khamrah Lattafa');
+  await modal.getByRole('button', { name: 'Generar factura' }).click();
+
+  await expect(page.locator('#invoice-preview-dialog')).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const order = saved.orders.find(item => item.id === 'JP-1047');
+  expect(saved.invoices[0].source).toBe('web');
+  expect(saved.invoices[0].orderId).toBe('JP-1047');
+  expect(order.status).toBe('En preparación');
+  expect(saved.inventoryMovements.filter(movement => movement.sourceType === 'order' && movement.sourceId === 'JP-1047' && movement.delta < 0)).toHaveLength(1);
+  expect(saved.products.find(product => product.name === 'Khamrah Lattafa').stock).toBe(2);
+
+  await page.reload();
+  const reloaded = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(reloaded.products.find(product => product.name === 'Khamrah Lattafa').stock).toBe(2);
+  expect(reloaded.invoices).toHaveLength(1);
+});
+
+test('in-store invoice blocks sales that exceed available stock', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#sidebar button[data-view="billing"]').click();
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
+
+  const modal = page.locator('#business-dialog');
+  await modal.getByLabel('Nombre del cliente').fill('Cliente sin stock');
+  await modal.getByLabel('Perfume (nombre, SKU o código de barras)').fill('Khamrah Lattafa');
+  await modal.locator('[data-lookup-select]').filter({ hasText: 'Khamrah Lattafa' }).click();
+  await modal.getByRole('button', { name: 'Agregar producto' }).click();
+  await modal.getByLabel('Cantidad de Khamrah Lattafa').fill('4');
+  await modal.getByRole('button', { name: 'Generar factura' }).click();
+
+  await expect(modal).toBeVisible();
+  await expect(page.locator('#toast-region')).toContainText(/Stock insuficiente para Khamrah Lattafa/);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(saved.invoices).toHaveLength(0);
+  expect(saved.products.find(product => product.name === 'Khamrah Lattafa').stock).toBe(3);
 });
