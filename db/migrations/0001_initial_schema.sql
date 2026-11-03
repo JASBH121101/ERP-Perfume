@@ -339,3 +339,28 @@ INSERT INTO app_settings(setting_key, setting_value) VALUES
  ('payroll_currency', '{"value":"NIO"}'::jsonb),
  ('default_exchange_rate', '{"value":36.60}'::jsonb)
  ON CONFLICT (setting_key) DO NOTHING;
+
+-- Supporting indexes for foreign-key lookups and audit references.
+CREATE INDEX IF NOT EXISTS employees_created_by_idx ON employees(created_by);
+CREATE INDEX IF NOT EXISTS hr_attendance_created_by_idx ON hr_attendance(created_by);
+CREATE INDEX IF NOT EXISTS hr_leave_requests_employee_idx ON hr_leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS hr_leave_requests_reviewed_by_idx ON hr_leave_requests(reviewed_by);
+CREATE INDEX IF NOT EXISTS hr_payroll_periods_created_by_idx ON hr_payroll_periods(created_by);
+CREATE INDEX IF NOT EXISTS hr_payroll_items_period_idx ON hr_payroll_items(payroll_period_id);
+CREATE INDEX IF NOT EXISTS hr_payroll_items_employee_idx ON hr_payroll_items(employee_id);
+CREATE INDEX IF NOT EXISTS inventory_movements_created_by_idx ON inventory_movements(created_by);
+CREATE INDEX IF NOT EXISTS orders_created_by_idx ON orders(created_by);
+CREATE INDEX IF NOT EXISTS order_items_order_idx ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS order_items_product_idx ON order_items(product_id);
+CREATE INDEX IF NOT EXISTS purchases_created_by_idx ON purchases(created_by);
+CREATE INDEX IF NOT EXISTS purchase_items_purchase_idx ON purchase_items(purchase_id);
+CREATE INDEX IF NOT EXISTS purchase_items_product_idx ON purchase_items(product_id);
+CREATE INDEX IF NOT EXISTS invoices_order_idx ON invoices(order_id);
+CREATE INDEX IF NOT EXISTS invoices_created_by_idx ON invoices(created_by);
+CREATE INDEX IF NOT EXISTS invoice_items_invoice_idx ON invoice_items(invoice_id);
+CREATE INDEX IF NOT EXISTS invoice_items_product_idx ON invoice_items(product_id);
+CREATE INDEX IF NOT EXISTS invoice_payments_created_by_idx ON invoice_payments(created_by);
+CREATE INDEX IF NOT EXISTS expenses_created_by_idx ON expenses(created_by);
+CREATE INDEX IF NOT EXISTS cash_entries_account_idx ON cash_entries(account_id);
+CREATE INDEX IF NOT EXISTS cash_entries_created_by_idx ON cash_entries(created_by);
+CREATE INDEX IF NOT EXISTS app_settings_updated_by_idx ON app_settings(updated_by);
