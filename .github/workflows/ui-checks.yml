@@ -187,7 +187,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: JASBH121101/JB-Expert-QA
-          ref: 9022c223a05af29f4bf3afa9f53a9448acfbfdbc
+          ref: 6e81024e2823deefbee30c7cf224159e58483ce5
           token: ${{ secrets.JBQA_REPO_READ_TOKEN }}
           path: .jb-expert-qa
           fetch-depth: 1
@@ -255,8 +255,14 @@ jobs:
           const complete = report.analysisScope?.complete === true;
           const score = report.scoring?.score;
           const minimum = report.scoring?.minimumScore;
+          const expectedProfile = "jb-parfums-erp";
+          const profileMatches = report.profile === expectedProfile;
+          const thresholdConfigured = Number.isFinite(minimum) && minimum >= 90;
+          const scorePassed = Number.isFinite(score) && thresholdConfigured && score >= minimum &&
+            report.scoring?.passed === true;
 
           console.log("JB Expert QA version:", report.version ?? "unknown");
+          console.log("Profile:", report.profile ?? "unknown");
           console.log("Files analyzed:", report.analysisScope?.filesAnalyzed ?? 0);
           console.log("Findings:", report.summary?.findings ?? 0);
           console.log("Score:", score ?? "not calculated", "/", minimum ?? "n/a");
@@ -279,13 +285,19 @@ jobs:
             appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines);
           });
 
+          if (!profileMatches) {
+            console.error("JB Expert QA blocked this check: expected profile " + expectedProfile + ", received " + (report.profile ?? "unknown") + ".");
+            process.exit(1);
+          }
+
           if (!complete || critical.length > 0 || ruleErrors.length > 0) {
             console.error("JB Expert QA blocked this check: incomplete scan, critical finding, or rule execution error.");
             process.exit(1);
           }
 
-          if (report.scoring?.passed !== true) {
-            console.warn("Score is below the configured threshold. This is advisory during initial baseline calibration; critical findings and incomplete scans remain blocking.");
+          if (!scorePassed) {
+            console.error("JB Expert QA blocked this check: score is below the configured minimum, the minimum is less than 90, or scoring did not pass.");
+            process.exit(1);
           }
 
           console.log("JB Expert QA gate passed.");
