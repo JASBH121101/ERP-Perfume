@@ -626,10 +626,11 @@
       return {productId:product?product.id:(item.productId==null?null:item.productId),name:String(item.name||product?.name||'Perfume'),sku:String(item.sku||product?.sku||''),barcode:String(product?.barcode||''),quantity:Number(item.quantity||1),unitPriceUsd:roundMoney(Number(item.unitPrice||product?.price||0))};
     });
     const totals=invoiceDraftTotals();
-    const isPaid=String(order.paymentStatus||'').toLocaleLowerCase('es').includes('pagado');
-    const paid= isPaid ? (totals.totalUsd||Number(order.amount||0)) : Number(order.paymentAmount||0);
     const paidCurrency=order.paymentCurrency==='NIO'?'NIO':'USD';
-    set('amountReceived',paidCurrency==='NIO'?roundMoney(paid*Number(order.exchangeRate||exchangeRate)):paid);
+    const orderRate=Number(order.exchangeRate||exchangeRate);
+    const isPaid=String(order.paymentStatus||'').toLocaleLowerCase('es').includes('pagado');
+    const paid=isPaid?(paidCurrency==='NIO'?roundMoney((totals.totalUsd||0)*orderRate):(totals.totalUsd||0)):Number(order.paidAmount||0);
+    set('amountReceived',paid);
     renderInvoiceCart();
     refreshInvoiceSourceUI();
   }
@@ -672,7 +673,7 @@
       '<div class="invoice-preview-totals"><div><span>Subtotal</span><strong>'+invoiceCurrencyAmount(totals.subtotalUsd,currency,rate)+'</strong></div>'+
       (totals.discountUsd?'<div><span>Descuento</span><strong>− '+invoiceCurrencyAmount(totals.discountUsd,currency,rate)+'</strong></div>':'')+
       (totals.deliveryFeeUsd?'<div><span>Entrega</span><strong>'+invoiceCurrencyAmount(totals.deliveryFeeUsd,currency,rate)+'</strong></div>':'')+
-      '<div class="invoice-grand-total"><span>Total</span><strong>'+invoiceCurrencyAmount(totals.totalUsd,currency,rate)+'</strong></div></div>'+
+      '<div class="invoice-grand-total"><span>Total a cobrar</span><strong>'+invoiceCurrencyAmount(totals.totalUsd,currency,rate)+'</strong></div></div>'+
       '<div class="invoice-exchange-row"><span>Tipo de cambio aplicado</span><strong>'+rateLabel(rate)+'</strong></div>';
   }
   function invoiceDocumentMarkup(invoice){
@@ -827,8 +828,8 @@
         createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO',taxIncluded:false,inventoryAppliedAt:null
       };
       if(source==='web'){
-        const previousMovement=inventoryMovements.some(m=>m.sourceType==='order'&&String(m.sourceId)===String(order.id)&&Number(m.delta)<0);
-        const alreadyApplied=Boolean(order.inventoryAppliedAt)||previousMovement||order.status!=='Pendiente';
+        const orderNetMovement=inventoryMovements.filter(m=>m.sourceType==='order'&&String(m.sourceId)===String(order.id)).reduce((sum,m)=>sum+Number(m.delta||0),0);
+        const alreadyApplied=Boolean(order.inventoryAppliedAt)||Math.abs(orderNetMovement)>0.001||order.status!=='Pendiente';
         if(!alreadyApplied){
           const stockResult=recordOrderInventory(order,false);
           if(stockResult.error){toast(stockResult.error);return;}

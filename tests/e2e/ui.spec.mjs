@@ -456,7 +456,8 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await expect(page.locator('#view-root')).toContainText('JP-1049');
  await expect(page.locator('#view-root')).toContainText('C$');
  await page.locator('#sidebar button[data-view="billing"]').click();
- await page.getByRole('button',{name:/Nuevo comprobante/}).click();
+ await page.getByRole('button',{name:/Nueva factura/}).click();
+ await dialog.locator('[name="saleSource"]').selectOption('web');
  await dialog.locator('[data-lookup="order"]').fill('JP-1049');
  await dialog.getByRole('option',{name:/JP-1049/}).click();
  await expect(dialog.locator('#invoice-preview')).toContainText('Club de Nuit Intense Man');
@@ -464,10 +465,11 @@ test('customer, order and internal voucher with NIO abono flow',async({page})=>{
  await dialog.locator('select[name="currency"]').selectOption('NIO');
  await expect(dialog.locator('#invoice-preview')).toContainText('C$');
  await expect(dialog.locator('#invoice-preview')).toContainText('36.60');
- await dialog.getByRole('button',{name:'Crear comprobante demo'}).click();
+ await dialog.getByRole('button',{name:'Generar factura'}).click();
  const voucher=page.locator('#view-root').locator('tr').filter({hasText:'JP-1049'});
  await expect(voucher).toContainText('Pendiente');
- await voucher.getByRole('button',{name:'Registrar abono'}).click();
+ await page.locator('#invoice-preview-dialog').getByRole('button',{name:'Cerrar'}).click();
+ await voucher.getByRole('button',{name:'Abonar'}).click();
  await dialog.locator('input[name="amount"]').fill('4900');
  await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.locator('select[name="account"]').selectOption({label:'Caja NIO'});
@@ -501,8 +503,9 @@ test('new order starts empty and requires searchable customer and perfume select
 test('new internal voucher starts without a preselected sample order', async ({ page }) => {
   await page.goto('/');
   await page.locator('#sidebar button[data-view="billing"]').click();
-  await page.getByRole('button', { name: /Nuevo comprobante/ }).click();
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
+  await dialog.locator('[name="saleSource"]').selectOption('web');
   await expect(dialog.locator('[data-lookup="order"]')).toHaveValue('');
   await expect(dialog.locator('input[type="hidden"][name="orderId"]')).toHaveValue('');
   await dialog.locator('[data-lookup="order"]').fill('JP-1048');
@@ -529,8 +532,9 @@ test('sidebar clearly identifies demo storage and pending integrations without f
 test('invoice preview recalculates from linked order and selected exchange currency', async ({ page }) => {
   await page.goto('/');
   await page.locator('#sidebar button[data-view="billing"]').click();
-  await page.getByRole('button', { name: /Nuevo comprobante/ }).click();
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
+  await dialog.locator('[name="saleSource"]').selectOption('web');
   await dialog.locator('[data-lookup="order"]').fill('JP-1048');
   await dialog.getByRole('option', { name: /JP-1048/ }).click();
   const preview = dialog.locator('#invoice-preview');
@@ -550,13 +554,13 @@ test('invoice preview recalculates from linked order and selected exchange curre
 test('saved internal invoice keeps line items, computed totals and the exchange rate used', async ({ page }) => {
   await page.goto('/');
   await page.locator('#sidebar button[data-view="billing"]').click();
-  await page.getByRole('button', { name: /Nuevo comprobante/ }).click();
+  await page.getByRole('button', { name: /Nueva factura/ }).click();
   const dialog = page.locator('#business-dialog');
   await dialog.locator('[data-lookup="order"]').fill('JP-1048');
   await dialog.getByRole('option', { name: /JP-1048/ }).click();
   await dialog.locator('select[name="currency"]').selectOption('NIO');
   await expect(dialog.locator('#invoice-preview')).toContainText('C$');
-  await dialog.getByRole('button', { name: 'Crear comprobante demo' }).click();
+  await dialog.getByRole('button', { name: 'Generar factura' }).click();
   const row = page.locator('#view-root tr').filter({ hasText: 'JP-1048' });
   await expect(row).toContainText('Pendiente');
   await expect(row).toContainText('C$');
