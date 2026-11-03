@@ -1,0 +1,62 @@
+name: Deploy JB PARFUMS API Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "worker/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jb-parfums-api-worker-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy standalone API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned ERP dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate frontend build
+        run: npm run build
+
+      - name: Check Cloudflare deployment secret
+        id: cloudflare-secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Worker deployment skipped. Add CLOUDFLARE_API_TOKEN to repository Actions secrets, then rerun this workflow."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy Worker to Cloudflare
+        if: steps.cloudflare-secret.outputs.skip != 'true'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ddfbc84938d4d2795dd70d524b4197c9
+          wranglerVersion: "4"
+          workingDirectory: worker
+          command: deploy
