@@ -1,4 +1,5 @@
 // Production deployment is gated through GitHub Actions from main.
+// Retry deployment after rotating the scoped Cloudflare CI token.
 import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
