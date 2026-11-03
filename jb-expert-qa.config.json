@@ -24,5 +24,14 @@
     "maxFileBytes": 1000000,
     "maxTotalBytes": 20000000,
     "maxDepth": 20
+  },
+  "advisories": {
+    "enabled": true,
+    "required": false,
+    "provider": "osv",
+    "maxPackages": 1000,
+    "batchSize": 100,
+    "maxVulnerabilities": 200,
+    "timeoutMs": 8000
   }
 }
