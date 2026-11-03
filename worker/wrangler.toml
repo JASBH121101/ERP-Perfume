@@ -1,0 +1,17 @@
+[name]
+name = "jb-parfums-erp-api"
+main = "src/index.js"
+compatibility_date = "2026-11-03"
+workers_dev = true
+account_id = "ddfbc84938d4d2795dd70d524b4197c9"
+
+[[r2_buckets]]
+binding = "ERP_ASSETS"
+bucket_name = "erp-perfume-assets"
+
+[vars]
+ERP_ENVIRONMENT = "development"
+API_CORS_ORIGINS = "https://erp-perfume.pages.dev"
+BOOTSTRAP_OWNER_EMAIL = "jaredblancoh19@gmail.com"
+NEON_AUTH_BASE_URL = "https://ep-lingering-field-bethkduo.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth"
+NEON_AUTH_JWKS_URL = "https://ep-lingering-field-bethkduo.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth/.well-known/jwks.json"
