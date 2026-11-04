@@ -467,6 +467,8 @@ test("valid web invoice locks its order and product rows before posting stock", 
   assert.match(writeSql, /web_order_lock/);
   assert.match(writeSql, /lock_gate/);
   assert.match(writeSql, /FOR UPDATE OF p/);
+  assert.match(writeSql, /p\.unit_cost_usd/);
+  assert.match(writeSql, /COALESCE\(t\.unit_cost_usd,0\)/);
   assert.match(writeSql, /SUM\(quantity_delta\)/);
 });
 
