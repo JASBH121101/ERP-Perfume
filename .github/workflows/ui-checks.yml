@@ -1,6 +1,7 @@
 name: ERP quality gate
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
