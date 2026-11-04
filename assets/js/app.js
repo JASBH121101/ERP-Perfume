@@ -155,7 +155,7 @@
       const rawInvoicePayments = data.invoice_payments || [];
       invoices = (data.invoices || []).map(i => ({
         id: i.invoice_number, dbId: i.id, orderId: i.order_number_snapshot || "",
-        customerId: i.customer_id, customerName: i.customer_name, customerPhone: i.customer_phone || "",
+        customerId: i.customer_id, customer: i.customer_name, customerName: i.customer_name, customerPhone: i.customer_phone || "",
         source: i.source, currency: i.currency || "USD", exchangeRate: Number(i.exchange_rate || exchangeRate),
         subtotalUsd: Number(i.subtotal_usd || 0), discountUsd: Number(i.discount_usd || 0),
         deliveryFeeUsd: Number(i.delivery_fee_usd || 0), totalUsd: Number(i.total_usd || 0), paidUsd: Number(i.paid_usd || 0),
@@ -808,160 +808,170 @@
     }
     if(typeof businessDialog.showModal==='function')businessDialog.showModal();
   }
+  function nextDocumentNumber(prefix, records, startAt=1000) {
+    const max = (records || []).reduce((value, row) => {
+      const digits = String(row.id || row.purchaseNumber || "").match(/(\\d+)$/);
+      return Math.max(value, digits ? Number(digits[1]) : 0);
+    }, startAt);
+    return prefix + String(max + 1).padStart(6,"0");
+  }
+  function accountFor(name, currency) {
+    const account = cashAccounts.find(item => item.name === name && item.currency === currency && item.active !== false);
+    return account || null;
+  }
   async function saveBusinessRecord(event){
-    event.preventDefault();if(!businessForm.reportValidity())return;
-    const data=new FormData(businessForm),get=k=>String(data.get(k)||'').trim(),num=k=>Number(data.get(k)||0);
-    const type=businessForm.dataset.recordType,currency=get('currency')==='NIO'?'NIO':'USD',rate=exchangeRate,id=Date.now();
-    const snapshot=captureDemoState();
-    const persistBusinessChanges=function(){if(!persistDemoData()){restoreDemoState(snapshot);return false;}return true;};
-    if(type==='customer'){
-      if(!get('name'))return;
-      customers.unshift({name:get('name'),contact:get('contact'),orders:0,spent:0,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Cliente guardado en DEMO local.');
-    }else if(type==='supplier'){
-      if(!get('name'))return;
-      suppliers.unshift({id,name:get('name'),contact:get('contact'),phone:get('phone'),email:get('email'),currency});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Proveedor guardado en DEMO local.');
-    }else if(type==='order'){
-      const customer=customers[num('customerIndex')],product=products.find(p=>String(p.id)===get('productId')),quantity=num('quantity');
-      if(!customer||!product||!Number.isInteger(quantity)||quantity<1){toast('Revisa el cliente, producto y cantidad.');return;}
-      const total=roundMoney(product.price*quantity),next=orders.reduce((m,o)=>Math.max(m,Number(String(o.id).replace('JP-',''))||0),1043)+1;
-      const order={id:'JP-'+next,customer:customer.name,phone:customer.contact||'No registrado',date:new Date().toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'}),amount:total,status:'Pendiente',paymentMethod:'Por definir',paymentStatus:'Pendiente',deliveryMode:'Por coordinar',discount:0,deliveryFee:0,paymentCurrency:currency,paymentAmount:currency==='NIO'?roundMoney(total*rate):total,exchangeRate:rate,items:[{productId:product.id,name:product.name,sku:product.sku,quantity,unitPrice:product.price}]};
-      orders.unshift(order);customer.orders=Number(customer.orders||0)+1;customer.spent=roundMoney(Number(customer.spent||0)+total);
-      if(!persistBusinessChanges())return;businessDialog.close();goToView('orders');toast('Pedido guardado en DEMO local. El inventario no se descuenta hasta registrar una salida.');
-    }else if(type==='purchase'){
-      const supplier=suppliers[num('supplierIndex')],product=products.find(p=>String(p.id)===get('productId')),quantity=num('quantity'),unitCost=num('unitCost');
-      if(!supplier||!product||!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitCost)||unitCost<=0){toast('Revisa proveedor, producto, cantidad y costo.');return;}
-      const unitUsd=toUsd(unitCost,currency),previous=product.stock,nextStock=previous+quantity;
-      const previousPurchaseCost=Number(product.purchaseCost||0),additionalCost=Number(product.additionalCost||0);
-      const weightedPurchaseCost=nextStock>0?roundMoney((previousPurchaseCost*previous+unitUsd*quantity)/nextStock):unitUsd;
-      const totalUsd=roundMoney(unitUsd*quantity),initialPayment=num('initialPayment'),initialAccount=get('initialAccount')||'Caja USD';
-      const initialPaidUsd=initialPayment>0?toUsd(initialPayment,currency):0;
-      const initialAccountCurrency=/NIO$/.test(initialAccount)?'NIO':'USD';
-      if(!Number.isFinite(initialPayment)||initialPayment<0||initialPaidUsd>totalUsd+0.001){toast('El pago inicial debe estar entre cero y el total de la compra.');return;}
-      if(initialPayment>0&&initialAccountCurrency!==currency){toast('La moneda de la cuenta debe coincidir con la moneda del pago inicial.');return;}
-      const purchase={id,supplier:supplier.name,productId:product.id,product:product.name,quantity,currency,originalUnitCost:unitCost,originalTotal:roundMoney(unitCost*quantity),exchangeRate:rate,unitCostUsd:unitUsd,totalUsd,paidUsd:initialPaidUsd,status:initialPaidUsd>=totalUsd-0.001?'Pagado':(initialPaidUsd>0?'Abono parcial':'Pendiente'),payments:[],createdAt:new Date().toISOString()};
-      if(initialPayment>0){purchase.payments.push({amount:initialPayment,currency,exchangeRate:rate,amountUsd:initialPaidUsd,account:initialAccount,createdAt:new Date().toISOString()});cashEntries.unshift({id:Date.now()+1,direction:'expense',concept:'Pago inicial de compra a '+supplier.name,currency,originalAmount:initialPayment,exchangeRate:rate,amountUsd:initialPaidUsd,account:initialAccount,supplier:supplier.name,sourceType:'purchase',sourceId:String(id),createdAt:new Date().toISOString()});}
-      purchases.unshift(purchase);
-      product.purchaseCost=weightedPurchaseCost;product.unitCost=roundMoney(weightedPurchaseCost+additionalCost);product.profit=roundMoney(Number(product.price||0)-product.unitCost);product.margin=product.price>0?roundMoney(product.profit/product.price*100):0;product.stock=nextStock;
-      inventoryMovements.unshift({id,productId:product.id,productName:product.name,sku:product.sku,type:'Entrada por compra',quantity,delta:quantity,previousStock:previous,newStock:nextStock,note:'Compra a '+supplier.name,createdAt:new Date().toISOString()});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Compra registrada; costo y existencias actualizados en DEMO.');
-    }else if(type==='expense'){
-      const amount=num('amount');if(!get('description')||!Number.isFinite(amount)||amount<=0){toast('Revisa descripción e importe.');return;}
-      expenses.unshift({id,category:get('category'),description:get('description'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),createdAt:new Date().toISOString()});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Gasto guardado con moneda y tasa de conversión.');
-    }else if(type==='cash'||type==='payment'||type==='purchase-payment'){
-      const amount=num('amount'),account=get('account'),accountCurrency=/NIO$/.test(account)?'NIO':'USD';
-      if(type==='cash'&&!get('concept')){toast('Escribe un concepto para el movimiento.');return;}
-      if(!Number.isFinite(amount)||amount<=0){toast('Introduce un importe válido.');return;}
-      if(accountCurrency!==currency){toast('La moneda seleccionada debe coincidir con la moneda de la cuenta.');return;}
-      if(type==='payment'){
-        const invoice=invoices.find(f=>f.id===businessForm.dataset.recordId);if(!invoice){toast('No se encontró el comprobante.');return;}
-        const amountUsd=toUsd(amount,currency),balance=roundMoney(invoice.totalUsd-Number(invoice.paidUsd||0));
-        if(amountUsd>balance+0.001){toast('El abono supera el saldo pendiente.');return;}
-        invoice.paidUsd=roundMoney(Number(invoice.paidUsd||0)+amountUsd);invoice.status=invoice.paidUsd>=invoice.totalUsd-0.001?'Pagado':'Abono parcial';
-        invoice.payments=Array.isArray(invoice.payments)?invoice.payments:[];
-        invoice.payments.push({amount,currency,exchangeRate:rate,amountUsd,account,createdAt:new Date().toISOString()});
-        cashEntries.unshift({id,direction:'income',concept:'Abono '+invoice.id,currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,sourceType:'invoice',sourceId:String(invoice.id),createdAt:new Date().toISOString()});
-      }else if(type==='purchase-payment'){
-        const purchase=purchases.find(p=>String(p.id)===String(businessForm.dataset.recordId));if(!purchase){toast('No se encontró la compra seleccionada.');return;}
-        const amountUsd=toUsd(amount,currency),balance=roundMoney(Number(purchase.totalUsd||0)-Number(purchase.paidUsd||0));
-        if(amountUsd>balance+0.001){toast('El abono supera el saldo pendiente de la compra.');return;}
-        purchase.paidUsd=roundMoney(Number(purchase.paidUsd||0)+amountUsd);purchase.status=purchase.paidUsd>=purchase.totalUsd-0.001?'Pagado':'Abono parcial';
-        purchase.payments=Array.isArray(purchase.payments)?purchase.payments:[];
-        purchase.payments.push({amount,currency,exchangeRate:rate,amountUsd,account,createdAt:new Date().toISOString()});
-        cashEntries.unshift({id,direction:'expense',concept:'Abono a compra '+purchase.id+' · '+purchase.supplier,currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,supplier:purchase.supplier,sourceType:'purchase',sourceId:String(purchase.id),createdAt:new Date().toISOString()});
-      }else{
+    event.preventDefault();
+    if(!businessForm.reportValidity())return;
+    const button=document.getElementById('business-save');
+    if(button){button.disabled=true;button.textContent='Guardando…';}
+    const data=new FormData(businessForm);
+    const get=k=>String(data.get(k)||'').trim();
+    const num=k=>Number(data.get(k)||0);
+    const type=businessForm.dataset.recordType;
+    const currency=get('currency')==='NIO'?'NIO':'USD';
+    const rate=exchangeRate;
+    const dateNow=new Date().toISOString();
+    try {
+      if(type==='customer'){
+        if(!get('name'))throw new Error('El nombre del cliente es obligatorio.');
+        await erpApi('customers',{method:'POST',body:JSON.stringify({name:get('name'),contact:get('contact'),phone:get('contact'),customer_type:'particular',active:true})});
+      } else if(type==='supplier'){
+        if(!get('name'))throw new Error('El nombre del proveedor es obligatorio.');
+        await erpApi('suppliers',{method:'POST',body:JSON.stringify({name:get('name'),contact:get('contact'),phone:get('phone'),email:get('email'),currency,active:true})});
+      } else if(type==='order'){
+        const customer=customers[num('customerIndex')];
+        const product=products.find(p=>String(p.id)===get('productId'));
+        const quantity=num('quantity');
+        if(!customer||!customer.id||!product||!Number.isInteger(quantity)||quantity<1)throw new Error('Revisa el cliente, producto y cantidad.');
+        const total=roundMoney(Number(product.price||0)*quantity);
+        const number=nextDocumentNumber('JP-',orders,1000);
+        await erpApi('orders',{method:'POST',body:JSON.stringify({
+          order_number:number,customer_id:customer.id,customer_name:customer.name,phone:customer.phone||customer.contact||'',
+          status:'Pendiente',payment_status:'Pendiente',payment_method:'Por definir',delivery_mode:'Por coordinar',
+          currency,original_amount:currency==='NIO'?roundMoney(total*rate):total,exchange_rate:rate,
+          total_usd:total,discount_usd:0,delivery_fee_usd:0,notes:'',
+          items:[{product_id:product.id,product_name:product.name,sku_snapshot:product.sku,quantity,unit_price_usd:Number(product.price||0)}]
+        })});
+      } else if(type==='purchase'){
+        const supplier=suppliers[num('supplierIndex')];
+        const product=products.find(p=>String(p.id)===get('productId'));
+        const quantity=num('quantity'), unitCost=num('unitCost'), initialPayment=num('initialPayment');
+        const account=get('initialAccount')||('Caja '+currency);
+        if(!supplier||!supplier.id||!product||!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitCost)||unitCost<=0)throw new Error('Revisa proveedor, producto, cantidad y costo.');
+        if(!Number.isFinite(initialPayment)||initialPayment<0)throw new Error('El pago inicial no puede ser negativo.');
+        const totalUsd=toUsd(unitCost*quantity,currency),paidUsd=toUsd(initialPayment,currency);
+        if(paidUsd>totalUsd+0.001)throw new Error('El pago inicial supera el total de la compra.');
+        if(initialPayment>0&&!accountFor(account,currency))throw new Error('La cuenta de pago no existe o no coincide con la moneda.');
+        const number=nextDocumentNumber('JBC-',purchases,1000);
+        await erpApi('purchases',{method:'POST',body:JSON.stringify({
+          purchase_number:number,supplier_id:supplier.id,supplier_name:supplier.name,currency,exchange_rate:rate,
+          total_usd:totalUsd,paid_usd:paidUsd,status:paidUsd>=totalUsd-0.001?'Pagado':(paidUsd>0?'Abono parcial':'Pendiente'),
+          notes:'',product_id:product.id,quantity,unit_cost_usd:toUsd(unitCost,currency),
+          initial_payment_amount:initialPayment,account_name:account
+        })});
+      } else if(type==='expense'){
+        const amount=num('amount'),description=get('description');
+        const account=get('account')||('Caja '+currency);
+        if(!description||!Number.isFinite(amount)||amount<=0)throw new Error('Revisa descripción e importe.');
+        if(!accountFor(account,currency))throw new Error('Selecciona una cuenta activa en la misma moneda del gasto.');
+        await erpApi('expenses',{method:'POST',body:JSON.stringify({
+          category:get('category'),description,currency,original_amount:amount,exchange_rate:rate,amount_usd:toUsd(amount,currency),account_name:account
+        })});
+      } else if(type==='cash'){
+        const amount=num('amount'),account=get('account'),accountRow=accountFor(account,currency);
+        if(!get('concept')||!Number.isFinite(amount)||amount<=0)throw new Error('Revisa el concepto y el importe.');
+        if(!accountRow)throw new Error('La cuenta seleccionada no existe o tiene otra moneda.');
         const supplier=get('supplierIndex')===''?null:suppliers[num('supplierIndex')];
-        cashEntries.unshift({id,direction:get('direction'),concept:get('concept'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),account,supplier:supplier?supplier.name:'',createdAt:new Date().toISOString()});
+        await erpApi('cash_entries',{method:'POST',body:JSON.stringify({
+          direction:get('direction'),concept:get('concept'),account_id:accountRow.id,currency,original_amount:amount,
+          exchange_rate:rate,amount_usd:toUsd(amount,currency),source_type:supplier?'supplier':null,source_id:supplier?.id||null
+        })});
+      } else if(type==='payment'){
+        const invoice=invoices.find(f=>f.id===businessForm.dataset.recordId);
+        const amount=num('amount'),account=get('account'),amountUsd=toUsd(amount,currency);
+        if(!invoice||!invoice.dbId)throw new Error('No se encontró la factura.');
+        if(!Number.isFinite(amount)||amount<=0)throw new Error('Introduce un importe válido.');
+        if(!accountFor(account,currency))throw new Error('La cuenta seleccionada no existe o tiene otra moneda.');
+        if(amountUsd>Math.max(0,invoice.totalUsd-invoice.paidUsd)+0.001)throw new Error('El abono supera el saldo pendiente.');
+        await erpApi('invoice-payments',{method:'POST',body:JSON.stringify({
+          invoice_id:invoice.dbId,currency,original_amount:amount,exchange_rate:rate,amount_usd:amountUsd,
+          account_name:account,payment_method:'Abono'
+        })});
+      } else if(type==='purchase-payment'){
+        const purchase=purchases.find(p=>String(p.id)===String(businessForm.dataset.recordId));
+        const amount=num('amount'),account=get('account'),amountUsd=toUsd(amount,currency);
+        if(!purchase||!purchase.id)throw new Error('No se encontró la compra seleccionada.');
+        if(!Number.isFinite(amount)||amount<=0)throw new Error('Introduce un importe válido.');
+        if(!accountFor(account,currency))throw new Error('La cuenta seleccionada no existe o tiene otra moneda.');
+        if(amountUsd>Math.max(0,purchase.totalUsd-purchase.paidUsd)+0.001)throw new Error('El abono supera el saldo pendiente de la compra.');
+        await erpApi('purchase-payments',{method:'POST',body:JSON.stringify({
+          purchase_id:purchase.id,currency,original_amount:amount,exchange_rate:rate,amount_usd:amountUsd,
+          account_name:account,payment_method:'Abono'
+        })});
+      } else if(type==='invoice'){
+        const selectedSource=get('saleSource');
+        const source=selectedSource==='web'?'web':(selectedSource==='manual'?'manual':'store');
+        const orderId=get('orderId');
+        const order=source==='web'?orders.find(o=>String(o.id)===orderId):null;
+        if(source==='web'&&(!order||!order.dbId||invoices.some(f=>String(f.orderId)===String(order.id))))throw new Error('Selecciona un pedido web que todavía no tenga factura.');
+        const customerName=(source==='web'?(order?.customer||get('customerName')):get('customerName')).trim();
+        if(!customerName)throw new Error('Escribe o selecciona el nombre del cliente.');
+        const totals=invoiceDraftTotals();
+        if(totals.error)throw new Error(totals.error);
+        const phone=source==='web'?(order?.phone||get('customerPhone')):get('customerPhone');
+        const received=num('amountReceived');
+        if(!Number.isFinite(received)||received<0)throw new Error('El importe recibido no puede ser negativo.');
+        const paidUsd=toUsd(received,currency);
+        if(paidUsd>totals.totalUsd+0.001)throw new Error('El importe recibido supera el total de la factura.');
+        const account=(get('paymentMethod')==='Transferencia'?'Banco ':'Caja ')+currency;
+        if(paidUsd>0&&!accountFor(account,currency))throw new Error('La cuenta de cobro no está configurada.');
+        const number=nextDocumentNumber('JBI-',invoices,1000);
+        const existingCustomer=customers.find(item=>String(item.name||'').trim().toLocaleLowerCase('es')===customerName.toLocaleLowerCase('es'));
+        const items=totals.items.map(item=>{
+          const product=products.find(p=>String(p.id)===String(item.productId));
+          return {product_id:product?.id||null,product_name:item.name,sku_snapshot:item.sku||product?.sku||'',quantity:item.quantity,
+            unit_price_usd:item.unitPriceUsd,unit_cost_usd:Number(product?.unitCost||0)};
+        });
+        if(items.some(item=>!item.product_id))throw new Error('Uno de los productos ya no existe en el catálogo.');
+        await erpApi('invoices',{method:'POST',body:JSON.stringify({
+          invoice_number:number,source,order_id:source==='web'?order.dbId:null,order_number_snapshot:source==='web'?order.id:null,
+          customer_id:existingCustomer?.id||null,customer_name:customerName,customer_phone:phone||'',
+          currency,exchange_rate:rate,subtotal_usd:totals.subtotalUsd,discount_usd:totals.discountUsd,
+          delivery_fee_usd:totals.deliveryFeeUsd,total_usd:totals.totalUsd,paid_usd:paidUsd,
+          payment_method:get('paymentMethod')||'Pendiente / crédito',notes:'',
+          items,original_payment_amount:received,account_name:paidUsd>0?account:null
+        })});
+      } else if(type==='employee'){
+        const salary=num('salaryNio');
+        if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0)throw new Error('Revisa los datos y el salario.');
+        await erpApi('employees',{method:'POST',body:JSON.stringify({
+          name:get('name'),position:get('position'),department:get('department')||null,salary_nio:salary,status:'Activo'
+        })});
+        hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
+      } else {
+        throw new Error('Este tipo de operación todavía no está conectado.');
       }
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast(type==='payment'?'Abono registrado en DEMO local.':(type==='purchase-payment'?'Abono al proveedor registrado en DEMO local.':'Movimiento de caja registrado en DEMO local.'));
-    }else if(type==='invoice'){
-      const selectedSource=get('saleSource');
-      const source=selectedSource==='web'?'web':(selectedSource==='manual'?'manual':'store');
-      const orderId=get('orderId'),order=source==='web'?orders.find(o=>String(o.id)===orderId):null;
-      if(source==='web'&&(!order||invoices.some(f=>String(f.orderId)===String(order.id)))){toast('Selecciona un pedido web disponible que todavía no tenga factura.');return;}
-      const customerName=(source==='web'?(order?.customer||get('customerName')):get('customerName')).trim();
-      if(!customerName){toast('Escribe o selecciona el nombre del cliente.');return;}
-      const totals=invoiceDraftTotals();if(totals.error){toast(totals.error);return;}
-      const customerType=get('customerType')==='business'?'business':'particular';
-      const phone=source==='web'?(order?.phone||get('customerPhone')):get('customerPhone');
-      const received=num('amountReceived');
-      if(!Number.isFinite(received)||received<0){toast('El importe recibido no puede ser negativo.');return;}
-      const totalOriginal=totals.totalUsd;
-      const paidUsd=toUsd(received,currency);
-      if(paidUsd>totals.totalUsd+0.001){toast('El importe recibido supera el total de la factura.');return;}
-      const nextNumber=Math.max(0,...invoices.map(f=>Number(String(f.id||'').match(/(\d+)$/)?.[1]||0)))+1;
-      const invoiceId='JBI-'+String(nextNumber).padStart(6,'0');
-      const invoice={
-        id:invoiceId,orderId:source==='web'?order.id:'',source,customer:customerName,customerType,phone:phone||'',
-        items:totals.items.map(item=>({productId:item.productId,name:item.name,sku:item.sku||'',barcode:item.barcode||'',quantity:item.quantity,unitPriceUsd:item.unitPriceUsd,lineTotalUsd:item.lineTotalUsd})),
-        subtotalUsd:totals.subtotalUsd,discountUsd:totals.discountUsd,deliveryFeeUsd:totals.deliveryFeeUsd,
-        currency:'USD',paymentCurrency:currency,paymentOriginalAmount:received,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:totalOriginal,paidUsd,payments:[],
-        paymentMethod:get('paymentMethod')||'Pendiente',status:paidUsd>=totals.totalUsd-0.001?'Pagado':(paidUsd>0?'Abono parcial':'Pendiente'),
-        createdAt:new Date().toISOString(),kind:'Comprobante interno DEMO',taxIncluded:false,inventoryAppliedAt:null
-      };
-      if(source==='web'){
-        const orderNetMovement=inventoryMovements.filter(m=>m.sourceType==='order'&&String(m.sourceId)===String(order.id)).reduce((sum,m)=>sum+Number(m.delta||0),0);
-        const alreadyApplied=Boolean(order.inventoryAppliedAt)||Math.abs(orderNetMovement)>0.001||order.status!=='Pendiente';
-        if(!alreadyApplied){
-          const stockResult=recordOrderInventory(order,false);
-          if(stockResult.error){toast(stockResult.error);return;}
-          order.inventoryAppliedAt=new Date().toISOString();
-          order.status='En preparación';
-        }else if(!order.inventoryAppliedAt){
-          order.inventoryAppliedAt='confirmed-before-invoice';
-        }
-        invoice.inventoryAppliedAt=order.inventoryAppliedAt||'order-stock-already-applied';
-        invoice.inventorySourceType='order';
-        invoice.inventorySourceId=String(order.id);
-        order.invoiceId=invoice.id;
-        order.paymentStatus=invoice.status;
-        order.paymentAmount=received;
-        order.paymentCurrency=currency;
-        order.paymentMethod=invoice.paymentMethod;
-      }else{
-        const stockResult=recordInvoiceInventory(invoice);
-        if(stockResult.error){toast(stockResult.error);return;}
+      await loadERPFromNeon(true);
+      businessDialog.close();
+      renderView();
+      if(type==='invoice'){
+        const lastInvoice=invoices.find(f=>f.id===nextDocumentNumber('JBI-',[],1000));
+        toast('Factura registrada en Neon Development. Revisa su estado y saldo en Facturación.');
+        if(lastInvoice)window.requestAnimationFrame(()=>showInvoicePreview(lastInvoice.id));
+      } else {
+        const messages={
+          customer:'Cliente guardado en Neon.',supplier:'Proveedor guardado en Neon.',order:'Pedido guardado en Neon.',
+          purchase:'Compra registrada: inventario, costo y cuenta por pagar actualizados.',
+          expense:'Gasto registrado en Neon y reflejado en caja y resultados.',cash:'Movimiento registrado en Caja y bancos.',
+          payment:'Abono de cliente registrado.', 'purchase-payment':'Abono a proveedor registrado.',
+          employee:'Colaborador registrado en Neon Development.'
+        };
+        toast(messages[type]||'Operación guardada en Neon.');
       }
-      const existingCustomer=customers.find(item=>String(item.name||'').trim().toLocaleLowerCase('es')===customerName.toLocaleLowerCase('es'));
-      if(existingCustomer){
-        existingCustomer.customerType=customerType;
-        if(phone)existingCustomer.contact=phone;
-        if(source!=='web'){
-          existingCustomer.orders=Number(existingCustomer.orders||0)+1;
-          existingCustomer.spent=roundMoney(Number(existingCustomer.spent||0)+totals.totalUsd);
-        }
-      }else{
-        customers.unshift({name:customerName,contact:phone||'',customerType,orders:1,spent:totals.totalUsd,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
-      }
-      if(paidUsd>0){
-        const account=(invoice.paymentMethod==='Transferencia'?'Banco ':'Caja ')+currency;
-        invoice.payments.push({amount:received,currency,exchangeRate:rate,amountUsd:paidUsd,account,createdAt:new Date().toISOString()});
-        cashEntries.unshift({id:Date.now(),direction:'income',concept:'Cobro inicial '+invoice.id,currency,originalAmount:received,exchangeRate:rate,amountUsd:paidUsd,account,paymentMethod:invoice.paymentMethod,sourceType:'invoice',sourceId:String(invoice.id),createdAt:new Date().toISOString()});
-      }
-      invoices.unshift(invoice);
-      if(!persistBusinessChanges())return;
-      businessDialog.close();renderView();toast('Factura '+invoice.id+' generada. Inventario actualizado sin duplicar salidas.');
-      window.requestAnimationFrame(function(){showInvoicePreview(invoice.id);});
-    }else if(type==='employee'){
-      const salary=num('salaryNio');if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0){toast('Revisa los datos y el salario.');return;}
-      if(window.JBAuth&&window.JBAuth.mode==='authenticated'){
-        try{
-          const token=await window.JBAuth.getToken();
-          if(!token)throw new Error('La sesión expiró. Inicia sesión nuevamente.');
-          const response=await fetch(window.JBAuth.apiUrl ? window.JBAuth.apiUrl('/api/hr/employees') : '/api/hr/employees',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({name:get('name'),position:get('position'),department:get('department'),salaryNio:salary})});
-          const result=await response.json().catch(()=>({}));
-          if(!response.ok)throw new Error(result?.error?.message||'No se pudo guardar el colaborador en Neon.');
-          const employee=result.employee;
-          employees.unshift({id:employee.id,employeeCode:employee.employee_code||'',name:employee.name,position:employee.position,department:employee.department||'',salaryNio:Number(employee.salary_nio||0),status:employee.status||'Activo'});
-          hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
-          businessDialog.close();renderView();toast('Colaborador guardado en Neon Development. Salario expresado en córdobas.');
-        }catch(error){toast(error?.message||'No se pudo guardar el registro de RR. HH.');}
-        return;
-      }
-      employees.unshift({id,name:get('name'),position:get('position'),department:get('department'),salaryNio:salary,status:'Activo'});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Colaborador registrado en DEMO local. Salario expresado en córdobas.');
+    } catch(error) {
+      toast(error?.message||'No se pudo completar la operación en Neon.');
+    } finally {
+      if(button){button.disabled=false;button.textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon');}
     }
   }
   function dateText(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'});}
