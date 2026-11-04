@@ -410,3 +410,79 @@ test("order creation ignores client-supplied terminal state and starts as pendin
   assert.equal(insertParams[4], "Pendiente");
   assert.equal(insertParams[5], "Pendiente");
 });
+
+
+const validWebInvoiceBody = {
+  invoice_number: "JBI-QA-WEB-001",
+  source: "web",
+  order_id: "00000000-0000-0000-0000-000000000201",
+  order_number_snapshot: "JP-1001",
+  customer_name: "Cliente QA",
+  currency: "USD",
+  exchange_rate: 36.6,
+  subtotal_usd: 50,
+  discount_usd: 0,
+  delivery_fee_usd: 0,
+  total_usd: 50,
+  paid_usd: 0,
+  items: [{
+    product_id: "00000000-0000-0000-0000-000000000101",
+    product_name: "Perfume QA",
+    sku_snapshot: "QA-001",
+    quantity: 2,
+    unit_price_usd: 25,
+    unit_cost_usd: 10
+  }]
+};
+
+const webOrderSnapshot = [{
+  order_number: "JP-1001",
+  customer_name: "Cliente QA",
+  discount_usd: "0.00",
+  delivery_fee_usd: "0.00",
+  total_usd: "50.00",
+  product_id: "00000000-0000-0000-0000-000000000101",
+  product_name: "Perfume QA",
+  sku_snapshot: "QA-001",
+  quantity: 2,
+  unit_price_usd: "25.00"
+}];
+
+test("valid web invoice locks its order and product rows before posting stock", async () => {
+  let writeSql = "";
+  let call = 0;
+  const sql = {
+    query: async (query) => {
+      call += 1;
+      if (call === 1) return webOrderSnapshot;
+      writeSql = query;
+      return [{ id: "00000000-0000-0000-0000-000000000301", invoice_number: "JBI-QA-WEB-001" }];
+    }
+  };
+  const response = await createInvoice(sql, owner, validWebInvoiceBody);
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(body.record.invoice_number, "JBI-QA-WEB-001");
+  assert.match(writeSql, /web_order_lock/);
+  assert.match(writeSql, /lock_gate/);
+  assert.match(writeSql, /FOR UPDATE OF p/);
+  assert.match(writeSql, /SUM\(quantity_delta\)/);
+});
+
+test("unique database constraint returns an explicit duplicate web invoice conflict", async () => {
+  let call = 0;
+  const sql = {
+    query: async () => {
+      call += 1;
+      if (call === 1) return webOrderSnapshot;
+      const error = new Error("duplicate web invoice");
+      error.code = "23505";
+      error.constraint = "invoices_order_id_unique_idx";
+      throw error;
+    }
+  };
+  const response = await createInvoice(sql, owner, validWebInvoiceBody);
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, "DUPLICATE_WEB_INVOICE");
+});
