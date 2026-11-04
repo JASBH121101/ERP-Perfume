@@ -765,7 +765,7 @@
       if(balance<=0.001){toast('Esta compra ya está pagada.');return;}
       body='<div class="form-grid"><div class="detail-field full-field"><span>Proveedor · '+esc(purchase.supplier)+'</span><strong>Saldo pendiente: '+money(balance)+'</strong><small>'+esc(purchase.product)+' · '+purchase.quantity+' unidades</small></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div><p class="form-helper">El abono se convierte con el tipo de cambio vigente y se registra en Caja y bancos sin modificar inventario.</p>';
     }
-    if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
+    if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div>';
     if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
     if(type==='invoice'){
       invoiceDraftItems=[];
@@ -787,7 +787,7 @@
         formField('Importe recibido (moneda de cobro)','amountReceived','number',false,'min="0" step="0.01" value="0"')+
         '<p class="form-helper full-field">En una venta directa, el sistema propone cobrar el total automáticamente. Si recibes solo una parte, cambia el importe para registrar el abono inicial; el resto quedará como saldo pendiente. Para una venta a crédito, selecciona «Pendiente / crédito».</p>'+ '<p class="form-helper full-field">Para clientes de negocio se utilizará el precio mayorista del producto cuando esté configurado; de lo contrario se conserva el precio normal. La factura guarda una copia del precio aplicado.</p>'+
         '<section class="invoice-preview full-field" id="invoice-preview" aria-live="polite"><div class="invoice-preview-empty">Agrega perfumes para calcular la factura.</div></section>'+
-        '<p class="form-helper full-field">Comprobante interno DEMO, no fiscal. La factura se guardará en este navegador y actualizará el inventario una sola vez.</p></div>';
+        '<p class="form-helper full-field">Comprobante comercial interno. No sustituye una factura fiscal autorizada por la autoridad tributaria.</p></div>';
     }
     if(type==='payment'){
       const invoice=invoices.find(f=>f.id===recordId);if(!invoice){toast('No se encontró el comprobante.');return;}
@@ -798,8 +798,8 @@
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
     const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
-    document.querySelector('#business-dialog .eyebrow').textContent=secureHR?'RR. HH. · NEON DEVELOPMENT':'GESTIÓN · DEMO LOCAL';
-    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':(secureHR?'Guardar en Neon':'Guardar en demo'));
+    document.querySelector('#business-dialog .eyebrow').textContent=window.JBAuth?.profile?'GESTIÓN · NEON DEVELOPMENT':'ACCESO REQUERIDO';
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon');
     if(type==='invoice'){
       businessForm.dataset.invoiceReceivedEdited='0';
       businessForm.dataset.invoiceCurrency=businessForm.querySelector('[name="currency"]')?.value||'NIO';
@@ -1011,21 +1011,11 @@
   }
   async function loadHRFromAPI(force){
     const auth=window.JBAuth;
-    if(!auth||auth.mode!=='authenticated'||!auth.profile||!['owner','admin','hr'].includes(auth.profile.role)||hrRecordsLoading)return;
-    if(hrRecordsLoaded&&!force)return;
-    if(hrLoadAttempted&&!force)return;
+    if(!auth||auth.mode!=='authenticated'||!auth.profile||!['owner','admin','hr'].includes(auth.profile.role))return;
+    if(hrRecordsLoading||(hrRecordsLoaded&&!force))return;
     hrRecordsLoading=true;hrLoadAttempted=true;hrLoadError='';
     try{
-      const token=await auth.getToken();
-      if(!token)throw new Error('La sesión expiró. Inicia sesión nuevamente.');
-      const response=await fetch(window.JBAuth.apiUrl ? window.JBAuth.apiUrl('/api/hr/employees') : '/api/hr/employees',{headers:{authorization:'Bearer '+token},cache:'no-store'});
-      const body=await response.json().catch(()=>({}));
-      if(!response.ok)throw new Error(body?.error?.message||'No se pudieron cargar los colaboradores.');
-      employees=(Array.isArray(body.employees)?body.employees:[]).map(e=>({
-        id:e.id,employeeCode:e.employee_code||'',name:e.name,position:e.position,department:e.department||'',
-        salaryNio:Number(e.salary_nio||0),status:e.status||'Activo',hireDate:e.hire_date||null,
-        phone:e.phone||'',email:e.email||''
-      }));
+      await loadERPFromNeon(Boolean(force));
       hrRecordsLoaded=true;
     }catch(error){
       hrLoadError=error?.message||'No se pudieron cargar los registros de RR. HH.';
