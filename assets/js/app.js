@@ -461,7 +461,10 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     expenses: ["expenses.records.view"], cash: ["cash.entries.view"]
   };
   function permissionGranted(key) {
-    const grants = window.JBAuth?.profile?.permissions;
+    const profile = window.JBAuth?.profile;
+    // The Worker grants an explicit owner bypass; mirror it in navigation only.
+    if (String(profile?.role || "").toLowerCase() === "owner") return true;
+    const grants = profile?.permissions;
     return Array.isArray(grants) && (grants.includes("*") || grants.includes(key));
   }
   function canViewERPView(view) {
