@@ -504,7 +504,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
     "clear-inventory-filters": ["inventory.stock.view"], "clear-inventory-product-filters": ["inventory.stock.view"],
     "inventory-page": ["inventory.stock.view"], "refresh-access-manager": ["users.accounts.view"],
-    "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"]
+    "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
   };
   function applyPermissionActions() {
     root.querySelectorAll("button[data-action]").forEach((button) => {
@@ -1977,11 +1977,28 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
         .map(status => '<option value="'+status+'"'+(user.account_status===status?' selected':'')+'>'+({
           invited:"Invitado",registered:"Registrado",active:"Activo",rejected:"Rechazado",disabled:"Deshabilitado"
         })[status]+'</option>').join("");
+      const userOverrides = Array.isArray(user.overrides) ? user.overrides : [];
+      const overrideRows = userOverrides.map(override => {
+        const permission = accessManager.permissions.find(item=>item.permission_key===override.permission_key);
+        return '<div class="permission-override-row" data-override-key="'+esc(override.permission_key)+'">'+
+          '<span>'+esc(permission?.label||override.permission_key)+'<small>'+esc(override.permission_key)+'</small></span>'+
+          '<select class="filter-select" data-override-value><option value="allow"'+(override.allowed?' selected':'')+'>Permitir</option><option value="deny"'+(!override.allowed?' selected':'')+'>Denegar</option></select>'+
+          '<button type="button" class="button button-quiet button-small" data-action="remove-user-override" aria-label="Quitar excepción">Quitar</button></div>';
+      }).join("");
+      const overridePermissionOptions = accessManager.permissions.map(permission =>
+        '<option value="'+esc(permission.permission_key)+'">'+esc(permission.label)+' · '+esc(permission.permission_key)+'</option>'
+      ).join("");
       return '<tr data-user-id="'+esc(user.id)+'"><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td>'+
         '<td><input class="filter-select" data-user-position value="'+esc(user.position_title||"")+'" maxlength="120" placeholder="Cargo libre"></td>'+
         '<td><select class="filter-select" data-user-role>'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(user.role_template_key===role.role_key?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></td>'+
         '<td><select class="filter-select" data-user-status>'+statusOptions+'</select></td>'+
-        '<td><label><input type="checkbox" data-user-password'+(user.must_change_password?' checked':'')+'> Cambio inicial</label> <button class="button button-quiet button-small" data-action="save-user-access">Guardar</button></td></tr>';
+        '<td class="user-access-controls"><label><input type="checkbox" data-user-password'+(user.must_change_password?' checked':'')+'> Cambio inicial</label>'+
+        '<details class="user-overrides"><summary>Excepciones ('+userOverrides.length+')</summary><div data-user-overrides>'+overrideRows+'</div>'+
+        '<div class="permission-override-add"><select class="filter-select" data-new-override-permission aria-label="Permiso individual">'+overridePermissionOptions+'</select>'+
+        '<select class="filter-select" data-new-override-value aria-label="Efecto"><option value="allow">Permitir</option><option value="deny">Denegar</option></select>'+
+        '<button type="button" class="button button-quiet button-small" data-action="add-user-override">Añadir</button></div>'+
+        '<small class="form-helper">Las excepciones reemplazan el valor de la plantilla para esta cuenta.</small></details>'+
+        '<button class="button button-quiet button-small" data-action="save-user-access">Guardar cuenta</button></td></tr>';
     }).join("");
 
     const pendingRows = accessManager.pendingIdentities.map(identity =>
@@ -2826,6 +2843,51 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       finally{button.disabled=false;}
       return;
     }
+    if(action==="remove-user-override"){
+      const overrideRow=button.closest("[data-override-key]");
+      const userRow=button.closest("tr[data-user-id]");
+      if(overrideRow)overrideRow.remove();
+      const summary=userRow?.querySelector(".user-overrides summary");
+      if(summary&&userRow)summary.textContent="Excepciones ("+userRow.querySelectorAll("[data-override-key]").length+")";
+      return;
+    }
+    if(action==="add-user-override"){
+      const userRow=button.closest("tr[data-user-id]");
+      const container=userRow?.querySelector("[data-user-overrides]");
+      const selector=userRow?.querySelector("[data-new-override-permission]");
+      const effect=userRow?.querySelector("[data-new-override-value]");
+      if(!userRow||!container||!selector||!effect)return;
+      const key=selector.value;
+      if(userRow.querySelector('[data-override-key="'+CSS.escape(key)+'"]')){
+        toast("Ese permiso ya tiene una excepción. Edita su valor en la lista.");
+        return;
+      }
+      const permission=accessManager.permissions.find(item=>item.permission_key===key);
+      if(!permission)return;
+      const row=document.createElement("div");
+      row.className="permission-override-row";
+      row.setAttribute("data-override-key",key);
+      const label=document.createElement("span");
+      label.textContent=permission.label;
+      const code=document.createElement("small");
+      code.textContent=key;
+      label.appendChild(code);
+      const value=document.createElement("select");
+      value.className="filter-select";
+      value.setAttribute("data-override-value","");
+      value.innerHTML='<option value="allow">Permitir</option><option value="deny">Denegar</option>';
+      value.value=effect.value;
+      const remove=document.createElement("button");
+      remove.type="button";
+      remove.className="button button-quiet button-small";
+      remove.setAttribute("data-action","remove-user-override");
+      remove.textContent="Quitar";
+      row.append(label,value,remove);
+      container.appendChild(row);
+      const summary=userRow.querySelector(".user-overrides summary");
+      if(summary)summary.textContent="Excepciones ("+userRow.querySelectorAll("[data-override-key]").length+")";
+      return;
+    }
     if(action==="save-user-access"){
       const row=button.closest("tr"), id=row?.getAttribute("data-user-id");
       if(!id)return;
@@ -2833,7 +2895,11 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
         position_title:row.querySelector("[data-user-position]")?.value.trim()||"",
         role_template_key:row.querySelector("[data-user-role]")?.value||"viewer",
         account_status:row.querySelector("[data-user-status]")?.value||"registered",
-        must_change_password:row.querySelector("[data-user-password]")?.checked===true
+        must_change_password:row.querySelector("[data-user-password]")?.checked===true,
+        overrides:Array.from(row.querySelectorAll("[data-override-key]")).map(item=>({
+          permission_key:item.getAttribute("data-override-key"),
+          allowed:item.querySelector("[data-override-value]")?.value==="allow"
+        }))
       };
       button.disabled=true;
       try{
