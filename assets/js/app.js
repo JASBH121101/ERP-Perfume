@@ -50,6 +50,10 @@
   let invoices = [];
   let invoiceDraftItems = [];
   let employees = [];
+  let attendanceRecords = [];
+  let leaveRequests = [];
+  let payrollPeriods = [];
+  let payrollItems = [];
   let inventoryMovements = [];
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
@@ -190,6 +194,23 @@
         department: e.department || "", salaryNio: Number(e.salary_nio || 0), status: e.status || "Activo",
         hireDate: e.hire_date || null, phone: e.phone || "", email: e.email || "", notes: e.notes || ""
       }));
+      attendanceRecords = (data.hr_attendance || []).map(e => ({
+        id:e.id, employeeId:e.employee_id, workDate:e.work_date, checkIn:e.check_in, checkOut:e.check_out,
+        breakMinutes:Number(e.break_minutes||0), status:e.status, notes:e.notes||""
+      }));
+      leaveRequests = (data.hr_leave_requests || []).map(e => ({
+        id:e.id, employeeId:e.employee_id, leaveType:e.leave_type, startDate:e.start_date, endDate:e.end_date,
+        days:Number(e.days||0), reason:e.reason||"", status:e.status, reviewedAt:e.reviewed_at
+      }));
+      payrollPeriods = (data.hr_payroll_periods || []).map(e => ({
+        id:e.id, periodStart:e.period_start, periodEnd:e.period_end, paymentDate:e.payment_date||"",
+        status:e.status, notes:e.notes||"", createdAt:e.created_at
+      }));
+      payrollItems = (data.hr_payroll_items || []).map(e => ({
+        id:e.id, payrollPeriodId:e.payroll_period_id, employeeId:e.employee_id,
+        baseSalaryNio:Number(e.base_salary_nio||0), bonusesNio:Number(e.bonuses_nio||0),
+        deductionsNio:Number(e.deductions_nio||0), netSalaryNio:Number(e.net_salary_nio||0), notes:e.notes||""
+      }));
       const rateSetting = (data.settings || []).find(s => s.setting_key === "default_exchange_rate");
       if (rateSetting && Number(rateSetting.setting_value?.value) > 0) exchangeRate = Number(rateSetting.setting_value.value);
       erpDataLoaded = true;
@@ -224,7 +245,7 @@
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active' };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees' };
   const root = document.getElementById('view-root');
   const dialog = document.getElementById('product-dialog');
   const form = document.getElementById('product-form');
