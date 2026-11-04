@@ -10,15 +10,26 @@ permissions:
   contents: read
 
 jobs:
-  runner-smoke:
-    name: Minimal runner connectivity
+  validate-workflow:
+    name: Validate ERP workflow definition
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 4
     steps:
-      - name: Verify the GitHub-hosted runner
+      - name: Checkout isolated feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: false
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@latest
+
+      - name: Validate ui-checks workflow
         run: |
-          echo "ERP Actions runner is available."
-          echo "Event: $GITHUB_EVENT_NAME"
-          echo "Ref: $GITHUB_REF"
-          node --version
-          npm --version
+          "$(go env GOPATH)/bin/actionlint" -color .github/workflows/ui-checks.yml
