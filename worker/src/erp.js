@@ -1208,29 +1208,39 @@ export async function handleERPRequest(request, env, user, sql) {
       }
     }
     try {
-      const updated = await sql.query(
-        "UPDATE app_users SET " +
-        "role_template_key=COALESCE($2,role_template_key),position_title=COALESCE($3,position_title)," +
-        "account_status=COALESCE($4,account_status),active=CASE WHEN $4 IS NULL THEN active ELSE ($4='active') END," +
-        "must_change_password=COALESCE($5,must_change_password),updated_at=NOW() " +
-        "WHERE id=$1::uuid AND role <> 'owner' " +
-        "RETURNING id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password",
-        [id,roleTemplateKey,positionTitle,accountStatus,body.must_change_password ?? null]
-      );
-      if (!updated[0]) return erpError(404, "USER_NOT_FOUND", "La cuenta ERP solicitada no existe.");
-      if (Array.isArray(overrides)) {
-        const payload = JSON.stringify(overrides);
-        await sql.transaction((tx) => [
-          tx`DELETE FROM user_permission_overrides WHERE user_id=${id}::uuid`,
-          tx`INSERT INTO user_permission_overrides(user_id,permission_key,allowed,updated_by,updated_at)
-             SELECT ${id}::uuid,x.permission_key,x.allowed,${user.id},NOW()
-             FROM jsonb_to_recordset(${payload}::jsonb) AS x(permission_key text,allowed boolean)`
-        ]);
-      }
-      await auditQuery(sql,user.id,"update","app_user",id,{
+      const auditDetails = {
         role_template_key:roleTemplateKey,position_title:positionTitle,account_status:accountStatus,
         must_change_password:body.must_change_password,overrides_updated:Array.isArray(overrides)
+      };
+      const transaction = await sql.transaction((tx) => {
+        const operations = [
+          tx`UPDATE app_users SET
+              role_template_key=COALESCE(${roleTemplateKey},role_template_key),
+              position_title=COALESCE(${positionTitle},position_title),
+              account_status=COALESCE(${accountStatus},account_status),
+              active=CASE WHEN ${accountStatus} IS NULL THEN active ELSE (${accountStatus}='active') END,
+              must_change_password=COALESCE(${body.must_change_password ?? null},must_change_password),
+              updated_at=NOW()
+            WHERE id=${id}::uuid AND role <> 'owner'
+            RETURNING id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password`
+        ];
+        if (Array.isArray(overrides)) {
+          const payload = JSON.stringify(overrides);
+          operations.push(
+            tx`DELETE FROM user_permission_overrides WHERE user_id=${id}::uuid`,
+            tx`INSERT INTO user_permission_overrides(user_id,permission_key,allowed,updated_by,updated_at)
+               SELECT ${id}::uuid,x.permission_key,x.allowed,${user.id},NOW()
+               FROM jsonb_to_recordset(${payload}::jsonb) AS x(permission_key text,allowed boolean)`
+          );
+        }
+        operations.push(
+          tx`INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details)
+             VALUES(${user.id},'update','app_user',${id},${JSON.stringify(auditDetails)}::jsonb)`
+        );
+        return operations;
       });
+      const updated = transaction[0];
+      if (!updated?.[0]) return erpError(404, "USER_NOT_FOUND", "La cuenta ERP solicitada no existe.");
       return erpJson({ user: updated[0] });
     } catch (error) {
       console.error("[erp] User update failed:", error?.message || "database error");
