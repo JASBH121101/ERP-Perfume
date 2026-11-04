@@ -419,7 +419,7 @@
       stockBar('Agotado',activeProducts.filter(p=>p.stock===0).length,activeProducts.length,'out')+
       '</div><div class="panel-footer-note">Los conteos reflejan existencias actuales guardadas en Neon.</div></article></section>';
   }
-  function stockBar  function stockBar(label, count, total, tone) {
+  function stockBar(label, count, total, tone) {
     const width = total ? Math.round(count / total * 100) : 0;
     return '<div class="stock-row"><div class="stock-row-head"><span>' + label + '</span><strong>' + count + ' productos</strong></div><div class="stock-track"><span class="stock-fill ' + tone + '" style="width:' + width + '%"></span></div></div>';
   }
@@ -459,7 +459,7 @@
     const categoryOptions = categories.map(function (category) {
       return '<option value="' + esc(category) + '"' + (state.category === category ? ' selected' : '') + '>' + esc(category) + '</option>';
     }).join('');
-    return heading(views.products, '<button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
+    return heading(views.products, '<div class="heading-actions-inline"><button class="button button-quiet" data-action="import-products">' + svg('download') + ' Importar catálogo</button><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button></div>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Productos activos</span><strong>' + activeCount + '</strong></div><div class="summary-mini"><span>Desactivados</span><strong>' + inactiveCount + '</strong></div><div class="summary-mini"><span>Requieren reposición</span><strong>' + products.filter(function (product) { return product.active !== false && needsRestock(product); }).length + '</strong></div></div>' +
       '<div class="toolbar products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="product-status-filter" aria-label="Estado del producto"><option value="active"' + (state.productStatus === 'active' ? ' selected' : '') + '>Activos</option><option value="inactive"' + (state.productStatus === 'inactive' ? ' selected' : '') + '>Desactivados</option><option value="all"' + (state.productStatus === 'all' ? ' selected' : '') + '>Todos</option></select><select class="filter-select" id="category-filter" aria-label="Filtrar por categoría"><option value="all"' + (state.category === 'all' ? ' selected' : '') + '>Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO / COSTO</th><th>EXISTENCIAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody id="product-table-body">' + productTable(filteredProducts()) + '</tbody></table></div></article>' +
@@ -1586,6 +1586,270 @@
       }
     }
   }
+
+  function catalogNumber(value) {
+    if (value == null || value === '') return 0;
+    let raw = String(value).trim().replace(/[^\d,.-]/g, '');
+    if (!raw || raw === '-' || raw === '.' || raw === ',') return 0;
+    const comma = raw.lastIndexOf(','), dot = raw.lastIndexOf('.');
+    if (comma >= 0 && dot >= 0) {
+      const decimal = comma > dot ? ',' : '.';
+      raw = raw.split(decimal === ',' ? '.' : ',').join('');
+      if (decimal === ',') raw = raw.replace(',', '.');
+    } else if (comma >= 0) {
+      const decimals = raw.length - comma - 1;
+      raw = decimals > 0 && decimals <= 2 ? raw.replace(',', '.') : raw.replace(/,/g, '');
+    } else if (dot >= 0) {
+      const decimals = raw.length - dot - 1;
+      if (decimals > 2) raw = raw.replace(/\./g, '');
+    }
+    const number = Number(raw);
+    return Number.isFinite(number) ? number : 0;
+  }
+  function catalogHeader(value) {
+    return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  const catalogAliases = {
+    sku: ['sku','codigo','codigo producto','referencia','ref','clave','code'],
+    name: ['producto','nombre','nombre producto','perfume','articulo','item','product','name','description'],
+    brand: ['marca','brand'],
+    category: ['categoria','category','tipo'],
+    purchase_cost_usd: ['costo compra','costo de compra','costo','cost','purchase cost','buy price','precio compra'],
+    additional_cost_usd: ['costo adicional','gasto adicional','additional cost'],
+    unit_cost_usd: ['costo unitario','unit cost','landed cost'],
+    price_usd: ['precio venta','precio de venta','precio publico','pvp','price','sale price','retail price','precio'],
+    stock: ['stock','existencias','inventario','cantidad','unidades','qty','quantity'],
+    min_stock: ['stock minimo','minimo','min stock','reorder level'],
+    concentration: ['concentracion','concentration'],
+    gender: ['genero','gender'],
+    family: ['familia olfativa','familia','family'],
+    size_ml: ['contenido ml','ml','tamano ml','size ml','size'],
+    presentation: ['presentacion','presentation'],
+    location: ['ubicacion','location','bodega'],
+    barcode: ['codigo barras','codigo de barras','barcode','ean'],
+    description: ['descripcion','description'],
+    supplier_name: ['proveedor','supplier','supplier name'],
+    wholesale_price_usd: ['precio mayorista','wholesale price']
+  };
+  function catalogField(header) {
+    const normalized = catalogHeader(header);
+    for (const [field, aliases] of Object.entries(catalogAliases)) {
+      if (aliases.includes(normalized)) return field;
+    }
+    return '';
+  }
+  function catalogSku(index) {
+    return 'IMP-' + Date.now().toString(36).slice(-5).toUpperCase() + '-' + String(index + 1).padStart(3, '0');
+  }
+  function parseCatalogCSV(text) {
+    const sample = String(text || '').replace(/^\uFEFF/, '').slice(0, 12000);
+    let delimiter = ',';
+    const counts = [',',';','\t'].map(char => {
+      let count = 0, quoted = false;
+      for (const ch of sample) {
+        if (ch === '"') quoted = !quoted;
+        else if (!quoted && ch === char) count++;
+      }
+      return {char,count};
+    }).sort((a,b)=>b.count-a.count);
+    if (counts[0].count) delimiter = counts[0].char;
+    const rows = [];
+    let row = [], cell = '', quoted = false;
+    const source = String(text || '').replace(/^\uFEFF/, '');
+    for (let i=0;i<source.length;i++) {
+      const ch=source[i], next=source[i+1];
+      if (ch === '"' && quoted && next === '"') { cell += '"'; i++; }
+      else if (ch === '"') quoted = !quoted;
+      else if (ch === delimiter && !quoted) { row.push(cell); cell=''; }
+      else if ((ch === '\n' || ch === '\r') && !quoted) {
+        if (ch === '\r' && next === '\n') i++;
+        row.push(cell); cell='';
+        if (row.some(value=>String(value).trim())) rows.push(row);
+        row=[];
+      } else cell += ch;
+    }
+    row.push(cell);
+    if (row.some(value=>String(value).trim())) rows.push(row);
+    if (rows.length < 2) throw new Error('El CSV debe incluir encabezados y al menos una fila de productos.');
+    const headers = rows[0].map(catalogHeader);
+    const mapping = headers.map(catalogField);
+    if (!mapping.includes('name')) throw new Error('No pude identificar la columna del producto. Usa un encabezado como Producto, Nombre o Perfume.');
+    const parsed = [];
+    rows.slice(1,201).forEach((cells,index)=>{
+      const record={sku:'',name:'',brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock:0,min_stock:3,active:true,images:[]};
+      cells.forEach((value,col)=>{
+        const field=mapping[col];
+        if (!field) return;
+        if (['purchase_cost_usd','additional_cost_usd','unit_cost_usd','price_usd','stock','min_stock','size_ml','wholesale_price_usd'].includes(field)) record[field]=catalogNumber(value);
+        else record[field]=String(value||'').trim();
+      });
+      if (!record.name) return;
+      if (!record.sku) record.sku=catalogSku(index);
+      if (!record.unit_cost_usd) record.unit_cost_usd=roundMoney(record.purchase_cost_usd+record.additional_cost_usd);
+      record.stock=Math.max(0,Math.floor(record.stock));
+      record.min_stock=Math.max(0,Math.floor(record.min_stock));
+      parsed.push(record);
+    });
+    if (!parsed.length) throw new Error('No encontré filas con nombre de producto en el CSV.');
+    return parsed;
+  }
+  function parseCatalogTextRows(text) {
+    const skip = /^(sku|codigo|producto|nombre|descripcion|descripci[oó]n|marca|brand|precio|price|stock|existencias|total|subtotal|pagina|page|www\\.|https?:)/i;
+    const lines=String(text||'').replace(/\u00a0/g,' ').split(/\r?\n/).map(line=>line.replace(/\s+/g,' ').trim()).filter(Boolean);
+    const rows=[];
+    for (const line of lines) {
+      if (line.length < 3 || line.length > 180 || skip.test(line)) continue;
+      if (!/[a-záéíóúñ]{3}/i.test(line)) continue;
+      const values=[...line.matchAll(/(?:US\$|USD|C\$|NIO|\$)?\s*[-+]?\d[\d.,]*/gi)];
+      let detected = null, name = line;
+      if (values.length) {
+        const last=values[values.length-1];
+        const amount=catalogNumber(last[0]);
+        if (Number.isFinite(amount) && amount > 0 && amount < 1000000) {
+          detected=amount;
+          name=line.slice(0,last.index).replace(/[\s|,;:–-]+$/,'').trim();
+        }
+      }
+      name=name.replace(/^\d{1,4}[\s.)-]+/,'').replace(/\s{2,}/g,' ').trim();
+      if (name.length < 3 || !/[a-záéíóúñ]{3}/i.test(name)) continue;
+      if (/^(pagina|page|total|subtotal|iva|impuesto|descuento|direccion|telefono|fecha|cliente|proveedor)\b/i.test(name)) continue;
+      rows.push({sku:catalogSku(rows.length),name:name.slice(0,120),brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock:0,min_stock:3,active:true,images:[],_detected_amount:detected});
+      if(rows.length>=200)break;
+    }
+    const unique=[],seen=new Set();
+    for(const row of rows){const key=row.name.toLowerCase();if(!seen.has(key)){seen.add(key);unique.push(row);}}
+    if(!unique.length)throw new Error('No pude extraer nombres de productos. Revisa que el archivo sea legible o prueba con un CSV.');
+    return unique;
+  }
+  function loadCatalogScript(src, ready) {
+    if (ready()) return Promise.resolve();
+    return new Promise((resolve,reject)=>{
+      const existing=Array.from(document.scripts).find(script=>script.src===src);
+      if(existing){existing.addEventListener('load',resolve,{once:true});existing.addEventListener('error',()=>reject(new Error('No se pudo cargar el lector de archivos.')),{once:true});return;}
+      const script=document.createElement('script');script.src=src;script.async=true;
+      script.onload=resolve;script.onerror=()=>reject(new Error('No se pudo cargar el lector de archivos. Comprueba la conexión e inténtalo de nuevo.'));
+      document.head.appendChild(script);
+    });
+  }
+  async function readCatalogPDF(file, status) {
+    const pdfUrl='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    await loadCatalogScript(pdfUrl,()=>Boolean(window.pdfjsLib));
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    if(pdf.numPages>10)throw new Error('El PDF supera el máximo de 10 páginas. Divide el documento e importa cada parte.');
+    const textPages=[];
+    for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber++){
+      status('Leyendo página '+pageNumber+' de '+pdf.numPages+'…');
+      const page=await pdf.getPage(pageNumber);
+      const textContent=await page.getTextContent();
+      let pageText=textContent.items.map(item=>item.str||'').join(' ').trim();
+      if(!pageText){
+        status('PDF escaneado: aplicando OCR local a la página '+pageNumber+'…');
+        await loadCatalogScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',()=>Boolean(window.Tesseract));
+        const viewport=page.getViewport({scale:1.45});
+        const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+        const context=canvas.getContext('2d');
+        await page.render({canvasContext:context,viewport}).promise;
+        const result=await window.Tesseract.recognize(canvas,'spa+eng',{logger:m=>{if(m.status==='recognizing text')status('OCR '+Math.round((m.progress||0)*100)+'% · página '+pageNumber);}});
+        pageText=result.data.text||'';
+        canvas.width=0;canvas.height=0;
+      }
+      textPages.push(pageText);
+      page.cleanup();
+    }
+    await pdf.destroy();
+    return textPages.join('\n');
+  }
+  async function readCatalogImage(file,status) {
+    await loadCatalogScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',()=>Boolean(window.Tesseract));
+    status('Reconociendo texto de la imagen localmente…');
+    const result=await window.Tesseract.recognize(file,'spa+eng',{logger:m=>{if(m.status==='recognizing text')status('OCR '+Math.round((m.progress||0)*100)+'%');}});
+    return result.data.text||'';
+  }
+  function openCatalogImport() {
+    const dialog=document.createElement('dialog');
+    dialog.className='modal';dialog.id='catalog-import-dialog';
+    dialog.innerHTML='<form method="dialog" class="modal-card" style="width:min(1080px,96vw);max-height:90vh;overflow:auto"><div class="modal-heading"><div><span class="eyebrow">CATÁLOGO · IMPORTACIÓN</span><h2>Importar productos</h2></div><button type="button" class="icon-button modal-close" data-import-close aria-label="Cerrar">×</button></div><p class="modal-note">Admite CSV, PDF, PNG, JPG y JPEG. CSV conserva las columnas; PDF e imágenes usan lectura de texto y OCR local. Revisa y corrige los datos antes de guardarlos en Neon.</p><div class="form-grid"><label class="form-field full-field"><span>Seleccionar archivo</span><input id="catalog-import-file" type="file" accept=".csv,.pdf,.png,.jpg,.jpeg,text/csv,application/pdf,image/png,image/jpeg" required></label><label class="form-field full-field"><span>Importe detectado en PDF / imagen</span><select id="catalog-import-amount"><option value="none">No asignar automáticamente</option><option value="price">Asignar a precio de venta (USD)</option><option value="cost">Asignar a costo de compra (USD)</option></select><small class="form-helper">No se supondrá si una cifra detectada es costo o precio. En PDF e imágenes la detección es preliminar.</small></label></div><p id="catalog-import-status" class="form-helper" role="status">Selecciona un archivo para comenzar.</p><div id="catalog-import-preview" class="table-wrap" style="max-height:42vh;overflow:auto"></div><div class="modal-actions"><button type="button" class="button button-quiet" data-import-close>Cancelar</button><button type="button" class="button button-primary" id="catalog-import-save" disabled>Importar productos a Neon</button></div></form>';
+    document.body.appendChild(dialog);
+    let records=[];
+    const statusNode=dialog.querySelector('#catalog-import-status');
+    const previewNode=dialog.querySelector('#catalog-import-preview');
+    const saveButton=dialog.querySelector('#catalog-import-save');
+    const amountMode=dialog.querySelector('#catalog-import-amount');
+    const fileInput=dialog.querySelector('#catalog-import-file');
+    const status=message=>{statusNode.textContent=message;};
+    const renderPreview=()=>{
+      if(!records.length){previewNode.innerHTML='';saveButton.disabled=true;return;}
+      const rows=records.map((record,index)=>'<tr><td><input class="filter-select" style="min-width:120px" data-import-index="'+index+'" data-import-field="sku" value="'+esc(record.sku)+'" aria-label="SKU"></td><td><input class="filter-select" style="min-width:180px" data-import-index="'+index+'" data-import-field="name" value="'+esc(record.name)+'" aria-label="Producto"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="brand" value="'+esc(record.brand||'')+'" aria-label="Marca"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="price_usd" type="number" min="0" step="0.01" value="'+Number(record.price_usd||0)+'" aria-label="Precio"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="purchase_cost_usd" type="number" min="0" step="0.01" value="'+Number(record.purchase_cost_usd||0)+'" aria-label="Costo"></td><td><input class="filter-select" style="min-width:75px" data-import-index="'+index+'" data-import-field="stock" type="number" min="0" step="1" value="'+Number(record.stock||0)+'" aria-label="Stock"></td><td><button type="button" class="table-action table-action-danger" data-import-remove="'+index+'" aria-label="Quitar fila">×</button></td></tr>').join('');
+      previewNode.innerHTML='<table class="data-table"><thead><tr><th>SKU</th><th>PRODUCTO</th><th>MARCA</th><th>PRECIO USD</th><th>COSTO USD</th><th>STOCK</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+      saveButton.disabled=false;saveButton.textContent='Importar '+records.length+' productos a Neon';
+    };
+    fileInput.addEventListener('change',async()=>{
+      const file=fileInput.files?.[0];records=[];renderPreview();saveButton.disabled=true;
+      if(!file)return;
+      if(file.size>10*1024*1024){status('El archivo supera el límite de 10 MB.');return;}
+      const extension=(file.name.split('.').pop()||'').toLowerCase();
+      try{
+        status('Analizando '+file.name+'…');
+        if(extension==='csv'||file.type==='text/csv'){
+          records=parseCatalogCSV(await file.text());
+        }else if(extension==='pdf'||file.type==='application/pdf'){
+          records=parseCatalogTextRows(await readCatalogPDF(file,status));
+        }else if(['png','jpg','jpeg'].includes(extension)||['image/png','image/jpeg'].includes(file.type)){
+          records=parseCatalogTextRows(await readCatalogImage(file,status));
+        }else throw new Error('Formato no admitido. Selecciona CSV, PDF, PNG, JPG o JPEG.');
+        status('Se detectaron '+records.length+' filas. Revisa o corrige los campos antes de importar.');
+        renderPreview();
+      }catch(error){status(error?.message||'No se pudo leer el archivo.');}
+    });
+    amountMode.addEventListener('change',()=>{
+      records.forEach(record=>{
+        if(record._detected_amount==null)return;
+        if(amountMode.value==='price')record.price_usd=record._detected_amount;
+        else if(amountMode.value==='cost'){record.purchase_cost_usd=record._detected_amount;record.unit_cost_usd=record._detected_amount;}
+        else {record.price_usd=0;record.purchase_cost_usd=0;record.unit_cost_usd=0;}
+      });
+      renderPreview();
+    });
+    previewNode.addEventListener('input',event=>{
+      const input=event.target.closest('[data-import-index][data-import-field]');if(!input)return;
+      const record=records[Number(input.dataset.importIndex)];if(!record)return;
+      const field=input.dataset.importField;
+      record[field]=['price_usd','purchase_cost_usd','stock'].includes(field)?catalogNumber(input.value):input.value.trim();
+      if(field==='purchase_cost_usd')record.unit_cost_usd=record.purchase_cost_usd;
+    });
+    previewNode.addEventListener('click',event=>{
+      const remove=event.target.closest('[data-import-remove]');if(!remove)return;
+      records.splice(Number(remove.dataset.importRemove),1);renderPreview();
+    });
+    dialog.addEventListener('click',event=>{if(event.target.closest('[data-import-close]'))dialog.close();});
+    dialog.addEventListener('close',()=>dialog.remove());
+    saveButton.addEventListener('click',async()=>{
+      if(!records.length)return;
+      const seen=new Set();
+      for(const record of records){
+        record.sku=String(record.sku||'').trim().toUpperCase();
+        record.name=String(record.name||'').trim();
+        if(!record.sku||!record.name){status('Todos los productos necesitan SKU y nombre.');return;}
+        if(seen.has(record.sku.toLowerCase())){status('Hay SKU repetidos en la vista previa: '+record.sku+'. Corrígelos antes de continuar.');return;}
+        seen.add(record.sku.toLowerCase());
+        if(!Number.isInteger(Number(record.stock))||Number(record.stock)<0){status('El stock debe ser un entero igual o mayor que cero.');return;}
+        if(Number(record.price_usd)<0||Number(record.purchase_cost_usd)<0){status('Los precios y costos no pueden ser negativos.');return;}
+      }
+      saveButton.disabled=true;status('Guardando productos, existencias iniciales y kardex en Neon…');
+      try{
+        const payload=records.map(record=>{
+          const clean={...record};delete clean._detected_amount;
+          return clean;
+        });
+        const result=await erpApi('products/import',{method:'POST',body:JSON.stringify({records:payload,source_file:fileInput.files?.[0]?.name||''})});
+        await loadERPFromNeon(true);dialog.close();renderView();
+        toast((result.imported||payload.length)+' productos importados. Se registraron existencias iniciales en el kardex.');
+      }catch(error){status(error?.message||'No se pudo importar el catálogo.');saveButton.disabled=false;}
+    });
+    if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+  }
+
   document.addEventListener('click', async function (event) {
     const viewButton = event.target.closest('[data-view], [data-view-link]');
     if (viewButton) {
@@ -1598,7 +1862,8 @@
       if (name === 'reload-erp') {
         action.disabled=true;
         loadERPFromNeon(true).then(()=>renderView()).catch(error=>toast(error?.message||'No se pudo cargar Neon.')).finally(()=>{action.disabled=false;});
-      } else if (name === 'new-product') openProductModal();
+      } else if (name === 'import-products') openCatalogImport();
+      else if (name === 'new-product') openProductModal();
       else if (name === 'edit-product') openProductModal(action.getAttribute('data-id'));
       else if (name === 'preview-product') showProductDetails(action.getAttribute('data-id'));
       else if (name === 'edit-from-detail') { const productId = action.getAttribute('data-id'); detailDialog.close(); openProductModal(productId); }
