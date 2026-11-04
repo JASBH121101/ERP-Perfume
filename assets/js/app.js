@@ -1475,7 +1475,9 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   function exportDgiBook(){
     const rows=[['Fecha','Tipo de operación','Tercero / descripción','Referencia','Importe NIO','Clasificación'],...invoices.filter(i=>!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status)).flatMap(i=>(i.payments||[]).map(payment=>[
       dateText(payment.createdAt),'Cobro recibido · factura',i.customer,i.id,dgiAmountNio(payment.amountUsd,payment.exchangeRate||1),'Ingreso percibido'
-    ])),...purchases.map(p=>[
+    ])),...cashEntries.filter(entry=>entry.direction==='income'&&!entry.sourceType).map(entry=>[
+      dateText(entry.createdAt),'Ingreso de caja sin documento vinculado',entry.concept,entry.id,dgiAmountNio(entry.amountUsd,entry.exchangeRate||1),'Ingreso por conciliar'
+    ]),...purchases.map(p=>[
       dateText(p.createdAt),'Compra de inventario',p.supplier,p.purchaseNumber,dgiAmountNio(p.totalUsd,p.exchangeRate||exchangeRate),'Egreso / compra'
     ]),...expenses.map(e=>[
       dateText(e.createdAt),'Gasto · '+e.category,e.description,e.id,dgiAmountNio(e.amountUsd,e.exchangeRate||exchangeRate),'Egreso'
@@ -1559,6 +1561,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     const sixMonthAverage=sixMonthTotal/6;
     const inventoryCost=products.reduce((sum,p)=>sum+Math.max(0,Number(p.stock||0))*Math.max(0,Number(p.unitCost||0))*exchangeRate,0);
     const monthPendingOrders=completedOrdersWithoutInvoice.filter(o=>{const d=new Date(o.createdAt);return d>=monthStart&&d<nextMonth;}).length;
+    const unlinkedCashIncome=cashEntries.filter(entry=>entry.direction==='income'&&!entry.sourceType);
+    const unlinkedCashIncomeNio=unlinkedCashIncome.reduce((sum,entry)=>sum+dgiAmountNio(entry.amountUsd,entry.exchangeRate||1),0);
     const regime=dgiCompliance.regime_status||'not_confirmed';
     const dgiPaymentPeriod=dgiPeriodKey(new Date(now.getFullYear(),now.getMonth()-1,1));
     const dgiPayment=dgiSupportDocuments.find(d=>d.documentType==='dgi_payment'&&d.fiscalPeriod===dgiPaymentPeriod);
@@ -1603,6 +1607,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       dgiAlert+
       '<div class="summary-strip"><div class="summary-mini"><span>Cobros registrados del mes · NIO</span><strong>'+moneyInCurrency(monthSales,'NIO')+'</strong><small class="table-secondary">Ingresos percibidos registrados · referencia C$ 100,000</small></div><div class="summary-mini"><span>Promedio de cobros · 6 meses completos</span><strong>'+moneyInCurrency(sixMonthAverage,'NIO')+'</strong><small class="table-secondary">Seis meses completos · referencia C$ 100,000</small></div><div class="summary-mini"><span>Inventario al costo · NIO</span><strong>'+moneyInCurrency(inventoryCost,'NIO')+'</strong><small class="table-secondary">Referencia legal: C$ 500,000 · estimación al tipo de cambio vigente</small></div><div class="summary-mini"><span>Pedidos completados sin factura</span><strong>'+monthPendingOrders+'</strong><small class="table-secondary">Revisa la facturación de ventas</small></div></div>'+
       (limitSales?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Ventas del mes superiores a C$100,000</strong><p>El ERP no bloquea ventas. Revisa tu elegibilidad y consulta a la DGI; este dato mensual no sustituye el cálculo del promedio legal de seis meses.</p></div></div>':'')+
+      (unlinkedCashIncome.length?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Ingresos de caja sin vínculo documental</strong><p>'+unlinkedCashIncome.length+' movimientos por '+moneyInCurrency(unlinkedCashIncomeNio,'NIO')+' están separados del cálculo automático. Clasifícalos y relaciónalos con su comprobante antes de cerrar el período.</p></div></div>':'')+
       (limitAverage?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Promedio de cobros de seis meses superior a C$100,000</strong><p>Puede activarse el deber de comunicar a la DGI el cambio de régimen dentro de los 30 días calendario previstos por la Ley. Solicita revisión profesional y conserva la constancia.</p></div></div>':'')+
       (limitStock?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Inventario al costo superior a C$500,000</strong><p>Consulta inmediatamente con la DGI la continuidad del régimen. El sistema informa el umbral, pero no bloquea la operación ni cambia el régimen automáticamente.</p></div></div>':'')+
       '<div class="feature-grid">'+
@@ -1615,7 +1620,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       settingsForm+
       docForm+
       (dgiDocumentsError?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Archivo DGI no disponible</strong><p>'+esc(dgiDocumentsError)+'</p><button type="button" class="button button-quiet button-small" data-action="reload-dgi-documents">Reintentar consulta</button></div></div>':'')+'<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
-      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar</strong><p>Los indicadores de ingresos utilizan cobros asociados a facturas registrados en el ERP; los pedidos completados sin factura se muestran aparte y requieren conciliación. El tipo de cambio y la integridad de los registros afectan el resultado. No son una declaración tributaria ni certifican la elegibilidad al régimen. Este módulo no presenta declaraciones ni sustituye la validación de un contador o la respuesta formal de la DGI.</p></div></div>';
+      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar</strong><p>Los indicadores de ingresos utilizan cobros asociados a facturas; ingresos de caja sin vínculo y pedidos completados sin factura se muestran aparte para conciliación. El tipo de cambio y la integridad de los registros afectan el resultado. No son una declaración tributaria ni certifican la elegibilidad al régimen. Este módulo no presenta declaraciones ni sustituye la validación de un contador o la respuesta formal de la DGI.</p></div></div>';
   }
   function renderSettings(){
     const role=window.JBAuth?.profile?.role||'sin perfil';
