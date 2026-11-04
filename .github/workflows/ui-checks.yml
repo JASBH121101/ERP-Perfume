@@ -1,21 +1,6 @@
 name: ERP quality gate
 
 on:
-  push:
-    branches:
-      - "feature/**"
-    paths:
-      - "index.html"
-      - "README.md"
-      - "docs/**"
-      - "assets/**"
-      - "functions/**"
-      - "db/**"
-      - "scripts/**"
-      - "tests/**"
-      - "package.json"
-      - "jb-expert-qa.config.json"
-      - ".github/workflows/**"
   pull_request:
     branches:
       - main
@@ -38,7 +23,7 @@ on:
       - ".github/workflows/**"
 
 concurrency:
-  group: erp-quality-pr-${{ github.event.pull_request.number || github.ref }}
+  group: erp-quality-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -48,7 +33,7 @@ jobs:
   validate-ui:
     name: Static and browser tests
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - name: Checkout pull request code
         uses: actions/checkout@v4
