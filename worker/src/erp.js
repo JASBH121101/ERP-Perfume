@@ -860,10 +860,17 @@ export async function handleERPRequest(request, env, user, sql) {
     return createGeneric(sql, user, normalizedResource, def, body);
   }
   if (request.method === "PATCH" && id) {
+    const transactionalResources = new Set(["inventory_movements","cash_entries","invoices","purchases","expenses","cash_accounts","hr_payroll_items","hr_payroll_periods"]);
+    if (transactionalResources.has(normalizedResource)) {
+      return erpError(405, "IMMUTABLE_TRANSACTION", "Este registro forma parte de un historial financiero, de inventario o de nómina. Utiliza el flujo específico de anulación, devolución o pago.");
+    }
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     if (normalizedResource === "orders" && Object.prototype.hasOwnProperty.call(body,"status")) {
       if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para cambiar pedidos.");
       return updateOrderStatus(sql,user,id,body);
+    }
+    if (normalizedResource === "orders") {
+      return erpError(405, "ORDER_FIELDS_LOCKED", "Los datos y renglones de un pedido se conservan como fotografía histórica. Solo se puede cambiar su estado mediante el flujo de pedidos.");
     }
     if (normalizedResource === "hr_leave_requests" && Object.prototype.hasOwnProperty.call(body,"status")) {
       if (!canAccess(user, RESOURCE_DEFS.hr_leave_requests.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para revisar solicitudes.");
