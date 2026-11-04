@@ -827,7 +827,7 @@
     const snapshot=captureDemoState();
     const persistBusinessChanges=function(){if(!persistDemoData()){restoreDemoState(snapshot);return false;}return true;};
     if(type==='purchase-order'){
-      const supplier=suppliers[num('supplierIndex')],currency=get('currency')==='NIO'?'NIO':'USD';
+      const supplier=get('supplierIndex')===''?null:suppliers[num('supplierIndex')],currency=get('currency')==='NIO'?'NIO':'USD';
       const rows=Array.from(businessForm.querySelectorAll('.po-line-row')),items=[];
       for(const row of rows){
         const product=products.find(p=>String(p.id)===String(row.querySelector('[data-po-product]')?.value||''));
@@ -866,7 +866,10 @@
         const item=line.item,product=products.find(p=>String(p.id)===String(item.productId));
         if(!product)throw new Error('No se encontró el producto '+item.name+' en el catálogo.');
         const lineValue=line.quantity*Number(item.unitCostUsd||0),freightShare=receivedValue>0?actualFreightUsd*lineValue/receivedValue:0;
-        const landedUnitCost=roundMoney((lineValue+freightShare)/line.quantity),previous=Number(product.stock||0),next=previous+line.quantity;
+        const orderSubtotal=Number(order.subtotalUsd||0),lineShare=orderSubtotal>0?Number(item.lineTotalUsd||0)/orderSubtotal:0;
+        const receiptShare=Number(item.quantity)>0?line.quantity/Number(item.quantity):0;
+        const discountShare=Number(order.discountUsd||0)*lineShare*receiptShare,taxShare=Number(order.taxesUsd||0)*lineShare*receiptShare;
+        const landedUnitCost=roundMoney((lineValue-discountShare+taxShare+freightShare)/line.quantity),previous=Number(product.stock||0),next=previous+line.quantity;
         const oldCost=Number(product.unitCost||product.purchaseCost||0),weighted=next>0?roundMoney((previous*oldCost+line.quantity*landedUnitCost)/next):landedUnitCost;
         product.stock=next;product.purchaseCost=weighted;product.additionalCost=0;product.unitCost=weighted;product.profit=roundMoney(Number(product.price||0)-weighted);product.margin=Number(product.price||0)>0?roundMoney(product.profit/Number(product.price)*100):0;
         item.receivedQuantity=Number(item.receivedQuantity||0)+line.quantity;
@@ -1113,6 +1116,12 @@
   }
   function purchaseOrderRemaining(order){return (order.items||[]).reduce((sum,item)=>sum+Math.max(0,Number(item.quantity||0)-Number(item.receivedQuantity||0)),0);}
   function purchaseOrderReceived(order){return (order.items||[]).reduce((sum,item)=>sum+Number(item.receivedQuantity||0),0);}
+  function purchaseOrderOutstandingUsd(order){
+    const subtotal=(order.items||[]).reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.unitCostUsd||0),0);
+    const remaining=(order.items||[]).reduce((sum,item)=>sum+Math.max(0,Number(item.quantity||0)-Number(item.receivedQuantity||0))*Number(item.unitCostUsd||0),0);
+    const ratio=subtotal>0?remaining/subtotal:0;
+    return roundMoney(Math.max(0,remaining+(Number(order.freightUsd||0)+Number(order.taxesUsd||0)-Number(order.discountUsd||0))*ratio));
+  }
   function nextDocumentNumber(prefix,collection,field){
     const year=new Date().getFullYear(),needle=prefix+'-'+year+'-';
     const sequence=(collection||[]).reduce((max,item)=>{const number=String(item[field]||'');return number.startsWith(needle)?Math.max(max,Number(number.slice(needle.length))||0):max;},0)+1;
@@ -1121,7 +1130,7 @@
   function renderPurchaseOrders(){
     const open=purchaseOrders.filter(o=>!['Recibida','Cerrada con faltante','Cancelada'].includes(o.status));
     const pendingUnits=open.reduce((sum,o)=>sum+purchaseOrderRemaining(o),0);
-    const committed=open.reduce((sum,o)=>sum+Math.max(0,Number(o.totalUsd||0)),0);
+    const committed=open.reduce((sum,o)=>sum+purchaseOrderOutstandingUsd(o),0);
     const rows=purchaseOrders.map(order=>{
       const remaining=purchaseOrderRemaining(order),received=purchaseOrderReceived(order);
       const actions=[];
@@ -1174,7 +1183,7 @@
     const inventory=roundMoney(products.filter(p=>p.active!==false).reduce((sum,p)=>sum+Number(p.stock||0)*Number(p.unitCost||0),0));
     const receivable=roundMoney(invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0));
     const payable=roundMoney(purchases.reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0));
-    const commitment=roundMoney(purchaseOrders.filter(o=>!['Recibida','Cancelada','Cerrada con faltante'].includes(o.status)).reduce((sum,o)=>sum+Number(o.totalUsd||0),0));
+    const commitment=roundMoney(purchaseOrders.filter(o=>!['Recibida','Cancelada','Cerrada con faltante'].includes(o.status)).reduce((sum,o)=>sum+purchaseOrderOutstandingUsd(o),0));
     return heading(views.capital,'<button class="button button-quiet" data-view="profitability">Ver rentabilidad '+svg('arrow')+'</button>')+
       '<div class="metric-grid">'+metric('Flujo neto registrado',money(movement),'chart','Entradas − salidas','no incluye saldo inicial',false)+metric('Inventario valorizado',money(inventory),'boxes','A costo unitario','activo estimado en stock',false)+metric('Cuentas por cobrar',money(receivable),'wallet',invoices.filter(i=>Number(i.totalUsd||0)>Number(i.paidUsd||0)+0.001).length+' facturas','saldo pendiente de clientes',false)+metric('Cuentas por pagar',money(payable),'receipt',purchases.filter(p=>Number(p.totalUsd||0)>Number(p.paidUsd||0)+0.001).length+' facturas','obligaciones registradas',false)+'</div>'+
       '<div class="summary-strip"><div class="summary-mini"><span>Entradas acumuladas</span><strong>'+money(income)+'</strong></div><div class="summary-mini"><span>Salidas acumuladas</span><strong>'+money(outflow)+'</strong></div><div class="summary-mini"><span>Órdenes abiertas · compromiso</span><strong>'+money(commitment)+'</strong></div></div>'+
