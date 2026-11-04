@@ -235,7 +235,8 @@ async function initialize() {
     return;
   }
 
-  authBaseUrl = String(config.authBaseUrl).replace(/\\/+$/, "");
+  authBaseUrl = String(config.authBaseUrl);
+  while (authBaseUrl.endsWith("/")) authBaseUrl = authBaseUrl.slice(0, -1);
 
   try {
     authClient = createAuthClient(authBaseUrl, {
