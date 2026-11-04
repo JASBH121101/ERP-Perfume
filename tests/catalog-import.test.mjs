@@ -76,7 +76,7 @@ test("CSV rejects files over 200 products instead of silently truncating them", 
   for (let index = 1; index <= 201; index += 1) {
     lines.push("SKU-" + index + ",Perfume QA " + index + ",10,1");
   }
-  assert.throws(() => parsers.parseCatalogCSV(lines.join("\\n")), /máximo de 200 productos/);
+  assert.throws(() => parsers.parseCatalogCSV(lines.join("\n")), /máximo de 200 productos/);
 });
 
 test("PDF/OCR parser rejects more than 200 detected unique products", () => {
@@ -84,7 +84,7 @@ test("PDF/OCR parser rejects more than 200 detected unique products", () => {
   for (let index = 1; index <= 201; index += 1) {
     lines.push("QA-" + index + " Perfume QA " + index + " USD 10.00");
   }
-  assert.throws(() => parsers.parseCatalogTextRows(lines.join("\\n")), /más de 200 productos/);
+  assert.throws(() => parsers.parseCatalogTextRows(lines.join("\n")), /más de 200 productos/);
 });
 
 const workerSource = await readFile(new URL("../worker/src/erp.js", import.meta.url), "utf8");
@@ -185,7 +185,7 @@ test("completed or cancelled orders cannot be reopened through status updates", 
   let executedSql = "";
   const sql = {
     query: async (query) => {
-      executedSql = query;
+      if (!executedSql) executedSql = query;
       return [];
     }
   };
