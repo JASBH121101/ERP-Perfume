@@ -230,109 +230,6 @@
   const orderDialog = document.getElementById('order-detail-dialog');
   const businessDialog = document.getElementById('business-dialog');
   const businessForm = document.getElementById('business-form');
-  const DEMO_STORAGE_KEY = 'jbparfums-demo-data-v2';
-  const LEGACY_DEMO_STORAGE_KEY = 'jbparfums-demo-data-v1';
-  function convertLegacyProductToUsd(product) {
-    const purchaseCost = Number(product.purchaseCost || 0);
-    const additionalCost = Number(product.additionalCost || 0);
-    const unitCost = product.unitCost == null ? purchaseCost + additionalCost : Number(product.unitCost || 0);
-    const price = Number(product.price || 0);
-    return Object.assign({}, product, {
-      purchaseCost: toUsd(purchaseCost),
-      additionalCost: toUsd(additionalCost),
-      unitCost: toUsd(unitCost),
-      price: toUsd(price),
-      profit: toUsd(product.profit == null ? price - unitCost : product.profit)
-    });
-  }
-  function convertLegacyOrderToUsd(order) {
-    return Object.assign({}, order, {
-      amount: toUsd(order.amount),
-      discount: toUsd(order.discount),
-      deliveryFee: toUsd(order.deliveryFee),
-      items: Array.isArray(order.items) ? order.items.map(function (item) {
-        return Object.assign({}, item, { unitPrice: toUsd(item.unitPrice) });
-      }) : []
-    });
-  }
-  let inventoryMovements = [];
-  function persistDemoData() {
-    try {
-      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({
-        version: 3, products: products, inventoryMovements: inventoryMovements, orders: orders,
-        customers: customers, suppliers: suppliers, purchases: purchases, expenses: expenses,
-        cashEntries: cashEntries, invoices: invoices, employees: employees,
-        settings: { exchangeRate: exchangeRate, baseCurrency: 'USD' }
-      }));
-      return true;
-    } catch (error) {
-      toast('No se pudo guardar en este navegador. Los cambios solo durarán hasta cerrar la sesión.');
-      return false;
-    }
-  }
-  function loadDemoData() {
-    try {
-      const stored = window.localStorage.getItem(DEMO_STORAGE_KEY) || window.localStorage.getItem(LEGACY_DEMO_STORAGE_KEY);
-      if (!stored) {
-        products.forEach(function (product) { product.active = true; });
-        persistDemoData();
-        return;
-      }
-      const parsed = JSON.parse(stored);
-      const needsCurrencyMigration = parsed && parsed.version === 1;
-      if (!parsed || ![1, 2, 3].includes(parsed.version) || !Array.isArray(parsed.products) || !Array.isArray(parsed.inventoryMovements)) {
-        products.forEach(function (product) { product.active = true; });
-        persistDemoData();
-        return;
-      }
-      if(parsed.settings && Number.isFinite(Number(parsed.settings.exchangeRate)) && Number(parsed.settings.exchangeRate)>0) exchangeRate=Number(parsed.settings.exchangeRate);
-      if(Array.isArray(parsed.customers)) customers=parsed.customers;
-      suppliers=Array.isArray(parsed.suppliers)?parsed.suppliers:[];
-      purchases=Array.isArray(parsed.purchases)?parsed.purchases:[];
-      expenses=Array.isArray(parsed.expenses)?parsed.expenses:[];
-      cashEntries=Array.isArray(parsed.cashEntries)?parsed.cashEntries:[];
-      invoices=Array.isArray(parsed.invoices)?parsed.invoices:[];
-      employees=Array.isArray(parsed.employees)?parsed.employees:[];
-      products = parsed.products.filter(function (product) {
-        return product && Number.isFinite(Number(product.id)) && String(product.name || '').trim();
-      }).map(function (product) {
-        product.active = product.active !== false;
-        product.stock = Number.isInteger(product.stock) && product.stock >= 0 ? product.stock : 0;
-        product.minStock = Number.isInteger(product.minStock) && product.minStock >= 0 ? product.minStock : 3;
-        return needsCurrencyMigration ? convertLegacyProductToUsd(product) : product;
-      });
-      inventoryMovements = parsed.inventoryMovements.filter(function (movement) {
-        return movement && Number.isFinite(Number(movement.id)) && Number.isFinite(Number(movement.productId));
-      });
-      if (Array.isArray(parsed.orders)) {
-        const allowedStatuses = ['Pendiente', 'En preparación', 'Listo para entrega', 'En tránsito', 'Completado'];
-        orders = parsed.orders.filter(function (order) {
-          return order && /^JP-\d+$/.test(String(order.id || '')) && String(order.customer || '').trim() && Array.isArray(order.items);
-        }).map(function (order) {
-          if (needsCurrencyMigration) order = convertLegacyOrderToUsd(order);
-          order.status = allowedStatuses.includes(order.status) ? order.status : 'Pendiente';
-          if (!order.paymentCurrency) {
-            order.paymentCurrency = 'USD';
-            order.paymentAmount = Number(order.amount || 0);
-            order.exchangeRate = 36.6;
-          }
-          order.items = order.items.filter(function (item) {
-            return item && String(item.name || '').trim() && Number.isInteger(item.quantity) && item.quantity > 0 && Number.isFinite(Number(item.unitPrice)) && Number(item.unitPrice) >= 0;
-          });
-          return order;
-        });
-      }
-      if (needsCurrencyMigration || parsed.version !== 3) {
-        const saved = persistDemoData();
-        if (saved && needsCurrencyMigration) window.localStorage.removeItem(LEGACY_DEMO_STORAGE_KEY);
-      }
-    } catch (error) {
-      products.forEach(function (product) { product.active = true; });
-      inventoryMovements = [];
-    }
-  }
-  loadDemoData();
-
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
@@ -546,15 +443,6 @@
     document.getElementById('save-order-status').setAttribute('data-id', String(order.id));
     if (typeof orderDialog.showModal === 'function') orderDialog.showModal();
     else toast('El detalle de pedidos no es compatible con este navegador.');
-  }
-  function captureDemoState() {
-    return JSON.stringify({products,inventoryMovements,orders,customers,suppliers,purchases,expenses,cashEntries,invoices,employees,exchangeRate});
-  }
-  function restoreDemoState(snapshot) {
-    const saved=JSON.parse(snapshot);
-    products=saved.products;inventoryMovements=saved.inventoryMovements;orders=saved.orders;customers=saved.customers;
-    suppliers=saved.suppliers;purchases=saved.purchases;expenses=saved.expenses;cashEntries=saved.cashEntries;
-    invoices=saved.invoices;employees=saved.employees;exchangeRate=Number(saved.exchangeRate)||36.6;
   }
   function resolveOrderProduct(item) {
     return (item.productId!=null&&products.find(p=>String(p.id)===String(item.productId))) ||
