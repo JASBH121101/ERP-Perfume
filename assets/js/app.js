@@ -58,6 +58,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   let payrollPeriods = [];
   let payrollItems = [];
   let inventoryMovements = [];
+  let dgiSupportDocuments = [];
+  let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"" };
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
 
@@ -294,6 +296,18 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       }));
       const rateSetting = (data.settings || []).find(s => s.setting_key === "default_exchange_rate");
       if (rateSetting && Number(rateSetting.setting_value?.value) > 0) exchangeRate = Number(rateSetting.setting_value.value);
+      const dgiSetting = (data.settings || []).find(s => s.setting_key === "dgi_compliance");
+      if (dgiSetting && dgiSetting.setting_value && typeof dgiSetting.setting_value === "object") {
+        dgiCompliance = { ...dgiCompliance, ...dgiSetting.setting_value };
+      }
+      dgiSupportDocuments = (data.dgi_support_documents || []).map(document => ({
+        id:document.id, documentDate:document.document_date, documentType:document.document_type,
+        issuer:document.issuer, referenceNumber:document.reference_number||"", description:document.description||"",
+        fiscalPeriod:document.fiscal_period||"", currency:document.currency||"NIO",
+        originalAmount:Number(document.original_amount||0), amountNio:Number(document.amount_nio||0),
+        formalInvoice:document.formal_invoice===true, fileName:document.file_name||"",
+        fileType:document.file_type||"", fileSize:Number(document.file_size||0), notes:document.notes||""
+      }));
       erpDataLoaded = true;
       hrRecordsLoaded = Array.isArray(data.employees);
       hrLoadAttempted = true;
@@ -318,6 +332,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     billing: { title: 'Facturación', eyebrow: 'DOCUMENTOS COMERCIALES', heading: 'Facturación', subtitle: 'Registra ventas presenciales y pedidos web en un mismo lugar.' },
     receivables: { title: 'Cuentas por cobrar', eyebrow: 'FINANZAS', heading: 'Cuentas por cobrar', subtitle: 'Da seguimiento a saldos y abonos de clientes.' },
     hr: { title: 'RRHH', eyebrow: 'GESTIÓN DEL PERSONAL', heading: 'Recursos Humanos', subtitle: 'Organiza personal, asistencia, permisos y nómina.' },
+    dgi: { title: 'DGI', eyebrow: 'CUMPLIMIENTO TRIBUTARIO', heading: 'Control tributario DGI', subtitle: 'Organiza libros simplificados, límites de referencia y soportes documentales.' },
     analytics: { title: 'Informes', eyebrow: 'RENDIMIENTO', heading: 'Informes y análisis', subtitle: 'Indicadores preparados para tomar decisiones.' },
     settings: { title: 'Configuración', eyebrow: 'SISTEMA', heading: 'Configuración', subtitle: 'Preferencias y conexiones de JB PARFUMS ERP.' },
     purchases: { title: 'Compras', eyebrow: 'ABASTECIMIENTO', heading: 'Compras', subtitle: 'Registra adquisiciones y recepción de productos.' },
@@ -542,6 +557,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       const f=financialSnapshot();filename='jb-parfums-resultados.csv';
       rows=[['Indicador','USD'],['Ventas facturadas (incluye entrega)',f.revenue],['Venta neta de productos',f.productNetSales],['Ingresos por entrega',f.deliveryIncome],['Costo de ventas',f.costOfSales],['Utilidad bruta de productos',f.grossProfit],['Gastos operativos',f.operatingExpenses],['Resultado después de gastos',f.netProfit]];
     }
+    if(state.view==='dgi'){exportDgiBook();return;}
     if(!rows.length){toast('No hay datos disponibles para exportar en esta sección.');return;}
     exportCsvFile(filename,rows);
     toast('Exportación CSV generada desde los datos de Neon.');
@@ -908,9 +924,17 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     if(type==='customer')body='<div class="form-grid">'+formField('Nombre del cliente','name','text',true,'maxlength="80"')+formField('Teléfono o contacto','contact','text',false,'maxlength="40"')+'</div>';
     if(type==='supplier')body='<div class="form-grid">'+formField('Nombre del proveedor','name','text',true,'maxlength="80"')+formField('Contacto','contact','text',false,'maxlength="80"')+formField('Teléfono','phone','tel',false,'maxlength="40"')+formField('Correo','email','email',false,'maxlength="120"')+currencyField('USD')+'</div>';
     if(type==='order'){
-      if(!customers.length){toast('Registra primero un cliente.');return;}
       if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
-      body='<div class="form-grid">'+searchableField('Cliente','customerIndex','customer',true)+searchableField('Producto','productId','product',true)+formField('Cantidad','quantity','number',true,'min="1" step="1" value="1"')+currencyField('USD')+'</div><p class="form-helper">Los precios del catálogo permanecen en USD. Se guarda la moneda de cobro y la tasa utilizada.</p>';
+      body='<div class="form-grid">'+
+        searchableField('Cliente existente (opcional)','customerIndex','customer',false)+
+        formField('Nombre del cliente nuevo','newCustomerName','text',false,'maxlength="160" autocomplete="name"')+
+        formField('Contacto del cliente nuevo','newCustomerContact','text',false,'maxlength="80"')+
+        formField('Teléfono del cliente nuevo','newCustomerPhone','tel',false,'maxlength="40" autocomplete="tel"')+
+        formField('Correo del cliente nuevo','newCustomerEmail','email',false,'maxlength="120" autocomplete="email"')+
+        searchableField('Producto','productId','product',true)+
+        formField('Cantidad','quantity','number',true,'min="1" step="1" value="1"')+
+        currencyField('USD')+
+        '</div><p class="form-helper">Selecciona un cliente existente o completa el nombre del cliente nuevo. Si es nuevo, el ERP lo guardará en la cartera y lo vinculará al pedido en la misma transacción.</p><p class="form-helper">Los precios del catálogo permanecen en USD. Se guarda la moneda de cobro y la tasa utilizada.</p>';
     }
     if(type==='purchase'){
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
@@ -962,7 +986,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       body='<div class="form-grid">'+selectField('Colaborador','employeeId',options,true)+formField('Fecha','workDate','date',true,'value="'+today+'"')+selectField('Estado','status','<option>Presente</option><option>Tardanza</option><option>Ausente</option><option>Permiso</option><option>Vacaciones</option>',true)+formField('Hora de entrada','checkIn','datetime-local',false,'')+formField('Hora de salida','checkOut','datetime-local',false,'')+formField('Descanso (minutos)','breakMinutes','number',false,'min="0" step="1" value="0"')+formField('Observaciones','notes','text',false,'maxlength="250"')+'</div>';
     }
     if(type==='leave'){
-      if(!employees.length){toast('Registra primero un colaborador.');return;}
+      if(!employees.some(e=>e.status==='Activo')){toast('Primero agrega un colaborador en RRHH > Personal > Agregar colaborador.');return;}
       const options=employees.filter(e=>e.status==='Activo').map(e=>'<option value="'+e.id+'">'+esc(e.name)+'</option>').join('');
       body='<div class="form-grid">'+selectField('Colaborador','employeeId',options,true)+selectField('Tipo','leaveType','<option>Vacaciones</option><option>Permiso</option><option>Incapacidad</option><option>Otro</option>',true)+formField('Fecha inicial','startDate','date',true,'')+formField('Fecha final','endDate','date',true,'')+formField('Días solicitados','days','number',true,'min="0.5" step="0.5"')+formField('Motivo','reason','text',false,'maxlength="300"')+'</div>';
     }
@@ -1049,14 +1073,25 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
         if(!get('name'))throw new Error('El nombre del proveedor es obligatorio.');
         await erpApi('suppliers',{method:'POST',body:JSON.stringify({name:get('name'),contact:get('contact'),phone:get('phone'),email:get('email'),currency,active:true})});
       } else if(type==='order'){
-        const customer=customers[num('customerIndex')];
+        const selectedIndex=get('customerIndex');
+        const customer=selectedIndex!==''?customers[Number(selectedIndex)]:null;
+        const newCustomerName=get('newCustomerName');
         const product=products.find(p=>String(p.id)===get('productId'));
         const quantity=num('quantity');
-        if(!customer||!customer.id||!product||!Number.isInteger(quantity)||quantity<1)throw new Error('Revisa el cliente, producto y cantidad.');
+        if(selectedIndex!==''&&!customer)throw new Error('El cliente seleccionado ya no está disponible. Actualiza la cartera e inténtalo de nuevo.');
+        if(customer&&newCustomerName)throw new Error('Selecciona un cliente existente o registra uno nuevo, no ambos.');
+        if(!customer&&!newCustomerName)throw new Error('Selecciona un cliente existente o escribe el nombre del nuevo cliente.');
+        if(!product||!Number.isInteger(quantity)||quantity<1)throw new Error('Revisa el producto y la cantidad.');
+        if(newCustomerName.length>160)throw new Error('El nombre del cliente no puede superar 160 caracteres.');
         const total=roundMoney(Number(product.price||0)*quantity);
         const number=nextDocumentNumber('JP-',orders,1000);
         await erpApi('orders',{method:'POST',body:JSON.stringify({
-          order_number:number,customer_id:customer.id,customer_name:customer.name,phone:customer.phone||customer.contact||'',
+          order_number:number,customer_id:customer?.id||null,customer_name:customer?.name||newCustomerName,
+          phone:customer?(customer.phone||customer.contact||''):get('newCustomerPhone'),
+          new_customer:customer?null:{
+            name:newCustomerName,contact:get('newCustomerContact'),phone:get('newCustomerPhone'),
+            email:get('newCustomerEmail'),customer_type:'particular'
+          },
           status:'Pendiente',payment_status:'Pendiente',payment_method:'Por definir',delivery_mode:'Por coordinar',
           currency,original_amount:currency==='NIO'?roundMoney(total*rate):total,exchange_rate:rate,
           total_usd:total,discount_usd:0,delivery_fee_usd:0,notes:'',
@@ -1322,10 +1357,10 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       const rows=attendanceRecords.map(a=>'<tr><td data-label="Fecha">'+dateText(a.workDate)+'</td><td data-label="Colaborador" class="table-primary">'+esc(employeeName(a.employeeId))+'</td><td data-label="Entrada">'+esc(a.checkIn?new Date(a.checkIn).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'}):'—')+'</td><td data-label="Salida">'+esc(a.checkOut?new Date(a.checkOut).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'}):'—')+'</td><td data-label="Estado"><span class="status-chip '+(a.status==='Ausente'?'status-danger':(a.status==='Tardanza'?'status-pending':'status-success'))+'">'+esc(a.status)+'</span></td><td data-label="Descanso">'+Number(a.breakMinutes||0)+' min</td></tr>').join('');
       content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>COLABORADOR</th><th>ENTRADA</th><th>SALIDA</th><th>ESTADO</th><th>DESCANSO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay asistencias registradas.</td></tr>')+'</tbody></table></div></article>';
     } else if(state.hrTab==='leaves'){
-      actions=activeEmployees.length?'<button class="button button-primary" data-action="new-leave">'+svg('plus')+' Nueva solicitud</button>':'';
+      actions=activeEmployees.length?'<button class="button button-primary" data-action="new-leave">'+svg('plus')+' Nueva solicitud</button>':'<button class="button button-primary" data-action="go-hr-employees">'+svg('plus')+' Agregar colaborador</button>';
       const employeeName=id=>employees.find(e=>e.id===id)?.name||'Colaborador';
       const rows=leaveRequests.map(l=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(employeeName(l.employeeId))+'</td><td data-label="Tipo">'+esc(l.leaveType)+'</td><td data-label="Período">'+dateText(l.startDate)+' – '+dateText(l.endDate)+'</td><td data-label="Días">'+Number(l.days||0)+'</td><td data-label="Estado"><span class="status-chip '+(l.status==='Aprobado'?'status-success':(l.status==='Rechazado'?'status-danger':'status-pending'))+'">'+esc(l.status)+'</span></td><td data-label="Acciones">'+(l.status==='Pendiente'?'<button class="button button-quiet button-small" data-action="approve-leave" data-id="'+l.id+'">Aprobar</button><button class="button button-quiet button-small" data-action="reject-leave" data-id="'+l.id+'">Rechazar</button>':'—')+'</td></tr>').join('');
-      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR</th><th>TIPO</th><th>PERÍODO</th><th>DÍAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay permisos o vacaciones registrados.</td></tr>')+'</tbody></table></div></article>';
+      content=(activeEmployees.length?'':'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Primero registra al colaborador</strong><p>Los permisos y vacaciones se vinculan a una persona activa. Entra en la pestaña Personal, selecciona Agregar colaborador y luego vuelve a Permisos para crear la solicitud.</p></div></div>')+'<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR</th><th>TIPO</th><th>PERÍODO</th><th>DÍAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay permisos o vacaciones registrados.</td></tr>')+'</tbody></table></div></article>';
     } else {
       const draftPeriods=payrollPeriods.filter(p=>p.status==='Borrador');
       actions='<div class="heading-actions-inline">'+(draftPeriods.length?'<button class="button button-quiet" data-action="new-payroll-item">'+svg('plus')+' Agregar a nómina</button>':'')+'<button class="button button-primary" data-action="new-payroll-period">'+svg('plus')+' Nuevo período</button></div>';
@@ -1418,6 +1453,152 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       '<article class="list-panel"><div class="panel-heading"><div><h2>Libro de caja y bancos</h2><p>Entradas, salidas, cobros, pagos y aperturas de cuenta</p></div><span class="ledger-count">'+cashEntries.length+' movimientos</span></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>MOVIMIENTO</th><th>CONCEPTO / CUENTA</th><th>IMPORTE / CONVERSIÓN</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">No hay recibos ni pagos registrados.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Libro de caja y bancos</strong><p>Los saldos reflejan movimientos que registres en el ERP, incluidos los saldos iniciales. No consulta entidades bancarias ni ejecuta transferencias; la conciliación se realiza con estados de cuenta.</p></div></div>';
   }
+  function dgiPeriodKey(date){
+    const value=date instanceof Date?date:new Date(date);
+    return value.getFullYear()+'-'+String(value.getMonth()+1).padStart(2,'0');
+  }
+  function dgiTypeLabel(type){
+    return ({purchase_invoice:'Factura de compra',service_invoice:'Factura de servicio',rent_receipt:'Recibo de alquiler',municipal_payment:'Pago municipal',dgi_payment:'Pago DGI',other:'Otro soporte'})[type]||'Documento';
+  }
+  function dgiAmountNio(usd,rate){return roundMoney(Number(usd||0)*Number(rate||exchangeRate));}
+  function exportDgiBook(){
+    const rows=[['Fecha','Tipo de operación','Tercero / descripción','Referencia','Importe NIO','Clasificación'],...invoices.map(i=>[
+      dateText(i.createdAt),'Venta registrada',i.customer,i.id,dgiAmountNio(i.totalUsd,i.exchangeRate),'Ingreso'
+    ]),...purchases.map(p=>[
+      dateText(p.createdAt),'Compra de inventario',p.supplier,p.purchaseNumber,dgiAmountNio(p.totalUsd,p.exchangeRate),'Egreso / compra'
+    ]),...expenses.map(e=>[
+      dateText(e.createdAt),'Gasto · '+e.category,e.description,e.id,dgiAmountNio(e.amountUsd,1),'Egreso'
+    ])];
+    exportCsvFile('jb-parfums-libro-auxiliar-dgi.csv',rows);
+    toast('Libro auxiliar exportado. Concílialo con comprobantes y registros exigibles antes de presentarlo.');
+  }
+  async function saveDgiSettings(event){
+    event.preventDefault();
+    const form=event.target, data=new FormData(form), button=form.querySelector('[type="submit"]');
+    const value={
+      taxpayer_name:String(data.get('taxpayerName')||'').trim(),
+      ruc:String(data.get('ruc')||'').trim(),
+      business_address:String(data.get('businessAddress')||'').trim(),
+      regime_status:String(data.get('regimeStatus')||'not_confirmed'),
+      quota_fixed_amount_nio:Number(data.get('quotaFixedAmountNio')||0),
+      certificate_available:data.get('certificateAvailable')==='on',
+      certificate_displayed:data.get('certificateDisplayed')==='on',
+      computerized_invoicing_status:String(data.get('computerizedInvoicingStatus')||'not_confirmed'),
+      dgi_confirmation_date:String(data.get('dgiConfirmationDate')||'').trim()
+    };
+    if(!Number.isFinite(value.quota_fixed_amount_nio)||value.quota_fixed_amount_nio<0){toast('La cuota mensual debe ser un importe válido.');return;}
+    if(button){button.disabled=true;button.textContent='Guardando…';}
+    try{
+      await erpApi('settings',{method:'PATCH',body:JSON.stringify({setting_key:'dgi_compliance',setting_value:value})});
+      dgiCompliance=value;renderView();toast('Configuración DGI guardada en Neon Development.');
+    }catch(error){toast(error?.message||'No se pudo guardar la configuración DGI.');}
+    finally{if(button){button.disabled=false;button.textContent='Guardar configuración DGI';}}
+  }
+  async function uploadDgiDocument(event){
+    event.preventDefault();
+    const form=event.target,button=form.querySelector('[type="submit"]');
+    const file=form.querySelector('[name="file"]')?.files?.[0];
+    if(!file){toast('Selecciona el archivo de respaldo.');return;}
+    const data=new FormData(form);
+    data.set('exchange_rate',String(exchangeRate));
+    data.set('formal_invoice',form.querySelector('[name="formalInvoice"]')?.checked?'true':'false');
+    if(data.get('document_type')==='dgi_payment'&&!String(data.get('fiscal_period')||'')){toast('Indica el período al que corresponde el pago DGI.');return;}
+    if(button){button.disabled=true;button.textContent='Subiendo a R2…';}
+    try{
+      const auth=window.JBAuth,token=await auth?.getToken();
+      if(!auth?.profile||!token)throw new Error('Inicia sesión para archivar documentos tributarios.');
+      const response=await fetch(auth.apiUrl('/api/erp/dgi-support-documents'),{method:'POST',headers:{authorization:'Bearer '+token},body:data,cache:'no-store'});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result?.error?.message||'No se pudo guardar el documento.');
+      await loadERPFromNeon(true);renderView();toast('Documento archivado en Neon y Cloudflare R2.');
+    }catch(error){toast(error?.message||'No se pudo archivar el documento.');}
+    finally{if(button){button.disabled=false;button.textContent='Guardar respaldo en R2';}}
+  }
+  async function downloadDgiDocument(id,button){
+    const documentRecord=dgiSupportDocuments.find(item=>String(item.id)===String(id));
+    if(!documentRecord)return;
+    if(button)button.disabled=true;
+    try{
+      const auth=window.JBAuth,token=await auth?.getToken();
+      if(!auth?.profile||!token)throw new Error('Inicia sesión para descargar el documento.');
+      const response=await fetch(auth.apiUrl('/api/erp/dgi-support-documents/'+encodeURIComponent(id)+'/file'),{headers:{authorization:'Bearer '+token},cache:'no-store'});
+      if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body?.error?.message||'No se pudo obtener el archivo.');}
+      const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');
+      link.href=url;link.download=documentRecord.fileName||'respaldo-dgi';document.body.appendChild(link);link.click();link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+    }catch(error){toast(error?.message||'No se pudo descargar el archivo.');}
+    finally{if(button)button.disabled=false;}
+  }
+  function renderDgi(){
+    const role=window.JBAuth?.profile?.role||'';
+    if(!['owner','admin','finance'].includes(role))return heading(views.dgi,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Acceso restringido</strong><p>El centro DGI está disponible para propietario, administración y finanzas.</p></div></div>';
+    const now=new Date(), monthStart=new Date(now.getFullYear(),now.getMonth(),1), nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);
+    const currentInvoices=invoices.filter(i=>{const d=new Date(i.createdAt);return d>=monthStart&&d<nextMonth&&!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status);});
+    const monthSales=currentInvoices.reduce((sum,i)=>sum+dgiAmountNio(i.totalUsd,i.exchangeRate),0);
+    const sixMonthStart=new Date(now.getFullYear(),now.getMonth()-5,1);
+    const sixMonthInvoices=invoices.filter(i=>{const d=new Date(i.createdAt);return d>=sixMonthStart&&d<nextMonth&&!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status);});
+    const sixMonthTotal=sixMonthInvoices.reduce((sum,i)=>sum+dgiAmountNio(i.totalUsd,i.exchangeRate),0);
+    const sixMonthAverage=sixMonthTotal/6;
+    const inventoryCost=products.reduce((sum,p)=>sum+Math.max(0,Number(p.stock||0))*Math.max(0,Number(p.unitCost||0))*exchangeRate,0);
+    const monthPendingOrders=orders.filter(o=>{const d=new Date(o.createdAt);return d>=monthStart&&d<nextMonth&&!['Cancelado','Completado'].includes(o.status)&&!invoices.some(i=>i.orderId===o.id);}).length;
+    const regime=dgiCompliance.regime_status||'not_confirmed';
+    const dgiPaymentPeriod=dgiPeriodKey(new Date(now.getFullYear(),now.getMonth()-1,1));
+    const dgiPayment=dgiSupportDocuments.find(d=>d.documentType==='dgi_payment'&&d.fiscalPeriod===dgiPaymentPeriod);
+    const cuota=Number(dgiCompliance.quota_fixed_amount_nio||0);
+    const overdue=!dgiPayment&&now.getDate()>15;
+    const limitSales=monthSales>100000;
+    const limitAverage=sixMonthAverage>100000;
+    const limitStock=inventoryCost>500000;
+    const owner=['owner','admin'].includes(role);
+    const settingsForm=owner?'<article class="panel"><div class="panel-heading"><div><h2>Datos del contribuyente y régimen</h2><p>Completa estos datos con la resolución o confirmación de la DGI. El ERP inicia como “no confirmado”.</p></div></div>'+
+      '<form id="dgi-settings-form" class="form-grid">'+
+      formField('Nombre del contribuyente','taxpayerName','text',false,'maxlength="180" value="'+esc(dgiCompliance.taxpayer_name||'')+'"')+
+      formField('RUC','ruc','text',false,'maxlength="40" value="'+esc(dgiCompliance.ruc||'')+'"')+
+      formField('Dirección del establecimiento','businessAddress','text',false,'maxlength="180" value="'+esc(dgiCompliance.business_address||'')+'"')+
+      selectField('Régimen confirmado por DGI','regimeStatus','<option value="not_confirmed" '+(regime==='not_confirmed'?'selected':'')+'>Pendiente de confirmación</option><option value="cuota_fija" '+(regime==='cuota_fija'?'selected':'')+'>Cuota Fija</option><option value="general" '+(regime==='general'?'selected':'')+'>Régimen General</option>',true)+
+      formField('Cuota fija mensual confirmada (C$)','quotaFixedAmountNio','number',false,'min="0" max="10000000" step="0.01" value="'+cuota.toFixed(2)+'"')+
+      selectField('Estado de autorización para facturación computarizada','computerizedInvoicingStatus','<option value="not_confirmed" '+((dgiCompliance.computerized_invoicing_status||'not_confirmed')==='not_confirmed'?'selected':'')+'>No confirmado con DGI</option><option value="pending_authorization" '+(dgiCompliance.computerized_invoicing_status==='pending_authorization'?'selected':'')+'>Solicitud pendiente</option><option value="authorized" '+(dgiCompliance.computerized_invoicing_status==='authorized'?'selected':'')+'>Autorización recibida</option><option value="not_applicable_confirmed" '+(dgiCompliance.computerized_invoicing_status==='not_applicable_confirmed'?'selected':'')+'>DGI confirmó que no aplica</option>',true)+
+      formField('Fecha de confirmación DGI','dgiConfirmationDate','date',false,'value="'+esc(dgiCompliance.dgi_confirmation_date||'')+'"')+
+      '<label class="form-field"><span><input type="checkbox" name="certificateAvailable" '+(dgiCompliance.certificate_available?'checked':'')+'> Certificado de inscripción disponible</span></label>'+
+      '<label class="form-field"><span><input type="checkbox" name="certificateDisplayed" '+(dgiCompliance.certificate_displayed?'checked':'')+'> Certificado exhibido en el establecimiento</span></label>'+
+      '<div class="full-field modal-actions"><button class="button button-primary" type="submit">Guardar configuración DGI</button></div></form></article>':'';
+    const documents=dgiSupportDocuments.map(d=>'<tr><td data-label="Fecha">'+dateText(d.documentDate)+'</td><td data-label="Tipo">'+esc(dgiTypeLabel(d.documentType))+(d.fiscalPeriod?'<small class="table-secondary">'+esc(d.fiscalPeriod)+'</small>':'')+'</td><td data-label="Emisor" class="table-primary">'+esc(d.issuer)+'</td><td data-label="Importe">'+moneyInCurrency(d.originalAmount,d.currency)+'<small class="table-secondary">'+moneyInCurrency(d.amountNio,'NIO')+'</small></td><td data-label="Factura formal">'+(d.formalInvoice?'Sí':'No / no indicado')+'</td><td data-label="Archivo">'+esc(d.fileName)+'</td><td data-label="Acción"><button type="button" class="button button-quiet button-small" data-action="download-dgi-document" data-id="'+esc(d.id)+'">Descargar</button></td></tr>').join('');
+    const docForm='<article class="panel"><div class="panel-heading"><div><h2>Archivar soporte tributario</h2><p>Guarda las facturas originales de proveedores, servicios, alquiler y recibos municipales o de la DGI.</p></div></div>'+
+      '<form id="dgi-document-form" class="form-grid">'+
+      selectField('Tipo de documento','document_type','<option value="purchase_invoice">Factura de compra a proveedor</option><option value="service_invoice">Factura de servicio</option><option value="rent_receipt">Recibo de alquiler</option><option value="municipal_payment">Pago municipal</option><option value="dgi_payment">Pago DGI / Cuota Fija</option><option value="other">Otro soporte</option>',true)+
+      formField('Fecha del documento','document_date','date',true,'value="'+new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)+'"')+
+      formField('Período fiscal (AAAA-MM)','fiscal_period','month',false,'')+
+      formField('Emisor / proveedor / institución','issuer','text',true,'maxlength="180"')+
+      formField('Número de factura o referencia','reference_number','text',false,'maxlength="100"')+
+      formField('Descripción','description','text',false,'maxlength="240"')+
+      formField('Importe original','original_amount','number',false,'min="0" step="0.01" value="0"')+
+      selectField('Moneda','currency','<option value="NIO" selected>NIO · Córdoba</option><option value="USD">USD · Dólar</option>',true)+
+      '<label class="form-field"><span><input type="checkbox" name="formalInvoice"> Factura formal emitida por proveedor inscrito</span></label>'+
+      formField('Archivo PDF / JPG / PNG','file','file',true,'accept="application/pdf,image/jpeg,image/png"')+
+      formField('Notas','notes','text',false,'maxlength="300"')+
+      '<p class="form-helper full-field">Archivos privados en el bucket R2 existente. Máximo 5 MB. Al escoger “Pago DGI”, indica también el período pagado para conciliarlo.</p>'+
+      '<div class="full-field modal-actions"><button class="button button-primary" type="submit">Guardar respaldo en R2</button></div></form></article>';
+    const monthStatus=limitSales||limitAverage||limitStock?'warning':'success';
+    const dgiAlert=regime==='not_confirmed'?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Régimen tributario pendiente de confirmar</strong><p>El ERP no supone que JB PARFUMS está inscrito en Cuota Fija. Confirma con la DGI la elegibilidad y el monto de la cuota antes de marcarlo aquí.</p></div></div>':'';
+    const periodNotice=regime==='cuota_fija'?'<div class="notice-panel"><span>'+svg(overdue?'warning':'spark')+'</span><div><strong>Pago de Cuota Fija · período '+esc(dgiPaymentPeriod)+'</strong><p>'+(dgiPayment?'El comprobante del período está archivado. Importe registrado: '+moneyInCurrency(dgiPayment.amountNio,'NIO')+'.':(cuota>0?'Cuota configurada: '+moneyInCurrency(cuota,'NIO')+'. ':'Aún no se ha configurado el monto de cuota. ')+(overdue?'La fecha usual de pago de los primeros 15 días ya pasó; verifica el estado con la DGI.':'El pago del período anterior vence dentro de los primeros 15 días de este mes.'))+'</p></div></div>':'';
+    return heading(views.dgi,'<button class="button button-primary" data-action="export-dgi-book">Exportar libro auxiliar CSV</button>')+
+      dgiAlert+
+      '<div class="summary-strip"><div class="summary-mini"><span>Ventas registradas del mes · NIO</span><strong>'+moneyInCurrency(monthSales,'NIO')+'</strong><small class="table-secondary">Referencia legal: C$ 100,000 mensuales</small></div><div class="summary-mini"><span>Promedio mensual · últimos 6 meses</span><strong>'+moneyInCurrency(sixMonthAverage,'NIO')+'</strong><small class="table-secondary">Referencia de transición: C$ 100,000</small></div><div class="summary-mini"><span>Inventario al costo · NIO</span><strong>'+moneyInCurrency(inventoryCost,'NIO')+'</strong><small class="table-secondary">Referencia legal: C$ 500,000</small></div><div class="summary-mini"><span>Pedidos sin factura del mes</span><strong>'+monthPendingOrders+'</strong><small class="table-secondary">Revisa que las ventas estén registradas</small></div></div>'+
+      (limitSales?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Ventas del mes superiores a C$100,000</strong><p>El ERP no bloquea ventas. Revisa tu elegibilidad y consulta a la DGI; este dato mensual no sustituye el cálculo del promedio legal de seis meses.</p></div></div>':'')+
+      (limitAverage?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Promedio de seis meses superior a C$100,000</strong><p>Puede activarse el deber de comunicar a la DGI el cambio de régimen dentro de los 30 días calendario previstos por la Ley. Solicita revisión profesional y conserva la constancia.</p></div></div>':'')+
+      (limitStock?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Inventario al costo superior a C$500,000</strong><p>Consulta inmediatamente con la DGI la continuidad del régimen. El sistema informa el umbral, pero no bloquea la operación ni cambia el régimen automáticamente.</p></div></div>':'')+
+      '<div class="feature-grid">'+
+      featureCard('receipt','Registro simplificado','La exportación consolida ventas facturadas, compras registradas y gastos del ERP. Verifica que se haya registrado cada operación y adjunta los comprobantes originales.')+
+      featureCard('boxes','Respaldo de inventario','Conserva las facturas formales de proveedores nicaragüenses que sustentan el inventario y los costos de adquisición.')+
+      featureCard('calendar','Archivo cronológico','Separa recibos de servicios, alquiler, tributos municipales y pagos DGI; cada documento conserva fecha, emisor, período y respaldo.')+
+      featureCard('shield','Facturación computarizada','No emitas documentos como fiscales desde el ERP hasta confirmar con la DGI el régimen aplicable y, cuando corresponda, obtener autorización previa.')+
+      '</div>'+
+      periodNotice+
+      settingsForm+
+      docForm+
+      '<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
+      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar</strong><p>Los indicadores se calculan con ventas y operaciones registradas en el ERP. No son una declaración tributaria ni certifican la elegibilidad al régimen. Este módulo no presenta declaraciones ni sustituye la validación de un contador o la respuesta formal de la DGI.</p></div></div>';
+  }
   function renderSettings(){
     const role=window.JBAuth?.profile?.role||'sin perfil';
     return heading(views.settings,'')+
@@ -1461,6 +1642,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       billing: renderBilling,
       receivables: renderReceivables,
       hr: renderHR,
+      dgi: renderDgi,
       analytics: renderAnalytics,
       settings: renderSettings,
       purchases: renderPurchases,
@@ -2014,6 +2196,9 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       const tab=action.getAttribute('data-tab');
       if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
     } else if(types[name])openBusinessDialog(types[name]);
+    else if(name==='go-hr-employees'){state.hrTab='employees';renderView();}
+    else if(name==='export-dgi-book')exportDgiBook();
+    else if(name==='download-dgi-document')downloadDgiDocument(action.getAttribute('data-id'),action);
     else if(name==='pay-payroll')openBusinessDialog('payroll-payment',action.getAttribute('data-id'));
     else if(name==='remove-product-image'){
       const productId=action.getAttribute('data-product-id'),key=action.getAttribute('data-key');
@@ -2069,6 +2254,10 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       openBusinessDialog('invoice');
     }else if(name==='print-invoice')window.print();
     else if(name==='close-invoice-preview')document.getElementById('invoice-preview-dialog').close();
+  });
+  document.addEventListener('submit',function(event){
+    if(event.target?.id==='dgi-settings-form'){event.preventDefault();saveDgiSettings(event);}
+    else if(event.target?.id==='dgi-document-form'){event.preventDefault();uploadDgiDocument(event);}
   });
   document.addEventListener('submit',async function(event){
     if(!event.target||event.target.id!=='exchange-rate-form')return;
