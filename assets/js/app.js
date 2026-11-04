@@ -195,9 +195,13 @@
       erpDataLoaded = true;
       hrRecordsLoaded = Array.isArray(data.employees);
       hrLoadAttempted = true;
+      const dbStatus=document.getElementById('db-connection-status');
+      if(dbStatus)dbStatus.textContent='Conectado';
       return true;
     } catch (error) {
       erpLoadError = error?.message || "No se pudieron cargar los registros reales.";
+      const dbStatus=document.getElementById('db-connection-status');
+      if(dbStatus)dbStatus.textContent='Error';
       throw error;
     } finally {
       erpDataLoading = false;
