@@ -45,7 +45,7 @@ async function readBootstrap(sql, user) {
   const canSales = isOwner || user.role === "sales";
   const canFinance = isOwner || user.role === "finance";
   const canHR = isOwner || user.role === "hr";
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings, dgiDocuments] =
+  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
@@ -66,8 +66,7 @@ async function readBootstrap(sql, user) {
       tx`SELECT * FROM hr_leave_requests ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`,
       tx`SELECT * FROM hr_payroll_items ORDER BY created_at DESC LIMIT 5000`,
-      tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`,
-      tx`SELECT * FROM dgi_support_documents ORDER BY document_date DESC, created_at DESC LIMIT 2000`
+      tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`
     ]);
 
   const result = { settings };
@@ -87,7 +86,6 @@ async function readBootstrap(sql, user) {
     result.invoice_payments = invoicePayments;
   }
   if (isOwner || canFinance) {
-    result.dgi_support_documents = dgiDocuments;
     result.expenses = expenses;
     result.cash_accounts = cashAccounts;
     result.cash_entries = cashEntries;
