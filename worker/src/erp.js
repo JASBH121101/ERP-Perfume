@@ -74,16 +74,20 @@ async function readBootstrap(sql, user, permissionContext) {
     );
   }
   if (hasPermission(permissionContext, "products.catalog.view")) result.products = products;
-  if (hasPermission(permissionContext, "inventory.stock.view") ||
-      hasPermission(permissionContext, "inventory.receipts.view") ||
-      hasPermission(permissionContext, "inventory.manual_out.view") ||
-      hasPermission(permissionContext, "inventory.adjustments.view")) {
-    result.inventory_movements = movements;
+  const canViewInbound = hasPermission(permissionContext, "inventory.receipts.view") ||
+    hasPermission(permissionContext, "purchases.receipts.view");
+  const canViewOutbound = hasPermission(permissionContext, "inventory.manual_out.view");
+  const canViewAdjustments = hasPermission(permissionContext, "inventory.adjustments.view");
+  if (canViewInbound || canViewOutbound || canViewAdjustments) {
+    result.inventory_movements = movements.filter((movement) => {
+      const delta = Number(movement.quantity_delta ?? movement.quantity ?? 0);
+      if (delta < 0) return canViewOutbound;
+      if (delta > 0) return canViewInbound;
+      return canViewAdjustments;
+    });
   }
   if (hasPermission(permissionContext, "suppliers.records.view")) result.suppliers = suppliers;
-  if (hasPermission(permissionContext, "purchases.purchase_orders.view") ||
-      hasPermission(permissionContext, "purchases.receipts.view") ||
-      hasPermission(permissionContext, "purchases.supplier_invoices.view")) {
+  if (hasPermission(permissionContext, "purchases.receipts.view")) {
     result.purchases = purchases;
     result.purchase_items = purchaseItems;
   }
@@ -1057,7 +1061,6 @@ export async function handleERPRequest(request, env, user, sql) {
     return erpJson({ records: rows });
   }
   if (resource === "settings" && request.method === "PATCH") {
-    if (!["owner","admin"].includes(user.role)) return erpError(403, "FORBIDDEN", "Solo propietario o administración puede cambiar la configuración.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     const key = String(body.setting_key || "");
     if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
