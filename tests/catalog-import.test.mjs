@@ -774,6 +774,24 @@ test("DGI settings accept a pending regime without assuming Cuota Fija", async (
   assert.match(firstQuery,/ON CONFLICT\(setting_key\)/);
 });
 
+test("DGI settings cannot activate Cuota Fija without RUC and a confirmation date", async () => {
+  let queryCount=0;
+  const sql={query:async()=>{queryCount+=1;return [];}};
+  const response=await handleERPRequest(requestFor("settings","PATCH",{
+    setting_key:"dgi_compliance",
+    setting_value:{
+      taxpayer_name:"JB PARFUMS",ruc:"",business_address:"Granada",
+      regime_status:"cuota_fija",quota_fixed_amount_nio:0,
+      certificate_available:false,certificate_displayed:false,
+      computerized_invoicing_status:"not_confirmed",dgi_confirmation_date:""
+    }
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,400);
+  assert.equal(body.error.code,"DGI_REGIME_CONFIRMATION_REQUIRED");
+  assert.equal(queryCount,0);
+});
+
 test("DGI settings reject an unapproved regime value", async () => {
   let queryCount=0;
   const sql={query:async()=>{queryCount+=1;return [];}};
