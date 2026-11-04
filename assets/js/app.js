@@ -410,8 +410,8 @@
     return heading(views.dashboard,'')+
       '<section class="metric-grid">'+
       metric('Ventas facturadas',money(finance.revenue),'chart',invoices.length+' facturas','productos vendidos · USD',false)+
-      metric('Utilidad bruta',money(finance.grossProfit),'spark','Ventas − costo de venta','antes de gastos operativos',true)+
-      metric('Resultado después de gastos',money(finance.netProfit),'wallet',money(finance.operatingExpenses)+' en gastos','sin impuestos ni nómina no registrada',true)+
+      metric('Utilidad bruta',money(finance.grossProfit),'spark','Venta neta de productos − costo','antes de gastos operativos',true)+
+      metric('Resultado después de gastos',money(finance.netProfit),'wallet',money(finance.operatingExpenses)+' en gastos','incluye ingresos de entrega; sin impuestos ni nómina no registrada',true)+
       metric('Alertas de inventario',String(low).padStart(2,'0'),'warning',activeProducts.length+' productos activos','stock bajo o agotado',true)+
       '</section>'+
       '<section class="dashboard-grid">'+
@@ -1363,9 +1363,9 @@
       '<div class="metric-grid">'+
       metric('Ventas facturadas',money(finance.revenue),'chart',invoices.length+' facturas','productos vendidos · USD',false)+
       metric('Costo de ventas',money(finance.costOfSales),'boxes','Costo de productos vendidos','según costo guardado en factura',false)+
-      metric('Utilidad bruta',money(finance.grossProfit),'spark','Ventas − costo de ventas','antes de gastos operativos',true)+
+      metric('Utilidad bruta',money(finance.grossProfit),'spark','Venta neta de productos − costo','antes de gastos operativos',true)+
       metric('Gastos operativos',money(finance.operatingExpenses),'receipt',expenses.length+' gastos','convertidos a USD',false)+
-      metric('Resultado después de gastos',money(finance.netProfit),'wallet','Utilidad bruta − gastos','antes de impuestos y partidas no registradas',true)+
+      metric('Resultado después de gastos',money(finance.netProfit),'wallet','Utilidad bruta + entrega − gastos','antes de impuestos y partidas no registradas',true)+
       metric('Cobros recibidos',money(paidRevenue),'wallet','Facturas y abonos','flujo de cobros',false)+
       '</div>'+
       '<div class="summary-strip">'+
