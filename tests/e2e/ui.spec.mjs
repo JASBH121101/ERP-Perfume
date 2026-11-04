@@ -20,7 +20,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/assets/js/bootstrap.mjs', route => route.fulfill({
     status: 200,
     contentType: 'text/javascript; charset=utf-8',
-    body: "window.JBAuth = {" +
+    body: "document.body.classList.remove('auth-pending','auth-locked');" +
+      "document.body.classList.add('erp-authorized');" +
+      "window.JBAuth = {" +
       "mode:'authenticated', profile:{id:'qa-owner',name:'QA Owner',role:'owner'}," +
       "apiUrl:path=>new URL(path,'" + apiBase + "').toString()," +
       "getToken:async()=> 'qa-only-token' }; import('./app.js');"
