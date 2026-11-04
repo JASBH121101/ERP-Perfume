@@ -35,14 +35,14 @@ Para devoluciones o anulaciones efectuadas en días posteriores a la factura ori
 
 ## 3. Régimen de Cuota Fija: condiciones que el ERP debe vigilar
 
-El texto de la Ley 822 consultado en La Gaceta del 17 de diciembre de 2012 contiene estas reglas:
+El texto de la Ley 822 consultado en La Gaceta del 17 de diciembre de 2012 contiene estas reglas. La Ley 1279, publicada el 9 de abril de 2026, reformó los artículos 126, 157, 167 y 171 y derogó una disposición relacionada con esos tributos indirectos; el texto consultado de esa reforma no modifica los artículos 251, 256, 258 ni 259 descritos abajo:
 
 - **Artículo 251:** ingresos por ventas mensuales iguales o menores a C$100,000 **y** costo de inventario no mayor a C$500,000. El texto usa ambos requisitos conjuntamente.
 - **Artículo 256:** cuando durante seis meses, en promedio, los ingresos mensuales percibidos superen C$100,000, el contribuyente debe informarlo a la Administración Tributaria dentro de los 30 días calendario posteriores a la ocurrencia para el traslado al régimen general.
 - **Artículo 258:** inscripción en RUC y Cuota Fija; factura simplificada a solicitud del comprador; registros simplificados de ingresos y gastos; inventario respaldado con facturas formales de proveedores inscritos; certificado de inscripción exhibido o disponible; conservación cronológica de facturas originales de compras/servicios, soportes de alquiler e impuestos municipales y comprobantes de pagos tributarios.
 - **Artículo 259:** el texto consultado indica que el contribuyente de Cuota Fija no traslada IVA y no presenta las declaraciones ordinarias allí enumeradas, sin perjuicio de pagar su cuota.
 
-El módulo de alertas del ERP no bloquea operaciones ni cambia el régimen automáticamente. La métrica de ingresos es un indicador de control formado por cobros registrados más ingresos de caja sin vínculo documental, sin duplicar cobros que ya estén asociados a una factura. La clasificación final, los ajustes y el criterio de cómputo deben confirmarse con la DGI o un contador.
+El módulo de alertas del ERP no bloquea operaciones ni cambia el régimen automáticamente. La métrica de ingresos es un indicador preventivo formado por cobros registrados más ingresos de caja sin vínculo documental, sin duplicar cobros que ya estén asociados a una factura. Incluir movimientos sin clasificar reduce el riesgo de subestimar, pero también puede sobreestimar si alguno corresponde a aportes de capital, préstamos o transferencias que no son ventas. Por eso se muestran por separado y deben clasificarse y conciliarse antes de utilizar el valor para una decisión tributaria. La clasificación final, los ajustes y el criterio de cómputo deben confirmarse con la DGI o un contador.
 
 ### Datos del negocio que deben confirmarse
 
@@ -97,6 +97,7 @@ Este registro es una protección de propiedad intelectual, no sustituye la autor
 - DGI, Disposición Técnica 09-2007: https://nicaragua.justia.com/nacionales/normas-tecnicas/requisitos-para-uso-de-sistemas-de-facturacion-computarizadas-jul-16-2007/gdoc/
 - DGI, preguntas frecuentes sobre sistemas de facturación computarizados (página antigua; confirmar vigencia): https://www.dgi.gob.ni/FAQ/otros_tramites.htm
 - Ley 822, publicación en La Gaceta No. 241, 17-12-2012 (texto oficial alojado por INE): https://www.ine.gob.ni/DGE/digesto/leyes/Ley822.pdf
+- Ley 1279, publicada en La Gaceta No. 61, 09-04-2026 (reforma de otros artículos de la Ley 822): https://ni.vlex.com/vid/ley-n-1279-ley-1116239578
 - DGI, aviso sobre guía del Régimen de Cuota Fija y SACFI: https://www.dgi.gob.ni/ (localizar la guía vigente antes de operar)
 - MIFIC, servicios de Derechos de Autor: https://www.mific.gob.ni/Inicio/Servicios/Servicios-RPI/Servicios-deDerechos-de-Autor
 - MIFIC, formulario DDADX6 para programa de cómputo: https://www.mific.gob.ni/Portals/0/Documentos/DGRPI/ONDADX/FORMULARIOS/Formulario%20Solicitud%20Programa%20de%20Computo%20DDADX6.pdf
