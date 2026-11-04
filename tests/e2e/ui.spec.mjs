@@ -9,7 +9,21 @@ const fixture = {
     purchase_cost_usd: 20, additional_cost_usd: 5, unit_cost_usd: 25,
     price_usd: 50, stock: 5, min_stock: 1, active: true, images: []
   }],
-  inventory_movements: [], customers: [], suppliers: [], orders: [], order_items: [],
+  inventory_movements: Array.from({ length: 27 }, (_, index) => {
+    const entry = index % 2 === 0;
+    const delta = entry ? 2 : -1;
+    const day = 2 + Math.floor(index / 9);
+    return {
+      id: 'qa-movement-' + String(index + 1),
+      product_id: '00000000-0000-0000-0000-000000000101',
+      movement_type: entry ? 'Entrada' : 'Salida',
+      quantity: Math.abs(delta), quantity_delta: delta,
+      previous_stock: 10, new_stock: 10 + delta,
+      note: 'Movimiento QA ' + String(index + 1),
+      reference_type: 'manual', reference_id: null,
+      created_at: new Date(Date.UTC(2026, 10, day, 12, index % 9, 0)).toISOString()
+    };
+  }), customers: [], suppliers: [], orders: [], order_items: [],
   purchases: [], purchase_items: [], invoices: [], invoice_items: [], invoice_payments: [],
   expenses: [], cash_accounts: [], cash_entries: [], employees: [], hr_attendance: [],
   hr_leave_requests: [], hr_payroll_periods: [], hr_payroll_items: [],
@@ -69,6 +83,31 @@ test('authenticated ERP renders dashboard and primary modules from API data', as
   await expect(page.getByRole('heading', { name: 'Recursos Humanos' })).toBeVisible();
   await navigateToView(page, 'analytics');
   await expect(page.getByRole('heading', { name: 'Informes y análisis' })).toBeVisible();
+});
+
+test('inventory kardex searches, filters by type and date, and paginates all movements', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+  const rows = page.locator('#inventory-movement-body tr');
+  await expect(rows).toHaveCount(25);
+  await expect(page.getByText('Página 1 de 2')).toBeVisible();
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(page.getByText('Página 2 de 2')).toBeVisible();
+
+  await page.getByLabel('Filtrar movimientos por tipo').selectOption('Entrada');
+  await expect(rows).toHaveCount(14);
+  await expect(page.getByText('Página 1 de 1')).toBeVisible();
+
+  await page.getByLabel('Buscar en el kardex').fill('Movimiento QA 27');
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('Movimiento QA 27');
+
+  await page.getByRole('button', { name: 'Limpiar filtros' }).click();
+  await page.getByLabel('Desde fecha').fill('2026-11-04');
+  await page.getByLabel('Hasta fecha').fill('2026-11-04');
+  await expect(rows).toHaveCount(9);
+  await expect(page.getByText('Página 1 de 1')).toBeVisible();
 });
 
 test('new order allows registering a customer inline without a prior customer record', async ({ page }) => {

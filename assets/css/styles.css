@@ -837,3 +837,19 @@ body.auth-locked .app-shell {
 .product-image-pending-card strong{display:block;overflow-wrap:anywhere;font-size:12px}
 .product-image-pending-card small{display:block;min-height:2.4em;margin-top:4px;color:var(--muted,#777);font-size:11px}
 .product-image-pending-card progress{width:100%;height:6px;accent-color:var(--accent,#a9874f)}
+
+
+/* Inventory ledger filters and pagination */
+.inventory-ledger-toolbar{padding:0 14px;margin-bottom:12px;align-items:flex-start}
+.inventory-ledger-toolbar .toolbar-right{flex-wrap:wrap;justify-content:flex-end}
+.inventory-ledger-toolbar .filter-select[type="date"]{min-width:132px;max-width:145px}
+.inventory-ledger-footer{padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--line)}
+.inventory-ledger-range{color:#998d7b;font-size:10px}
+.inventory-ledger-pagination{display:flex;align-items:center;gap:9px}
+.inventory-ledger-pagination .button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:720px){
+  .inventory-ledger-toolbar .toolbar-right{display:grid;grid-template-columns:1fr;width:100%}
+  .inventory-ledger-toolbar .filter-select[type="date"]{width:100%;max-width:none}
+  .inventory-ledger-footer{align-items:stretch;flex-direction:column}
+  .inventory-ledger-pagination{justify-content:space-between}
+}
