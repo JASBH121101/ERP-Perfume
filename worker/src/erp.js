@@ -86,6 +86,8 @@ async function readBootstrap(sql, user) {
     result.invoice_payments = invoicePayments;
   }
   if (isOwner || canFinance) {
+    result.products = products;
+    result.orders = orders;
     result.expenses = expenses;
     result.cash_accounts = cashAccounts;
     result.cash_entries = cashEntries;
