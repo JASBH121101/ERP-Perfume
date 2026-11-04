@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
     body: "document.body.classList.remove('auth-pending','auth-locked');" +
       "document.body.classList.add('erp-authorized');" +
       "window.JBAuth = {" +
-      "mode:'authenticated', profile:{id:'qa-owner',name:'QA Owner',role:'owner'}," +
+      "mode:'authenticated', user:{id:'qa-owner',email:'qa-owner@example.test'}, profile:{id:'qa-owner',name:'QA Owner',role:'owner'}," +
       "apiUrl:path=>new URL(path,'" + apiBase + "').toString()," +
       "getToken:async()=> 'qa-only-token' }; import('./app.js');"
   }));
