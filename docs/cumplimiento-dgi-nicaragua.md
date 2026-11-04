@@ -88,7 +88,7 @@ Este registro es una protección de propiedad intelectual, no sustituye la autor
 | Numeración fiscal consecutiva e inalterable | Pendiente; no activar emisión fiscal |
 | Nota de crédito y reversión fiscal de inventario | Pendiente; no activar emisión fiscal |
 | Manual de usuario y manual técnico en español | Incluidos en este repositorio; deben mantenerse sincronizados con cada versión |
-| Respaldo diario de datos y prueba de restauración | Pendiente de definir y probar; el archivo de documentos en R2 no equivale a respaldo diario de la base |
+| Respaldo diario de datos y prueba de restauración | Workflow opcional de backup cifrado preparado hacia R2 existente; desactivado por defecto. Falta configurar secretos, realizar una ejecución y probar restauración en una base aislada |
 | Procedimiento de contingencia para facturación autorizada | Pendiente de aprobación y prueba con el procedimiento que indique la DGI |
 | Muestra de factura fiscal y número de autorización | No disponible; solo preparar cuando la DGI confirme el mecanismo |
 
@@ -101,5 +101,7 @@ Este registro es una protección de propiedad intelectual, no sustituye la autor
 - DGI, aviso sobre guía del Régimen de Cuota Fija y SACFI: https://www.dgi.gob.ni/ (localizar la guía vigente antes de operar)
 - MIFIC, servicios de Derechos de Autor: https://www.mific.gob.ni/Inicio/Servicios/Servicios-RPI/Servicios-deDerechos-de-Autor
 - MIFIC, formulario DDADX6 para programa de cómputo: https://www.mific.gob.ni/Portals/0/Documentos/DGRPI/ONDADX/FORMULARIOS/Formulario%20Solicitud%20Programa%20de%20Computo%20DDADX6.pdf
+
+**Respaldo:** se añadió un workflow de copia lógica diaria cifrada desde Neon Development a un prefijo privado del R2 existente. Está desactivado por defecto; requiere secretos de GitHub Actions, activación expresa, ejecución satisfactoria y prueba de restauración antes de declarar que cumple el control de respaldo. Véase `docs/backup-restore-es.md`.
 
 **Regla de publicación:** esta rama de desarrollo no significa que la DGI haya aprobado el sistema. No emitir documentos fiscales desde el ERP sin confirmación y autorización aplicables.
