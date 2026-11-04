@@ -498,24 +498,26 @@
     invoice.inventoryAppliedAt=timestamp;
     return {items:lines};
   }
-  function saveOrderStatus() {
-    const button=document.getElementById('save-order-status'),order=orders.find(item=>String(item.id)===button.getAttribute('data-id'));
-    const nextStatus=document.getElementById('order-status-select').value;
-    const allowedStatuses=['Pendiente','En preparación','Listo para entrega','En tránsito','Completado'];
-    if(!order||!allowedStatuses.includes(nextStatus)){toast('No se pudo validar el estado seleccionado.');return;}
+  async function saveOrderStatus() {
+    const button=document.getElementById('save-order-status');
+    const order=orders.find(item=>String(item.id)===button?.getAttribute('data-id'));
+    const nextStatus=document.getElementById('order-status-select')?.value;
+    const allowedStatuses=['Pendiente','En preparación','Listo para entrega','En tránsito','Completado','Cancelado'];
+    if(!order||!order.dbId||!allowedStatuses.includes(nextStatus)){toast('No se pudo validar el pedido o el estado.');return;}
     if(order.status===nextStatus){toast('El pedido ya tiene ese estado.');return;}
-    if(order.status==='Completado'){toast('Un pedido completado no se puede reabrir desde este formulario.');return;}
-    const snapshot=captureDemoState();let inventoryMessage='';
-    if(nextStatus==='Pendiente'&&order.inventoryAppliedAt){
-      const result=recordOrderInventory(order,true);if(result.error){toast(result.error);return;}
-      order.inventoryAppliedAt=null;inventoryMessage=' Existencias reingresadas en DEMO.';
-    }else if(nextStatus!=='Pendiente'&&!order.inventoryAppliedAt){
-      const result=recordOrderInventory(order,false);if(result.error){toast(result.error);return;}
-      order.inventoryAppliedAt=new Date().toISOString();inventoryMessage=' Existencias descontadas automáticamente.';
+    if(order.status==='Completado'||order.status==='Cancelado'){toast('Un pedido cerrado no se puede reabrir desde este formulario.');return;}
+    if(button){button.disabled=true;button.textContent='Guardando…';}
+    try {
+      await erpApi('orders/'+encodeURIComponent(order.dbId),{method:'PATCH',body:JSON.stringify({status:nextStatus})});
+      await loadERPFromNeon(true);
+      orderDialog.close();
+      renderView();
+      toast('Estado del pedido actualizado. El inventario se ajustó en Neon.');
+    } catch(error) {
+      toast(error?.message||'No se pudo actualizar el pedido.');
+    } finally {
+      if(button){button.disabled=false;button.textContent='Guardar cambios';}
     }
-    order.status=nextStatus;
-    if(!persistDemoData()){restoreDemoState(snapshot);return;}
-    orderDialog.close();renderView();toast('Estado del pedido actualizado en DEMO local.'+inventoryMessage);
   }
   function featureCard(symbol, title, description) {
     return '<article class="feature-card"><span class="feature-symbol">' + svg(symbol) + '</span><h3>' + title + '</h3><p>' + description + '</p></article>';
