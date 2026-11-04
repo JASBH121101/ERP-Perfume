@@ -379,10 +379,16 @@
   }
   function financialSnapshot(){
     const revenue=invoices.reduce((sum,invoice)=>sum+Number(invoice.totalUsd||0),0);
+    const productNetSales=invoices.reduce((sum,invoice)=>{
+      const lineSubtotal=(Array.isArray(invoice.items)?invoice.items:[]).reduce((subtotal,item)=>subtotal+Number(item.unitPriceUsd||0)*Number(item.quantity||0),0);
+      const subtotal=invoice.subtotalUsd==null?lineSubtotal:Number(invoice.subtotalUsd||0);
+      return sum+Math.max(0,subtotal-Number(invoice.discountUsd||0));
+    },0);
+    const deliveryIncome=roundMoney(invoices.reduce((sum,invoice)=>sum+Number(invoice.deliveryFeeUsd||0),0));
     const costOfSales=invoices.reduce((sum,invoice)=>(Array.isArray(invoice.items)?invoice.items:[]).reduce((subtotal,item)=>subtotal+Number(item.unitCostUsd||0)*Number(item.quantity||0),sum),0);
-    const grossProfit=roundMoney(revenue-costOfSales);
+    const grossProfit=roundMoney(productNetSales-costOfSales);
     const operatingExpenses=roundMoney(expenses.reduce((sum,item)=>sum+Number(item.amountUsd||0),0));
-    return {revenue:roundMoney(revenue),costOfSales:roundMoney(costOfSales),grossProfit,operatingExpenses,netProfit:roundMoney(grossProfit-operatingExpenses)};
+    return {revenue:roundMoney(revenue),productNetSales:roundMoney(productNetSales),deliveryIncome,costOfSales:roundMoney(costOfSales),grossProfit,operatingExpenses,netProfit:roundMoney(grossProfit+deliveryIncome-operatingExpenses)};
   }
   function renderDashboard() {
     const activeProducts=products.filter(product=>product.active!==false);
@@ -541,7 +547,7 @@
       rows=[['Fecha','Dirección','Concepto','Cuenta','Moneda','Importe','USD'],...cashEntries.map(x=>[dateText(x.createdAt),x.direction,x.concept,x.account,x.currency,x.originalAmount,x.amountUsd])];
     }else if(state.view==='analytics'){
       const f=financialSnapshot();filename='jb-parfums-resultados.csv';
-      rows=[['Indicador','USD'],['Ventas facturadas',f.revenue],['Costo de ventas',f.costOfSales],['Utilidad bruta',f.grossProfit],['Gastos operativos',f.operatingExpenses],['Resultado después de gastos',f.netProfit]];
+      rows=[['Indicador','USD'],['Ventas facturadas (incluye entrega)',f.revenue],['Venta neta de productos',f.productNetSales],['Ingresos por entrega',f.deliveryIncome],['Costo de ventas',f.costOfSales],['Utilidad bruta de productos',f.grossProfit],['Gastos operativos',f.operatingExpenses],['Resultado después de gastos',f.netProfit]];
     }
     if(!rows.length){toast('No hay datos disponibles para exportar en esta sección.');return;}
     exportCsvFile(filename,rows);
