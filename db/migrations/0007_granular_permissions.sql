@@ -134,5 +134,3 @@ SELECT r.role_key,p.permission_key,
 FROM erp_roles r CROSS JOIN permission_catalog p
 ON CONFLICT(role_key,permission_key) DO NOTHING;
 
-INSERT INTO app_schema_migrations(version) VALUES ('0007')
-ON CONFLICT(version) DO NOTHING;
