@@ -71,6 +71,22 @@ test("PDF/image parser rejects text without identifiable product rows", () => {
   assert.throws(() => parsers.parseCatalogTextRows("Página 1\nSubtotal\nTotal"), /No pude extraer nombres/);
 });
 
+test("CSV rejects files over 200 products instead of silently truncating them", () => {
+  const lines = ["SKU,Producto,Precio,Stock"];
+  for (let index = 1; index <= 201; index += 1) {
+    lines.push("SKU-" + index + ",Perfume QA " + index + ",10,1");
+  }
+  assert.throws(() => parsers.parseCatalogCSV(lines.join("\\n")), /máximo de 200 productos/);
+});
+
+test("PDF/OCR parser rejects more than 200 detected unique products", () => {
+  const lines = [];
+  for (let index = 1; index <= 201; index += 1) {
+    lines.push("QA-" + index + " Perfume QA " + index + " USD 10.00");
+  }
+  assert.throws(() => parsers.parseCatalogTextRows(lines.join("\\n")), /más de 200 productos/);
+});
+
 const workerSource = await readFile(new URL("../worker/src/erp.js", import.meta.url), "utf8");
 const importEnd = workerSource.indexOf("async function createInventoryMovement");
 assert.ok(importEnd > 0, "bulk import handler must remain present");
