@@ -620,3 +620,44 @@ test("editing a product cannot overwrite derived unit cost independently", async
   assert.equal(response.status, 200);
   assert.equal(updateParams[2], 25);
 });
+
+
+test("generic PATCH cannot rewrite financial, cash, inventory or payroll ledgers", async () => {
+  const immutable = [
+    "inventory_movements",
+    "cash_entries",
+    "invoices",
+    "purchases",
+    "expenses",
+    "cash_accounts",
+    "hr_payroll_items",
+    "hr_payroll_periods"
+  ];
+  for (const resource of immutable) {
+    let queryCount = 0;
+    const sql = { query: async () => { queryCount += 1; return []; } };
+    const response = await handleERPRequest(requestFor(
+      resource + "/00000000-0000-0000-0000-000000000701",
+      "PATCH",
+      { status: "Anulada", amount_usd: 0 }
+    ), {}, owner, sql);
+    const body = await response.json();
+    assert.equal(response.status, 405, resource + " must not allow generic PATCH");
+    assert.equal(body.error.code, "IMMUTABLE_TRANSACTION");
+    assert.equal(queryCount, 0);
+  }
+});
+
+test("generic PATCH cannot rewrite commercial order snapshots", async () => {
+  let queryCount = 0;
+  const sql = { query: async () => { queryCount += 1; return []; } };
+  const response = await handleERPRequest(requestFor(
+    "orders/00000000-0000-0000-0000-000000000702",
+    "PATCH",
+    { total_usd: 0, customer_name: "Otro cliente" }
+  ), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 405);
+  assert.equal(body.error.code, "ORDER_FIELDS_LOCKED");
+  assert.equal(queryCount, 0);
+});
