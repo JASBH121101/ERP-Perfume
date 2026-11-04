@@ -947,6 +947,22 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     method === "DELETE" ? "delete" : null;
   if (!action) return null;
 
+  if (resource === "users") {
+    if (method === "GET") return "users.accounts.view";
+    if (method === "POST") return "users.accounts.create";
+    if (method === "PATCH") {
+      return String(body?.account_status || "").toLowerCase() === "disabled"
+        ? "users.accounts.disable" : "users.accounts.edit";
+    }
+    return null;
+  }
+  if (resource === "roles") {
+    return method === "GET" ? "users.roles.view" :
+      method === "POST" ? "users.roles.create" :
+      method === "PATCH" ? "users.roles.edit" : null;
+  }
+  if (resource === "permissions") return method === "GET" ? "users.roles.view" : null;
+  if (resource === "audit") return method === "GET" ? "audit.history.view" : null;
   if (resource === "settings") {
     return method === "GET" ? "settings.general.view" : method === "PATCH" ? "settings.general.manage" : null;
   }
@@ -1049,6 +1065,9 @@ export async function handleERPRequest(request, env, user, sql) {
   }
 
   const permissionKey = resolveRoutePermission(resource, request.method, id, parts, requestBody);
+  if (["users","roles","permissions","devices","audit"].includes(resource) && user.role !== "owner") {
+    return erpError(403, "OWNER_REQUIRED", "Solo el propietario puede administrar cuentas, permisos, dispositivos y auditoría.");
+  }
   if (resource === "bootstrap" && request.method === "GET") {
     if (!hasPermission(permissionContext, "dashboard.view") && !hasAnyModuleAccess(permissionContext)) {
       return erpError(403, "FORBIDDEN", "Tu cuenta no tiene módulos habilitados.");
@@ -1068,6 +1087,233 @@ export async function handleERPRequest(request, env, user, sql) {
       return erpError(503, "BOOTSTRAP_FAILED", "No se pudieron cargar los datos operativos desde Neon.");
     }
   }
+  if (resource === "users" && request.method === "GET") {
+    try {
+      const [users, pendingIdentities] = await Promise.all([
+        sql.query(
+          "SELECT u.id,u.auth_user_id,u.email,u.display_name,u.position_title,u.role,u.role_template_key," +
+          "u.account_status,u.active,u.must_change_password,u.created_at,u.updated_at,r.name AS role_template_name " +
+          "FROM app_users u LEFT JOIN erp_roles r ON r.role_key=u.role_template_key ORDER BY u.created_at DESC LIMIT 500"
+        ),
+        sql.query(
+          'SELECT au.id AS auth_user_id,au.email,au.name AS display_name,au."emailVerified" AS email_verified,au."createdAt" AS created_at ' +
+          'FROM neon_auth."user" au LEFT JOIN app_users u ON u.auth_user_id=au.id ' +
+          'WHERE u.id IS NULL ORDER BY au."createdAt" DESC LIMIT 200'
+        )
+      ]);
+      return erpJson({ users, pendingIdentities });
+    } catch (error) {
+      console.error("[erp] User directory failed:", error?.message || "database error");
+      return erpError(503, "USER_DIRECTORY_FAILED", "No se pudo consultar el directorio de cuentas.");
+    }
+  }
+
+  if (resource === "users" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    const email = String(body.email || "").trim().toLowerCase();
+    const displayName = String(body.display_name || "").trim();
+    const positionTitle = String(body.position_title || "").trim();
+    const roleTemplateKey = String(body.role_template_key || "viewer").trim();
+    const mustChangePassword = body.must_change_password !== false;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 180 || !displayName || displayName.length > 180 || positionTitle.length > 120) {
+      return erpError(400, "INVALID_USER_PROFILE", "Indica un correo válido, nombre completo y cargo de hasta 120 caracteres.");
+    }
+    if (roleTemplateKey === "owner") {
+      return erpError(403, "OWNER_ROLE_PROTECTED", "La plantilla owner no se puede asignar desde el panel.");
+    }
+    try {
+      const roleRows = await sql.query("SELECT role_key FROM erp_roles WHERE role_key=$1 LIMIT 1", [roleTemplateKey]);
+      if (!roleRows[0]) return erpError(400, "INVALID_ROLE_TEMPLATE", "La plantilla de permisos no existe.");
+      const identityRows = await sql.query(
+        'SELECT id,email,name,"emailVerified" AS email_verified FROM neon_auth."user" WHERE LOWER(email)=LOWER($1) LIMIT 1',
+        [email]
+      );
+      const identity = identityRows[0];
+      if (!identity) return erpError(404, "AUTH_IDENTITY_NOT_FOUND", "La persona debe tener una identidad registrada en Neon Auth antes de poder autorizarla.");
+      const accountStatus = identity.email_verified === true ? "invited" : "registered";
+      const created = await sql.query(
+        "INSERT INTO app_users(auth_user_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password) " +
+        "VALUES($1,$2,$3,$4,'viewer',$5,$6,FALSE,$7) " +
+        "RETURNING id,auth_user_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password,created_at",
+        [identity.id,email,displayName,positionTitle,roleTemplateKey,accountStatus,mustChangePassword]
+      );
+      await auditQuery(sql,user.id,"provision","app_user",created[0].id,{email,role_template_key:roleTemplateKey,account_status:accountStatus});
+      return erpJson({ user: created[0] }, 201);
+    } catch (error) {
+      if (error?.code === "23505") return erpError(409, "USER_ALREADY_PROVISIONED", "Ya existe una cuenta ERP para ese correo.");
+      console.error("[erp] User provisioning failed:", error?.message || "database error");
+      return erpError(503, "USER_PROVISION_FAILED", "No se pudo preparar la cuenta ERP.");
+    }
+  }
+
+  if (resource === "users" && request.method === "PATCH" && id) {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    const existing = await sql.query("SELECT id,role,role_template_key FROM app_users WHERE id=$1::uuid LIMIT 1", [id]);
+    if (!existing[0]) return erpError(404, "USER_NOT_FOUND", "La cuenta ERP solicitada no existe.");
+    if (existing[0].role === "owner") return erpError(403, "OWNER_ACCOUNT_PROTECTED", "La cuenta propietaria no se puede editar, desactivar ni degradar.");
+    const accountStatus = body.account_status == null ? null : String(body.account_status);
+    if (accountStatus && !["invited","registered","active","rejected","disabled"].includes(accountStatus)) {
+      return erpError(400, "INVALID_ACCOUNT_STATUS", "El estado de la cuenta no es válido.");
+    }
+    const roleTemplateKey = body.role_template_key == null ? null : String(body.role_template_key);
+    if (roleTemplateKey === "owner") return erpError(403, "OWNER_ROLE_PROTECTED", "La plantilla owner no se puede asignar desde el panel.");
+    if (roleTemplateKey) {
+      const roleRows = await sql.query("SELECT role_key FROM erp_roles WHERE role_key=$1 LIMIT 1", [roleTemplateKey]);
+      if (!roleRows[0]) return erpError(400, "INVALID_ROLE_TEMPLATE", "La plantilla de permisos no existe.");
+    }
+    const positionTitle = body.position_title == null ? null : String(body.position_title).trim();
+    if (positionTitle != null && positionTitle.length > 120) return erpError(400, "INVALID_POSITION_TITLE", "El cargo no puede superar 120 caracteres.");
+    if (body.must_change_password != null && typeof body.must_change_password !== "boolean") {
+      return erpError(400, "INVALID_PASSWORD_POLICY", "La opción de cambio de contraseña debe ser booleana.");
+    }
+    const overrides = body.overrides;
+    if (overrides != null && !Array.isArray(overrides)) return erpError(400, "INVALID_PERMISSION_OVERRIDES", "Los permisos individuales deben enviarse como una lista.");
+    if (Array.isArray(overrides)) {
+      const seen = new Set();
+      for (const item of overrides) {
+        if (!item || typeof item.permission_key !== "string" || typeof item.allowed !== "boolean" || seen.has(item.permission_key)) {
+          return erpError(400, "INVALID_PERMISSION_OVERRIDES", "Cada permiso individual debe tener una clave única y un valor booleano.");
+        }
+        seen.add(item.permission_key);
+      }
+      const keys = [...seen];
+      if (keys.length) {
+        const valid = await sql.query("SELECT permission_key FROM permission_catalog WHERE permission_key = ANY($1::text[])", [keys]);
+        if (valid.length !== keys.length) return erpError(400, "UNKNOWN_PERMISSION", "Uno o más permisos no existen en el catálogo.");
+      }
+    }
+    try {
+      const updated = await sql.query(
+        "UPDATE app_users SET " +
+        "role_template_key=COALESCE($2,role_template_key),position_title=COALESCE($3,position_title)," +
+        "account_status=COALESCE($4,account_status),active=CASE WHEN $4 IS NULL THEN active ELSE ($4='active') END," +
+        "must_change_password=COALESCE($5,must_change_password),updated_at=NOW() " +
+        "WHERE id=$1::uuid AND role <> 'owner' " +
+        "RETURNING id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password",
+        [id,roleTemplateKey,positionTitle,accountStatus,body.must_change_password ?? null]
+      );
+      if (!updated[0]) return erpError(404, "USER_NOT_FOUND", "La cuenta ERP solicitada no existe.");
+      if (Array.isArray(overrides)) {
+        const payload = JSON.stringify(overrides);
+        await sql.query(
+          "WITH cleared AS (DELETE FROM user_permission_overrides WHERE user_id=$1::uuid RETURNING 1), " +
+          "saved AS (INSERT INTO user_permission_overrides(user_id,permission_key,allowed,updated_by,updated_at) " +
+          "SELECT $1::uuid,x.permission_key,x.allowed,$3,NOW() FROM jsonb_to_recordset($2::jsonb) AS x(permission_key text,allowed boolean) " +
+          "ON CONFLICT(user_id,permission_key) DO UPDATE SET allowed=EXCLUDED.allowed,updated_by=EXCLUDED.updated_by,updated_at=NOW() RETURNING 1) " +
+          "SELECT (SELECT COUNT(*)::int FROM cleared) AS cleared_count,(SELECT COUNT(*)::int FROM saved) AS saved_count",
+          [id,payload,user.id]
+        );
+      }
+      await auditQuery(sql,user.id,"update","app_user",id,{
+        role_template_key:roleTemplateKey,position_title:positionTitle,account_status:accountStatus,
+        must_change_password:body.must_change_password,overrides_updated:Array.isArray(overrides)
+      });
+      return erpJson({ user: updated[0] });
+    } catch (error) {
+      console.error("[erp] User update failed:", error?.message || "database error");
+      return erpError(503, "USER_UPDATE_FAILED", "No se pudo actualizar la cuenta ERP.");
+    }
+  }
+
+  if (resource === "roles" && request.method === "GET") {
+    try {
+      const [roles, permissions, grants] = await Promise.all([
+        sql.query("SELECT role_key,name,description,is_system,created_at,updated_at FROM erp_roles ORDER BY is_system DESC,name ASC"),
+        sql.query("SELECT permission_key,label,module_key,parent_key,permission_type,sort_order FROM permission_catalog ORDER BY module_key,sort_order,permission_key"),
+        sql.query("SELECT role_key,permission_key,allowed FROM role_template_permissions ORDER BY role_key,permission_key")
+      ]);
+      return erpJson({ roles, permissions, grants });
+    } catch (error) {
+      console.error("[erp] Role catalog failed:", error?.message || "database error");
+      return erpError(503, "ROLE_CATALOG_FAILED", "No se pudo consultar el catálogo de roles y permisos.");
+    }
+  }
+
+  if (resource === "roles" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    const roleKey = String(body.role_key || "").trim().toLowerCase();
+    const name = String(body.name || "").trim();
+    const description = String(body.description || "").trim();
+    if (!/^[a-z][a-z0-9_-]{2,31}$/.test(roleKey) || ["owner","admin","hr","finance","inventory","sales","viewer"].includes(roleKey) ||
+        !name || name.length > 80 || description.length > 240) {
+      return erpError(400, "INVALID_ROLE", "Indica una clave nueva, nombre y descripción válidos. La plantilla owner está protegida.");
+    }
+    try {
+      const rows = await sql.query("INSERT INTO erp_roles(role_key,name,description,is_system,created_by) VALUES($1,$2,$3,FALSE,$4) RETURNING role_key,name,description,is_system,created_at", [roleKey,name,description,user.id]);
+      await auditQuery(sql,user.id,"create","erp_role",roleKey,{name,description});
+      return erpJson({ role: rows[0] }, 201);
+    } catch (error) {
+      if (error?.code === "23505") return erpError(409, "ROLE_EXISTS", "Ya existe una plantilla con esa clave.");
+      console.error("[erp] Role creation failed:", error?.message || "database error");
+      return erpError(503, "ROLE_CREATE_FAILED", "No se pudo crear la plantilla.");
+    }
+  }
+
+  if (resource === "roles" && request.method === "PATCH" && id) {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    if (id === "owner") return erpError(403, "OWNER_ROLE_PROTECTED", "La plantilla owner está protegida y no se puede modificar.");
+    const name = body.name == null ? null : String(body.name).trim();
+    const description = body.description == null ? null : String(body.description).trim();
+    if ((name != null && (!name || name.length > 80)) || (description != null && description.length > 240)) {
+      return erpError(400, "INVALID_ROLE", "El nombre o la descripción de la plantilla no son válidos.");
+    }
+    if (body.permissions != null && !Array.isArray(body.permissions)) return erpError(400, "INVALID_ROLE_PERMISSIONS", "Los permisos de la plantilla deben enviarse como una lista.");
+    const roleRows = await sql.query("SELECT role_key FROM erp_roles WHERE role_key=$1 LIMIT 1", [id]);
+    if (!roleRows[0]) return erpError(404, "ROLE_NOT_FOUND", "La plantilla solicitada no existe.");
+    if (Array.isArray(body.permissions)) {
+      const seen = new Set();
+      for (const item of body.permissions) {
+        if (!item || typeof item.permission_key !== "string" || typeof item.allowed !== "boolean" || seen.has(item.permission_key)) {
+          return erpError(400, "INVALID_ROLE_PERMISSIONS", "Cada permiso debe tener una clave única y un valor booleano.");
+        }
+        seen.add(item.permission_key);
+      }
+      const keys = [...seen];
+      if (keys.length) {
+        const valid = await sql.query("SELECT permission_key FROM permission_catalog WHERE permission_key=ANY($1::text[])", [keys]);
+        if (valid.length !== keys.length) return erpError(400, "UNKNOWN_PERMISSION", "Uno o más permisos no existen en el catálogo.");
+      }
+    }
+    try {
+      const updated = await sql.query(
+        "UPDATE erp_roles SET name=COALESCE($2,name),description=COALESCE($3,description),updated_at=NOW() WHERE role_key=$1 RETURNING role_key,name,description,is_system",
+        [id,name,description]
+      );
+      if (Array.isArray(body.permissions)) {
+        await sql.query(
+          "WITH cleared AS (DELETE FROM role_template_permissions WHERE role_key=$1 RETURNING 1), " +
+          "saved AS (INSERT INTO role_template_permissions(role_key,permission_key,allowed) " +
+          "SELECT $1,x.permission_key,x.allowed FROM jsonb_to_recordset($2::jsonb) AS x(permission_key text,allowed boolean) " +
+          "ON CONFLICT(role_key,permission_key) DO UPDATE SET allowed=EXCLUDED.allowed RETURNING 1) " +
+          "SELECT (SELECT COUNT(*)::int FROM cleared) AS cleared_count,(SELECT COUNT(*)::int FROM saved) AS saved_count",
+          [id,JSON.stringify(body.permissions)]
+        );
+      }
+      await auditQuery(sql,user.id,"update","erp_role",id,{name,description,permissions_updated:Array.isArray(body.permissions)});
+      return erpJson({ role: updated[0] });
+    } catch (error) {
+      console.error("[erp] Role update failed:", error?.message || "database error");
+      return erpError(503, "ROLE_UPDATE_FAILED", "No se pudo actualizar la plantilla.");
+    }
+  }
+
+  if (resource === "audit" && request.method === "GET") {
+    try {
+      const rows = await sql.query(
+        "SELECT a.id,a.actor_user_id,u.display_name AS actor_name,a.action,a.entity_type,a.entity_id,a.details,a.created_at " +
+        "FROM audit_log a LEFT JOIN app_users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT 500"
+      );
+      return erpJson({ records: rows });
+    } catch (error) {
+      console.error("[erp] Audit history failed:", error?.message || "database error");
+      return erpError(503, "AUDIT_READ_FAILED", "No se pudo consultar el historial de auditoría.");
+    }
+  }
+
   if (resource === "settings" && request.method === "GET") {
     const rows = await sql.query("SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key");
     return erpJson({ records: rows });
