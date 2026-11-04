@@ -3,12 +3,32 @@ import { test, expect } from '@playwright/test';
 const workerPattern = /\/api\/erp\/[^?]+/;
 const apiBase = 'https://jb-parfums-erp-api.jaredblancoh19.workers.dev';
 const fixture = {
-  products: [{
-    id: '00000000-0000-0000-0000-000000000101', sku: 'QA-001',
-    name: 'QA Fixture Perfume', brand: 'QA Maison', category: 'Diseñador',
-    purchase_cost_usd: 20, additional_cost_usd: 5, unit_cost_usd: 25,
-    price_usd: 50, stock: 5, min_stock: 1, active: true, images: []
-  }],
+  products: [
+    {
+      id: '00000000-0000-0000-0000-000000000101', sku: 'QA-001',
+      name: 'QA Fixture Perfume', brand: 'QA Maison', category: 'Diseñador',
+      purchase_cost_usd: 20, additional_cost_usd: 5, unit_cost_usd: 25,
+      price_usd: 50, stock: 5, min_stock: 1, active: true, images: []
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000102', sku: 'QA-002',
+      name: 'QA Low Stock Perfume', brand: 'QA Maison', category: 'Árabes',
+      purchase_cost_usd: 12, additional_cost_usd: 2, unit_cost_usd: 14,
+      price_usd: 30, stock: 1, min_stock: 3, active: true, images: []
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000103', sku: 'QA-003',
+      name: 'QA Out of Stock Perfume', brand: 'QA Maison', category: 'Diseñador',
+      purchase_cost_usd: 10, additional_cost_usd: 0, unit_cost_usd: 10,
+      price_usd: 25, stock: 0, min_stock: 2, active: true, images: []
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000104', sku: 'QA-004',
+      name: 'QA Archived Perfume', brand: 'QA Maison', category: 'Árabes',
+      purchase_cost_usd: 8, additional_cost_usd: 0, unit_cost_usd: 8,
+      price_usd: 20, stock: 4, min_stock: 2, active: false, images: []
+    }
+  ],
   inventory_movements: Array.from({ length: 27 }, (_, index) => {
     const entry = index % 2 === 0;
     const delta = entry ? 2 : -1;
@@ -83,6 +103,28 @@ test('authenticated ERP renders dashboard and primary modules from API data', as
   await expect(page.getByRole('heading', { name: 'Recursos Humanos' })).toBeVisible();
   await navigateToView(page, 'analytics');
   await expect(page.getByRole('heading', { name: 'Informes y análisis' })).toBeVisible();
+});
+
+test('inventory products search by SKU and filter category and stock status', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+  const rows = page.locator('#inventory-product-body tr');
+  await expect(rows).toHaveCount(3);
+  await expect(page.getByText('3 de 3 productos')).toBeVisible();
+
+  await page.getByLabel('Estado de existencias').selectOption('low');
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('QA Low Stock Perfume');
+
+  await page.getByRole('button', { name: 'Limpiar', exact: true }).click();
+  await page.getByLabel('Buscar productos en existencias').fill('QA-003');
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('QA Out of Stock Perfume');
+
+  await page.getByRole('button', { name: 'Limpiar', exact: true }).click();
+  await page.getByLabel('Categoría de existencias').selectOption('Árabes');
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText('QA Low Stock Perfume');
 });
 
 test('inventory kardex searches, filters by type and date, and paginates all movements', async ({ page }) => {

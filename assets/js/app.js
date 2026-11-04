@@ -442,7 +442,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1 };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all' };
   const root = document.getElementById('view-root');
   const dialog = document.getElementById('product-dialog');
   const form = document.getElementById('product-form');
@@ -639,15 +639,48 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       '<button class="button button-quiet button-small" type="button" data-action="clear-inventory-filters">Limpiar filtros</button></div></div>' +
       '<div id="inventory-movement-results">' + renderInventoryMovementResults() + '</div></article>';
   }
+  function filteredInventoryProducts() {
+    const query = String(state.inventoryProductQuery || '').trim().toLocaleLowerCase('es');
+    return products.filter(function (product) {
+      if (product.active === false) return false;
+      const searchable = [product.name, product.brand, product.sku, product.category, product.barcode, product.location]
+        .filter(Boolean).join(' ').toLocaleLowerCase('es');
+      const matchesQuery = !query || searchable.includes(query);
+      const matchesCategory = state.inventoryProductCategory === 'all' || product.category === state.inventoryProductCategory;
+      const minimum = Number.isInteger(product.minStock) ? product.minStock : 3;
+      const matchesStock = state.inventoryProductStock === 'all' ||
+        (state.inventoryProductStock === 'available' && product.stock > minimum) ||
+        (state.inventoryProductStock === 'low' && product.stock > 0 && product.stock <= minimum) ||
+        (state.inventoryProductStock === 'out' && product.stock === 0);
+      return matchesQuery && matchesCategory && matchesStock;
+    }).sort(function (a, b) {
+      return a.stock - b.stock || String(a.name).localeCompare(String(b.name), 'es');
+    });
+  }
+  function renderInventoryProductRows() {
+    const filtered = filteredInventoryProducts();
+    const rows = filtered.map(function (product) {
+      const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
+      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Acción"><button class="button button-quiet button-small" type="button" data-action="stock-product" data-id="' + product.id + '">Registrar movimiento</button></td></tr>';
+    }).join('');
+    const count = document.getElementById('inventory-product-count');
+    const body = document.getElementById('inventory-product-body');
+    if (count) count.textContent = filtered.length + ' de ' + products.filter(function (product) { return product.active !== false; }).length + ' productos';
+    if (body) body.innerHTML = rows || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>';
+  }
   function renderInventory() {
     const activeProducts = products.filter(function (product) { return product.active !== false; });
-    const rows = activeProducts.slice().sort(function (a, b) { return a.stock - b.stock; }).map(function (product) {
+    const categories = Array.from(new Set(activeProducts.map(function (product) { return product.category; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    const categoryOptions = categories.map(function (category) {
+      return '<option value="' + esc(category) + '"' + (state.inventoryProductCategory === category ? ' selected' : '') + '>' + esc(category) + '</option>';
+    }).join('');
+    const rows = filteredInventoryProducts().map(function (product) {
       const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category) + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Acción"><button class="button button-quiet button-small" type="button" data-action="stock-product" data-id="' + product.id + '">Registrar movimiento</button></td></tr>';
+      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Acción"><button class="button button-quiet button-small" type="button" data-action="stock-product" data-id="' + product.id + '">Registrar movimiento</button></td></tr>';
     }).join('');
     return heading(views.inventory, '<div class="heading-actions-inline"><button class="button button-quiet" data-action="export-inventory">' + svg('download') + ' Exportar CSV</button><button class="button button-primary" data-action="stock-new">' + svg('plus') + ' Registrar movimiento</button></div>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Referencias activas</span><strong>' + activeProducts.length + '</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong>' + activeProducts.reduce(function (sum, product) { return sum + product.stock; }, 0) + '</strong></div><div class="summary-mini"><span>Para reponer</span><strong>' + activeProducts.filter(needsRestock).length + '</strong></div></div>' +
-      '<article class="list-panel inventory-stock-panel"><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="6"><div class="empty-state">No hay productos activos.</div></td></tr>') + '</tbody></table></div></article>' +
+      '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="inventory-product-search" type="search" value="' + esc(state.inventoryProductQuery) + '" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"' + (state.inventoryProductStock === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.inventoryProductStock === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.inventoryProductStock === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.inventoryProductStock === 'out' ? ' selected' : '') + '>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">' + rows.length + ' de ' + activeProducts.length + ' productos</span><span>Ordenados por menor existencia</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th></th></tr></thead><tbody id="inventory-product-body">' + (rows || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>') + '</tbody></table></div></article>' +
       renderInventoryLedger() +
       '<div class="notice-panel"><span>' + svg('warning') + '</span><div><strong>Stock mínimo configurable por producto · Kardex conectado</strong><p>El sistema valida que las salidas no dejen existencias negativas. Cada movimiento conserva stock anterior, variación y stock resultante. Cada operación se registra en Neon y conserva su trazabilidad.</p></div></div>';
   }
@@ -2169,6 +2202,18 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
         state.inventoryMovementPage = Math.max(1, state.inventoryMovementPage + step);
         refreshInventoryMovementResults();
       }
+      else if (name === 'clear-inventory-product-filters') {
+        state.inventoryProductQuery = '';
+        state.inventoryProductCategory = 'all';
+        state.inventoryProductStock = 'all';
+        const search = document.getElementById('inventory-product-search');
+        const category = document.getElementById('inventory-product-category');
+        const stock = document.getElementById('inventory-product-stock');
+        if (search) search.value = '';
+        if (category) category.value = 'all';
+        if (stock) stock.value = 'all';
+        renderInventoryProductRows();
+      }
       else if (name === 'clear-inventory-filters') {
         state.inventoryMovementQuery = '';
         state.inventoryMovementType = 'all';
@@ -2243,8 +2288,18 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       state.inventoryMovementPage = 1;
       refreshInventoryMovementResults();
     }
+    else if (event.target && event.target.id === 'inventory-product-search') {
+      state.inventoryProductQuery = event.target.value;
+      renderInventoryProductRows();
+    }
   });
   document.addEventListener('change', function (event) {
+    if (event.target && ['inventory-product-category','inventory-product-stock'].includes(event.target.id)) {
+      if (event.target.id === 'inventory-product-category') state.inventoryProductCategory = event.target.value;
+      if (event.target.id === 'inventory-product-stock') state.inventoryProductStock = event.target.value;
+      renderInventoryProductRows();
+      return;
+    }
     if (event.target && ['inventory-movement-type','inventory-movement-start','inventory-movement-end'].includes(event.target.id)) {
       if (event.target.id === 'inventory-movement-type') state.inventoryMovementType = event.target.value;
       if (event.target.id === 'inventory-movement-start') state.inventoryMovementStartDate = event.target.value;

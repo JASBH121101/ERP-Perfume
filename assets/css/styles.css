@@ -853,3 +853,13 @@ body.auth-locked .app-shell {
   .inventory-ledger-footer{align-items:stretch;flex-direction:column}
   .inventory-ledger-pagination{justify-content:space-between}
 }
+
+
+/* Inventory product search and filters */
+.inventory-products-toolbar{padding:12px 14px 8px;align-items:flex-start}
+.inventory-products-toolbar .toolbar-right{flex-wrap:wrap;justify-content:flex-end}
+.inventory-products-meta{display:flex;justify-content:space-between;gap:12px;padding:0 14px 10px;color:#998d7b;font-size:10px}
+@media(max-width:720px){
+  .inventory-products-toolbar .toolbar-right{display:grid;grid-template-columns:1fr;width:100%}
+  .inventory-products-meta{flex-direction:column;gap:4px}
+}
