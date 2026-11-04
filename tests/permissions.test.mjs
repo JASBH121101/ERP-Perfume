@@ -92,6 +92,18 @@ test("dedicated business routes map to their own permissions", () => {
     "settings.general.manage");
 });
 
+test("owner-only management routes resolve to dedicated granular permissions", () => {
+  assert.equal(resolveRoutePermission("users", "GET", "", [], null), "users.accounts.view");
+  assert.equal(resolveRoutePermission("users", "POST", "", [], {}), "users.accounts.create");
+  assert.equal(resolveRoutePermission("users", "PATCH", "42", [], { account_status: "disabled" }), "users.accounts.disable");
+  assert.equal(resolveRoutePermission("users", "PATCH", "42", [], { position_title: "Auxiliar" }), "users.accounts.edit");
+  assert.equal(resolveRoutePermission("roles", "GET", "", [], null), "users.roles.view");
+  assert.equal(resolveRoutePermission("roles", "POST", "", [], {}), "users.roles.create");
+  assert.equal(resolveRoutePermission("roles", "PATCH", "sales", [], {}), "users.roles.edit");
+  assert.equal(resolveRoutePermission("permissions", "GET", "", [], null), "users.roles.view");
+  assert.equal(resolveRoutePermission("audit", "GET", "", [], null), "audit.history.view");
+});
+
 test("unknown routes fail closed", () => {
   assert.equal(resolveRoutePermission("unknown-resource", "GET", "", [], null), null);
 });
