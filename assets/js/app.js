@@ -1694,26 +1694,32 @@
     return parsed;
   }
   function parseCatalogTextRows(text) {
-    const skip = /^(sku|codigo|producto|nombre|descripcion|descripci[oó]n|marca|brand|precio|price|stock|existencias|total|subtotal|pagina|page|www\.|https?:)/i;
-    const lines=String(text||'').replace(/\u00a0/g,' ').split(/\r?\n/).map(line=>line.replace(/\s+/g,' ').trim()).filter(Boolean);
+    const skip=/^(sku|codigo|producto|nombre|descripcion|marca|brand|precio|price|stock|existencias|total|subtotal|pagina|page|www\.|https?:)/i;
+    const lines=String(text||'').replace(/\u00a0/g,' ').split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
     const rows=[];
-    for (const line of lines) {
-      if (line.length < 3 || line.length > 180 || skip.test(line)) continue;
-      if (!/[a-záéíóúñ]{3}/i.test(line)) continue;
-      const values=[...line.matchAll(/(?:US\$|USD|C\$|NIO|\$)?\s*[-+]?\d[\d.,]*/gi)];
-      let detected = null, name = line;
-      if (values.length) {
-        const last=values[values.length-1];
-        const amount=catalogNumber(last[0]);
-        if (Number.isFinite(amount) && amount > 0 && amount < 1000000) {
-          detected=amount;
-          name=line.slice(0,last.index).replace(/[\s|,;:–-]+$/,'').trim();
-        }
+    for(const line of lines){
+      if(line.length<3||line.length>260||skip.test(line)||!/[a-záéíóúñ]{3}/i.test(line))continue;
+      const columns=line.split(/\s{3,}|\s\|\s|\t/).map(x=>x.trim()).filter(Boolean);
+      const nums=columns.map((value,index)=>({value,index,amount:catalogNumber(value)})).filter(x=>/^(?:(?:US\$|USD|C\$|NIO|\$)\s*)?[-+]?\d[\d.,]*$/.test(x.value)&&x.amount>0&&x.amount<1000000);
+      let name='',amount=null,stock=0;
+      if(columns.length>1){
+        const first=columns[0];
+        const codeLike=/^[A-Z0-9][A-Z0-9._/-]{2,}$/i.test(first)&&(/[0-9_-]/.test(first)||first===first.toUpperCase());
+        const nameStart=codeLike?1:0;
+        const firstNum=nums.find(x=>x.index>=nameStart);
+        name=columns.slice(nameStart,firstNum?firstNum.index:columns.length).filter(x=>/[a-záéíóúñ]{3}/i.test(x)).join(' ').trim();
+        if(firstNum)amount=firstNum.amount;
+        const lastNum=nums[nums.length-1];
+        if(nums.length>1&&lastNum.index>(firstNum?.index??-1)&&Number.isInteger(lastNum.amount)&&lastNum.amount<100000)stock=lastNum.amount;
       }
-      name=name.replace(/^\d{1,4}[\s.)-]+/,'').replace(/\s{2,}/g,' ').trim();
-      if (name.length < 3 || !/[a-záéíóúñ]{3}/i.test(name)) continue;
-      if (/^(pagina|page|total|subtotal|iva|impuesto|descuento|direccion|telefono|fecha|cliente|proveedor)\b/i.test(name)) continue;
-      rows.push({sku:catalogSku(rows.length),name:name.slice(0,120),brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock:0,min_stock:3,active:true,images:[],_detected_amount:detected});
+      if(!name){
+        const matches=[...line.matchAll(/(?:US\$|USD|C\$|NIO|\$)?\s*[-+]?\d[\d.,]*/gi)];
+        name=line;
+        if(matches.length){const last=matches[matches.length-1];const n=catalogNumber(last[0]);if(n>0&&n<1000000){amount=amount==null?n:amount;name=line.slice(0,last.index).replace(/[\s|,;:–-]+$/,'').trim();}}
+        name=name.replace(/^\d{1,4}[\s.)-]+/,'').replace(/\s{2,}/g,' ').trim();
+      }
+      if(name.length<3||!/[a-záéíóúñ]{3}/i.test(name)||/^(pagina|page|total|subtotal|iva|impuesto|descuento|direccion|telefono|fecha|cliente|proveedor)\b/i.test(name))continue;
+      rows.push({sku:catalogSku(rows.length),name:name.slice(0,120),brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock,min_stock:3,active:true,images:[],_detected_amount:amount});
       if(rows.length>=200)break;
     }
     const unique=[],seen=new Set();
@@ -1742,14 +1748,17 @@
       status('Leyendo página '+pageNumber+' de '+pdf.numPages+'…');
       const page=await pdf.getPage(pageNumber);
       const textContent=await page.getTextContent();
-      const positionedItems=(textContent.items||[]).filter(item=>String(item.str||'').trim()).map(item=>({text:String(item.str||'').trim(),x:Number(item.transform?.[4]||0),y:Number(item.transform?.[5]||0)})).sort((a,b)=>b.y-a.y||a.x-b.x);
+      const positionedItems=(textContent.items||[]).filter(item=>String(item.str||'').trim()).map(item=>({text:String(item.str||'').trim(),x:Number(item.transform?.[4]||0),y:Number(item.transform?.[5]||0),width:Number(item.width||0)})).sort((a,b)=>b.y-a.y||a.x-b.x);
       const textLines=[];
       for(const item of positionedItems){
         let line=textLines[textLines.length-1];
         if(!line||Math.abs(line.y-item.y)>2.5){line={y:item.y,items:[]};textLines.push(line);}
         line.items.push(item);
       }
-      let pageText=textLines.sort((a,b)=>b.y-a.y).map(line=>line.items.sort((a,b)=>a.x-b.x).map(item=>item.text).join('  ')).join('\n').trim();
+      let pageText=textLines.sort((a,b)=>b.y-a.y).map(line=>{
+        const items=line.items.sort((a,b)=>a.x-b.x);
+        return items.map((item,index)=>index===0?item.text:((item.x-(items[index-1].x+items[index-1].width)>24)?'    ':' ')+item.text).join('');
+      }).join('\n').trim();
       if(!pageText){
         status('PDF escaneado: aplicando OCR local a la página '+pageNumber+'…');
         await loadCatalogScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',()=>Boolean(window.Tesseract));
