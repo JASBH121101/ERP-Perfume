@@ -1058,10 +1058,14 @@ export async function handleERPRequest(request, env, user, sql) {
   const resource = parts[2] || "";
   const id = parts[3] || "";
   const permissionContext = await loadUserPermissions(sql, user);
-  const contentType = request.headers.get("content-type") || "";
+  const contentType = request.headers?.get?.("content-type") ||
+    (typeof request.json === "function" ? "application/json" : "");
   let requestBody = null;
   if (request.method !== "GET" && contentType.includes("application/json")) {
-    try { requestBody = await request.clone().json(); } catch { requestBody = null; }
+    try {
+      const readableRequest = typeof request.clone === "function" ? request.clone() : request;
+      requestBody = await readableRequest.json();
+    } catch { requestBody = null; }
   }
 
   const permissionKey = resolveRoutePermission(resource, request.method, id, parts, requestBody);
