@@ -1,5 +1,67 @@
 import { test, expect } from '@playwright/test';
 
+const TEST_AUTH_BASE_URL = 'http://127.0.0.1:4173/__qa-auth';
+const TEST_AUTH_JWT = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJxYS11c2VyIn0.signature';
+
+async function installAuthenticatedTestSession(page) {
+  // Tests must never depend on the live Worker, Neon Auth or a real account.
+  await page.route('**/api/config', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ mode: 'authenticated', authBaseUrl: TEST_AUTH_BASE_URL })
+  }));
+
+  await page.route('**/__qa-auth/**', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/token')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ token: TEST_AUTH_JWT })
+      });
+    }
+    if (url.pathname.endsWith('/get-session')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session: {
+            id: 'qa-session',
+            token: TEST_AUTH_JWT,
+            userId: 'qa-owner',
+            expiresAt: '2030-01-01T00:00:00.000Z'
+          },
+          user: {
+            id: 'qa-owner',
+            name: 'QA Owner',
+            email: 'qa-owner@example.test',
+            emailVerified: true
+          }
+        })
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+
+  await page.route('**/api/auth/profile', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ user: {
+      id: 'qa-owner', name: 'QA Owner', email: 'qa-owner@example.test', role: 'owner', status: 'active'
+    } })
+  }));
+
+  await page.route('**/api/hr/employees', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ employees: [] })
+  }));
+}
+
+test.beforeEach(async ({ page }) => {
+  await installAuthenticatedTestSession(page);
+});
+
 async function navigateToView(page, view) {
   const sidebar = page.locator('#sidebar');
   const isMobile = await page.evaluate(() => window.matchMedia('(max-width: 720px)').matches);
@@ -23,7 +85,7 @@ test('ERP renders the dashboard and all primary modules', async ({ page }) => {
 
   await navigateToView(page, 'hr');
   await expect(page.getByRole('heading', { name: 'Recursos Humanos' })).toBeVisible();
-  await expect(page.getByText(/no hay colaboradores demo/i)).toBeVisible();
+  await expect(page.getByText(/no hay colaboradores registrados/i)).toBeVisible();
 });
 
 test('desktop sidebar collapses and remembers its state', async ({ page }) => {
