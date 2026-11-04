@@ -49,15 +49,20 @@ async function getBootstrap(request, env, context) {
   if (auth.response) return auth.response;
 
   try {
+    const canReadContacts = ["owner", "admin"].includes(auth.user.role);
     const [products, suppliers, customers, movements, setting] = await Promise.all([
       auth.sql.query(`SELECT ${PRODUCT_COLUMNS} FROM products ORDER BY created_at DESC, name`),
-      auth.sql.query("SELECT id, name, contact, phone, email, currency, notes, active, created_at FROM suppliers WHERE active = TRUE ORDER BY LOWER(name)"),
-      auth.sql.query(
-        "SELECT c.id, c.name, c.contact, c.phone, c.email, c.customer_type, c.active, c.created_at, " +
-        "COALESCE((SELECT COUNT(*)::int FROM orders o WHERE o.customer_id = c.id), 0) AS orders, " +
-        "COALESCE((SELECT SUM(o.total_usd) FROM orders o WHERE o.customer_id = c.id), 0)::text AS spent_usd " +
-        "FROM customers c WHERE c.active = TRUE ORDER BY LOWER(c.name)"
-      ),
+      canReadContacts
+        ? auth.sql.query("SELECT id, name, contact, phone, email, currency, notes, active, created_at FROM suppliers WHERE active = TRUE ORDER BY LOWER(name)")
+        : Promise.resolve([]),
+      canReadContacts
+        ? auth.sql.query(
+            "SELECT c.id, c.name, c.contact, c.phone, c.email, c.customer_type, c.active, c.created_at, " +
+            "COALESCE((SELECT COUNT(*)::int FROM orders o WHERE o.customer_id = c.id), 0) AS orders, " +
+            "COALESCE((SELECT SUM(o.total_usd) FROM orders o WHERE o.customer_id = c.id), 0)::text AS spent_usd " +
+            "FROM customers c WHERE c.active = TRUE ORDER BY LOWER(c.name)"
+          )
+        : Promise.resolve([]),
       auth.sql.query(
         "SELECT m.id, m.product_id, p.name AS product_name, p.sku AS sku_snapshot, m.movement_type, " +
         "m.quantity, m.quantity_delta, m.previous_stock, m.new_stock, m.note, m.reference_type, " +
@@ -142,17 +147,18 @@ async function createProduct(request, env, context) {
 
   try {
     const rows = await auth.sql.query(
-      "INSERT INTO products (sku, name, brand, category, concentration, gender, family, size_ml, presentation, " +
+      "WITH saved AS (INSERT INTO products (sku, name, brand, category, concentration, gender, family, size_ml, presentation, " +
       "barcode, description, supplier_name, purchase_cost_usd, additional_cost_usd, unit_cost_usd, price_usd, " +
       "wholesale_price_usd, stock, min_stock, location, tone, notes) " +
       "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,0,$18,$19,$20,$21) " +
-      `RETURNING ${PRODUCT_COLUMNS}`,
+      `RETURNING ${PRODUCT_COLUMNS}` +
+      "), audit AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT $22,'create','product',id::text,jsonb_build_object('sku',sku,'name',name) FROM saved) SELECT * FROM saved",
       [p.sku,p.name,p.brand,p.category,p.concentration,p.gender,p.family,p.sizeMl,p.presentation,p.barcode,
         p.description,p.supplierName,p.purchaseCost,p.additionalCost,p.unitCost,p.price,p.wholesalePrice,
-        p.minStock,p.location,p.tone,p.notes]
+        p.minStock,p.location,p.tone,p.notes,auth.user.id]
     );
     const product = rows[0];
-    await audit(auth.sql, auth.user.id, "create", "product", product.id, { sku: p.sku, name: p.name });
     return context.json({ product }, 201);
   } catch (error) {
     if (error?.code === "23505") return context.errorResponse(409, "DUPLICATE_PRODUCT", "The SKU or barcode is already in use.");
@@ -172,11 +178,12 @@ async function updateProduct(request, env, context, productId) {
   try {
     if (typeof body.active === "boolean" && Object.keys(body).length === 1) {
       const rows = await auth.sql.query(
-        `UPDATE products SET active = $1, updated_at = NOW() WHERE id = $2::uuid RETURNING ${PRODUCT_COLUMNS}`,
-        [body.active, productId]
+        `WITH saved AS (UPDATE products SET active = $1, updated_at = NOW() WHERE id = $2::uuid RETURNING ${PRODUCT_COLUMNS}), ` +
+        "audit AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) " +
+        "SELECT $3,'update','product',id::text,jsonb_build_object('active',active) FROM saved) SELECT * FROM saved",
+        [body.active, productId, auth.user.id]
       );
       if (!rows[0]) return context.errorResponse(404, "PRODUCT_NOT_FOUND", "The product was not found.");
-      await audit(auth.sql, auth.user.id, "update", "product", productId, { active: body.active });
       return context.json({ product: rows[0] });
     }
 
@@ -184,15 +191,16 @@ async function updateProduct(request, env, context, productId) {
     if (checked.error) return context.errorResponse(400, "INVALID_PRODUCT", checked.error);
     const p = checked.product;
     const rows = await auth.sql.query(
-      "UPDATE products SET sku=$1, name=$2, brand=$3, category=$4, concentration=$5, gender=$6, family=$7, size_ml=$8, " +
+      "WITH saved AS (UPDATE products SET sku=$1, name=$2, brand=$3, category=$4, concentration=$5, gender=$6, family=$7, size_ml=$8, " +
       "presentation=$9, barcode=$10, description=$11, supplier_name=$12, purchase_cost_usd=$13, additional_cost_usd=$14, " +
       "unit_cost_usd=$15, price_usd=$16, wholesale_price_usd=$17, min_stock=$18, location=$19, tone=$20, notes=$21, updated_at=NOW() " +
-      `WHERE id=$22::uuid RETURNING ${PRODUCT_COLUMNS}`,
+      `WHERE id=$22::uuid RETURNING ${PRODUCT_COLUMNS}` +
+      "), audit AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT $23,'update','product',id::text,jsonb_build_object('sku',sku,'name',name) FROM saved) SELECT * FROM saved",
       [p.sku,p.name,p.brand,p.category,p.concentration,p.gender,p.family,p.sizeMl,p.presentation,p.barcode,p.description,
-        p.supplierName,p.purchaseCost,p.additionalCost,p.unitCost,p.price,p.wholesalePrice,p.minStock,p.location,p.tone,p.notes,productId]
+        p.supplierName,p.purchaseCost,p.additionalCost,p.unitCost,p.price,p.wholesalePrice,p.minStock,p.location,p.tone,p.notes,productId,auth.user.id]
     );
     if (!rows[0]) return context.errorResponse(404, "PRODUCT_NOT_FOUND", "The product was not found.");
-    await audit(auth.sql, auth.user.id, "update", "product", productId, { sku: p.sku, name: p.name });
     return context.json({ product: rows[0] });
   } catch (error) {
     if (error?.code === "23505") return context.errorResponse(409, "DUPLICATE_PRODUCT", "The SKU or barcode is already in use.");
@@ -216,9 +224,13 @@ async function deleteProduct(request, env, context, productId) {
       [productId]
     );
     if (history[0]?.has_history) return context.errorResponse(409, "PRODUCT_HAS_HISTORY", "This product has history. Deactivate it to preserve traceability.");
-    const rows = await auth.sql.query("DELETE FROM products WHERE id=$1::uuid RETURNING id, sku, name", [productId]);
+    const rows = await auth.sql.query(
+      "WITH deleted AS (DELETE FROM products WHERE id=$1::uuid RETURNING id, sku, name), " +
+      "audit AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT $2,'delete','product',id::text,jsonb_build_object('sku',sku,'name',name) FROM deleted) SELECT * FROM deleted",
+      [productId, auth.user.id]
+    );
     if (!rows[0]) return context.errorResponse(404, "PRODUCT_NOT_FOUND", "The product was not found.");
-    await audit(auth.sql, auth.user.id, "delete", "product", productId, rows[0]);
     return context.json({ deleted: true, product: rows[0] });
   } catch (error) {
     console.error("[catalog] Product delete failed:", error?.message || "database error");
