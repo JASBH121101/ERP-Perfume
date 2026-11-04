@@ -76,6 +76,14 @@ CREATE INDEX IF NOT EXISTS purchase_receipts_order_idx
   ON purchase_receipts(purchase_order_id, received_at DESC);
 CREATE INDEX IF NOT EXISTS purchase_receipt_items_receipt_idx
   ON purchase_receipt_items(receipt_id);
+CREATE INDEX IF NOT EXISTS purchase_orders_created_by_idx
+  ON purchase_orders(created_by);
+CREATE INDEX IF NOT EXISTS purchase_receipts_received_by_idx
+  ON purchase_receipts(received_by);
+CREATE INDEX IF NOT EXISTS purchase_receipt_items_order_item_idx
+  ON purchase_receipt_items(purchase_order_item_id);
+CREATE INDEX IF NOT EXISTS purchase_receipt_items_product_idx
+  ON purchase_receipt_items(product_id);
 
 -- A purchase order is a commitment only: no inventory, cash or accounts-payable
 -- row is created here. Inventory is updated from receipt items; payables are
