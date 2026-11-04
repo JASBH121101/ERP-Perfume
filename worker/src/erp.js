@@ -1095,6 +1095,13 @@ export async function handleERPRequest(request, env, user, sql) {
     } catch { requestBody = null; }
   }
 
+  if (resource === "inventory-movements" && request.method === "POST") {
+    const movement = String(requestBody?.movement_type || requestBody?.type || requestBody?.direction || "").toLowerCase();
+    if (["devolucion", "devolución", "return", "reversion", "reversión", "reversal"].includes(movement)) {
+      return erpError(400, "INVALID_MOVEMENT", "Las devoluciones y reversiones requieren un documento de origen y no se registran como movimientos manuales.");
+    }
+  }
+
   const permissionKey = resolveRoutePermission(resource, request.method, id, parts, requestBody);
   if (["users","roles","permissions","devices","audit"].includes(resource) && user.role !== "owner") {
     return erpError(403, "OWNER_REQUIRED", "Solo el propietario puede administrar cuentas, permisos, dispositivos y auditoría.");
