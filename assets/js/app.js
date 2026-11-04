@@ -1680,7 +1680,9 @@
       cells.forEach((value,col)=>{
         const field=mapping[col];
         if (!field) return;
-        if (['purchase_cost_usd','additional_cost_usd','unit_cost_usd','price_usd','stock','min_stock','size_ml','wholesale_price_usd'].includes(field)) record[field]=catalogNumber(value);
+        if (['purchase_cost_usd','additional_cost_usd','unit_cost_usd','price_usd','stock','min_stock','size_ml','wholesale_price_usd'].includes(field)) {
+          record[field]=String(value||'').trim()===''?(['stock','min_stock'].includes(field)?0:null):catalogNumber(value);
+        }
         else record[field]=String(value||'').trim();
       });
       if (!record.name) return;
