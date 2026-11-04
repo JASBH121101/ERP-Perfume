@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { parseCatalogCSV, parseCatalogTextRows } from "../assets/js/catalog-import.mjs";
 import { calculateFinancialSnapshot } from "../assets/js/financial-snapshot.mjs";
 import { handleERPRequest, importProducts, createInvoice } from "../worker/src/erp.js";
