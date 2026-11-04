@@ -390,7 +390,8 @@ import { profileHasPermission } from './permission-utils.mjs';
       employees = (data.employees || []).map(e => ({
         id: e.id, employeeCode: e.employee_code || "", name: e.name, position: e.position,
         department: e.department || "", salaryNio: Number(e.salary_nio || 0), status: e.status || "Activo",
-        hireDate: e.hire_date || null, phone: e.phone || "", email: e.email || "", notes: e.notes || ""
+        hireDate: e.hire_date || null, phone: e.phone || "", email: e.email || "", notes: e.notes || "",
+        linkedUserId:e.linked_user_id||null, linkedAccountStatus:e.linked_account_status||null, accountActive:e.account_active===true
       }));
       attendanceRecords = (data.hr_attendance || []).map(e => ({
         id:e.id, employeeId:e.employee_id, workDate:e.work_date, checkIn:e.check_in, checkOut:e.check_out,
@@ -1252,7 +1253,7 @@ import { profileHasPermission } from './permission-utils.mjs';
       const balance=Math.max(0,Number(invoice.totalUsd)-Number(invoice.paidUsd||0));
       body='<div class="form-grid"><div class="detail-field full-field"><span>Saldo pendiente</span><strong>'+money(balance)+'</strong></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account',cashAccountOptions(),true)+'</div>';
     }
-    if(type==='employee')body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+'</div><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
+    if(type==='employee')body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80" autocomplete="name"')+formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+'</div><p class="form-helper">El correo permite vincular la identidad de Neon Auth con esta ficha cuando la persona se registre. La cuenta ERP se prepara desde esta ficha después de verificar su identidad.</p><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
     if(type==='attendance'){
       if(!employees.some(e=>e.status==='Activo')){toast('Primero agrega un colaborador activo en RRHH > Personal.');return;}
       const options=employees.filter(e=>e.status==='Activo').map(e=>'<option value="'+e.id+'">'+esc(e.name)+' · '+esc(e.position)+'</option>').join('');
@@ -1471,7 +1472,7 @@ import { profileHasPermission } from './permission-utils.mjs';
         const salary=num('salaryNio');
         if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0)throw new Error('Revisa los datos y el salario.');
         await erpApi('employees',{method:'POST',body:JSON.stringify({
-          name:get('name'),position:get('position'),department:get('department')||null,salary_nio:salary,status:'Activo'
+          name:get('name'),email:get('email')||null,position:get('position'),department:get('department')||null,salary_nio:salary,status:'Activo'
         })});
         hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
       } else if(type==='attendance'){
@@ -1625,8 +1626,8 @@ import { profileHasPermission } from './permission-utils.mjs';
     let actions='',content='';
     if(state.hrTab==='employees'){
       actions='<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>';
-      const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Sin código')+' · '+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Contacto">'+esc(e.phone||e.email||'—')+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
-      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>CONTACTO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
+      const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Sin código')+' · '+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Contacto">'+esc(e.phone||e.email||'—')+'</td><td data-label="Acceso ERP"><span class="status-chip '+(e.linkedUserId?'status-success':'status-muted')+'">'+(e.linkedUserId?(e.accountActive?'Cuenta activa':'Cuenta pendiente'):'Sin cuenta')+'</span></td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>CONTACTO</th><th>ACCESO ERP</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
     } else if(state.hrTab==='attendance'){
       actions=activeEmployees.length?'<button class="button button-primary" data-action="new-attendance">'+svg('plus')+' Registrar asistencia</button>':'';
       const employeeName=id=>employees.find(e=>e.id===id)?.name||'Colaborador';
@@ -2008,7 +2009,7 @@ import { profileHasPermission } from './permission-utils.mjs';
     }).join("");
 
     const pendingRows = accessManager.pendingIdentities.map(identity =>
-      '<tr data-pending-email="'+esc(identity.email)+'"><td><strong>'+esc(identity.email)+'</strong><small class="table-secondary">'+(identity.email_verified?'Correo verificado':'Correo pendiente de verificar')+'</small></td>'+
+      '<tr data-pending-email="'+esc(identity.email)+'" data-employee-id="'+esc(identity.employee_id||'')+'"><td><strong>'+esc(identity.email)+'</strong><small class="table-secondary">'+(identity.email_verified?'Correo verificado':'Correo pendiente de verificar')+'</small>'+(identity.employee_name?'<small class="table-secondary">Ficha: '+esc(identity.employee_name)+'</small>':'')+'</td>'+
       '<td><input class="filter-select" data-pending-name value="'+esc(identity.display_name||"")+'" maxlength="180" placeholder="Nombre completo"></td>'+
       '<td><input class="filter-select" data-pending-position maxlength="120" placeholder="Cargo libre"></td>'+
       '<td><select class="filter-select" data-pending-role>'+roleOptions+'</select></td>'+
@@ -2838,6 +2839,7 @@ import { profileHasPermission } from './permission-utils.mjs';
         display_name:row.querySelector("[data-pending-name]")?.value.trim()||"",
         position_title:row.querySelector("[data-pending-position]")?.value.trim()||"",
         role_template_key:row.querySelector("[data-pending-role]")?.value||"viewer",
+        employee_id:row.getAttribute("data-employee-id")||null,
         must_change_password:true
       };
       if(!payload.display_name){toast("Escribe el nombre completo antes de preparar la cuenta.");return;}

@@ -59,7 +59,7 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM expenses ORDER BY created_at DESC LIMIT 5000`,
       tx`SELECT * FROM cash_accounts WHERE active = TRUE ORDER BY name ASC`,
       tx`SELECT * FROM cash_entries ORDER BY created_at DESC LIMIT 10000`,
-      tx`SELECT * FROM employees ORDER BY name ASC LIMIT 1000`,
+      tx`SELECT e.*, u.id AS linked_user_id, u.account_status AS linked_account_status, u.active AS account_active FROM employees e LEFT JOIN app_users u ON u.employee_id=e.id ORDER BY e.name ASC LIMIT 1000`,
       tx`SELECT * FROM hr_attendance ORDER BY work_date DESC LIMIT 5000`,
       tx`SELECT * FROM hr_leave_requests ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`,
@@ -1129,15 +1129,17 @@ export async function handleERPRequest(request, env, user, sql) {
     try {
       const [users, pendingIdentities] = await Promise.all([
         sql.query(
-          "SELECT u.id,u.auth_user_id,u.email,u.display_name,u.position_title,u.role,u.role_template_key," +
+          "SELECT u.id,u.auth_user_id,u.employee_id,e.name AS employee_name,e.employee_code,u.email,u.display_name,u.position_title,u.role,u.role_template_key," +
           "u.account_status,u.active,u.must_change_password,u.created_at,u.updated_at,r.name AS role_template_name," +
           "COALESCE((SELECT jsonb_agg(jsonb_build_object('permission_key',uo.permission_key,'allowed',uo.allowed) ORDER BY uo.permission_key) " +
           "FROM user_permission_overrides uo WHERE uo.user_id=u.id),'[]'::jsonb) AS overrides " +
-          "FROM app_users u LEFT JOIN erp_roles r ON r.role_key=u.role_template_key ORDER BY u.created_at DESC LIMIT 500"
+          "FROM app_users u LEFT JOIN erp_roles r ON r.role_key=u.role_template_key LEFT JOIN employees e ON e.id=u.employee_id ORDER BY u.created_at DESC LIMIT 500"
         ),
         sql.query(
-          'SELECT au.id AS auth_user_id,au.email,au.name AS display_name,au."emailVerified" AS email_verified,au."createdAt" AS created_at ' +
+          'SELECT au.id AS auth_user_id,au.email,au.name AS display_name,au."emailVerified" AS email_verified,au."createdAt" AS created_at,' +
+          'e.id AS employee_id,e.name AS employee_name,e.position AS employee_position ' +
           'FROM neon_auth."user" au LEFT JOIN app_users u ON u.auth_user_id=au.id::text ' +
+          'LEFT JOIN LATERAL (SELECT id,name,position FROM employees WHERE LOWER(email)=LOWER(au.email) ORDER BY CASE WHEN status=\'Activo\' THEN 0 ELSE 1 END,created_at DESC LIMIT 1) e ON TRUE ' +
           'WHERE u.id IS NULL ORDER BY au."createdAt" DESC LIMIT 200'
         )
       ]);
@@ -1156,6 +1158,8 @@ export async function handleERPRequest(request, env, user, sql) {
     const positionTitle = String(body.position_title || "").trim();
     const roleTemplateKey = String(body.role_template_key || "viewer").trim();
     const mustChangePassword = body.must_change_password !== false;
+    const employeeId = body.employee_id == null || body.employee_id === "" ? null : String(body.employee_id);
+    if (employeeId && !/^[0-9a-f-]{36}$/i.test(employeeId)) return erpError(400, "INVALID_EMPLOYEE", "La ficha de empleado seleccionada no es válida.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 180 || !displayName || displayName.length > 180 || positionTitle.length > 120) {
       return erpError(400, "INVALID_USER_PROFILE", "Indica un correo válido, nombre completo y cargo de hasta 120 caracteres.");
     }
@@ -1172,11 +1176,20 @@ export async function handleERPRequest(request, env, user, sql) {
       const identity = identityRows[0];
       if (!identity) return erpError(404, "AUTH_IDENTITY_NOT_FOUND", "La persona debe tener una identidad registrada en Neon Auth antes de poder autorizarla.");
       const accountStatus = identity.email_verified === true ? "invited" : "registered";
+      if (employeeId) {
+        const employeeRows = await sql.query("SELECT id,email,name,status FROM employees WHERE id=$1::uuid LIMIT 1", [employeeId]);
+        const employee = employeeRows[0];
+        if (!employee) return erpError(404, "EMPLOYEE_NOT_FOUND", "La ficha laboral seleccionada ya no existe.");
+        if (employee.status !== "Activo") return erpError(409, "EMPLOYEE_INACTIVE", "Solo se puede vincular una cuenta a un empleado activo.");
+        if (!employee.email || employee.email.trim().toLowerCase() !== email) return erpError(409, "EMPLOYEE_EMAIL_MISMATCH", "El correo de la identidad debe coincidir con el correo de la ficha laboral.");
+        const linked = await sql.query("SELECT id FROM app_users WHERE employee_id=$1::uuid LIMIT 1", [employeeId]);
+        if (linked[0]) return erpError(409, "EMPLOYEE_ALREADY_LINKED", "Esta ficha laboral ya tiene una cuenta ERP vinculada.");
+      }
       const created = await sql.query(
-        "INSERT INTO app_users(auth_user_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password) " +
-        "VALUES($1,$2,$3,$4,'viewer',$5,$6,FALSE,$7) " +
-        "RETURNING id,auth_user_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password,created_at",
-        [identity.id,email,displayName,positionTitle,roleTemplateKey,accountStatus,mustChangePassword]
+        "INSERT INTO app_users(auth_user_id,employee_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password) " +
+        "VALUES($1,$2::uuid,$3,$4,$5,'viewer',$6,$7,FALSE,$8) " +
+        "RETURNING id,auth_user_id,employee_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password,created_at",
+        [identity.id,employeeId, email,displayName,positionTitle,roleTemplateKey,accountStatus,mustChangePassword]
       );
       await auditQuery(sql,user.id,"provision","app_user",created[0].id,{email,role_template_key:roleTemplateKey,account_status:accountStatus});
       return erpJson({ user: created[0] }, 201);
