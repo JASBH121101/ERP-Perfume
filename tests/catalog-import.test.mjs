@@ -803,3 +803,62 @@ test("DGI settings reject an unapproved regime value", async () => {
   assert.equal(body.error.code,"INVALID_DGI_REGIME");
   assert.equal(queryCount,0);
 });
+
+test("DGI cannot confirm Cuota Fija without a written constancia reference", async () => {
+  let queryCount=0;
+  const sql={query:async()=>{queryCount+=1;return [];}};
+  const response=await handleERPRequest(requestFor("settings","PATCH",{
+    setting_key:"dgi_compliance",
+    setting_value:{
+      taxpayer_name:"JB PARFUMS",ruc:"RUC-TEST",business_address:"Granada",
+      regime_status:"cuota_fija",regime_confirmation_reference:"",
+      quota_fixed_amount_nio:0,certificate_available:false,certificate_displayed:false,
+      computerized_invoicing_status:"not_confirmed",dgi_confirmation_date:"2026-11-04"
+    }
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,400);
+  assert.equal(body.error.code,"DGI_REGIME_CONFIRMATION_REQUIRED");
+  assert.equal(queryCount,0);
+});
+
+test("DGI cannot mark computerized invoicing authorized without the authorization number", async () => {
+  let queryCount=0;
+  const sql={query:async()=>{queryCount+=1;return [];}};
+  const response=await handleERPRequest(requestFor("settings","PATCH",{
+    setting_key:"dgi_compliance",
+    setting_value:{
+      taxpayer_name:"JB PARFUMS",ruc:"RUC-TEST",business_address:"Granada",
+      regime_status:"not_confirmed",regime_confirmation_reference:"",
+      quota_fixed_amount_nio:0,certificate_available:false,certificate_displayed:false,
+      computerized_invoicing_status:"authorized",dgi_confirmation_date:"2026-11-04",
+      computerized_invoicing_authorization_number:"",
+      computerized_invoicing_confirmation_reference:""
+    }
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,400);
+  assert.equal(body.error.code,"DGI_INVOICING_AUTHORIZATION_REQUIRED");
+  assert.equal(queryCount,0);
+});
+
+test("DGI cannot mark computerized invoicing not applicable without a written response reference", async () => {
+  let queryCount=0;
+  const sql={query:async()=>{queryCount+=1;return [];}};
+  const response=await handleERPRequest(requestFor("settings","PATCH",{
+    setting_key:"dgi_compliance",
+    setting_value:{
+      taxpayer_name:"JB PARFUMS",ruc:"RUC-TEST",business_address:"Granada",
+      regime_status:"not_confirmed",regime_confirmation_reference:"",
+      quota_fixed_amount_nio:0,certificate_available:false,certificate_displayed:false,
+      computerized_invoicing_status:"not_applicable_confirmed",dgi_confirmation_date:"2026-11-04",
+      computerized_invoicing_authorization_number:"",
+      computerized_invoicing_confirmation_reference:""
+    }
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,400);
+  assert.equal(body.error.code,"DGI_INVOICING_CONFIRMATION_REQUIRED");
+  assert.equal(queryCount,0);
+});
+
