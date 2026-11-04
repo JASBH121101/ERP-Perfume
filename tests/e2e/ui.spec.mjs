@@ -193,6 +193,7 @@ test('custom role can open DGI when the explicit view permission is granted', as
       permissions: ['dashboard.view', 'dgi.documents.view']
     };
   });
+  await page.locator('#sidebar button[data-view="dashboard"]').click();
   await page.locator('#sidebar button[data-view="dgi"]').click();
   await expect(page.getByRole('heading', { name: 'Control tributario DGI' })).toBeVisible();
 });
@@ -208,24 +209,12 @@ test('custom role without DGI permission is returned to an allowed module', asyn
   });
   await page.locator('#sidebar button[data-view="dgi"]').click();
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
+  await page.locator('#sidebar button[data-view="dashboard"]').click();
   await expect(page.locator('#sidebar button[data-view="dgi"]')).toBeHidden();
 });
 
 test('DGI workspace displays thresholds as alerts and starts with regime unconfirmed', async ({ page }) => {
   await page.goto('/');
-  const diagnostic = await page.evaluate(async () => {
-    const profile = window.JBAuth?.profile || null;
-    const permissions = await import('/assets/js/permission-utils.mjs');
-    return {
-      role: profile?.role || null,
-      permissions: profile?.permissions || null,
-      dgi: permissions.profileHasPermission(profile, 'dgi.documents.view'),
-      hr: permissions.profileHasPermission(profile, 'hr.employees.view'),
-      dgiNavHidden: document.querySelector('#sidebar button[data-view="dgi"]')?.hidden,
-      hrNavHidden: document.querySelector('#sidebar button[data-view="hr"]')?.hidden
-    };
-  });
-  console.log('DGI_PERMISSION_DIAGNOSTIC ' + JSON.stringify(diagnostic));
   await navigateToView(page, 'dgi');
   await expect(page.getByRole('heading', { name: 'Control tributario DGI' })).toBeVisible();
   await expect(page.locator('#dgi-settings-form [name="regimeStatus"]')).toHaveValue('not_confirmed');

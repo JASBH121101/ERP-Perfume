@@ -1828,6 +1828,7 @@ import { profileHasPermission } from './permission-utils.mjs';
     finally{if(button)button.disabled=false;}
   }
   function renderDgi(){
+    const role=window.JBAuth?.profile?.role||'';
     if(!permissionGranted('dgi.documents.view'))return heading(views.dgi,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Acceso restringido</strong><p>Tu cuenta no tiene permiso para consultar los documentos DGI.</p></div></div>';
     if(!dgiDocumentsLoaded&&!dgiDocumentsLoading&&!dgiDocumentsLoadAttempted)loadDgiSupportDocuments(false);
     const now=new Date(), monthStart=new Date(now.getFullYear(),now.getMonth(),1), nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);
