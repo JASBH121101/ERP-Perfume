@@ -66,7 +66,7 @@
     const headers = new Headers(options.headers || {});
     headers.set("authorization", "Bearer " + token);
     if (options.body && !headers.has("content-type")) headers.set("content-type", "application/json");
-    const response = await fetch(auth.apiUrl("/api/erp/" + path.replace(/^\\/+/, "")), {
+    const response = await fetch(auth.apiUrl("/api/erp/" + path.replace(/^\/+/, "")), {
       ...options, headers, cache: "no-store"
     });
     const body = await response.json().catch(() => ({}));
