@@ -443,6 +443,39 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
   const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all' };
+  const permissionViews = {
+    dashboard: ["dashboard.view"], products: ["products.catalog.view"],
+    inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"],
+    orders: ["orders.records.view"], billing: ["billing.invoices.view"],
+    receivables: ["receivables.view","billing.payments.view"], customers: ["customers.records.view"],
+    hr: ["hr.employees.view","hr.attendance.view","hr.payroll.view","hr.leave.view","hr.contracts.view"],
+    dgi: ["dgi.documents.view"], analytics: ["analytics.reports.view"], settings: ["settings.general.view"],
+    purchases: ["purchases.purchase_orders.view","purchases.receipts.view","purchases.supplier_invoices.view"],
+    payables: ["payables.payments.view"], suppliers: ["suppliers.records.view"],
+    expenses: ["expenses.records.view"], cash: ["cash.entries.view"]
+  };
+  function permissionGranted(key) {
+    const grants = window.JBAuth?.profile?.permissions;
+    return Array.isArray(grants) && (grants.includes("*") || grants.includes(key));
+  }
+  function canViewERPView(view) {
+    const keys = permissionViews[view] || [];
+    return keys.some(permissionGranted);
+  }
+  function firstPermittedView() {
+    return Object.keys(permissionViews).find(canViewERPView) || null;
+  }
+  function applyPermissionNavigation() {
+    document.querySelectorAll(".primary-nav .nav-item[data-view]").forEach((button) => {
+      button.hidden = !canViewERPView(button.getAttribute("data-view"));
+    });
+    document.querySelectorAll(".primary-nav").forEach((nav) => {
+      const visible = Array.from(nav.querySelectorAll(".nav-item")).some((button) => !button.hidden);
+      nav.hidden = !visible;
+      const caption = nav.previousElementSibling;
+      if (caption?.classList.contains("nav-caption")) caption.hidden = !visible;
+    });
+  }
   const root = document.getElementById('view-root');
   const dialog = document.getElementById('product-dialog');
   const form = document.getElementById('product-form');
@@ -1880,14 +1913,16 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       expenses: renderExpenses,
       cash: renderCash
     };
+    if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
     root.innerHTML = (renderers[state.view] || renderDashboard)();
+    applyPermissionNavigation();
     updateNotificationIndicator();
     document.querySelector('.page-context')?.classList.toggle('page-context-hr',state.view==='hr');
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
     hydrateProductImageSlots();
   }
   function goToView(view) {
-    if (!views[view]) return;
+    if (!views[view] || !canViewERPView(view)) return;
     state.view = view;
     state.query = '';
     state.filter = 'all';
