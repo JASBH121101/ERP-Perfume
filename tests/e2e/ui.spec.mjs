@@ -95,9 +95,10 @@ test('CSV import parses the selected file and exposes an editable preview', asyn
       'ARM-200;Stronger With You;Armani;50;89;2', 'utf8')
   });
   await expect(dialog.locator('#catalog-import-status')).toContainText('Se detectaron 2 filas');
-  await expect(dialog.locator('#catalog-import-preview')).toContainText('Sauvage Elixir');
-  await expect(dialog.locator('#catalog-import-preview')).toContainText('Stronger With You');
-  await expect(dialog.locator('#catalog-import-preview')).toContainText('Dior');
+  const preview = dialog.locator('#catalog-import-preview');
+  await expect(preview.locator('[data-import-field="name"]').nth(0)).toHaveValue('Sauvage Elixir');
+  await expect(preview.locator('[data-import-field="name"]').nth(1)).toHaveValue('Stronger With You');
+  await expect(preview.locator('[data-import-field="brand"]').nth(0)).toHaveValue('Dior');
   await expect(dialog.getByRole('button', { name: 'Importar 2 productos a Neon' })).toBeEnabled();
   await expect(dialog.locator('[data-import-field="price_usd"]').first()).toHaveValue('109.99');
   await dialog.locator('[data-import-field="name"]').first().fill('Sauvage Elixir QA editado');
