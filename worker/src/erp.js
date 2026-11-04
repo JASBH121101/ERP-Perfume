@@ -435,6 +435,7 @@ async function createInvoice(sql, user, body) {
     }
     return erpJson({record:rows[0]},201);
   }catch(error){
+    if(error?.code==="23505"&&error?.constraint==="invoices_order_id_unique_idx")return erpError(409,"DUPLICATE_WEB_INVOICE","Este pedido web ya tiene una factura registrada.");
     if(error?.code==="23505")return erpError(409,"DUPLICATE_INVOICE","El número de factura ya existe.");
     if(error?.code==="23503")return erpError(400,"RELATED_RECORD_NOT_FOUND","El cliente, pedido o producto relacionado no existe.");
     console.error("[erp] Invoice creation failed:",error?.message||"database error");
