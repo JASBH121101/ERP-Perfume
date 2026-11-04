@@ -63,6 +63,12 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", regime_confirmation_reference:"", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"", computerized_invoicing_authorization_number:"", computerized_invoicing_confirmation_reference:"" };
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
+  const accessManager = {
+    attempted:false, loading:false, loaded:false, error:"",
+    users:[], pendingIdentities:[], roles:[], permissions:[], grants:[], audit:[]
+  };
+  let accessSelectedRole = "";
+
 
   async function erpApi(path, options = {}) {
     const auth = window.JBAuth;
@@ -1918,8 +1924,104 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       featureCard('users','Personal y nómina','RR. HH. permanece habilitado. La nómina legal requiere configurar deducciones y prestaciones conforme a la normativa vigente.')+
       featureCard('spark','Trazabilidad','Las operaciones comerciales, cambios relevantes y ajustes de inventario registran auditoría.')+
       '</div>'+
+      renderAccessManager()+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Entorno de trabajo: Neon Development</strong><p>Los cambios de esta etapa se prueban en Desarrollo. Neon Production no recibe migraciones ni datos hasta validar el sistema y revisar los consumos.</p></div></div>';
   }
+  async function loadAccessManager(force = false) {
+    if (window.JBAuth?.profile?.role !== "owner") return;
+    if (accessManager.loading || (accessManager.loaded && !force) || (accessManager.attempted && !force)) return;
+    accessManager.attempted = true;
+    accessManager.loading = true;
+    accessManager.error = "";
+    try {
+      const [users, roles, audit] = await Promise.all([
+        erpApi("users"), erpApi("roles"), erpApi("audit")
+      ]);
+      accessManager.users = users.users || [];
+      accessManager.pendingIdentities = users.pendingIdentities || [];
+      accessManager.roles = roles.roles || [];
+      accessManager.permissions = roles.permissions || [];
+      accessManager.grants = roles.grants || [];
+      accessManager.audit = audit.records || [];
+      if (!accessSelectedRole || !accessManager.roles.some(role => role.role_key === accessSelectedRole)) {
+        accessSelectedRole = accessManager.roles.find(role => role.role_key !== "owner")?.role_key || "";
+      }
+      accessManager.loaded = true;
+    } catch (error) {
+      accessManager.error = error?.message || "No se pudo cargar la administración de accesos.";
+      accessManager.loaded = false;
+    } finally {
+      accessManager.loading = false;
+      if (state.view === "settings") renderView();
+    }
+  }
+
+  function renderAccessManager() {
+    if (window.JBAuth?.profile?.role !== "owner") return "";
+    if (!accessManager.attempted) loadAccessManager();
+    if (accessManager.loading && !accessManager.loaded) {
+      return '<article class="panel"><div class="panel-heading"><div><h2>Administración de accesos</h2><p>Cargando cuentas, plantillas, permisos y auditoría…</p></div></div></article>';
+    }
+    if (accessManager.error && !accessManager.loaded) {
+      return '<article class="panel"><div class="panel-heading"><div><h2>Administración de accesos</h2><p>'+esc(accessManager.error)+'</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Reintentar</button></div></article>';
+    }
+
+    const roleOptions = accessManager.roles.filter(role => role.role_key !== "owner")
+      .map(role => '<option value="'+esc(role.role_key)+'">'+esc(role.name)+'</option>').join("");
+    const userRows = accessManager.users.map(user => {
+      if (user.role === "owner") {
+        return '<tr><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td>Propietario</td><td>Protegido</td><td><span class="status-chip status-success">Activo</span></td><td>—</td></tr>';
+      }
+      const statusOptions = ["invited","registered","active","rejected","disabled"]
+        .map(status => '<option value="'+status+'"'+(user.account_status===status?' selected':'')+'>'+({
+          invited:"Invitado",registered:"Registrado",active:"Activo",rejected:"Rechazado",disabled:"Deshabilitado"
+        })[status]+'</option>').join("");
+      return '<tr data-user-id="'+esc(user.id)+'"><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td>'+
+        '<td><input class="filter-select" data-user-position value="'+esc(user.position_title||"")+'" maxlength="120" placeholder="Cargo libre"></td>'+
+        '<td><select class="filter-select" data-user-role>'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(user.role_template_key===role.role_key?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></td>'+
+        '<td><select class="filter-select" data-user-status>'+statusOptions+'</select></td>'+
+        '<td><label><input type="checkbox" data-user-password'+(user.must_change_password?' checked':'')+'> Cambio inicial</label> <button class="button button-quiet button-small" data-action="save-user-access">Guardar</button></td></tr>';
+    }).join("");
+
+    const pendingRows = accessManager.pendingIdentities.map(identity =>
+      '<tr data-pending-email="'+esc(identity.email)+'"><td><strong>'+esc(identity.email)+'</strong><small class="table-secondary">'+(identity.email_verified?'Correo verificado':'Correo pendiente de verificar')+'</small></td>'+
+      '<td><input class="filter-select" data-pending-name value="'+esc(identity.display_name||"")+'" maxlength="180" placeholder="Nombre completo"></td>'+
+      '<td><input class="filter-select" data-pending-position maxlength="120" placeholder="Cargo libre"></td>'+
+      '<td><select class="filter-select" data-pending-role>'+roleOptions+'</select></td>'+
+      '<td><button class="button button-primary button-small" data-action="provision-user-account">Preparar cuenta ERP</button></td></tr>'
+    ).join("");
+
+    const selectedRole = accessManager.roles.find(role=>role.role_key===accessSelectedRole);
+    const granted = new Set(accessManager.grants.filter(grant=>grant.role_key===accessSelectedRole && grant.allowed===true).map(grant=>grant.permission_key));
+    const moduleRows = accessManager.permissions.filter(permission=>permission.permission_type==="module");
+    const permissionGroups = moduleRows.map(module => {
+      const rows = accessManager.permissions.filter(permission=>permission.module_key===module.module_key)
+        .map(permission => {
+          const level = permission.permission_type==="module" ? "Módulo" : permission.permission_type==="section" ? "Sección" : "Acción";
+          const indent = permission.permission_type==="module" ? 0 : permission.permission_type==="section" ? 16 : 34;
+          return '<label class="permission-editor-row" style="padding-left:'+indent+'px"><input type="checkbox" name="permission" value="'+esc(permission.permission_key)+'"'+(granted.has(permission.permission_key)?' checked':'')+'><span>'+esc(permission.label)+'</span><small>'+level+'</small><code>'+esc(permission.permission_key)+'</code></label>';
+        }).join("");
+      return '<section class="permission-editor-module"><h4>'+esc(module.label)+'</h4>'+rows+'</section>';
+    }).join("");
+
+    const auditRows = accessManager.audit.slice(0,100).map(record =>
+      '<tr><td>'+esc(new Date(record.created_at).toLocaleString("es-NI"))+'</td><td>'+esc(record.actor_name||"Sistema")+'</td><td>'+esc(record.action)+'</td><td>'+esc(record.entity_type)+(record.entity_id?' · '+esc(record.entity_id):'')+'</td></tr>'
+    ).join("");
+
+    return '<section class="access-manager-section">'+
+      '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>El cargo es texto libre. El estado activo es lo que habilita la entrada al ERP.</p></div><span class="ledger-count">'+accessManager.users.length+' cuentas</span></div>'+
+      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>La identidad ya debe existir en Neon Auth. Esta acción crea el perfil ERP, inicialmente bloqueado; no crea la contraseña ni envía una invitación.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
+      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p></div>'+
+      '<select class="filter-select" id="access-role-select">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div>'+
+      (selectedRole ? '<form id="role-permissions-form" data-role-key="'+esc(accessSelectedRole)+'"><div class="permission-editor-grid">'+permissionGroups+'</div><div class="modal-actions"><button class="button button-primary" type="submit">Guardar permisos de plantilla</button></div></form>' : '<p>No hay plantillas editables disponibles.</p>')+
+      '<form id="role-create-form" class="rate-form"><label class="form-field"><span>Clave nueva</span><input name="role_key" maxlength="32" pattern="[a-z][a-z0-9_-]{2,31}" placeholder="supervisor" required></label><label class="form-field"><span>Nombre</span><input name="name" maxlength="80" placeholder="Supervisor de tienda" required></label><label class="form-field"><span>Descripción</span><input name="description" maxlength="240" placeholder="Responsabilidades del puesto"></label><button class="button button-quiet" type="submit">Crear plantilla vacía</button></form></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Auditoría reciente</h3><p>Últimos 100 cambios registrados.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>ACTOR</th><th>ACCIÓN</th><th>REGISTRO</th></tr></thead><tbody>'+(auditRows||'<tr><td colspan="4">Todavía no hay eventos de auditoría.</td></tr>')+'</tbody></table></div></article>'+
+      '</section>';
+  }
+
   function updateNotificationIndicator(){
     const dot=document.querySelector('.notification-button i');
     const button=document.querySelector('.notification-button');
