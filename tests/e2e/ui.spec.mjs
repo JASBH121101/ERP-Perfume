@@ -417,15 +417,15 @@ test('exchange rate is configurable and persists to DEMO settings',async({page})
  await expect(page.locator('#view-root')).toContainText('C$ 37.25 por US$ 1');await page.reload();await navigateToView(page, 'settings');
  await expect(page.locator('#exchange-rate-form input[name="exchangeRate"]')).toHaveValue('37.2500');
 });
-test('purchase in córdobas retains rate and updates demo stock and cost',async({page})=>{
+test('supplier invoice in córdobas retains rate without changing inventory',async({page})=>{
  await page.goto('/');await navigateToView(page, 'suppliers');await page.getByRole('button',{name:/Nuevo proveedor/}).click();
  const dialog=page.locator('#business-dialog');await dialog.locator('input[name="name"]').fill('Proveedor QA');await dialog.locator('select[name="currency"]').selectOption('NIO');
- await dialog.getByRole('button',{name:'Guardar en demo'}).click();await navigateToView(page, 'purchases');await page.getByRole('button',{name:/Registrar compra/}).click();
+ await dialog.getByRole('button',{name:'Guardar en demo'}).click();await navigateToView(page, 'purchases');await page.getByRole('button',{name:/Registrar factura de proveedor/}).click();
  await dialog.locator('[data-lookup="supplier"]').fill('Proveedor QA');await dialog.getByRole('option',{name:/Proveedor QA/}).click();
  await dialog.locator('[data-lookup="product"]').fill('JBP-002');await dialog.getByRole('option',{name:/Yara Lattafa/}).click();
  await dialog.locator('input[name="quantity"]').fill('2');await dialog.locator('input[name="unitCost"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$20.00');
- await navigateToView(page, 'inventory');await expect(page.locator('.inventory-stock-table tbody tr').filter({hasText:'Yara Lattafa'})).toContainText('10 unidades');
+ await navigateToView(page, 'inventory');await expect(page.locator('.inventory-stock-table tbody tr').filter({hasText:'Yara Lattafa'})).toContainText('8 unidades');
 });
 test('payroll is NIO-only',async({page})=>{
  await page.goto('/');await navigateToView(page, 'hr');await page.getByRole('button',{name:/Agregar colaborador/}).click();
@@ -718,7 +718,7 @@ test('editing a product on mobile keeps dialog and inputs within screen width', 
 test('all operational list tables reflow inside a 390px mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  const views = ['products','orders','customers','billing','suppliers','purchases','expenses','cash','hr'];
+  const views = ['products','orders','customers','billing','suppliers','purchaseOrders','purchases','expenses','profitability','capital','cash','hr'];
   for (const view of views) {
     await navigateToView(page, '' + view + '');
     const measurements = await page.evaluate(() => ({
@@ -989,4 +989,80 @@ test('invoice keeps USD as the primary sale currency when collection is changed 
   expect(saved.invoices[0].paymentCurrency).toBe('NIO');
   expect(saved.invoices[0].status).toBe('Pagado');
   expect(saved.invoices[0].totalUsd).toBe(56.94);
+});
+
+
+test('purchase orders do not create stock or payables and support partial receipts', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'suppliers');
+  await page.getByRole('button', { name: /Nuevo proveedor/ }).click();
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('input[name="name"]').fill('Proveedor OC QA');
+  await dialog.locator('input[name="phone"]').fill('88880000');
+  await dialog.locator('select[name="currency"]').selectOption('USD');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+
+  await navigateToView(page, 'purchaseOrders');
+  await page.getByRole('button', { name: /Nueva orden/ }).click();
+  await dialog.locator('[data-lookup="supplier"]').fill('Proveedor OC QA');
+  await dialog.getByRole('option', { name: /Proveedor OC QA/ }).click();
+  const first = dialog.locator('.po-line-row').nth(0);
+  await first.locator('[data-po-product]').selectOption('2');
+  await first.locator('[data-po-quantity]').fill('3');
+  await first.locator('[data-po-cost]').fill('8');
+  await dialog.getByRole('button', { name: 'Agregar producto' }).click();
+  const second = dialog.locator('.po-line-row').nth(1);
+  await second.locator('[data-po-product]').selectOption('3');
+  await second.locator('[data-po-quantity]').fill('2');
+  await second.locator('[data-po-cost]').fill('10');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+
+  let saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  const order = saved.purchaseOrders[0];
+  expect(order.number).toMatch(/^OC-\d{4}-\d{4}$/);
+  expect(order.status).toBe('Borrador');
+  expect(order.items).toHaveLength(2);
+  expect(saved.products.find(p => p.sku === 'JBP-002').stock).toBe(8);
+  expect(saved.products.find(p => p.sku === 'JBP-003').stock).toBe(3);
+  expect(saved.cashEntries).toHaveLength(0);
+  expect(saved.purchases).toHaveLength(0);
+
+  let row = page.locator('#view-root tbody tr').filter({ hasText: order.number });
+  await row.getByRole('button', { name: 'Marcar enviada' }).click();
+  row = page.locator('#view-root tbody tr').filter({ hasText: order.number });
+  await row.getByRole('button', { name: 'Confirmar' }).click();
+  row = page.locator('#view-root tbody tr').filter({ hasText: order.number });
+  await row.getByRole('button', { name: 'Recibir' }).click();
+  await dialog.locator('[data-receipt-quantity="0"]').fill('1');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+
+  saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(saved.purchaseOrders[0].status).toBe('Recepción parcial');
+  expect(saved.purchaseOrders[0].items[0].receivedQuantity).toBe(1);
+  expect(saved.products.find(p => p.sku === 'JBP-002').stock).toBe(9);
+  expect(saved.products.find(p => p.sku === 'JBP-003').stock).toBe(3);
+  expect(saved.purchaseReceipts).toHaveLength(1);
+  expect(saved.cashEntries).toHaveLength(0);
+  expect(saved.purchases).toHaveLength(0);
+
+  row = page.locator('#view-root tbody tr').filter({ hasText: order.number });
+  await row.getByRole('button', { name: 'Recibir' }).click();
+  await dialog.locator('[data-receipt-quantity="0"]').fill('2');
+  await dialog.locator('[data-receipt-quantity="1"]').fill('2');
+  await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
+  saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
+  expect(saved.purchaseOrders[0].status).toBe('Recibida');
+  expect(saved.products.find(p => p.sku === 'JBP-002').stock).toBe(11);
+  expect(saved.products.find(p => p.sku === 'JBP-003').stock).toBe(5);
+  expect(saved.purchaseReceipts).toHaveLength(2);
+});
+
+test('profitability and capital dashboards are clearly separated', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'capital');
+  await expect(page.getByRole('heading', { name: 'Capital y flujo de efectivo' })).toBeVisible();
+  await expect(page.locator('#view-root')).toContainText('no incluye saldo inicial');
+  await navigateToView(page, 'profitability');
+  await expect(page.getByRole('heading', { name: 'Rentabilidad' })).toBeVisible();
+  await expect(page.locator('#view-root')).toContainText('no es contabilidad oficial');
 });
