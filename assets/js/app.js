@@ -1836,7 +1836,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   function openProductModal(productId) {
     const product = productId == null ? null : products.find(function (item) { return String(item.id) === String(productId); });
     if (productId != null && !product) return;
-    form.reset(); form.dataset.editingId = product ? String(product.id) : '';
+    form.reset(); clearPendingProductImagePreviews(); const uploadStatus=document.getElementById('product-image-upload-status');if(uploadStatus)uploadStatus.textContent=''; form.dataset.editingId = product ? String(product.id) : '';
     const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','supplier','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
     if (product) fields.forEach(function (field) { if (form.elements[field]) form.elements[field].value = product[field] == null ? '' : String(product[field]); });
     form.elements.stock.readOnly = Boolean(product);
