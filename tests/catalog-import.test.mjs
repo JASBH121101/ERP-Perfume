@@ -318,3 +318,90 @@ test("order status calculation uses net stock movements rather than historical n
   assert.match(executedSql, /SUM\(quantity_delta\)/);
   assert.match(executedSql, /linked_invoice\.is_invoiced/);
 });
+
+
+test("financial snapshot uses invoice totals including discount and delivery, not only line subtotals", () => {
+  const start = appSource.indexOf("  function financialSnapshot(){");
+  const end = appSource.indexOf("\n  function renderDashboard", start);
+  assert.ok(start >= 0 && end > start, "financial snapshot function must remain available");
+  const calculate = new Function(
+    "invoices", "expenses", "roundMoney",
+    appSource.slice(start, end) + "\nreturn financialSnapshot();"
+  );
+  const result = calculate(
+    [{
+      totalUsd: 100,
+      items: [
+        { quantity: 2, unitPriceUsd: 40, unitCostUsd: 20 }
+      ]
+    }],
+    [{ amountUsd: 10 }],
+    value => Math.round(value * 100) / 100
+  );
+  assert.deepEqual(result, {
+    revenue: 100,
+    costOfSales: 40,
+    grossProfit: 60,
+    operatingExpenses: 10,
+    netProfit: 50
+  });
+});
+
+test("order creation rejects a total that does not reconcile with lines and fees", async () => {
+  let queryCount = 0;
+  const sql = { query: async () => { queryCount += 1; return []; } };
+  const response = await handleERPRequest(requestFor("orders", "POST", {
+    order_number: "JP-QA-001",
+    customer_name: "Cliente QA",
+    currency: "USD",
+    exchange_rate: 36.6,
+    original_amount: 49,
+    total_usd: 49,
+    discount_usd: 0,
+    delivery_fee_usd: 0,
+    items: [{
+      product_id: "00000000-0000-0000-0000-000000000101",
+      product_name: "Perfume QA",
+      quantity: 2,
+      unit_price_usd: 25
+    }]
+  }), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, "ORDER_TOTAL_MISMATCH");
+  assert.equal(queryCount, 0);
+});
+
+test("order creation ignores client-supplied terminal state and starts as pending", async () => {
+  let call = 0;
+  let insertParams = [];
+  const sql = {
+    query: async (query, params) => {
+      call += 1;
+      if (call === 1) return [{ id: "00000000-0000-0000-0000-000000000101" }];
+      insertParams = params;
+      return [{ id: "00000000-0000-0000-0000-000000000201", status: insertParams[4] }];
+    }
+  };
+  const response = await handleERPRequest(requestFor("orders", "POST", {
+    order_number: "JP-QA-002",
+    customer_name: "Cliente QA",
+    currency: "USD",
+    exchange_rate: 36.6,
+    original_amount: 50,
+    total_usd: 50,
+    discount_usd: 0,
+    delivery_fee_usd: 0,
+    status: "Completado",
+    payment_status: "Pagado",
+    items: [{
+      product_id: "00000000-0000-0000-0000-000000000101",
+      product_name: "Perfume QA",
+      quantity: 2,
+      unit_price_usd: 25
+    }]
+  }), {}, owner, sql);
+  assert.equal(response.status, 201);
+  assert.equal(insertParams[4], "Pendiente");
+  assert.equal(insertParams[5], "Pendiente");
+});
