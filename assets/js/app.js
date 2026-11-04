@@ -2237,7 +2237,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     };
     let savedProductId=existing?.id||null;
     let saved=false;
-    const imageErrors=[];
+    const imageErrors=[];\n    const failedImageFiles=[];
     try{
       if(existing){
         const result=await erpApi('products/'+encodeURIComponent(existing.id),{method:'PATCH',body:JSON.stringify(payload)});
@@ -2258,7 +2258,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
             const asset=await uploadProductAsset(savedProductId,file,percent=>updatePendingProductImageProgress(index,'Subiendo · '+percent+'%',percent));
             updatePendingProductImageProgress(index,'Subida completada · '+Math.round(Number(asset?.size||file.size)/1024)+' KB',100);
           }catch(error){
-            imageErrors.push(file.name+': '+(error?.message||'falló la carga'));
+            imageErrors.push(file.name+': '+(error?.message||'falló la carga'));\n            failedImageFiles.push(file);
             updatePendingProductImageProgress(index,'Error · '+(error?.message||'falló la carga'),0);
           }
         });
@@ -2267,10 +2267,22 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
           :'Todas las fotografías se optimizaron y subieron correctamente.';
       }
       await loadERPFromNeon(true);
+      if(imageErrors.length&&savedProductId){
+        form.dataset.editingId=String(savedProductId);form.elements.stock.readOnly=true;
+        const retryData=new DataTransfer();failedImageFiles.forEach(file=>retryData.items.add(file));
+        form.elements.productImages.files=retryData.files;
+        renderPendingProductImagePreviews(failedImageFiles);
+        const uploadStatus=document.getElementById('product-image-upload-status');
+        if(uploadStatus)uploadStatus.textContent=imageErrors.length+' fotografía(s) fallaron. El producto ya está guardado; las imágenes pendientes permanecen en el formulario para reintentarlas.';
+        if(button){button.disabled=false;button.textContent='Reintentar fotografías y guardar cambios';}
+        toast('Producto guardado. '+imageErrors.length+' imagen(es) pendientes; puedes reintentarlas sin duplicar el producto.');
+        return;
+      }
       form.reset();form.dataset.editingId='';form.elements.stock.readOnly=false;
+      clearPendingProductImagePreviews();const uploadStatus=document.getElementById('product-image-upload-status');if(uploadStatus)uploadStatus.textContent='';
       updateProductCostPreview();dialog.close();
-      if(existing){renderView();toast(imageErrors.length?'Producto actualizado. '+imageErrors.length+' imagen(es) no pudieron subirse.':'Producto y ficha actualizados en Neon.');}
-      else{goToView('products');toast(imageErrors.length?'Producto guardado. '+imageErrors.length+' imagen(es) no pudieron subirse.':'Producto y fotografías guardados en Neon y R2.');}
+      if(existing){renderView();toast('Producto y ficha actualizados en Neon.');}
+      else{goToView('products');toast('Producto y fotografías guardados en Neon y R2.');}
     }catch(error){
       if(saved){
         try{await loadERPFromNeon(true);}catch{}
