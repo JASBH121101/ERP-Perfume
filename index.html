@@ -168,12 +168,13 @@
       </section>
 
       <section class="product-form-section">
-        <div class="form-section-heading"><span class="form-section-icon" data-icon="boxes"></span><div><strong>Inventario y ubicación</strong><small>Existencias iniciales y control de reposición</small></div></div>
+        <div class="form-section-heading"><span class="form-section-icon" data-icon="boxes"></span><div><strong>Inventario y ubicación</strong><small>Alta de SKU con stock cero y control de reposición</small></div></div>
         <div class="form-grid">
-          <label class="form-field"><span>Existencias iniciales <span class="required-mark" aria-hidden="true">*</span></span><input name="stock" type="number" min="0" step="1" value="0" required></label>
+          <label class="form-field"><span>Existencias al registrar</span><input name="stock" type="number" min="0" step="1" value="0" readonly aria-describedby="stock-master-help"></label>
           <label class="form-field"><span>Stock mínimo</span><input name="minStock" type="number" min="0" step="1" value="3"></label>
           <label class="form-field full-field"><span>Ubicación en bodega</span><input name="location" maxlength="40"></label>
           <label class="form-field full-field"><span>Notas internas</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
+          <p class="form-helper full-field" id="stock-master-help">El SKU maestro siempre inicia con cero existencias. Registra el inventario inicial mediante un movimiento de entrada en Kardex o una recepción de orden de compra.</p>
         </div>
       </section>
 
