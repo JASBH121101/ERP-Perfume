@@ -375,7 +375,9 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   }
   function heading(meta, actions) {
     const dashboardClass = state.view === 'dashboard' ? ' page-heading-dashboard' : '';
-    return '<div class="page-heading' + dashboardClass + '"><div><h1>' + meta.heading + '</h1><p>' + meta.subtitle + '</p></div><div class="heading-actions">' + (actions || '') + '</div></div>';
+    const hrClass = state.view === 'hr' ? ' page-heading-hr' : '';
+    const subtitle = state.view === 'hr' ? '' : '<p>' + meta.subtitle + '</p>';
+    return '<div class="page-heading' + dashboardClass + hrClass + '"><div><h1>' + meta.heading + '</h1>' + subtitle + '</div><div class="heading-actions">' + (actions || '') + '</div></div>';
   }
   function metric(label, value, symbol, change, note, gold) {
     return '<article class="metric-card"><div class="metric-top"><span class="metric-label">' + label + '</span><span class="metric-symbol">' + svg(symbol) + '</span></div><div class="metric-value">' + value + '</div><div class="metric-foot"><span class="metric-change' + (gold ? ' gold' : '') + '">' + change + '</span><span class="metric-caption">' + note + '</span></div></article>';
@@ -1305,10 +1307,10 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     const tabs=[
       ['employees','Personal',employees.length],
       ['attendance','Asistencia',attendanceRecords.length],
-      ['leaves','Permisos y vacaciones',leaveRequests.filter(x=>x.status==='Pendiente').length],
+      ['leaves','Permisos',leaveRequests.filter(x=>x.status==='Pendiente').length],
       ['payroll','Nómina',payrollPeriods.length]
     ];
-    const tabsHtml='<div class="toolbar products-toolbar"><div class="toolbar-left">'+tabs.map(([id,label,count])=>'<button type="button" class="button '+(state.hrTab===id?'button-primary':'button-quiet')+' button-small" data-action="hr-tab" data-tab="'+id+'">'+label+' <span class="ledger-count">'+count+'</span></button>').join('')+'</div></div>';
+    const tabsHtml='<div class="toolbar products-toolbar hr-tabs"><div class="toolbar-left">'+tabs.map(([id,label,count])=>'<button type="button" class="button hr-tab-button '+(state.hrTab===id?'button-primary':'button-quiet')+' button-small" data-action="hr-tab" data-tab="'+id+'">'+label+' <span class="ledger-count">'+count+'</span></button>').join('')+'</div></div>';
     let actions='',content='';
     if(state.hrTab==='employees'){
       actions='<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>';
@@ -1335,12 +1337,11 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
           :(p.status==='Aprobada'?'<button class="button button-primary button-small" data-action="pay-payroll" data-id="'+p.id+'">Pagar nómina</button>':'—');
         return '<tr><td data-label="Período" class="table-primary">'+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</td><td data-label="Colaboradores">'+items.length+'</td><td data-label="Neto a pagar">'+moneyInCurrency(total,'NIO')+'</td><td data-label="Fecha de pago">'+dateText(p.paymentDate)+'</td><td data-label="Estado"><span class="status-chip '+(p.status==='Pagada'?'status-success':(p.status==='Anulada'?'status-muted':'status-pending'))+'">'+esc(p.status)+'</span></td><td data-label="Acciones">'+periodAction+'</td></tr>';
       }).join('');
-      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Cálculo de nómina</strong><p>La aprobación bloquea nuevas partidas y el pago genera un egreso en NIO más su salida de caja o banco. Las deducciones legales aún deben configurarse y validarse conforme a la normativa laboral aplicable.</p></div></div>';
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel hr-payroll-note">'+svg('warning')+'<div><strong>Antes de pagar</strong><p>Configura y valida las deducciones legales antes de aprobar la nómina.</p></div></div>';
     }
-    return heading(views.hr,actions)+
-      '<div class="summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Solicitudes pendientes</span><strong>'+leaveRequests.filter(l=>l.status==='Pendiente').length+'</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
-      tabsHtml+content+
-      '<div class="notice-panel">'+svg('spark')+'<div><strong>RR. HH. conectado a Neon Development</strong><p>Personal, asistencia, permisos y nómina se consultan desde Neon. Los cambios quedan ligados a la cuenta y a la auditoría del sistema.</p></div></div>';
+    return '<section class="hr-view">'+heading(views.hr,actions)+
+      '<div class="summary-strip hr-summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Solicitudes pendientes</span><strong>'+leaveRequests.filter(l=>l.status==='Pendiente').length+'</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
+      tabsHtml+'<div class="hr-content">'+content+'</div></section>';
   }
   function renderAnalytics(){
     const finance=financialSnapshot();
@@ -1433,6 +1434,17 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       '</div>'+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Entorno de trabajo: Neon Development</strong><p>Los cambios de esta etapa se prueban en Desarrollo. Neon Production no recibe migraciones ni datos hasta validar el sistema y revisar los consumos.</p></div></div>';
   }
+  function updateNotificationIndicator(){
+    const dot=document.querySelector('.notification-button i');
+    const button=document.querySelector('.notification-button');
+    if(!dot||!button)return;
+    const lowStock=products.some(p=>p.active!==false&&needsRestock(p));
+    const receivable=invoices.some(i=>Number(i.totalUsd||0)-Number(i.paidUsd||0)>0.001);
+    const payable=purchases.some(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001);
+    const hasAlerts=lowStock||receivable||payable;
+    dot.hidden=!hasAlerts;
+    button.setAttribute('aria-label',hasAlerts?'Notificaciones: hay alertas operativas':'Notificaciones: sin alertas');
+  }
   function renderView() {
     const meta = views[state.view] || views.dashboard;
     document.getElementById('breadcrumb-current').textContent = meta.title;
@@ -1458,6 +1470,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       cash: renderCash
     };
     root.innerHTML = (renderers[state.view] || renderDashboard)();
+    updateNotificationIndicator();
+    document.querySelector('.page-context')?.classList.toggle('page-context-hr',state.view==='hr');
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
     hydrateProductImageSlots();
   }
