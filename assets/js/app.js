@@ -890,6 +890,14 @@
     if(type==='payroll-period'){
       body='<div class="form-grid">'+formField('Inicio del período','periodStart','date',true,'')+formField('Fin del período','periodEnd','date',true,'')+formField('Fecha prevista de pago','paymentDate','date',false,'')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">El período se crea en estado Borrador. Podrás agregar una partida por colaborador antes de aprobarlo.</p>';
     }
+    if(type==='payroll-payment'){
+      const period=payrollPeriods.find(p=>String(p.id)===String(recordId));
+      if(!period||period.status!=='Aprobada'){toast('Solo se puede pagar un período aprobado.');return;}
+      const items=payrollItems.filter(x=>x.payrollPeriodId===period.id);
+      const total=items.reduce((sum,x)=>sum+Number(x.netSalaryNio||0),0);
+      if(!items.length||total<=0){toast('El período no tiene partidas pagables.');return;}
+      body='<div class="form-grid"><div class="detail-field full-field"><span>Período de nómina</span><strong>'+dateText(period.periodStart)+' – '+dateText(period.periodEnd)+'</strong><small>'+items.length+' colaboradores · '+moneyInCurrency(total,'NIO')+'</small></div>'+selectField('Cuenta de pago','account','<option>Caja NIO</option><option>Banco NIO</option>',true)+'</div><p class="form-helper">Al confirmar, el sistema registrará el gasto de nómina y una salida de caja/banco en córdobas. El período no podrá pagarse dos veces.</p>';
+    }
     if(type==='payroll-item'){
       const available=payrollPeriods.filter(p=>p.status==='Borrador');
       if(!available.length){toast('Crea primero un período de nómina en estado Borrador.');return;}
@@ -1200,13 +1208,17 @@
       const rows=leaveRequests.map(l=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(employeeName(l.employeeId))+'</td><td data-label="Tipo">'+esc(l.leaveType)+'</td><td data-label="Período">'+dateText(l.startDate)+' – '+dateText(l.endDate)+'</td><td data-label="Días">'+Number(l.days||0)+'</td><td data-label="Estado"><span class="status-chip '+(l.status==='Aprobado'?'status-success':(l.status==='Rechazado'?'status-danger':'status-pending'))+'">'+esc(l.status)+'</span></td><td data-label="Acciones">'+(l.status==='Pendiente'?'<button class="button button-quiet button-small" data-action="approve-leave" data-id="'+l.id+'">Aprobar</button><button class="button button-quiet button-small" data-action="reject-leave" data-id="'+l.id+'">Rechazar</button>':'—')+'</td></tr>').join('');
       content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR</th><th>TIPO</th><th>PERÍODO</th><th>DÍAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay permisos o vacaciones registrados.</td></tr>')+'</tbody></table></div></article>';
     } else {
-      actions='<div class="heading-actions-inline">'+(payrollPeriods.length?'<button class="button button-quiet" data-action="new-payroll-item">'+svg('plus')+' Agregar a nómina</button>':'')+'<button class="button button-primary" data-action="new-payroll-period">'+svg('plus')+' Nuevo período</button></div>';
+      const draftPeriods=payrollPeriods.filter(p=>p.status==='Borrador');
+      actions='<div class="heading-actions-inline">'+(draftPeriods.length?'<button class="button button-quiet" data-action="new-payroll-item">'+svg('plus')+' Agregar a nómina</button>':'')+'<button class="button button-primary" data-action="new-payroll-period">'+svg('plus')+' Nuevo período</button></div>';
       const rows=payrollPeriods.map(p=>{
         const items=payrollItems.filter(item=>item.payrollPeriodId===p.id);
         const total=items.reduce((sum,item)=>sum+Number(item.netSalaryNio||0),0);
-        return '<tr><td data-label="Período" class="table-primary">'+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</td><td data-label="Colaboradores">'+items.length+'</td><td data-label="Neto a pagar">'+moneyInCurrency(total,'NIO')+'</td><td data-label="Fecha de pago">'+dateText(p.paymentDate)+'</td><td data-label="Estado"><span class="status-chip '+(p.status==='Pagada'?'status-success':'status-pending')+'">'+esc(p.status)+'</span></td></tr>';
+        const periodAction=p.status==='Borrador'
+          ?'<button class="button button-quiet button-small" data-action="approve-payroll" data-id="'+p.id+'" '+(items.length?'':'disabled')+'>Aprobar</button>'
+          :(p.status==='Aprobada'?'<button class="button button-primary button-small" data-action="pay-payroll" data-id="'+p.id+'">Pagar nómina</button>':'—');
+        return '<tr><td data-label="Período" class="table-primary">'+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</td><td data-label="Colaboradores">'+items.length+'</td><td data-label="Neto a pagar">'+moneyInCurrency(total,'NIO')+'</td><td data-label="Fecha de pago">'+dateText(p.paymentDate)+'</td><td data-label="Estado"><span class="status-chip '+(p.status==='Pagada'?'status-success':(p.status==='Anulada'?'status-muted':'status-pending'))+'">'+esc(p.status)+'</span></td><td data-label="Acciones">'+periodAction+'</td></tr>';
       }).join('');
-      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Cálculo de nómina</strong><p>Se calculan salario base, bonos y deducciones capturadas. Antes de automatizar deducciones legales o pagos se debe configurar y validar la normativa laboral aplicable.</p></div></div>';
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Cálculo de nómina</strong><p>La aprobación bloquea nuevas partidas y el pago genera un egreso en NIO más su salida de caja o banco. Las deducciones legales aún deben configurarse y validarse conforme a la normativa laboral aplicable.</p></div></div>';
     }
     return heading(views.hr,actions)+
       '<div class="summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Solicitudes pendientes</span><strong>'+leaveRequests.filter(l=>l.status==='Pendiente').length+'</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
