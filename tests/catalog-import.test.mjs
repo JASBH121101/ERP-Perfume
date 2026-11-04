@@ -357,6 +357,9 @@ test("financial snapshot uses invoice totals including discount and delivery, no
   const result = calculate(
     [{
       totalUsd: 100,
+      subtotalUsd: 80,
+      discountUsd: 0,
+      deliveryFeeUsd: 20,
       items: [
         { quantity: 2, unitPriceUsd: 40, unitCostUsd: 20 }
       ]
@@ -366,8 +369,10 @@ test("financial snapshot uses invoice totals including discount and delivery, no
   );
   assert.deepEqual(result, {
     revenue: 100,
+    productNetSales: 80,
+    deliveryIncome: 20,
     costOfSales: 40,
-    grossProfit: 60,
+    grossProfit: 40,
     operatingExpenses: 10,
     netProfit: 50
   });
