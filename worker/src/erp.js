@@ -118,6 +118,10 @@ async function createGeneric(sql, user, resource, def, body) {
     keys.push("created_by");
     values.push(user.id);
   }
+  if (["employees","hr_attendance","hr_leave_requests","hr_payroll_periods","inventory_movements","orders","purchases","invoices","expenses","cash_entries"].includes(def.table)) {
+    keys.push("created_by");
+    values.push(user.id);
+  }
   const cols = keys.map((key) => '"' + key + '"').join(", ");
   const placeholders = keys.map((_, index) => "$" + (index + 1)).join(", ");
   const actorIndex = values.length + 1;
@@ -139,7 +143,7 @@ async function updateGeneric(sql, user, resource, def, id, body) {
   const { keys, values } = safeFields(def, body);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
   if (keys.includes("created_by") || keys.includes("created_at")) return erpError(400, "INVALID_FIELD", "No se permite modificar la autoría ni la fecha de creación.");
-  if (def.fields.includes("updated_at")) {
+  if (["products","customers","suppliers","employees","orders","purchases","invoices","hr_payroll_periods"].includes(def.table)) {
     keys.push("updated_at");
     values.push(new Date().toISOString());
   }
@@ -236,6 +240,21 @@ export async function handleERPRequest(request, env, user, sql) {
       return erpError(503, "BOOTSTRAP_FAILED", "No se pudieron cargar los datos operativos desde Neon.");
     }
   }
+  if (resource === "settings" && request.method === "GET") {
+    const rows = await sql.query("SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key");
+    return erpJson({ records: rows });
+  }
+  if (resource === "settings" && request.method === "PUT") {
+    if (!["owner","admin"].includes(user.role)) return erpError(403, "FORBIDDEN", "Solo propietario o administración puede cambiar la configuración.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    const key = String(body.setting_key || "");
+    if (!["default_exchange_rate","base_currency","payroll_currency"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
+    const value = body.setting_value;
+    if (key === "default_exchange_rate" && (!Number.isFinite(Number(value?.value)) || Number(value.value) <= 0 || Number(value.value) > 100000)) return erpError(400, "INVALID_EXCHANGE_RATE", "El tipo de cambio debe ser mayor que cero.");
+    const rows = await sql.query("INSERT INTO app_settings(setting_key,setting_value,updated_by,updated_at) VALUES($1,$2::jsonb,$3,NOW()) ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_by=EXCLUDED.updated_by,updated_at=NOW() RETURNING setting_key,setting_value", [key,JSON.stringify(value),user.id]);
+    await auditQuery(sql,user.id,"update","app_setting",key,value);
+    return erpJson({ record: rows[0] });
+  }
   if (resource === "orders" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar pedidos.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
@@ -246,7 +265,8 @@ export async function handleERPRequest(request, env, user, sql) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createInventoryMovement(sql, user, body);
   }
-  const def = RESOURCE_DEFS[resource];
+  const normalizedResource = resource.replace(/-/g, "_");
+  const def = RESOURCE_DEFS[normalizedResource];
   if (!def) return erpError(404, "RESOURCE_NOT_FOUND", "El módulo solicitado no existe.");
   if (!canAccess(user, def.roles)) return erpError(403, "FORBIDDEN", "Tu rol no permite operar este módulo.");
   if (request.method === "GET" && !id) {
@@ -261,12 +281,12 @@ export async function handleERPRequest(request, env, user, sql) {
   if (request.method === "POST" && !id) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     if (resource === "orders" || resource === "purchases" || resource === "invoices" || resource === "inventory_movements") return erpError(400, "USE_OPERATION_ENDPOINT", "Utiliza el flujo de operación específico para este registro.");
-    return createGeneric(sql, user, resource, def, body);
+    return createGeneric(sql, user, normalizedResource, def, body);
   }
   if (request.method === "PATCH" && id) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
-    return updateGeneric(sql, user, resource, def, id, body);
+    return updateGeneric(sql, user, normalizedResource, def, id, body);
   }
-  if (request.method === "DELETE" && id) return softDelete(sql, user, resource, def, id);
+  if (request.method === "DELETE" && id) return softDelete(sql, user, normalizedResource, def, id);
   return erpError(405, "METHOD_NOT_ALLOWED", "El método HTTP no está disponible para este recurso.");
 }
