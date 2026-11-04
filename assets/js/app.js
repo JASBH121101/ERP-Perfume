@@ -827,8 +827,9 @@
   }
   function nextDocumentNumber(prefix, records, startAt=1000) {
     const max = (records || []).reduce((value, row) => {
-      const digits = String(row.purchaseNumber || row.id || "").match(/(\\d+)$/);
-      return Math.max(value, digits ? Number(digits[1]) : 0);
+      const suffix=String(row.purchaseNumber || row.id || "").split("-").pop();
+      const parsed=Number(suffix);
+      return Math.max(value,Number.isFinite(parsed)?parsed:0);
     }, startAt);
     return prefix + String(max + 1).padStart(6,"0");
   }
