@@ -1679,9 +1679,14 @@
     const purchaseCost=number('purchaseCost'),additionalCost=number('additionalCost');
     const sku=value('sku')||(existing?existing.sku:makeSku());
     const wholesalePrice=number('wholesalePrice');
+    const files=Array.from(form.elements.productImages?.files||[]);
     const invalid=[price,minStock,purchaseCost,additionalCost,wholesalePrice].some(n=>!Number.isFinite(n)||n<0);
     if(!name||price<=0||!Number.isInteger(minStock)||invalid||(!existing&&(!Number.isInteger(stock)||stock<0))){
       toast('Revisa nombre, precio, costos y existencias iniciales.');if(button)button.disabled=false;return;
+    }
+    if(files.length>5){toast('Puedes agregar hasta cinco fotografías por producto.');if(button)button.disabled=false;return;}
+    if(files.some(file=>file.size>8*1024*1024||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
+      toast('Cada imagen debe ser JPG, PNG, WebP o AVIF y pesar máximo 8 MB.');if(button)button.disabled=false;return;
     }
     if(products.some(p=>String(p.sku).toLowerCase()===sku.toLowerCase()&&(!existing||String(p.id)!==String(existing.id)))){
       toast('Ese SKU ya existe. Utiliza un código diferente.');form.elements.sku.focus();if(button)button.disabled=false;return;
@@ -1696,20 +1701,35 @@
       barcode:value('barcode')||null,supplier_name:value('supplier')||null,
       wholesale_price_usd:wholesalePrice||null,tone:existing?.tone||'art-violet',notes:value('notes')||null
     };
+    let savedProductId=existing?.id||null;
+    let saved=false;
+    const imageErrors=[];
     try{
       if(existing){
-        await erpApi('products/'+encodeURIComponent(existing.id),{method:'PATCH',body:JSON.stringify(payload)});
+        const result=await erpApi('products/'+encodeURIComponent(existing.id),{method:'PATCH',body:JSON.stringify(payload)});
+        savedProductId=result.record?.id||existing.id;
       }else{
         payload.stock=stock;
-        await erpApi('products',{method:'POST',body:JSON.stringify(payload)});
+        const result=await erpApi('products',{method:'POST',body:JSON.stringify(payload)});
+        savedProductId=result.record?.id||null;
+      }
+      saved=true;
+      if(files.length&&!savedProductId)imageErrors.push('No se pudo obtener el identificador del producto para adjuntar sus imágenes.');
+      else for(const file of files){
+        try{await uploadProductAsset(savedProductId,file);}
+        catch(error){imageErrors.push(file.name+': '+(error?.message||'falló la carga'));}
       }
       await loadERPFromNeon(true);
       form.reset();form.dataset.editingId='';form.elements.stock.readOnly=false;
       updateProductCostPreview();dialog.close();
-      if(existing){renderView();toast('Producto actualizado en Neon.');}
-      else{goToView('products');toast('Producto registrado en Neon; existencias iniciales asentadas en el kardex.');}
+      if(existing){renderView();toast(imageErrors.length?'Producto actualizado. '+imageErrors.length+' imagen(es) no pudieron subirse.':'Producto y ficha actualizados en Neon.');}
+      else{goToView('products');toast(imageErrors.length?'Producto guardado. '+imageErrors.length+' imagen(es) no pudieron subirse.':'Producto y fotografías guardados en Neon y R2.');}
     }catch(error){
-      toast(error?.message||'No se pudo guardar el producto.');
+      if(saved){
+        try{await loadERPFromNeon(true);}catch{}
+        form.reset();form.dataset.editingId='';form.elements.stock.readOnly=false;dialog.close();renderView();
+        toast('Producto guardado; hubo un problema al recargar los datos: '+(error?.message||'error de conexión.'));
+      }else toast(error?.message||'No se pudo guardar el producto.');
     }finally{
       if(button){button.disabled=false;button.textContent=existing?'Guardar cambios':'Guardar en Neon';}
     }
