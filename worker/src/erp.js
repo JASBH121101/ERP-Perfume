@@ -451,6 +451,31 @@ async function reviewLeaveRequest(sql,user,id,body) {
   return erpJson({record:rows[0]});
 }
 
+async function createCashEntry(sql,user,body) {
+  const concept=String(body.concept||"").trim();
+  const direction=String(body.direction||"");
+  const currency=body.currency==="NIO"?"NIO":"USD";
+  const original=Number(body.original_amount),rate=Number(body.exchange_rate||1),amountUsd=Number(body.amount_usd);
+  if(!concept||concept.length>180||!["income","expense"].includes(direction)||!body.account_id||
+     !Number.isFinite(original)||original<=0||!Number.isFinite(rate)||rate<=0||!Number.isFinite(amountUsd)||amountUsd<=0)
+    return erpError(400,"INVALID_CASH_ENTRY","Revisa cuenta, concepto, dirección, importe y tipo de cambio.");
+  const expected=currency==="NIO"?original/rate:original;
+  if(Math.abs(expected-amountUsd)>0.02)return erpError(400,"AMOUNT_CONVERSION_MISMATCH","El movimiento no coincide con el importe convertido a USD.");
+  const account=await sql.query("SELECT id FROM cash_accounts WHERE id=$1::uuid AND currency=$2 AND active=TRUE LIMIT 1",[body.account_id,currency]);
+  if(!account[0])return erpError(400,"CASH_ACCOUNT_NOT_FOUND","La cuenta no existe, está inactiva o utiliza otra moneda.");
+  try{
+    const rows=await sql.query(
+      "WITH created AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $10,'create','cash_entry',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
+      [direction,concept,body.account_id,currency,original,rate,amountUsd,body.source_type||null,body.source_id||null,user.id]
+    );
+    return erpJson({record:rows[0]},201);
+  }catch(error){
+    if(error?.code==="23503")return erpError(400,"RELATED_RECORD_NOT_FOUND","La cuenta o referencia relacionada no existe.");
+    console.error("[finance] Cash entry failed:",error?.message||"database error");
+    return erpError(503,"CASH_ENTRY_FAILED","No se pudo registrar el movimiento de caja.");
+  }
+}
+
 async function createCashAccount(sql,user,body) {
   const name=String(body.name||"").trim();
   const currency=body.currency==="NIO"?"NIO":"USD";
@@ -618,6 +643,11 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.hr_leave_requests.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para revisar solicitudes.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return reviewLeaveRequest(sql,user,id,body);
+  }
+  if (resource === "cash_entries" && request.method === "POST") {
+    if (!canAccess(user, RESOURCE_DEFS.cash_entries.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar movimientos de caja.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return createCashEntry(sql,user,body);
   }
   if (resource === "cash-accounts" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.cash_accounts.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para crear cuentas.");
