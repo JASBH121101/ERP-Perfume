@@ -29,7 +29,8 @@ function erpError(status, code, message) {
 }
 
 function canAccess(user, roles) {
-  return Boolean(user && roles.includes(user.role));
+  // Every request is checked against the granular policy before reaching a handler.
+  return Boolean(user && (user._permissionValidated === true || roles.includes(user.role)));
 }
 
 async function auditQuery(sql, actorId, action, entity, entityId, details = {}) {
@@ -39,12 +40,7 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
   );
 }
 
-async function readBootstrap(sql, user) {
-  const isOwner = ["owner", "admin"].includes(user.role);
-  const canInventory = isOwner || user.role === "inventory";
-  const canSales = isOwner || user.role === "sales";
-  const canFinance = isOwner || user.role === "finance";
-  const canHR = isOwner || user.role === "hr";
+async function readBootstrap(sql, user, permissionContext) {
   const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
@@ -69,38 +65,45 @@ async function readBootstrap(sql, user) {
       tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`
     ]);
 
-  const result = { settings: settings.filter((setting) => setting.setting_key !== "dgi_compliance" || isOwner || canFinance) };
-  if (isOwner || canInventory) {
-    result.products = products;
+  const result = {};
+  if (hasPermission(permissionContext, "settings.general.view")) {
+    result.settings = settings.filter((setting) =>
+      setting.setting_key !== "dgi_compliance" || hasPermission(permissionContext, "dgi.documents.view")
+    );
+  }
+  if (hasPermission(permissionContext, "products.catalog.view")) result.products = products;
+  if (hasPermission(permissionContext, "inventory.stock.view") ||
+      hasPermission(permissionContext, "inventory.receipts.view") ||
+      hasPermission(permissionContext, "inventory.manual_out.view") ||
+      hasPermission(permissionContext, "inventory.adjustments.view")) {
     result.inventory_movements = movements;
-    result.suppliers = suppliers;
+  }
+  if (hasPermission(permissionContext, "suppliers.records.view")) result.suppliers = suppliers;
+  if (hasPermission(permissionContext, "purchases.purchase_orders.view") ||
+      hasPermission(permissionContext, "purchases.receipts.view") ||
+      hasPermission(permissionContext, "purchases.supplier_invoices.view")) {
     result.purchases = purchases;
     result.purchase_items = purchaseItems;
   }
-  if (isOwner || canSales) {
-    result.customers = customers;
+  if (hasPermission(permissionContext, "customers.records.view")) result.customers = customers;
+  if (hasPermission(permissionContext, "orders.records.view")) {
     result.orders = orders;
     result.order_items = orderItems;
+  }
+  if (hasPermission(permissionContext, "billing.invoices.view")) {
     result.invoices = invoices;
     result.invoice_items = invoiceItems;
-    result.invoice_payments = invoicePayments;
   }
-  if (isOwner || canFinance) {
-    result.products = products;
-    result.orders = orders;
-    result.expenses = expenses;
+  if (hasPermission(permissionContext, "billing.payments.view")) result.invoice_payments = invoicePayments;
+  if (hasPermission(permissionContext, "expenses.records.view")) result.expenses = expenses;
+  if (hasPermission(permissionContext, "cash.entries.view")) {
     result.cash_accounts = cashAccounts;
     result.cash_entries = cashEntries;
-    result.purchases = purchases;
-    result.purchase_items = purchaseItems;
-    result.invoices = invoices;
-    result.invoice_items = invoiceItems;
-    result.invoice_payments = invoicePayments;
   }
-  if (isOwner || canHR) {
-    result.employees = employees;
-    result.hr_attendance = attendance;
-    result.hr_leave_requests = leaveRequests;
+  if (hasPermission(permissionContext, "hr.employees.view")) result.employees = employees;
+  if (hasPermission(permissionContext, "hr.attendance.view")) result.hr_attendance = attendance;
+  if (hasPermission(permissionContext, "hr.leave.view")) result.hr_leave_requests = leaveRequests;
+  if (hasPermission(permissionContext, "hr.payroll.view")) {
     result.hr_payroll_periods = payrollPeriods;
     result.hr_payroll_items = payrollItems;
   }
@@ -920,17 +923,127 @@ async function updateOrderStatus(sql, user, id, body) {
   return erpJson({ record: rows[0] });
 }
 
+function resolveRoutePermission(resource, method, id, parts, body) {
+  const action = method === "GET" ? "view" :
+    method === "POST" ? "create" :
+    method === "PATCH" ? "edit" :
+    method === "DELETE" ? "delete" : null;
+  if (!action) return null;
+
+  if (resource === "settings") {
+    return method === "GET" ? "settings.general.view" : method === "PATCH" ? "settings.general.manage" : null;
+  }
+  if (resource === "orders") {
+    if (method === "POST") return "orders.records.create";
+    if (method === "PATCH" && String(body?.status || "").toLowerCase() === "cancelado") return "orders.records.cancel";
+    return method === "GET" ? "orders.records.view" : method === "PATCH" ? "orders.records.edit" : null;
+  }
+  if (resource === "products") {
+    if (id === "import" && method === "POST") return "products.catalog.create";
+    if (method === "GET") return "products.catalog.view";
+    if (method === "POST") return "products.catalog.create";
+    if (method === "PATCH") return "products.catalog.edit";
+    if (method === "DELETE") return "products.catalog.delete";
+    return null;
+  }
+  if (resource === "inventory-movements") {
+    if (method === "GET") return "inventory.stock.view";
+    if (method !== "POST") return null;
+    const movement = String(body?.movement_type || body?.type || body?.direction || "").toLowerCase();
+    if (/(salida|out|egreso)/.test(movement)) return "inventory.manual_out.create";
+    if (/(ajuste|adjust)/.test(movement)) return "inventory.adjustments.adjust";
+    return "inventory.receipts.receive";
+  }
+  if (resource === "purchases") {
+    return method === "GET" ? "purchases.receipts.view" : method === "POST" ? "purchases.receipts.receive" : null;
+  }
+  if (resource === "payroll-periods") {
+    if (parts[4] === "status" && method === "PATCH") return "hr.payroll.approve";
+    return method === "GET" ? "hr.payroll.view" : null;
+  }
+  if (resource === "hr-payroll-items") return method === "POST" ? "hr.payroll.create" : method === "GET" ? "hr.payroll.view" : null;
+  if (resource === "hr-leave-requests") {
+    if (method === "PATCH") {
+      const status = String(body?.status || "").toLowerCase();
+      if (/(aprob|approved)/.test(status)) return "hr.leave.approve";
+      if (/(rechaz|rejected|denied)/.test(status)) return "hr.leave.reject";
+      return null;
+    }
+    return method === "GET" ? "hr.leave.view" : method === "POST" ? "hr.leave.create" : null;
+  }
+  if (resource === "cash-accounts" || resource === "cash_entries") {
+    return method === "GET" ? "cash.entries.view" : method === "POST" ? "cash.entries.create" : null;
+  }
+  if (resource === "expenses") {
+    return method === "GET" ? "expenses.records.view" : method === "POST" ? "expenses.records.create" : null;
+  }
+  if (resource === "invoices") {
+    if (method === "POST") return "billing.invoices.create";
+    return method === "GET" ? "billing.invoices.view" : null;
+  }
+  if (resource === "invoice-payments") return method === "POST" ? "billing.payments.create" : null;
+  if (resource === "purchase-payments") return method === "POST" ? "payables.payments.create" : null;
+  if (resource === "assets") {
+    return method === "GET" ? "products.catalog.view" : "products.catalog.edit";
+  }
+  if (resource === "dgi-support-documents") {
+    if (method === "GET") return "dgi.documents.view";
+    return method === "POST" ? "dgi.documents.manage" : null;
+  }
+
+  const resourcePolicies = {
+    products: "products.catalog",
+    customers: "customers.records",
+    suppliers: "suppliers.records",
+    orders: "orders.records",
+    invoices: "billing.invoices",
+    expenses: "expenses.records",
+    cash_accounts: "cash.entries",
+    cash_entries: "cash.entries",
+    employees: "hr.employees",
+    hr_attendance: "hr.attendance",
+    hr_leave_requests: "hr.leave",
+    hr_payroll_periods: "hr.payroll",
+    hr_payroll_items: "hr.payroll",
+    dgi_support_documents: "dgi.documents",
+    inventory_movements: "inventory.stock"
+  };
+  const normalized = resource.replace(/-/g, "_");
+  const section = resourcePolicies[normalized];
+  if (!section) return null;
+  if (method === "GET") return section + ".view";
+  if (method === "POST") return section + ".create";
+  if (method === "PATCH") return section + ".edit";
+  if (method === "DELETE") return section + ".delete";
+  return null;
+}
+
 export async function handleERPRequest(request, env, user, sql) {
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean);
   const resource = parts[2] || "";
   const id = parts[3] || "";
-  if (!canAccess(user, ["owner","admin","sales","inventory","finance","hr"])) {
-    return erpError(403, "INSUFFICIENT_ROLE", "Tu cuenta no tiene un rol operativo habilitado.");
+  const permissionContext = await loadUserPermissions(sql, user);
+  const contentType = request.headers.get("content-type") || "";
+  let requestBody = null;
+  if (request.method !== "GET" && contentType.includes("application/json")) {
+    try { requestBody = await request.clone().json(); } catch { requestBody = null; }
   }
+
+  const permissionKey = resolveRoutePermission(resource, request.method, id, parts, requestBody);
+  if (resource === "bootstrap" && request.method === "GET") {
+    if (!hasPermission(permissionContext, "dashboard.view") && !hasAnyModuleAccess(permissionContext)) {
+      return erpError(403, "FORBIDDEN", "Tu cuenta no tiene módulos habilitados.");
+    }
+  } else if (!permissionKey) {
+    return erpError(403, "PERMISSION_POLICY_MISSING", "La ruta todavía no tiene una política de acceso definida.");
+  } else if (!hasPermission(permissionContext, permissionKey)) {
+    return erpError(403, "FORBIDDEN", "No tienes permiso para realizar esta operación.");
+  }
+  user._permissionValidated = true;
   if (resource === "bootstrap" && request.method === "GET") {
     try {
-      const data = await readBootstrap(sql, user);
+      const data = await readBootstrap(sql, user, permissionContext);
       return erpJson({ data });
     } catch (error) {
       console.error("[erp] Bootstrap failed:", error?.message || "database error");
