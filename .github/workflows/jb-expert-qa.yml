@@ -78,7 +78,6 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/erp-project" "$RUNNER_TEMP/jb-expert-qa-report"
           git archive "$GITHUB_SHA" | tar -x -C "$RUNNER_TEMP/erp-project"
-          cp package-lock.json "$RUNNER_TEMP/erp-project/package-lock.json"
 
       - name: Run JB Expert QA source audit
         shell: bash
