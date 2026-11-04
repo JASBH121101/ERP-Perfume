@@ -79,7 +79,7 @@ def report_hygiene(js, html):
     else:
         print("INFO: no Service Worker, Cache API or IndexedDB integration in app code.")
     if "localStorage" in js:
-        print("INFO: localStorage is used for DEMO persistence; it is not an application cache.")
+        print("INFO: localStorage is limited to interface preferences (sidebar collapse and font size); operational records are stored through the ERP API.")
 
     delegated = {
         event: len(re.findall(r"document\.addEventListener\(\s*['\"]" + event + r"['\"]", js))
