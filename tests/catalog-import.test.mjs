@@ -138,3 +138,48 @@ test("backend rejects malformed stock and caps each import at 200 records", asyn
   assert.equal(tooMany.status, 400);
   assert.equal(sql.statements.length, 0);
 });
+
+
+const operationalWorkerSource = workerSource.replace(/\bexport\s+(?=async function|function)/g, "");
+const handleERPRequest = new Function(operationalWorkerSource + "\nreturn handleERPRequest;")();
+
+test("HR leave approval route records reviewer and review timestamp", async () => {
+  const statements = [];
+  const sql = {
+    query: async (query, params) => {
+      statements.push({ query, params });
+      return [{ id: "00000000-0000-0000-0000-000000000002", status: params[0] }];
+    }
+  };
+  const request = {
+    url: "https://erp.test/api/erp/hr_leave_requests/00000000-0000-0000-0000-000000000002",
+    method: "PATCH",
+    json: async () => ({ status: "Aprobado" })
+  };
+  const response = await handleERPRequest(request, {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.record.status, "Aprobado");
+  assert.match(statements[0].query, /reviewed_by/);
+  assert.match(statements[0].query, /reviewed_at=NOW\(\)/);
+});
+
+test("completed or cancelled orders cannot be reopened through status updates", async () => {
+  let executedSql = "";
+  const sql = {
+    query: async (query) => {
+      executedSql = query;
+      return [];
+    }
+  };
+  const request = {
+    url: "https://erp.test/api/erp/orders/00000000-0000-0000-0000-000000000003",
+    method: "PATCH",
+    json: async () => ({ status: "Pendiente" })
+  };
+  const response = await handleERPRequest(request, {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.match(body.error.message, /finalizado\/cancelado/);
+  assert.match(executedSql, /old_status NOT IN \('Completado','Cancelado'\)/);
+});
