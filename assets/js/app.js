@@ -81,11 +81,14 @@
     hr: { title: 'RRHH', eyebrow: 'GESTIÓN DEL PERSONAL', heading: 'Recursos Humanos', subtitle: 'Organiza personal, asistencia, permisos y nómina.' },
     analytics: { title: 'Informes', eyebrow: 'RENDIMIENTO', heading: 'Informes y análisis', subtitle: 'Indicadores preparados para tomar decisiones.' },
     settings: { title: 'Configuración', eyebrow: 'SISTEMA', heading: 'Configuración', subtitle: 'Preferencias y conexiones de JB PARFUMS ERP.' },
-    purchases: { title: 'Compras', eyebrow: 'ABASTECIMIENTO', heading: 'Compras', subtitle: 'Registra adquisiciones y recepción de productos.' },
+    purchaseOrders: { title: 'Órdenes de compra', eyebrow: 'ABASTECIMIENTO', heading: 'Órdenes de compra', subtitle: 'Solicita productos, comparte la orden y registra recepciones parciales.' },
+    purchases: { title: 'Facturas de proveedor', eyebrow: 'ABASTECIMIENTO', heading: 'Facturas de proveedor', subtitle: 'Registra obligaciones y abonos derivados de facturas recibidas.' },
     payables: { title: 'Cuentas por pagar', eyebrow: 'ABASTECIMIENTO', heading: 'Cuentas por pagar', subtitle: 'Controla saldos y abonos pendientes con tus proveedores.' },
     suppliers: { title: 'Proveedores', eyebrow: 'ABASTECIMIENTO', heading: 'Proveedores', subtitle: 'Administra proveedores y monedas habituales.' },
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
-    cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
+    cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' },
+    profitability: { title: 'Rentabilidad', eyebrow: 'FINANZAS · RESULTADOS', heading: 'Rentabilidad', subtitle: 'Ventas, costo de venta, utilidad bruta y gastos operativos.' },
+    capital: { title: 'Capital y flujo de efectivo', eyebrow: 'FINANZAS · LIQUIDEZ', heading: 'Capital y flujo de efectivo', subtitle: 'Efectivo registrado, inventario, cobros, pagos y compromisos.' }
   };
   const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active' };
   const root = document.getElementById('view-root');
@@ -123,12 +126,15 @@
     });
   }
   let inventoryMovements = [];
+  let purchaseOrders = [];
+  let purchaseReceipts = [];
   function persistDemoData() {
     try {
       window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({
-        version: 3, products: products, inventoryMovements: inventoryMovements, orders: orders,
-        customers: customers, suppliers: suppliers, purchases: purchases, expenses: expenses,
-        cashEntries: cashEntries, invoices: invoices, employees: employees,
+        version: 4, products: products, inventoryMovements: inventoryMovements, orders: orders,
+        customers: customers, suppliers: suppliers, purchases: purchases, purchaseOrders: purchaseOrders,
+        purchaseReceipts: purchaseReceipts, expenses: expenses, cashEntries: cashEntries,
+        invoices: invoices, employees: employees,
         settings: { exchangeRate: exchangeRate, baseCurrency: 'USD' }
       }));
       return true;
@@ -147,7 +153,7 @@
       }
       const parsed = JSON.parse(stored);
       const needsCurrencyMigration = parsed && parsed.version === 1;
-      if (!parsed || ![1, 2, 3].includes(parsed.version) || !Array.isArray(parsed.products) || !Array.isArray(parsed.inventoryMovements)) {
+      if (!parsed || ![1, 2, 3, 4].includes(parsed.version) || !Array.isArray(parsed.products) || !Array.isArray(parsed.inventoryMovements)) {
         products.forEach(function (product) { product.active = true; });
         persistDemoData();
         return;
@@ -156,6 +162,8 @@
       if(Array.isArray(parsed.customers)) customers=parsed.customers;
       suppliers=Array.isArray(parsed.suppliers)?parsed.suppliers:[];
       purchases=Array.isArray(parsed.purchases)?parsed.purchases:[];
+      purchaseOrders=Array.isArray(parsed.purchaseOrders)?parsed.purchaseOrders:[];
+      purchaseReceipts=Array.isArray(parsed.purchaseReceipts)?parsed.purchaseReceipts:[];
       expenses=Array.isArray(parsed.expenses)?parsed.expenses:[];
       cashEntries=Array.isArray(parsed.cashEntries)?parsed.cashEntries:[];
       invoices=Array.isArray(parsed.invoices)?parsed.invoices:[];
@@ -189,7 +197,7 @@
           return order;
         });
       }
-      if (needsCurrencyMigration || parsed.version !== 3) {
+      if (needsCurrencyMigration || parsed.version !== 4) {
         const saved = persistDemoData();
         if (saved && needsCurrencyMigration) window.localStorage.removeItem(LEGACY_DEMO_STORAGE_KEY);
       }
@@ -721,7 +729,7 @@
     if(typeof previewDialog.showModal==='function')previewDialog.showModal();
   }
   function openBusinessDialog(type,recordId){
-    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra',expense:'Registrar gasto',cash:'Registrar recibo o pago',invoice:'Nueva factura',payment:'Registrar abono',employee:'Agregar colaborador'};
+    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar factura de proveedor','purchase-order':'Nueva orden de compra','purchase-receipt':'Registrar recepción parcial',expense:'Registrar gasto',cash:'Registrar recibo o pago',invoice:'Nueva factura',payment:'Registrar abono',employee:'Agregar colaborador'};
     let body='';
     if(type==='customer')body='<div class="form-grid">'+formField('Nombre del cliente','name','text',true,'maxlength="80"')+formField('Teléfono o contacto','contact','text',false,'maxlength="40"')+'</div>';
     if(type==='supplier')body='<div class="form-grid">'+formField('Nombre del proveedor','name','text',true,'maxlength="80"')+formField('Contacto','contact','text',false,'maxlength="80"')+formField('Teléfono','phone','tel',false,'maxlength="40"')+formField('Correo','email','email',false,'maxlength="120"')+currencyField('USD')+'</div>';
@@ -729,6 +737,33 @@
       if(!customers.length){toast('Registra primero un cliente.');return;}
       if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
       body='<div class="form-grid">'+searchableField('Cliente','customerIndex','customer',true)+searchableField('Producto','productId','product',true)+formField('Cantidad','quantity','number',true,'min="1" step="1" value="1"')+currencyField('USD')+'</div><p class="form-helper">Los precios del catálogo permanecen en USD. Se guarda la moneda de cobro y la tasa utilizada.</p>';
+    }
+    if(type==='purchase-order'){
+      if(!suppliers.length){toast('Registra primero un proveedor.');return;}
+      if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
+      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+currencyField('USD')+
+        formField('Entrega estimada','expectedDelivery','date',false,'')+
+        formField('Condiciones de pago','paymentTerms','text',false,'maxlength="120"')+
+        formField('Descuento (moneda seleccionada)','discount','number',false,'min="0" step="0.01" value="0"')+
+        formField('Flete estimado','freight','number',false,'min="0" step="0.01" value="0"')+
+        formField('Impuestos / otros','taxes','number',false,'min="0" step="0.01" value="0"')+
+        '<label class="form-field full-field"><span>Notas para el proveedor</span><textarea name="notes" rows="2" maxlength="500"></textarea></label></div>'+
+        '<section class="po-lines-panel"><div class="panel-heading"><div><h3>Productos solicitados</h3><p>Selecciona referencias existentes; no se crean productos desde una orden.</p></div><button type="button" class="button button-quiet button-small" data-action="add-po-line">Agregar producto</button></div><div id="po-line-list">'+purchaseOrderLineMarkup()+'</div></section>'+
+        '<p class="form-helper">La orden inicia como borrador. Al crearla no se modifica stock, caja ni cuentas por pagar. El costo real del flete se confirma al recibir.</p>';
+    }
+    if(type==='purchase-receipt'){
+      const order=purchaseOrders.find(item=>String(item.id)===String(recordId));
+      if(!order){toast('No se encontró la orden de compra.');return;}
+      if(['Borrador','Cancelada','Recibida','Cerrada con faltante'].includes(order.status)){toast('La orden no está disponible para recibir mercancía.');return;}
+      const itemRows=order.items.map((item,index)=>{
+        const remain=Math.max(0,Number(item.quantity||0)-Number(item.receivedQuantity||0));
+        return '<div class="po-receipt-row"><div><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'')+' · Solicitadas '+item.quantity+' · Recibidas '+item.receivedQuantity+' · Pendientes '+remain+'</small></div><label class="form-field"><span>Recibir ahora</span><input data-receipt-quantity="'+index+'" type="number" min="0" max="'+remain+'" step="1" value="0"></label></div>';
+      }).join('');
+      body='<div class="form-grid"><div class="detail-field full-field"><span>Orden · '+esc(order.number)+'</span><strong>'+esc(order.supplierName)+'</strong><small>'+purchaseOrderRemaining(order)+' unidades pendientes</small></div>'+
+        formField('Flete real de esta recepción ('+esc(order.currency)+')','actualFreight','number',false,'min="0" step="0.01" value="0"')+
+        '<label class="form-field full-field"><span>Nota / diferencia de entrega</span><textarea name="receiptNotes" rows="2" maxlength="500"></textarea></label></div>'+
+        '<div class="po-receipt-list">'+itemRows+'</div>'+
+        '<p class="form-helper">Solo las cantidades recibidas aumentan el inventario. Puedes registrar varias recepciones hasta completar la orden. No se registra pago ni cuenta por pagar aquí.</p>';
     }
     if(type==='purchase'){
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
@@ -791,7 +826,57 @@
     const type=businessForm.dataset.recordType,currency=get('currency')==='NIO'?'NIO':'USD',rate=exchangeRate,id=Date.now();
     const snapshot=captureDemoState();
     const persistBusinessChanges=function(){if(!persistDemoData()){restoreDemoState(snapshot);return false;}return true;};
-    if(type==='customer'){
+    if(type==='purchase-order'){
+      const supplier=suppliers[num('supplierIndex')],currency=get('currency')==='NIO'?'NIO':'USD';
+      const rows=Array.from(businessForm.querySelectorAll('.po-line-row')),items=[];
+      for(const row of rows){
+        const product=products.find(p=>String(p.id)===String(row.querySelector('[data-po-product]')?.value||''));
+        const quantity=Number(row.querySelector('[data-po-quantity]')?.value||0),unitCost=Number(row.querySelector('[data-po-cost]')?.value||0);
+        if(!product||!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitCost)||unitCost<0){toast('Revisa cada producto, cantidad y costo unitario de la orden.');return;}
+        if(items.some(item=>String(item.productId)===String(product.id))){toast('Cada producto debe aparecer una sola vez; modifica su cantidad en la misma línea.');return;}
+        const unitCostUsd=toUsd(unitCost,currency);
+        items.push({productId:product.id,name:product.name,sku:product.sku||'',quantity,receivedQuantity:0,unitCostInput:unitCost,currency,unitCostUsd,lineTotalUsd:roundMoney(quantity*unitCostUsd)});
+      }
+      if(!supplier||!items.length){toast('Selecciona un proveedor y agrega al menos un producto.');return;}
+      const subtotalUsd=roundMoney(items.reduce((sum,item)=>sum+item.lineTotalUsd,0));
+      const discountUsd=toUsd(num('discount'),currency),freightUsd=toUsd(num('freight'),currency),taxesUsd=toUsd(num('taxes'),currency);
+      if([discountUsd,freightUsd,taxesUsd].some(value=>!Number.isFinite(value)||value<0)||discountUsd>subtotalUsd){toast('Revisa descuento, flete e impuestos.');return;}
+      const totalUsd=roundMoney(subtotalUsd-discountUsd+freightUsd+taxesUsd);
+      const order={id:String(id),number:nextDocumentNumber('OC',purchaseOrders,'number'),supplierId:supplier.id||null,supplierName:supplier.name,supplierPhone:supplier.phone||'',currency,exchangeRate:rate,items,subtotalUsd,discountUsd,freightUsd,taxesUsd,totalUsd,status:'Borrador',expectedDelivery:get('expectedDelivery'),paymentTerms:get('paymentTerms'),notes:get('notes'),createdAt:new Date().toISOString(),closeReason:''};
+      purchaseOrders.unshift(order);
+      if(!persistBusinessChanges())return;
+      businessDialog.close();renderView();toast('Orden '+order.number+' guardada como borrador. No cambió stock, caja ni cuentas por pagar.');
+    }else if(type==='purchase-receipt'){
+      const order=purchaseOrders.find(item=>String(item.id)===String(businessForm.dataset.purchaseOrderId||businessForm.dataset.recordId||''));
+      if(!order){toast('No se encontró la orden seleccionada.');return;}
+      const receiptLines=[];
+      (order.items||[]).forEach((item,index)=>{
+        const input=businessForm.querySelector('[data-receipt-quantity="'+index+'"]'),quantity=Number(input?.value||0);
+        const remaining=Math.max(0,Number(item.quantity||0)-Number(item.receivedQuantity||0));
+        if(!Number.isInteger(quantity)||quantity<0||quantity>remaining)throw new Error('La cantidad recibida supera las unidades pendientes.');
+        if(quantity>0)receiptLines.push({item,index,quantity});
+      });
+      if(!receiptLines.length){toast('Indica al menos una cantidad recibida.');return;}
+      const actualFreightUsd=toUsd(num('actualFreight'),order.currency);
+      if(!Number.isFinite(actualFreightUsd)||actualFreightUsd<0){toast('El flete real no es válido.');return;}
+      const receivedValue=receiptLines.reduce((sum,line)=>sum+line.quantity*Number(line.item.unitCostUsd||0),0);
+      const receipt={id:String(id),number:nextDocumentNumber('RC',purchaseReceipts,'number'),purchaseOrderId:order.id,actualFreightUsd,notes:get('receiptNotes'),receivedAt:new Date().toISOString(),items:[]};
+      receiptLines.forEach((line,index)=>{
+        const item=line.item,product=products.find(p=>String(p.id)===String(item.productId));
+        if(!product)throw new Error('No se encontró el producto '+item.name+' en el catálogo.');
+        const lineValue=line.quantity*Number(item.unitCostUsd||0),freightShare=receivedValue>0?actualFreightUsd*lineValue/receivedValue:0;
+        const landedUnitCost=roundMoney((lineValue+freightShare)/line.quantity),previous=Number(product.stock||0),next=previous+line.quantity;
+        const oldCost=Number(product.unitCost||product.purchaseCost||0),weighted=next>0?roundMoney((previous*oldCost+line.quantity*landedUnitCost)/next):landedUnitCost;
+        product.stock=next;product.purchaseCost=weighted;product.additionalCost=0;product.unitCost=weighted;product.profit=roundMoney(Number(product.price||0)-weighted);product.margin=Number(product.price||0)>0?roundMoney(product.profit/Number(product.price)*100):0;
+        item.receivedQuantity=Number(item.receivedQuantity||0)+line.quantity;
+        inventoryMovements.unshift({id:id+index,productId:product.id,productName:product.name,sku:product.sku,type:'Recepción de orden de compra',quantity:line.quantity,delta:line.quantity,previousStock:previous,newStock:next,note:receipt.number+' · '+order.number,sourceType:'purchase-order-receipt',sourceId:receipt.id,createdAt:receipt.receivedAt});
+        receipt.items.push({purchaseOrderItemIndex:line.index,productId:product.id,name:product.name,quantity:line.quantity,landedUnitCostUsd:landedUnitCost});
+      });
+      purchaseReceipts.unshift(receipt);
+      order.status=purchaseOrderRemaining(order)===0?'Recibida':'Recepción parcial';order.updatedAt=receipt.receivedAt;
+      if(!persistBusinessChanges())return;
+      businessDialog.close();renderView();toast('Recepción '+receipt.number+' registrada. Inventario actualizado por las unidades recibidas; sin pago ni CxP.');
+    }else if(type==='customer'){
       if(!get('name'))return;
       customers.unshift({name:get('name'),contact:get('contact'),orders:0,spent:0,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Cliente guardado en DEMO local.');
@@ -872,7 +957,7 @@
       const invoiceId='JBI-'+String(nextNumber).padStart(6,'0');
       const invoice={
         id:invoiceId,orderId:source==='web'?order.id:'',source,customer:customerName,customerType,phone:phone||'',
-        items:totals.items.map(item=>({productId:item.productId,name:item.name,sku:item.sku||'',barcode:item.barcode||'',quantity:item.quantity,unitPriceUsd:item.unitPriceUsd,lineTotalUsd:item.lineTotalUsd})),
+        items:totals.items.map(item=>({productId:item.productId,name:item.name,sku:item.sku||'',barcode:item.barcode||'',quantity:item.quantity,unitPriceUsd:item.unitPriceUsd,unitCostUsd:Number(item.unitCostUsd??products.find(p=>String(p.id)===String(item.productId))?.unitCost??0),lineTotalUsd:item.lineTotalUsd})),
         subtotalUsd:totals.subtotalUsd,discountUsd:totals.discountUsd,deliveryFeeUsd:totals.deliveryFeeUsd,
         currency:'USD',paymentCurrency:currency,paymentOriginalAmount:received,exchangeRate:rate,totalUsd:totals.totalUsd,originalAmount:totalOriginal,paidUsd,payments:[],
         paymentMethod:get('paymentMethod')||'Pendiente',status:paidUsd>=totals.totalUsd-0.001?'Pagado':(paidUsd>0?'Abono parcial':'Pendiente'),
@@ -1025,6 +1110,91 @@
     const noticeText=backendMode?'Los registros están protegidos por sesión y roles. Salarios y nómina se almacenan en córdobas; la nómina legal requiere revisar deducciones, prestaciones y normativa laboral.':'La nómina se mantiene en córdobas. Deducciones, prestaciones y documentos laborales requieren validación legal antes de producción.';
     return heading(views.hr,action)+'<div class="summary-strip"><div class="summary-mini"><span>'+countLabel+'</span><strong>'+employees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual (C$)</span><strong>'+moneyInCurrency(employees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Moneda salarial</span><strong>NIO</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">'+(backendMode?'No hay colaboradores registrados.':'No hay colaboradores DEMO.')+'</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>'+noticeTitle+'</strong><p>'+noticeText+'</p></div></div>';
   }
+  function purchaseOrderLineMarkup(){
+    const options=products.filter(p=>p.active!==false).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+' · '+esc(p.sku||'Sin SKU')+'</option>').join('');
+    return '<div class="po-line-row"><label class="form-field po-product-field"><span>Producto existente</span><select data-po-product required><option value="">Seleccionar producto</option>'+options+'</select></label><label class="form-field po-quantity-field"><span>Cantidad</span><input data-po-quantity type="number" min="1" step="1" value="1" required></label><label class="form-field po-cost-field"><span>Costo unitario</span><input data-po-cost type="number" min="0" step="0.01" required></label><button type="button" class="table-action table-action-danger po-remove-line" data-action="remove-po-line" aria-label="Quitar producto">×</button></div>';
+  }
+  function purchaseOrderRemaining(order){return (order.items||[]).reduce((sum,item)=>sum+Math.max(0,Number(item.quantity||0)-Number(item.receivedQuantity||0)),0);}
+  function purchaseOrderReceived(order){return (order.items||[]).reduce((sum,item)=>sum+Number(item.receivedQuantity||0),0);}
+  function nextDocumentNumber(prefix,collection,field){
+    const year=new Date().getFullYear(),needle=prefix+'-'+year+'-';
+    const sequence=(collection||[]).reduce((max,item)=>{const number=String(item[field]||'');return number.startsWith(needle)?Math.max(max,Number(number.slice(needle.length))||0):max;},0)+1;
+    return needle+String(sequence).padStart(4,'0');
+  }
+  function renderPurchaseOrders(){
+    const open=purchaseOrders.filter(o=>!['Recibida','Cerrada con faltante','Cancelada'].includes(o.status));
+    const pendingUnits=open.reduce((sum,o)=>sum+purchaseOrderRemaining(o),0);
+    const committed=open.reduce((sum,o)=>sum+Math.max(0,Number(o.totalUsd||0)),0);
+    const rows=purchaseOrders.map(order=>{
+      const remaining=purchaseOrderRemaining(order),received=purchaseOrderReceived(order);
+      const actions=[];
+      if(order.status==='Borrador')actions.push('<button class="button button-quiet button-small" data-action="send-po" data-id="'+esc(order.id)+'">Marcar enviada</button>');
+      if(order.status==='Enviada')actions.push('<button class="button button-quiet button-small" data-action="confirm-po" data-id="'+esc(order.id)+'">Confirmar</button>');
+      if(remaining>0&&!['Borrador','Cancelada','Cerrada con faltante'].includes(order.status))actions.push('<button class="button button-primary button-small" data-action="receive-po" data-id="'+esc(order.id)+'">Recibir</button>');
+      if(remaining>0&&!['Cancelada','Cerrada con faltante','Recibida'].includes(order.status))actions.push('<button class="button button-quiet button-small" data-action="close-po-short" data-id="'+esc(order.id)+'">Cerrar faltante</button>');
+      if(!received&&!['Cancelada','Recibida'].includes(order.status))actions.push('<button class="table-action table-action-danger" data-action="cancel-po" data-id="'+esc(order.id)+'" aria-label="Cancelar orden">×</button>');
+      actions.push('<button class="table-action" data-action="print-po" data-id="'+esc(order.id)+'" aria-label="Imprimir orden">↗</button>');
+      return '<tr><td data-label="Orden" class="table-primary"><strong>'+esc(order.number)+'</strong><small class="table-secondary">'+dateText(order.createdAt)+'</small></td><td data-label="Proveedor">'+esc(order.supplierName)+'</td><td data-label="Artículos">'+(order.items||[]).length+' referencias<small class="table-secondary">'+received+' recibidas · '+remaining+' pendientes</small></td><td data-label="Total">'+money(Number(order.totalUsd||0))+'</td><td data-label="Estado"><span class="status-chip '+(order.status==='Recibida'?'status-success':(order.status==='Cancelada'?'status-muted':'status-pending'))+'">'+esc(order.status)+'</span></td><td data-label="Acciones"><div class="table-actions po-actions">'+actions.join('')+'</div></td></tr>';
+    }).join('');
+    const receiptRows=purchaseReceipts.slice().sort((x,y)=>String(y.receivedAt).localeCompare(String(x.receivedAt))).slice(0,8).map(r=>{
+      const order=purchaseOrders.find(o=>String(o.id)===String(r.purchaseOrderId));
+      return '<tr><td>'+esc(r.number)+'</td><td>'+esc(order?.number||'Orden eliminada')+'</td><td>'+dateText(r.receivedAt)+'</td><td>'+r.items.reduce((sum,item)=>sum+Number(item.quantity||0),0)+' uds.</td><td>'+money(r.actualFreightUsd||0)+'</td></tr>';
+    }).join('');
+    return heading(views.purchaseOrders,'<button class="button button-primary" data-action="new-purchase-order">'+svg('plus')+' Nueva orden</button>')+
+      '<div class="summary-strip"><div class="summary-mini"><span>Órdenes activas</span><strong>'+open.length+'</strong></div><div class="summary-mini"><span>Unidades pendientes</span><strong>'+pendingUnits+'</strong></div><div class="summary-mini"><span>Compromisos estimados</span><strong>'+money(committed)+'</strong></div></div>'+
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>ARTÍCULOS</th><th>TOTAL USD</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="list-panel"><div class="panel-heading"><div><h2>Historial de recepciones</h2><p>Cada entrega parcial conserva su fecha, cantidades y costo de flete real</p></div><span class="ledger-count">'+purchaseReceipts.length+' recepciones</span></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>RECEPCIÓN</th><th>ORDEN</th><th>FECHA</th><th>UNIDADES</th><th>FLETE USD</th></tr></thead><tbody>'+(receiptRows||'<tr><td colspan="5">No hay recepciones registradas.</td></tr>')+'</tbody></table></div></article>'+
+      '<div class="notice-panel">'+svg('warning')+'<div><strong>Una orden no es una compra contabilizada</strong><p>Crear o enviar una orden no incrementa el inventario, no registra salida de efectivo y no genera cuentas por pagar. Solo la recepción aumenta existencias. La factura del proveedor se registra por separado.</p></div></div>';
+  }
+  function renderProfitability(){
+    const recognized=invoices.filter(i=>!['Anulada','Cancelada'].includes(i.status));
+    let revenue=0,cogs=0,unknownCostLines=0;const byProduct={};
+    recognized.forEach(invoice=>(invoice.items||[]).forEach(line=>{
+      const qty=Number(line.quantity||0),lineSales=Number(line.lineTotalUsd??(qty*Number(line.unitPriceUsd||0)));
+      const product=products.find(p=>String(p.id)===String(line.productId));
+      const unitCost=line.unitCostUsd!=null?Number(line.unitCostUsd):Number(product?.unitCost||0),lineCost=qty*unitCost;
+      revenue+=lineSales;cogs+=lineCost;if(!(unitCost>0))unknownCostLines+=1;
+      const key=String(line.productId||line.sku||line.name);
+      if(!byProduct[key])byProduct[key]={name:line.name||product?.name||'Producto',sku:line.sku||product?.sku||'',units:0,sales:0,cost:0};
+      byProduct[key].units+=qty;byProduct[key].sales+=lineSales;byProduct[key].cost+=lineCost;
+    }));
+    revenue=roundMoney(revenue);cogs=roundMoney(cogs);
+    const gross=roundMoney(revenue-cogs),operating=roundMoney(expenses.reduce((sum,item)=>sum+Number(item.amountUsd||0),0)),net=roundMoney(gross-operating);
+    const rows=Object.values(byProduct).sort((x,y)=>(y.sales-y.cost)-(x.sales-x.cost)).map(item=>{
+      const profit=item.sales-item.cost,margin=item.sales>0?profit/item.sales*100:0;
+      return '<tr><td class="table-primary">'+esc(item.name)+'<small class="table-secondary">'+esc(item.sku)+'</small></td><td>'+item.units+'</td><td>'+money(item.sales)+'</td><td>'+money(item.cost)+'</td><td>'+money(profit)+'</td><td>'+margin.toFixed(1)+'%</td></tr>';
+    }).join('');
+    return heading(views.profitability,'<button class="button button-quiet" data-view="capital">Ver capital y efectivo '+svg('arrow')+'</button>')+
+      '<div class="metric-grid">'+metric('Ventas facturadas',money(revenue),'chart',recognized.length+' facturas','ingreso reconocido · DEMO',false)+metric('Costo de venta',money(cogs),'boxes','COGS','costo guardado por unidad',false)+metric('Utilidad bruta',money(gross),'spark','Ventas − COGS','antes de gastos operativos',true)+metric('Utilidad neta estimada',money(net),'chart','Después de gastos',money(operating)+' en gastos operativos',true)+'</div>'+
+      '<article class="list-panel"><div class="panel-heading"><div><h2>Rentabilidad por producto</h2><p>Las nuevas facturas guardan costo histórico; documentos antiguos sin costo usan el costo actual como aproximación</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PRODUCTO</th><th>UNIDADES</th><th>VENTAS</th><th>COSTO</th><th>UTILIDAD</th><th>MARGEN</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Todavía no hay facturas registradas.</td></tr>')+'</tbody></table></div></article>'+
+      '<div class="notice-panel">'+svg('warning')+'<div><strong>Rentabilidad DEMO, no contabilidad oficial</strong><p>Se reconoce el ingreso al generar la factura, aunque exista saldo por cobrar. La utilidad neta resta gastos operativos, no órdenes de compra ni reposición de inventario. '+(unknownCostLines?unknownCostLines+' línea(s) no tienen costo histórico; su rentabilidad está incompleta.':'Los costos históricos están disponibles en las nuevas facturas.')+'</p></div></div>';
+  }
+  function renderCapital(){
+    const income=cashEntries.filter(e=>e.direction==='income').reduce((sum,e)=>sum+Number(e.amountUsd||0),0);
+    const outflow=cashEntries.filter(e=>e.direction!=='income').reduce((sum,e)=>sum+Number(e.amountUsd||0),0);
+    const movement=roundMoney(income-outflow);
+    const inventory=roundMoney(products.filter(p=>p.active!==false).reduce((sum,p)=>sum+Number(p.stock||0)*Number(p.unitCost||0),0));
+    const receivable=roundMoney(invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0));
+    const payable=roundMoney(purchases.reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0));
+    const commitment=roundMoney(purchaseOrders.filter(o=>!['Recibida','Cancelada','Cerrada con faltante'].includes(o.status)).reduce((sum,o)=>sum+Number(o.totalUsd||0),0));
+    return heading(views.capital,'<button class="button button-quiet" data-view="profitability">Ver rentabilidad '+svg('arrow')+'</button>')+
+      '<div class="metric-grid">'+metric('Flujo neto registrado',money(movement),'chart','Entradas − salidas','no incluye saldo inicial',false)+metric('Inventario valorizado',money(inventory),'boxes','A costo unitario','activo estimado en stock',false)+metric('Cuentas por cobrar',money(receivable),'wallet',invoices.filter(i=>Number(i.totalUsd||0)>Number(i.paidUsd||0)+0.001).length+' facturas','saldo pendiente de clientes',false)+metric('Cuentas por pagar',money(payable),'receipt',purchases.filter(p=>Number(p.totalUsd||0)>Number(p.paidUsd||0)+0.001).length+' facturas','obligaciones registradas',false)+'</div>'+
+      '<div class="summary-strip"><div class="summary-mini"><span>Entradas acumuladas</span><strong>'+money(income)+'</strong></div><div class="summary-mini"><span>Salidas acumuladas</span><strong>'+money(outflow)+'</strong></div><div class="summary-mini"><span>Órdenes abiertas · compromiso</span><strong>'+money(commitment)+'</strong></div></div>'+
+      '<div class="notice-panel">'+svg('warning')+'<div><strong>Capital y efectivo DEMO</strong><p>El flujo neto es solo el movimiento acumulado registrado: todavía no hay saldo inicial de caja/bancos configurado ni conciliación bancaria. El inventario es un activo, no efectivo. Las órdenes abiertas son compromisos, no cuentas por pagar; las cuentas por pagar salen de facturas de proveedor registradas.</p></div></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h2>Capital inicial</h2><p>No configurado. Evitamos mostrar una cifra inventada.</p></div></div><p class="form-helper">Cuando definamos el aporte inicial, podremos separar capital invertido, resultados acumulados, inventario y efectivo disponible.</p></article>';
+  }
+  function printPurchaseOrder(orderId){
+    const order=purchaseOrders.find(item=>String(item.id)===String(orderId));if(!order)return;
+    const rows=(order.items||[]).map(item=>'<tr><td>'+esc(item.name)+'</td><td>'+esc(item.sku||'')+'</td><td>'+Number(item.quantity)+'</td><td>'+money(item.unitCostUsd)+'</td><td>'+money(item.lineTotalUsd)+'</td></tr>').join('');
+    const doc='<!doctype html><html lang="es"><head><meta charset="utf-8"><title>'+esc(order.number)+' · JB PARFUMS</title><style>body{font:14px Arial,sans-serif;color:#24211b;padding:32px;max-width:900px;margin:auto}header{display:flex;justify-content:space-between;border-bottom:2px solid #b9935a;padding-bottom:18px}h1{font-size:24px;margin:0}small{color:#766f65}table{width:100%;border-collapse:collapse;margin-top:28px}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #ddd}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}.meta div{padding:9px;background:#f7f4ef}.total{text-align:right;font-size:22px;margin-top:24px}footer{margin-top:42px;color:#766f65;font-size:12px}@media print{body{padding:0}}</style></head><body><header><div><h1>JB PARFUMS</h1><p>Orden de compra · '+esc(order.number)+'</p></div><div><strong>'+esc(order.status)+'</strong><br><small>'+dateText(order.createdAt)+'</small></div></header><div class="meta"><div><small>PROVEEDOR</small><br><strong>'+esc(order.supplierName)+'</strong></div><div><small>ENTREGA ESTIMADA</small><br><strong>'+esc(order.expectedDelivery||'Por coordinar')+'</strong></div><div><small>CONDICIONES DE PAGO</small><br>'+esc(order.paymentTerms||'Por acordar')+'</div><div><small>MONEDA</small><br>'+esc(order.currency)+' · tasa '+Number(order.exchangeRate).toFixed(4)+'</div></div><table><thead><tr><th>Producto</th><th>SKU</th><th>Cantidad</th><th>Costo unitario USD</th><th>Total USD</th></tr></thead><tbody>'+rows+'</tbody></table><div class="total">Total estimado: <strong>'+money(order.totalUsd)+'</strong></div><p>'+esc(order.notes||'')+'</p><footer>Documento de solicitud comercial. No representa pago, recepción de inventario ni factura de proveedor.<br>Generado por JB PARFUMS ERP.</footer><script>window.addEventListener("load",()=>window.print())<\/script></body></html>';
+    const win=window.open('','_blank','noopener,noreferrer');if(!win){toast('El navegador bloqueó la ventana. Permite ventanas emergentes para imprimir la orden.');return;}win.document.open();win.document.write(doc);win.document.close();
+  }
+  function exportProductCatalogPdf(){
+    const available=products.filter(p=>p.active!==false&&Number(p.stock||0)>0);
+    const rows=available.map(p=>'<article><div class="art">JB</div><div><h2>'+esc(p.name)+'</h2><p>'+esc([p.brand,p.sizeMl?p.sizeMl+' ml':'',p.family].filter(Boolean).join(' · '))+'</p><p>'+esc(p.description||'Fragancia disponible en JB PARFUMS.')+'</p><strong>'+money(p.price)+'</strong><small>'+Number(p.stock)+' disponibles</small></div></article>').join('');
+    const doc='<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Catálogo JB PARFUMS</title><style>body{font:14px Arial,sans-serif;color:#25221e;padding:24px;max-width:1000px;margin:auto}header{border-bottom:2px solid #b9935a;margin-bottom:24px}h1{letter-spacing:3px}main{display:grid;grid-template-columns:1fr 1fr;gap:18px}article{display:flex;gap:14px;padding:14px;border:1px solid #e5ded2;border-radius:12px;break-inside:avoid}.art{width:90px;min-width:90px;height:120px;display:grid;place-items:center;background:#201c18;color:#c7a36e;font:28px Georgia;border-radius:8px}h2{font-size:17px;margin:0 0 6px}p{color:#6f685e;font-size:12px}small{display:block;color:#6f685e;margin-top:5px}@media print{body{padding:0}}</style></head><body><header><h1>JB PARFUMS</h1><p>CATÁLOGO COMERCIAL · DISPONIBILIDAD ACTUAL</p></header><main>'+(rows||'<p>No hay productos activos con existencias para exportar.</p>')+'</main><script>window.addEventListener("load",()=>window.print())<\/script></body></html>';
+    const win=window.open('','_blank','noopener,noreferrer');if(!win){toast('Permite ventanas emergentes para exportar el catálogo.');return;}win.document.open();win.document.write(doc);win.document.close();
+  }
   function renderAnalytics(){
     const sales=orders.reduce((s,o)=>s+Number(o.amount||0),0),inventory=products.reduce((s,p)=>s+Number(p.unitCost||0)*Number(p.stock||0),0),potential=products.reduce((s,p)=>s+Math.max(0,costSummary(p).profit)*Number(p.stock||0),0),totalExpenses=expenses.reduce((s,e)=>s+Number(e.amountUsd||0),0),totalPurchases=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
     return heading(views.analytics,'')+'<div class="metric-grid">'+metric('Ventas de pedidos',money(sales),'chart',orders.length+' pedidos','total USD DEMO',false)+metric('Valor del inventario',money(inventory),'boxes',products.length+' referencias','a costo unitario',false)+metric('Margen potencial',money(potential),'spark','estimado','no es utilidad realizada',true)+metric('Gastos registrados',money(totalExpenses),'receipt',expenses.length+' movimientos','equivalente USD',false)+'</div><div class="summary-strip"><div class="summary-mini"><span>Compras USD</span><strong>'+money(totalPurchases)+'</strong></div><div class="summary-mini"><span>Pedidos sin completar</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Movimientos de stock</span><strong>'+inventoryMovements.length+'</strong></div></div><div class="notice-panel">'+svg('warning')+'<div><strong>Informes calculados sobre datos DEMO</strong><p>La utilidad real debe conciliar ventas cobradas, costo de venta, gastos, impuestos, devoluciones y ajustes; esta vista no constituye contabilidad oficial.</p></div></div>';
@@ -1089,7 +1259,10 @@
       hr: renderHR,
       analytics: renderAnalytics,
       settings: renderSettings,
+      purchaseOrders: renderPurchaseOrders,
       purchases: renderPurchases,
+      profitability: renderProfitability,
+      capital: renderCapital,
       payables: renderPayables,
       suppliers: renderSuppliers,
       expenses: renderExpenses,
@@ -1422,8 +1595,27 @@
   document.addEventListener('click',function(event){
     const action=event.target.closest('[data-action]');
     if(!action){if(event.target.closest('#business-close')||event.target.closest('#business-cancel'))businessDialog.close();return;}
-    const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-expense':'expense','new-cash':'cash','new-invoice':'invoice','new-employee':'employee'};
+    const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-purchase-order':'purchase-order','new-expense':'expense','new-cash':'cash','new-invoice':'invoice','new-employee':'employee'};
     if(types[name])openBusinessDialog(types[name]);
+    else if(name==='receive-po')openBusinessDialog('purchase-receipt',action.getAttribute('data-id'));
+    else if(name==='add-po-line')document.getElementById('po-line-list')?.insertAdjacentHTML('beforeend',purchaseOrderLineMarkup());
+    else if(name==='remove-po-line'){const row=action.closest('.po-line-row');if(row&&document.querySelectorAll('#po-line-list .po-line-row').length>1)row.remove();}
+    else if(name==='send-po'||name==='confirm-po'){
+      const order=purchaseOrders.find(item=>String(item.id)===action.getAttribute('data-id'));if(!order)return;
+      order.status=name==='send-po'?'Enviada':'Confirmada';order.updatedAt=new Date().toISOString();
+      if(!persistDemoData())return;renderView();toast('Orden '+order.number+': '+order.status+'.');
+    }else if(name==='cancel-po'){
+      const order=purchaseOrders.find(item=>String(item.id)===action.getAttribute('data-id'));if(!order)return;
+      if(purchaseOrderReceived(order)>0){toast('Una orden con recepción parcial no se cancela; cierra el faltante para conservar la trazabilidad.');return;}
+      if(!window.confirm('¿Cancelar la orden '+order.number+'?'))return;
+      order.status='Cancelada';order.updatedAt=new Date().toISOString();persistDemoData();renderView();toast('Orden cancelada; el historial se conserva.');
+    }else if(name==='close-po-short'){
+      const order=purchaseOrders.find(item=>String(item.id)===action.getAttribute('data-id'));if(!order)return;
+      const reason=window.prompt('Indica por qué se cerrará el faltante de la orden '+order.number+':');
+      if(!reason||!reason.trim())return;
+      order.status='Cerrada con faltante';order.closeReason=reason.trim();order.updatedAt=new Date().toISOString();persistDemoData();renderView();toast('Faltante cerrado con motivo registrado.');
+    }else if(name==='print-po')printPurchaseOrder(action.getAttribute('data-id'));
+    else if(name==='export-product-catalog')exportProductCatalogPdf();
     else if(name==='new-payment')openBusinessDialog('payment',action.getAttribute('data-id'));
     else if(name==='new-purchase-payment')openBusinessDialog('purchase-payment',action.getAttribute('data-id'));
     else if(name==='add-invoice-product'){
@@ -1432,7 +1624,7 @@
       if(!product){toast('Busca y selecciona un perfume antes de agregarlo.');return;}
       const existing=invoiceDraftItems.find(item=>String(item.productId)===String(product.id));
       if(existing)existing.quantity=Number(existing.quantity||0)+1;
-      else invoiceDraftItems.push({productId:product.id,name:product.name,sku:product.sku||'',barcode:product.barcode||'',quantity:1,unitPriceUsd:invoiceSuggestedPrice(product)});
+      else invoiceDraftItems.push({productId:product.id,name:product.name,sku:product.sku||'',barcode:product.barcode||'',quantity:1,unitPriceUsd:invoiceSuggestedPrice(product),unitCostUsd:Number(product.unitCost||0)});
       const visible=businessForm.querySelector('[data-lookup="product"]');if(visible){visible.value='';visible.setCustomValidity('');}
       if(hidden)hidden.value='';renderInvoiceCart();
     }else if(name==='remove-invoice-product'){
