@@ -378,7 +378,7 @@
     return '<article class="metric-card"><div class="metric-top"><span class="metric-label">' + label + '</span><span class="metric-symbol">' + svg(symbol) + '</span></div><div class="metric-value">' + value + '</div><div class="metric-foot"><span class="metric-change' + (gold ? ' gold' : '') + '">' + change + '</span><span class="metric-caption">' + note + '</span></div></article>';
   }
   function financialSnapshot(){
-    const revenue=invoices.reduce((sum,invoice)=>(Array.isArray(invoice.items)?invoice.items:[]).reduce((subtotal,item)=>subtotal+Number(item.unitPriceUsd||0)*Number(item.quantity||0),sum),0);
+    const revenue=invoices.reduce((sum,invoice)=>sum+Number(invoice.totalUsd||0),0);
     const costOfSales=invoices.reduce((sum,invoice)=>(Array.isArray(invoice.items)?invoice.items:[]).reduce((subtotal,item)=>subtotal+Number(item.unitCostUsd||0)*Number(item.quantity||0),sum),0);
     const grossProfit=roundMoney(revenue-costOfSales);
     const operatingExpenses=roundMoney(expenses.reduce((sum,item)=>sum+Number(item.amountUsd||0),0));
