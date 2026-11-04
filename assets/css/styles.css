@@ -888,3 +888,16 @@ body.auth-locked .app-shell {
 #role-create-form .form-field{min-width:0}
 @media(max-width:900px){.permission-editor-grid{grid-template-columns:1fr}#role-create-form{grid-template-columns:1fr 1fr}.access-manager-section .panel-heading{align-items:flex-start;flex-wrap:wrap}}
 @media(max-width:620px){#role-create-form{grid-template-columns:1fr}.access-manager-section .filter-select{max-width:none;width:100%}.access-manager-section .data-table{min-width:720px}.access-manager-section>.panel-heading{flex-direction:column}.permission-editor-row{min-height:34px}}
+
+/* Per-user permission overrides */
+.user-access-controls{min-width:230px}
+.user-access-controls>label{display:block;margin-bottom:8px;font-size:10px}
+.user-overrides{margin:8px 0;padding:8px;border:1px solid var(--line,#e7e2d9);border-radius:9px;background:var(--surface,#fff)}
+.user-overrides summary{cursor:pointer;font-size:11px;font-weight:700}
+.permission-override-row{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line,#e7e2d9);font-size:10px}
+.permission-override-row span{min-width:0;overflow-wrap:anywhere}
+.permission-override-row small{display:block;margin-top:3px;color:var(--muted,#8d8273);font-size:9px}
+.permission-override-row .filter-select{min-width:0;width:100%}
+.permission-override-add{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;gap:8px;margin:10px 0 6px}
+.permission-override-add .filter-select{min-width:0;width:100%;max-width:none}
+@media(max-width:620px){.permission-override-row,.permission-override-add{grid-template-columns:minmax(0,1fr) minmax(88px,100px)}.permission-override-row button,.permission-override-add button{grid-column:1/-1;justify-self:start}}
