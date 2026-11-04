@@ -362,7 +362,9 @@ test("order creation rejects a total that does not reconcile with lines and fees
   const sql = { query: async () => { queryCount += 1; return []; } };
   const response = await handleERPRequest(requestFor("orders", "POST", {
     order_number: "JP-QA-001",
+    customer_id: null,
     customer_name: "Cliente QA",
+    new_customer: { name: "Cliente QA", contact: "QA", phone: "88880000", email: "qa@example.test", customer_type: "particular" },
     currency: "USD",
     exchange_rate: 36.6,
     original_amount: 49,
@@ -395,7 +397,9 @@ test("order creation ignores client-supplied terminal state and starts as pendin
   };
   const response = await handleERPRequest(requestFor("orders", "POST", {
     order_number: "JP-QA-002",
+    customer_id: null,
     customer_name: "Cliente QA",
+    new_customer: { name: "Cliente QA", contact: "QA", phone: "88880000", email: "qa@example.test", customer_type: "particular" },
     currency: "USD",
     exchange_rate: 36.6,
     original_amount: 50,
@@ -668,4 +672,116 @@ test("web invoice rejects a different linked customer even when the displayed na
   assert.equal(response.status, 409);
   assert.equal(result.error.code, "WEB_ORDER_ITEMS_MISMATCH");
   assert.equal(writeAttempted, false);
+});
+
+
+test("new order can create and link its customer atomically in Neon", async () => {
+  let calls=0,insertSql="",insertParams=[];
+  const sql={query:async(query,params)=>{
+    calls+=1;
+    if(calls===1)return [{id:"00000000-0000-0000-0000-000000000101"}];
+    insertSql=query;insertParams=params;
+    return [{id:"00000000-0000-0000-0000-000000000201",customer_name:"Cliente nuevo"}];
+  }};
+  const response=await handleERPRequest(requestFor("orders","POST",{
+    order_number:"JP-QA-003",customer_id:null,customer_name:"Cliente nuevo",
+    new_customer:{name:"Cliente nuevo",contact:"Contacto",phone:"88880000",email:"nuevo@example.test",customer_type:"particular"},
+    currency:"USD",exchange_rate:36.6,original_amount:50,total_usd:50,discount_usd:0,delivery_fee_usd:0,
+    items:[{product_id:"00000000-0000-0000-0000-000000000101",product_name:"Perfume QA",sku_snapshot:"QA-001",quantity:1,unit_price_usd:50}]
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,201);
+  assert.equal(body.customer_created,true);
+  assert.match(insertSql,/new_customer AS \(INSERT INTO customers/);
+  assert.match(insertSql,/resolved_customer AS/);
+  assert.match(insertSql,/customer_logged AS/);
+  assert.match(insertSql,/INSERT INTO orders/);
+  assert.equal(insertParams[1],null);
+  assert.equal(insertParams[17],"Cliente nuevo");
+  assert.equal(JSON.parse(insertParams[16])[0].product_id,"00000000-0000-0000-0000-000000000101");
+});
+
+test("new order refuses a blank client before attempting database writes", async () => {
+  let calls=0;
+  const sql={query:async()=>{calls+=1;return [];}};
+  const response=await handleERPRequest(requestFor("orders","POST",{
+    order_number:"JP-QA-004",customer_name:"",currency:"USD",exchange_rate:36.6,
+    original_amount:50,total_usd:50,discount_usd:0,delivery_fee_usd:0,
+    items:[{product_id:"00000000-0000-0000-0000-000000000101",product_name:"Perfume QA",quantity:1,unit_price_usd:50}]
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,400);
+  assert.equal(body.error.code,"INVALID_ORDER");
+  assert.equal(calls,0);
+});
+
+test("DGI support document stores its file in private R2 and its metadata in Neon", async () => {
+  let savedKey="",savedParams=[],storedBytes=0;
+  const sql={query:async(query,params)=>{
+    savedParams=params;
+    return [{
+      id:params[0],document_date:params[1],document_type:params[2],issuer:params[3],
+      fiscal_period:params[6],amount_nio:params[9],file_key:params[11],file_name:params[12]
+    }];
+  }};
+  const env={ERP_ASSETS:{
+    put:async(key,stream,options)=>{savedKey=key;const bytes=await new Response(stream).arrayBuffer();storedBytes=bytes.byteLength;assert.equal(options.httpMetadata.contentType,"application/pdf");},
+    delete:async()=>{}
+  }};
+  const form=new FormData();
+  form.set("document_date","2026-11-01");
+  form.set("document_type","purchase_invoice");
+  form.set("issuer","Proveedor local");
+  form.set("reference_number","FAC-001");
+  form.set("description","Compra de perfumes");
+  form.set("fiscal_period","2026-11");
+  form.set("currency","NIO");
+  form.set("original_amount","1250");
+  form.set("exchange_rate","36.6");
+  form.set("formal_invoice","true");
+  form.set("notes","Respaldo");
+  form.set("file",new Blob(["PDF QA"],{type:"application/pdf"}),"factura.pdf");
+  const request=new Request("https://erp.test/api/erp/dgi-support-documents",{method:"POST",body:form});
+  const response=await handleERPRequest(request,env,owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,201);
+  assert.match(savedKey,/^dgi-documents\//);
+  assert.equal(storedBytes,6);
+  assert.equal(body.record.document_type,"purchase_invoice");
+  assert.equal(body.record.issuer,"Proveedor local");
+  assert.equal(savedParams[9],1250);
+  assert.equal(savedParams[10],true);
+});
+
+test("DGI settings accept a pending regime without assuming Cuota Fija", async () => {
+  let firstQuery="",settingValue=null;
+  const sql={query:async(query,params)=>{
+    if(!firstQuery){firstQuery=query;settingValue=JSON.parse(params[1]);return [{setting_key:"dgi_compliance",setting_value:settingValue}];}
+    return [];
+  }};
+  const response=await handleERPRequest(requestFor("settings","PATCH",{
+    setting_key:"dgi_compliance",
+    setting_value:{
+      taxpayer_name:"JB PARFUMS",ruc:"",business_address:"Granada",
+      regime_status:"not_confirmed",quota_fixed_amount_nio:0,
+      certificate_available:false,certificate_displayed:false,
+      computerized_invoicing_status:"not_confirmed",dgi_confirmation_date:""
+    }
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,200);
+  assert.equal(body.record.setting_value.regime_status,"not_confirmed");
+  assert.match(firstQuery,/ON CONFLICT\(setting_key\)/);
+});
+
+test("DGI settings reject an unapproved regime value", async () => {
+  let queryCount=0;
+  const sql={query:async()=>{queryCount+=1;return [];}};
+  const response=await handleERPRequest(requestFor("settings","PATCH",{
+    setting_key:"dgi_compliance",setting_value:{regime_status:"automatically_eligible"}
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,400);
+  assert.equal(body.error.code,"INVALID_DGI_REGIME");
+  assert.equal(queryCount,0);
 });
