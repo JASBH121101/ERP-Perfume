@@ -72,17 +72,28 @@ Para una futura fase fiscal todavía se requiere diseñar y probar:
 
 ## 7. Respaldos y recuperación
 
-La obligación de respaldo diario que aparece en la Disposición Técnica 09-2007 se refiere al sistema sometido a autorización para facturación computarizada. **Este repositorio no debe declararse listo para ese requisito hasta implantar y probar un respaldo diario verificable y una restauración.**
+La obligación de respaldo diario que aparece en la Disposición Técnica 09-2007 se refiere al sistema sometido a autorización para facturación computarizada.
 
-El almacenamiento de soportes en R2 no es una copia de seguridad de PostgreSQL. Antes de habilitar facturación fiscal debe quedar documentado:
-- Fuente de respaldo (base y archivos).
-- Frecuencia, retención, cifrado y acceso.
-- Verificación automática de integridad.
-- Procedimiento de restauración a un entorno separado.
-- Evidencia fechada de pruebas de restauración.
-- Procedimiento manual/contingencia de facturación que la DGI acepte.
+Se añadió `.github/workflows/daily-db-backup.yml`, una tarea opcional que:
+- Ejecuta diariamente a las 02:00 de Nicaragua (08:00 UTC).
+- Realiza un `pg_dump` de Neon Development.
+- Cifra el dump con GPG/AES-256 antes de transferirlo.
+- Lo sube al prefijo privado `database-backups/erp_perfume/` del bucket R2 existente.
+- Verifica el tamaño remoto y conserva los siete respaldos más recientes.
 
-No se habilitaron tareas programadas adicionales ni servicios de terceros en esta fase para evitar consumo innecesario del plan gratuito.
+**La automatización está desactivada por defecto.** No corre hasta configurar los seis secretos documentados y establecer la variable `ERP_DAILY_BACKUP_ENABLED=true`. No se han configurado esas credenciales desde este cambio, ni se ha ejecutado un respaldo real. La tarea no se puede declarar operativa todavía.
+
+El almacenamiento de soportes en R2 no es una copia de seguridad de PostgreSQL. El dump de PostgreSQL tampoco copia automáticamente los archivos adjuntos que ya están en R2. La guía `docs/backup-restore-es.md` documenta configuración, retención y restauración segura en una base aislada.
+
+Antes de habilitar facturación fiscal debe completarse:
+- Configuración de secretos y activación explícita del workflow.
+- Ejecución manual y programada satisfactoria.
+- Prueba de descifrado y restauración en una base/branch de prueba vacío.
+- Registro de la fecha, hash, destino y resultado de la prueba de restauración.
+- Inventario/recuperación separada para archivos R2.
+- Procedimiento de contingencia de facturación aceptado por la DGI.
+
+La automatización usa GitHub Actions y el bucket existente; no añade otro Worker ni un Cron Trigger de Cloudflare. Aun así, consume minutos de Actions y almacenamiento/operaciones R2, por lo que se mantiene apagada hasta que el titular verifique sus cuotas y decida activarla.
 
 ## 8. Calidad y publicación
 
