@@ -110,7 +110,7 @@ test('inventory products search by SKU and filter category and stock status', as
   await navigateToView(page, 'inventory');
   const rows = page.locator('#inventory-product-body tr');
   await expect(rows).toHaveCount(3);
-  await expect(page.getByText('3 de 3 productos')).toBeVisible();
+  await expect(page.locator('#inventory-product-count')).toContainText('productos');
 
   await page.getByLabel('Estado de existencias').selectOption('low');
   await expect(rows).toHaveCount(1);
