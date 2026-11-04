@@ -28,15 +28,17 @@ The ERP frontend is gated by Neon Auth: it does not render the dashboard or load
 
 ## Backend scope
 
-The Worker currently exposes:
-- `GET /api/config` — frontend authentication configuration.
-- `GET /api/health` — Neon connection and R2 binding health.
-- `GET /api/auth/profile` — authenticated ERP profile and role.
+The current feature branch adds these Worker API routes:
+- `GET /api/config`, `GET /api/health`, and `GET /api/auth/profile` — configuration, health and identity.
 - `GET /api/hr/employees` and `POST /api/hr/employees` — protected employee list and creation.
+- `GET /api/erp/bootstrap` — initial products, suppliers, customers and Kardex data for the authorized user.
+- `GET/POST/PATCH/DELETE /api/catalog/products` — product master with soft deactivation and history-aware deletion.
+- `GET/POST /api/catalog/suppliers` and `GET/POST /api/catalog/customers` — protected business contacts.
+- `POST /api/inventory/movements` — stock entry, exit and adjustment with locked stock update, Kardex record and audit event in one database statement.
 
-Employee access requires a verified Neon Auth account and the ERP role `owner`, `admin`, or `hr`. Salary records remain in córdobas (NIO). RR. HH. stays visible in the interface.
+The frontend in this branch now loads the product catalog, suppliers, customers and inventory from Neon Development. Product creation starts at zero stock; stock changes only through Kardex. Product and contact writes are parameterized, role-checked and audited. HR employee list/create remains connected and its section stays enabled.
 
-Products, inventory, orders, purchases, suppliers, expenses, finance, and the remaining HR workflows are still browser-local DEMO features until each module receives its own tested database/API migration. Do not enter real commercial records into those DEMO modules.
+Orders, purchase orders and receipts, supplier bills/payables, sales invoices/receivables, expenses, cash/bank balances, profitability/capital dashboards, and attendance/leave/payroll remain DEMO or unimplemented. The new Worker source has not been deployed: the active Worker is still deployed from `main`. Do not record real sales, purchases or financial transactions in those modules yet.
 
 ## Main and database workflow
 
@@ -52,7 +54,7 @@ The feature branch `feature/erp-procurement-finance-catalog` introduces a browse
 
 The branch also adds a commercial product description and a printable catalog limited to active products with stock. The catalog excludes internal costs and supplier information. Product master records always begin with zero stock; opening quantities must be posted through Kardex or a purchase-order receipt. Paid operating expenses require a matching cash/bank account and create one cash-outflow entry. Profitability allocates invoice discounts across product lines and includes delivery charges in total invoice revenue, while delivery is not assigned to a specific SKU. The print view can be saved as PDF; product photography, image/JPG export, Excel export and direct attachment sharing remain pending because product media and the associated file workflow are not yet integrated.
 
-Migration `0002_procurement_finance_extensions.sql` adds the database structure for purchase orders, receipt history and historical invoice unit cost. It is a proposed additive migration only: it has **not** been applied to Neon Development or Production. The UI features remain browser-local DEMO records until the Worker API, authorization, database persistence and audit handling are implemented and tested.
+Migrations `0002_procurement_finance_extensions.sql` and `0003_catalog_metadata.sql` have been applied to Neon `development` only. They add purchase-order/receipt tables, historical invoice unit costs and catalog metadata. The corresponding catalog and inventory API code is being reviewed on this feature branch; it is not live until the Worker is deployed from an approved merge. Neon `production` is untouched. Purchase/finance screens remain DEMO until their own API persistence and end-to-end tests are complete.
 
 ## Build and tests
 
