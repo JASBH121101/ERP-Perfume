@@ -40,11 +40,19 @@ Products, inventory, orders, purchases, suppliers, expenses, finance, and the re
 
 ## Main and database workflow
 
-- This repository is maintained directly on `main`; no integration Preview branch is required for normal work.
-- Cloudflare Pages serves the UI from `main`.
+- Feature work is prepared on an isolated Git branch and reviewed through a pull request before any merge to `main`.
+- Cloudflare Pages production continues to publish `main`; a feature pull request may receive its own preview deployment.
 - The API Worker initially connects only to Neon `development`.
 - Neon `production` is not configured or used by this integration. A production database cutover requires a separate review and explicit authorization.
 - Secrets are never committed to GitHub.
+
+## Procurement and finance prototype
+
+The feature branch `feature/erp-procurement-finance-catalog` introduces a browser-local DEMO flow for purchase orders, partial receipts, supplier bills, profitability and capital/ cash-flow views. Purchase orders do not post stock, cash or payables; receipt records post only the quantities physically received. Supplier invoices are recorded separately from inventory movements.
+
+The branch also adds a commercial product description and a printable catalog limited to active products with stock. The catalog excludes internal costs and supplier information. The print view can be saved as PDF; product photography, image/JPG export, Excel export and direct attachment sharing remain pending because product media and the associated file workflow are not yet integrated.
+
+Migration `0002_procurement_finance_extensions.sql` adds the database structure for purchase orders, receipt history and historical invoice unit cost. It is a proposed additive migration only: it has **not** been applied to Neon Development or Production. The UI features remain browser-local DEMO records until the Worker API, authorization, database persistence and audit handling are implemented and tested.
 
 ## Build and tests
 
