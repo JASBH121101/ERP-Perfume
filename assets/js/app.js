@@ -1,5 +1,6 @@
 import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
 import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
+import { profileHasPermission } from './permission-utils.mjs';
 
 'use strict';
 
@@ -462,10 +463,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   };
   function permissionGranted(key) {
     const profile = window.JBAuth?.profile;
-    // The Worker grants an explicit owner bypass; mirror it in navigation only.
-    if (String(profile?.role || "").toLowerCase() === "owner") return true;
-    const grants = profile?.permissions;
-    return Array.isArray(grants) && (grants.includes("*") || grants.includes(key));
+    // The Worker returns only effective grants; owner bypass is explicit.
+    return profileHasPermission(profile, key);
   }
   function canViewERPView(view) {
     const keys = permissionViews[view] || [];
@@ -1588,7 +1587,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   }
   async function loadHRFromAPI(force){
     const auth=window.JBAuth;
-    if(!auth||auth.mode!=='authenticated'||!auth.profile||!['owner','admin','hr'].includes(auth.profile.role))return;
+    if(!auth||auth.mode!=='authenticated'||!auth.profile||!canViewERPView('hr'))return;
     if(hrRecordsLoading||(hrRecordsLoaded&&!force))return;
     hrRecordsLoading=true;hrLoadAttempted=true;hrLoadError='';
     try{
@@ -1829,9 +1828,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     finally{if(button)button.disabled=false;}
   }
   function renderDgi(){
-    const role=window.JBAuth?.profile?.role||'';
+    if(!permissionGranted('dgi.documents.view'))return heading(views.dgi,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Acceso restringido</strong><p>Tu cuenta no tiene permiso para consultar los documentos DGI.</p></div></div>';
     if(!dgiDocumentsLoaded&&!dgiDocumentsLoading&&!dgiDocumentsLoadAttempted)loadDgiSupportDocuments(false);
-    if(!['owner','admin','finance'].includes(role))return heading(views.dgi,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Acceso restringido</strong><p>El centro DGI está disponible para propietario, administración y finanzas.</p></div></div>';
     const now=new Date(), monthStart=new Date(now.getFullYear(),now.getMonth(),1), nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);
     const invoicedOrderIds=new Set(invoices.map(i=>String(i.orderId||'')));
     const completedOrdersWithoutInvoice=orders.filter(o=>o.status==='Completado'&&!invoicedOrderIds.has(String(o.id)));
