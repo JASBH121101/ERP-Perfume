@@ -489,3 +489,77 @@ test("unique database constraint returns an explicit duplicate web invoice confl
   assert.equal(response.status, 409);
   assert.equal(body.error.code, "DUPLICATE_WEB_INVOICE");
 });
+
+
+test("new product unit cost is derived from purchase and additional costs", async () => {
+  let insertParams = [];
+  const sql = {
+    query: async (query, params) => {
+      insertParams = params;
+      return [{ id: "00000000-0000-0000-0000-000000000401", name: "Producto QA" }];
+    }
+  };
+  const response = await handleERPRequest(requestFor("products", "POST", {
+    sku: "QA-COST-01",
+    name: "Producto QA",
+    purchase_cost_usd: 20,
+    additional_cost_usd: 5,
+    unit_cost_usd: 999,
+    price_usd: 50,
+    stock: 0
+  }), {}, owner, sql);
+  assert.equal(response.status, 201);
+  assert.equal(insertParams[11], 25);
+});
+
+test("manual inventory movements cannot spoof order or invoice references", async () => {
+  let insertParams = [];
+  const sql = {
+    query: async (query, params) => {
+      insertParams = params;
+      return [{
+        id: "00000000-0000-0000-0000-000000000402",
+        movement_type: "Entrada",
+        quantity_delta: 1
+      }];
+    }
+  };
+  const response = await handleERPRequest(requestFor("inventory-movements", "POST", {
+    product_id: "00000000-0000-0000-0000-000000000101",
+    movement_type: "Entrada",
+    quantity: 1,
+    reference_type: "order",
+    reference_id: "00000000-0000-0000-0000-000000000201"
+  }), {}, owner, sql);
+  assert.equal(response.status, 201);
+  assert.equal(insertParams[4], "manual");
+  assert.equal(insertParams[5], null);
+});
+
+test("manual cash entries cannot spoof automated payroll or invoice references", async () => {
+  let insertParams = [];
+  let queryCount = 0;
+  const sql = {
+    query: async (query, params) => {
+      queryCount += 1;
+      if (query.startsWith("SELECT id FROM cash_accounts")) return [{ id: "00000000-0000-0000-0000-000000000501" }];
+      insertParams = params;
+      return [{ id: "00000000-0000-0000-0000-000000000502" }];
+    }
+  };
+  const response = await handleERPRequest(requestFor("cash_entries", "POST", {
+    concept: "Movimiento manual QA",
+    direction: "income",
+    account_id: "00000000-0000-0000-0000-000000000501",
+    currency: "USD",
+    original_amount: 100,
+    exchange_rate: 1,
+    amount_usd: 100,
+    source_type: "payroll",
+    source_id: "00000000-0000-0000-0000-000000000601"
+  }), {}, owner, sql);
+  assert.equal(response.status, 201);
+  assert.equal(queryCount, 2);
+  assert.equal(insertParams[7], "manual");
+  assert.equal(insertParams[8], null);
+});
