@@ -275,8 +275,8 @@
     return '<article class="metric-card"><div class="metric-top"><span class="metric-label">' + label + '</span><span class="metric-symbol">' + svg(symbol) + '</span></div><div class="metric-value">' + value + '</div><div class="metric-foot"><span class="metric-change' + (gold ? ' gold' : '') + '">' + change + '</span><span class="metric-caption">' + note + '</span></div></article>';
   }
   function financialSnapshot(){
-    const revenue=invoices.reduce((sum,invoice)=>sum+Number(invoice.items||[]).reduce((subtotal,item)=>subtotal+Number(item.unitPriceUsd||0)*Number(item.quantity||0),0),0);
-    const costOfSales=invoices.reduce((sum,invoice)=>sum+Number(invoice.items||[]).reduce((subtotal,item)=>subtotal+Number(item.unitCostUsd||0)*Number(item.quantity||0),0),0);
+    const revenue=invoices.reduce((sum,invoice)=>(Array.isArray(invoice.items)?invoice.items:[]).reduce((subtotal,item)=>subtotal+Number(item.unitPriceUsd||0)*Number(item.quantity||0),sum),0);
+    const costOfSales=invoices.reduce((sum,invoice)=>(Array.isArray(invoice.items)?invoice.items:[]).reduce((subtotal,item)=>subtotal+Number(item.unitCostUsd||0)*Number(item.quantity||0),sum),0);
     const grossProfit=roundMoney(revenue-costOfSales);
     const operatingExpenses=roundMoney(expenses.reduce((sum,item)=>sum+Number(item.amountUsd||0),0));
     return {revenue:roundMoney(revenue),costOfSales:roundMoney(costOfSales),grossProfit,operatingExpenses,netProfit:roundMoney(grossProfit-operatingExpenses)};
@@ -823,7 +823,7 @@
   }
   function nextDocumentNumber(prefix, records, startAt=1000) {
     const max = (records || []).reduce((value, row) => {
-      const digits = String(row.id || row.purchaseNumber || "").match(/(\\d+)$/);
+      const digits = String(row.purchaseNumber || row.id || "").match(/(\\d+)$/);
       return Math.max(value, digits ? Number(digits[1]) : 0);
     }, startAt);
     return prefix + String(max + 1).padStart(6,"0");
@@ -968,7 +968,7 @@
       businessDialog.close();
       renderView();
       if(type==='invoice'){
-        const lastInvoice=invoices.find(f=>f.id===nextDocumentNumber('JBI-',[],1000));
+        const lastInvoice=invoices[0];
         toast('Factura registrada en Neon Development. Revisa su estado y saldo en Facturación.');
         if(lastInvoice)window.requestAnimationFrame(()=>showInvoicePreview(lastInvoice.id));
       } else {
@@ -1211,10 +1211,10 @@
     form.elements.stock.readOnly = Boolean(product);
     form.elements.stock.value = product ? String(product.stock) : (form.elements.stock.value || '');
     document.getElementById('modal-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
-    document.getElementById('save-product').textContent = product ? 'Guardar cambios' : 'Agregar a demo';
+    document.getElementById('save-product').textContent = product ? 'Guardar cambios' : 'Guardar en Neon';
     document.querySelector('#product-dialog .modal-note').textContent = product
-      ? 'Edición de ficha DEMO. Las existencias no se cambian aquí: registra entradas, salidas o ajustes desde Existencias.'
-      : 'Ficha DEMO. Los datos se guardan localmente en este navegador y todavía no se sincronizan con Neon.';
+      ? 'Edición de ficha en Neon. Las existencias no se modifican aquí: registra entradas, salidas o ajustes desde Existencias.'
+      : 'La ficha y las existencias iniciales se guardarán en Neon Development.';
     updateProductCostPreview();
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else toast('El formulario emergente no es compatible con este navegador.');
@@ -1298,7 +1298,10 @@
     const action = event.target.closest('[data-action]');
     if (action) {
       const name = action.getAttribute('data-action');
-      if (name === 'new-product') openProductModal();
+      if (name === 'reload-erp') {
+        action.disabled=true;
+        loadERPFromNeon(true).then(()=>renderView()).catch(error=>toast(error?.message||'No se pudo cargar Neon.')).finally(()=>{action.disabled=false;});
+      } else if (name === 'new-product') openProductModal();
       else if (name === 'edit-product') openProductModal(action.getAttribute('data-id'));
       else if (name === 'preview-product') showProductDetails(action.getAttribute('data-id'));
       else if (name === 'edit-from-detail') { const productId = action.getAttribute('data-id'); detailDialog.close(); openProductModal(productId); }
@@ -1575,6 +1578,11 @@
     storedFontLevel = 1;
   }
   setFontLevel(storedFontLevel, false);
-  renderView();
+  root.innerHTML=heading(views.dashboard,'')+'<div class="notice-panel"><span>'+svg('clock')+'</span><div><strong>Conectando con Neon Development</strong><p>Consultando los registros operativos y permisos de esta cuenta…</p></div></div>';
+  loadERPFromNeon(true).then(function(){
+    renderView();
+  }).catch(function(error){
+    root.innerHTML=heading(views.dashboard,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>No se pudo cargar la información del ERP</strong><p>'+esc(error?.message||'Comprueba tu sesión o la conexión con la base de datos.')+'</p><button class="button button-quiet button-small" data-action="reload-erp">Reintentar conexión</button></div></div>';
+  });
   document.getElementById('menu-toggle').setAttribute('aria-expanded', 'false');
 }());
