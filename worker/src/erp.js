@@ -181,19 +181,38 @@ async function softDelete(sql, user, resource, def, id) {
 
 async function createOrder(sql, user, body) {
   const items = Array.isArray(body.items) ? body.items : [];
-  if (!body.customer_name || !items.length) return erpError(400, "INVALID_ORDER", "El pedido requiere cliente y al menos un producto.");
-  if (items.some((item) => !item.product_name || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1 || !Number.isFinite(Number(item.unit_price_usd)) || Number(item.unit_price_usd) < 0)) {
-    return erpError(400, "INVALID_ORDER_ITEMS", "Revisa los productos, cantidades y precios del pedido.");
+  const customerName = String(body.customer_name || "").trim();
+  if (!customerName || customerName.length > 160 || !items.length) return erpError(400, "INVALID_ORDER", "El pedido requiere un cliente válido y al menos un producto.");
+  if (items.some((item) => !item.product_id || !/^[0-9a-f-]{36}$/i.test(String(item.product_id)) || !item.product_name || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1 || !Number.isFinite(Number(item.unit_price_usd)) || Number(item.unit_price_usd) < 0)) {
+    return erpError(400, "INVALID_ORDER_ITEMS", "Cada renglón requiere un producto activo, cantidad y precio válidos.");
   }
+  const currency = body.currency === "NIO" ? "NIO" : "USD";
+  const rate = Number(body.exchange_rate || 1);
+  const totalUsd = Number(body.total_usd);
+  const discountUsd = Number(body.discount_usd || 0);
+  const deliveryFeeUsd = Number(body.delivery_fee_usd || 0);
+  const originalAmount = Number(body.original_amount);
+  const subtotalUsd = items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unit_price_usd), 0);
+  if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(totalUsd) || totalUsd <= 0 ||
+      !Number.isFinite(discountUsd) || discountUsd < 0 || discountUsd > subtotalUsd ||
+      !Number.isFinite(deliveryFeeUsd) || deliveryFeeUsd < 0 ||
+      Math.abs(subtotalUsd - discountUsd + deliveryFeeUsd - totalUsd) > 0.02 ||
+      !Number.isFinite(originalAmount) || originalAmount <= 0 ||
+      Math.abs((currency === "NIO" ? originalAmount / rate : originalAmount) - totalUsd) > 0.02) {
+    return erpError(400, "ORDER_TOTAL_MISMATCH", "El total debe coincidir con productos, descuento, entrega y moneda de cobro.");
+  }
+  const productIds = [...new Set(items.map((item) => String(item.product_id)))];
+  const activeProducts = await sql.query("SELECT id FROM products WHERE id=ANY($1::uuid[]) AND active=TRUE", [productIds]);
+  if (activeProducts.length !== productIds.length) return erpError(409, "ORDER_PRODUCT_UNAVAILABLE", "Uno o más perfumes ya no están activos o no existen.");
   const orderNumber = String(body.order_number || "").trim();
   if (!orderNumber) return erpError(400, "ORDER_NUMBER_REQUIRED", "El número de pedido es obligatorio.");
   const payload = {
-    order_number: orderNumber, customer_id: body.customer_id || null, customer_name: String(body.customer_name).trim(),
-    phone: body.phone || null, status: body.status || "Pendiente", payment_status: body.payment_status || "Pendiente",
+    order_number: orderNumber, customer_id: body.customer_id || null, customer_name: customerName,
+    phone: body.phone || null, status: "Pendiente", payment_status: "Pendiente",
     payment_method: body.payment_method || null, delivery_mode: body.delivery_mode || null,
-    currency: body.currency === "NIO" ? "NIO" : "USD", original_amount: Number(body.original_amount || 0),
-    exchange_rate: Number(body.exchange_rate || 1), total_usd: Number(body.total_usd || 0),
-    discount_usd: Number(body.discount_usd || 0), delivery_fee_usd: Number(body.delivery_fee_usd || 0), notes: body.notes || null
+    currency, original_amount: originalAmount,
+    exchange_rate: rate, total_usd: totalUsd,
+    discount_usd: discountUsd, delivery_fee_usd: deliveryFeeUsd, notes: body.notes || null
   };
   try {
     const rows = await sql.query(
