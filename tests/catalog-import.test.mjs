@@ -881,4 +881,17 @@ test("DGI confirmation date must use the YYYY-MM-DD format", async () => {
   assert.equal(body.error.code,"INVALID_DGI_CONFIRMATION_DATE");
   assert.equal(queryCount,0);
 });
+test("product image uploads optimize large files to WebP and run with three concurrent workers", async () => {
+  const app = readFileSync(new URL("../assets/js/app.js", import.meta.url), "utf8");
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const worker = readFileSync(new URL("../worker/src/erp.js", import.meta.url), "utf8");
+  assert.match(app, /PRODUCT_IMAGE_UPLOAD_CONCURRENCY=3/);
+  assert.match(app, /PRODUCT_IMAGE_OPTIMIZE_THRESHOLD=400\*1024/);
+  assert.match(app, /PRODUCT_IMAGE_MAX_EDGE=1600/);
+  assert.match(app, /canvas\.toBlob\(resolve,"image\/webp",0\.82\)/);
+  assert.match(app, /runWithConcurrency\(files,PRODUCT_IMAGE_UPLOAD_CONCURRENCY/);
+  assert.match(app, /xhr\.upload\.addEventListener\("progress"/);
+  assert.match(html, /product-image-pending-gallery/);
+  assert.match(worker, /jsonb_array_length\(COALESCE\(images,'\[\]'::jsonb\)\)<3/);
+});
 
