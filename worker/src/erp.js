@@ -1137,7 +1137,7 @@ export async function handleERPRequest(request, env, user, sql) {
         ),
         sql.query(
           'SELECT au.id AS auth_user_id,au.email,au.name AS display_name,au."emailVerified" AS email_verified,au."createdAt" AS created_at ' +
-          'FROM neon_auth."user" au LEFT JOIN app_users u ON u.auth_user_id=au.id ' +
+          'FROM neon_auth."user" au LEFT JOIN app_users u ON u.auth_user_id=au.id::text ' +
           'WHERE u.id IS NULL ORDER BY au."createdAt" DESC LIMIT 200'
         )
       ]);
