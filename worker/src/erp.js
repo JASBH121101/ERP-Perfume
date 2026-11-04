@@ -225,6 +225,90 @@ async function createProduct(sql, user, body) {
   return erpJson({record:result[0]},201);
 }
 
+
+async function importProducts(sql, user, body) {
+  const incoming = Array.isArray(body.records) ? body.records : [];
+  if (!incoming.length || incoming.length > 200) {
+    return erpError(400, "INVALID_IMPORT_SIZE", "Selecciona entre 1 y 200 productos por importación.");
+  }
+  const seen = new Set();
+  const clean = [];
+  const textFields = [
+    ["brand", 100], ["category", 80], ["concentration", 80], ["gender", 40],
+    ["family", 100], ["presentation", 100], ["location", 120], ["barcode", 80],
+    ["description", 1000], ["supplier_name", 120], ["tone", 40], ["notes", 1000]
+  ];
+  for (const source of incoming) {
+    const sku = String(source?.sku || "").trim().toUpperCase();
+    const name = String(source?.name || "").trim();
+    const stock = Number(source?.stock ?? 0);
+    const minStock = Number(source?.min_stock ?? 3);
+    if (!sku || sku.length > 80 || !name || name.length > 180 || !Number.isInteger(stock) || stock < 0 || stock > 100000000 || !Number.isInteger(minStock) || minStock < 0 || minStock > 100000000) {
+      return erpError(400, "INVALID_IMPORT_ROW", "Cada producto necesita SKU, nombre y existencias enteras no negativas.");
+    }
+    const normalizedSku = sku.toLowerCase();
+    if (seen.has(normalizedSku)) return erpError(409, "DUPLICATE_IMPORT_SKU", "El archivo contiene SKU repetidos: " + sku + ".");
+    seen.add(normalizedSku);
+    const record = { sku, name, stock, min_stock: minStock, active: source.active !== false, images: [] };
+    for (const [field, maxLength] of textFields) {
+      const value = source[field] == null ? "" : String(source[field]).trim();
+      if (value.length > maxLength) return erpError(400, "IMPORT_FIELD_TOO_LONG", "El campo " + field + " supera el máximo permitido.");
+      record[field] = value || null;
+    }
+    for (const field of ["purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","wholesale_price_usd","size_ml"]) {
+      const raw = source[field];
+      if (raw == null || raw === "") { record[field] = null; continue; }
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < 0 || value > 999999999 || (field === "size_ml" && value === 0)) {
+        return erpError(400, "INVALID_IMPORT_AMOUNT", "Revisa los costos, precios y tamaños del archivo.");
+      }
+      record[field] = value;
+    }
+    record.purchase_cost_usd = record.purchase_cost_usd ?? 0;
+    record.additional_cost_usd = record.additional_cost_usd ?? 0;
+    record.unit_cost_usd = record.unit_cost_usd ?? (record.purchase_cost_usd + record.additional_cost_usd);
+    record.price_usd = record.price_usd ?? 0;
+    record.wholesale_price_usd = record.wholesale_price_usd;
+    record.size_ml = record.size_ml;
+    clean.push(record);
+  }
+  const skus = clean.map(record => record.sku.toLowerCase());
+  const existing = await sql.query("SELECT sku FROM products WHERE LOWER(sku)=ANY($1::text[])", [skus]);
+  if (existing.length) {
+    const conflicts = existing.slice(0, 8).map(row => row.sku).join(", ");
+    return erpError(409, "SKU_ALREADY_EXISTS", "Ya existen SKU en el catálogo: " + conflicts + ". Corrígelos en la vista previa.");
+  }
+  const sourceFile = String(body.source_file || "").slice(0, 160);
+  try {
+    const rows = await sql.query(
+      "WITH input AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(" +
+      "sku text,name text,brand text,category text,concentration text,gender text,family text,size_ml numeric,presentation text," +
+      "purchase_cost_usd numeric,additional_cost_usd numeric,unit_cost_usd numeric,price_usd numeric,stock integer,min_stock integer," +
+      "location text,active boolean,barcode text,description text,supplier_name text,wholesale_price_usd numeric,tone text,notes text,images jsonb" +
+      ")), created AS (" +
+      "INSERT INTO products(sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd," +
+      "unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_name,wholesale_price_usd,tone,notes,images) " +
+      "SELECT sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd," +
+      "COALESCE(NULLIF(unit_cost_usd,0),purchase_cost_usd+additional_cost_usd,0),price_usd,stock,min_stock,location,active,barcode,description,supplier_name," +
+      "wholesale_price_usd,tone,notes,COALESCE(images,'[]'::jsonb) FROM input RETURNING id,sku,name,stock" +
+      "), movement AS (" +
+      "INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) " +
+      "SELECT id,'Entrada',stock,stock,0,stock,'Importación de catálogo','product_import',NULL,$2 FROM created WHERE stock>0 RETURNING id" +
+      "), logged AS (" +
+      "INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT $2,'import','product',id::text,jsonb_build_object('sku',sku,'name',name,'stock',stock,'source_file',$3) FROM created RETURNING id" +
+      ") SELECT id,sku,name,stock FROM created ORDER BY name",
+      [JSON.stringify(clean), user.id, sourceFile]
+    );
+    return erpJson({ imported: rows.length, records: rows }, 201);
+  } catch (error) {
+    if (error?.code === "23505") return erpError(409, "DUPLICATE_IMPORT_SKU", "Uno o más SKU ya existen en el catálogo.");
+    if (error?.code === "23514" || error?.code === "22P02") return erpError(400, "INVALID_IMPORT_ROW", "Uno o más datos no cumplen las reglas del catálogo.");
+    console.error("[erp] Product import failed:", error?.message || "database error");
+    return erpError(503, "PRODUCT_IMPORT_FAILED", "No se pudo guardar la importación en Neon.");
+  }
+}
+
 async function createInventoryMovement(sql, user, body) {
   const type = String(body.movement_type || "");
   const quantity = Number(body.quantity);
@@ -608,6 +692,11 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar pedidos.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createOrder(sql, user, body);
+  }
+  if (resource === "products" && id === "import" && request.method === "POST") {
+    if (!canAccess(user, RESOURCE_DEFS.products.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para importar productos.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return importProducts(sql, user, body);
   }
   if (resource === "products" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.products.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar productos.");
