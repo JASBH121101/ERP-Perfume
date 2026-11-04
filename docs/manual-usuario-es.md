@@ -45,11 +45,24 @@ El área DGI permite:
 
 Los avisos de C$100,000 y C$500,000 son controles preventivos. No bloquean ventas ni cambian automáticamente el régimen. Los cobros vinculados a facturas y los ingresos de caja sin vínculo documental se incluyen en el indicador de ingresos; estos últimos aparecen señalados para conciliación. Si un movimiento está incompleto, duplicado o mal clasificado, corrígelo en el flujo original antes de utilizar el informe.
 
-## 5. Control sanitario de perfumes
+## 5. Fotografías de productos: optimización y carga
+
+El formulario admite hasta **tres fotografías por producto**. Puedes seleccionar JPG, PNG, WebP o AVIF. El navegador prepara las imágenes antes de enviarlas a Cloudflare R2:
+
+- Los archivos mayores de 400 KB se redimensionan, si hace falta, para que el lado más largo no supere 1,600 píxeles.
+- Se intenta convertirlos a WebP con calidad 82 %. Si la conversión no reduce el peso o no está disponible, se conserva el original.
+- Se admite un archivo original de hasta 8 MB; el archivo final que se envía a R2 no puede superar 2 MB.
+- Las tres cargas pueden ejecutarse simultáneamente. Cada miniatura muestra su estado y progreso individual.
+- Los errores temporales de red se reintentan hasta tres veces. Si una fotografía falla, el producto queda guardado y el formulario conserva únicamente las imágenes pendientes para reintentarlas sin crear otro producto.
+- El backend vuelve a validar formato, tamaño y máximo de tres imágenes por producto, incluso si llegan cargas simultáneas.
+
+La primera fotografía de la galería del producto sigue siendo la imagen principal. La optimización se ejecuta en el navegador; no requiere un servicio externo de procesamiento ni crea recursos adicionales de Cloudflare.
+
+## 6. Control sanitario de perfumes
 
 Registra y conserva con cada compra la factura del proveedor nacional y solicita el número de registro sanitario vigente del perfume. Guarda evidencia de la etiqueta original, fabricante/titular, presentación, lote y referencia de registro cuando esté disponible. No vendas productos rellenados, decantados, reenvasados o reetiquetados sin confirmar antes los requisitos de ANRS/MINSA. La clasificación sanitaria del punto de venta minorista de JB PARFUMS y la posible licencia de establecimiento están pendientes de confirmación con ANRS; consulta el expediente `docs/cumplimiento-dgi-nicaragua.md`.
 
-## 6. Archivo de documentos tributarios
+## 7. Archivo de documentos tributarios
 
 Para guardar un soporte:
 
@@ -62,14 +75,14 @@ Para guardar un soporte:
 
 Conserva los originales fuera del ERP según los plazos y obligaciones aplicables. El archivo privado en R2 no sustituye la conservación del documento original cuando sea exigida.
 
-## 7. Recursos Humanos
+## 8. Recursos Humanos
 
 RR. HH. permanece disponible para preparar la futura administración del personal. No registres trabajadores ficticios ni calcules nómina legal hasta que existan empleados y se hayan configurado los datos, deducciones, prestaciones e inscripciones requeridas.
 
-## 8. Errores y soporte
+## 9. Errores y soporte
 
 Si una operación falla, conserva el mensaje, fecha, módulo y referencia del registro. No repitas varias veces un pago, una compra o una factura sin comprobar primero si el primer intento se guardó. Notifica al administrador para revisar el registro y la auditoría.
 
-## 9. Advertencia de entorno
+## 10. Advertencia de entorno
 
 Los datos de esta etapa pertenecen a Neon Development y al Preview de la rama de desarrollo. No introduzcas datos reales de clientes o empleados hasta que se confirme la configuración de producción, copias de seguridad, permisos y recuperación.
