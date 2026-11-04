@@ -63,18 +63,19 @@
       <div class="nav-caption nav-caption-spaced">ADMINISTRACIÓN</div>
       <nav class="primary-nav">
         <button class="nav-item" data-view="hr"><span class="nav-icon" data-icon="users"></span><span>RRHH</span></button>
+        <button class="nav-item" data-view="dgi"><span class="nav-icon" data-icon="shield"></span><span>Obligaciones DGI</span></button>
         <button class="nav-item" data-view="analytics"><span class="nav-icon" data-icon="chart"></span><span>Informes</span></button>
         <button class="nav-item" data-view="settings"><span class="nav-icon" data-icon="settings"></span><span>Configuración</span></button>
       </nav>
 
       <div class="sidebar-bottom">
         <div class="storage-card">
-          <div class="storage-heading"><span class="tiny-status"></span> MODO DEMO ACTIVO</div>
-          <p>Los cambios se guardan en este navegador.</p>
+          <div class="storage-heading"><span class="tiny-status"></span> SERVICIOS DEL ERP</div>
+          <p>Datos operativos alojados en los servicios conectados.</p>
           <div class="storage-connection-list">
-            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Almacenamiento local</span><strong>Activo</strong></div>
-            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Neon PostgreSQL</span><strong>Pendiente</strong></div>
-            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Cloudflare R2</span><strong>Pendiente</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Neon PostgreSQL</span><strong id="db-connection-status">Verificando</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Cloudflare R2</span><strong id="r2-connection-status">Vinculado</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Preferencias de interfaz</span><strong>Local</strong></div>
           </div>
         </div>
         <button class="profile-button" type="button">
@@ -99,8 +100,8 @@
             <span id="font-scale-label" aria-live="polite">110%</span>
             <button type="button" id="font-increase" aria-label="Aumentar tamaño de letra" title="Aumentar letra">A+</button>
           </div>
-          <button class="button button-quiet button-small auth-control" id="auth-control" type="button" hidden>Iniciar sesión</button><span class="demo-pill" id="connection-pill"><i></i> MODO DEMO</span>
-          <button class="icon-button notification-button" type="button" aria-label="Notificaciones"><span data-icon="bell"></span><i></i></button>
+          <button class="button button-quiet button-small auth-control" id="auth-control" type="button" hidden>Iniciar sesión</button><span class="demo-pill" id="connection-pill"><i></i> NEON · DESARROLLO</span>
+          <button class="icon-button notification-button" type="button" aria-label="Notificaciones: sin alertas"><span data-icon="bell"></span><i hidden></i></button>
           <span class="topbar-divider"></span>
           <button class="top-avatar" type="button" aria-label="Perfil del administrador">JB</button>
         </div>
@@ -114,7 +115,7 @@
         <div id="view-root" aria-live="polite"></div>
         <footer class="app-footer">
           <span>JB PARFUMS <b>•</b> BUSINESS SUITE</span>
-          <span>INTERFAZ INICIAL <b>•</b> 2026</span>
+          <span>OPERACIÓN COMERCIAL <b>•</b> 2026</span>
         </footer>
       </div>
     </main>
@@ -128,7 +129,7 @@
         <div><span class="eyebrow">CATÁLOGO · FICHA TÉCNICA</span><h2 id="modal-title">Nuevo producto</h2></div>
         <button type="button" class="icon-button modal-close" id="modal-close" aria-label="Cerrar">×</button>
       </div>
-      <p class="modal-note">Ficha DEMO. Los datos se guardan localmente en este navegador; todavía no se sincronizan con Neon.</p>
+      <p class="modal-note">La ficha se guardará en Neon Development. Las existencias iniciales quedarán asentadas en el kardex.</p>
 
       <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="bottle"></span><div><strong>Identificación y fragancia</strong><small>Información comercial y características del perfume</small></div></div>
@@ -164,6 +165,16 @@
       </section>
 
       <section class="product-form-section">
+        <div class="form-section-heading"><span class="form-section-icon" data-icon="spark"></span><div><strong>Fotografías del producto</strong><small>Archivos privados en Cloudflare R2 · JPG, PNG, WebP o AVIF · Máximo 2 MB por imagen · hasta 3 fotos por producto</small></div></div>
+        <div class="form-grid">
+          <label class="form-field full-field"><span>Seleccionar imágenes</span><input name="productImages" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple><small>Hasta 3 fotos por producto. Se optimizan a WebP (máximo 1,600 px, calidad 82 %) y se suben en paralelo. Archivo original: hasta 8 MB; resultado para R2: máximo 2 MB.</small></label>
+          <div id="product-image-gallery" class="product-image-gallery full-field" aria-live="polite"><span class="table-secondary">Las imágenes que agregues se guardarán en el almacenamiento privado.</span></div>
+          <div id="product-image-pending-gallery" class="product-image-pending-gallery full-field" aria-live="polite"></div>
+          <p id="product-image-upload-status" class="form-status full-field" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="boxes"></span><div><strong>Inventario y ubicación</strong><small>Existencias iniciales y control de reposición</small></div></div>
         <div class="form-grid">
           <label class="form-field"><span>Existencias iniciales <span class="required-mark" aria-hidden="true">*</span></span><input name="stock" type="number" min="0" step="1" required></label>
@@ -173,14 +184,14 @@
         </div>
       </section>
 
-      <div class="modal-actions"><button type="button" class="button button-quiet" id="cancel-product">Cancelar</button><button type="submit" id="save-product" class="button button-primary">Agregar a demo <span data-icon="arrow-right"></span></button></div>
+      <div class="modal-actions"><button type="button" class="button button-quiet" id="cancel-product">Cancelar</button><button type="submit" id="save-product" class="button button-primary">Guardar en Neon <span data-icon="arrow-right"></span></button></div>
     </form>
   </dialog>
 
   <dialog class="modal stock-modal" id="stock-dialog" aria-labelledby="stock-modal-title">
     <form id="stock-form" method="dialog" class="modal-card">
-      <div class="modal-heading"><div><span class="eyebrow">INVENTARIO · KARDEX DEMO</span><h2 id="stock-modal-title">Registrar movimiento</h2></div><button type="button" class="icon-button modal-close" id="stock-modal-close" aria-label="Cerrar">×</button></div>
-      <p class="modal-note">Cada movimiento actualiza el stock y conserva el saldo anterior y posterior en el historial local.</p>
+      <div class="modal-heading"><div><span class="eyebrow">INVENTARIO · KARDEX EN NEON</span><h2 id="stock-modal-title">Registrar movimiento</h2></div><button type="button" class="icon-button modal-close" id="stock-modal-close" aria-label="Cerrar">×</button></div>
+      <p class="modal-note">Cada movimiento actualiza el stock y registra el saldo anterior y posterior en el kardex de Neon.</p>
       <div class="form-grid">
         <div class="form-field full-field search-field" data-search-field><label for="stock-product-search">Producto <span class="required-mark" aria-hidden="true">*</span></label><input id="stock-product-search" type="search" data-lookup="product" data-target="productId" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="stock-product-results" required><input type="hidden" name="productId"><div class="search-results" id="stock-product-results" role="listbox" hidden></div></div>
         <label class="form-field full-field"><span>Tipo de movimiento <span class="required-mark" aria-hidden="true">*</span></span><select name="type" id="stock-movement-type" required><option value="entry">Entrada</option><option value="exit">Salida</option><option value="adjustment">Ajuste de inventario</option></select></label>
@@ -192,7 +203,7 @@
   </dialog>
   <dialog class="modal detail-modal" id="product-detail-dialog" aria-labelledby="product-detail-title">
     <div class="modal-card">
-      <div class="modal-heading"><div><span class="eyebrow">CATÁLOGO · DETALLE DEMO</span><h2 id="product-detail-title">Producto</h2></div><button type="button" class="icon-button modal-close" id="detail-close" aria-label="Cerrar">×</button></div>
+      <div class="modal-heading"><div><span class="eyebrow">CATÁLOGO · DETALLE OPERATIVO</span><h2 id="product-detail-title">Producto</h2></div><button type="button" class="icon-button modal-close" id="detail-close" aria-label="Cerrar">×</button></div>
       <div id="product-detail-content"></div>
       <div class="modal-actions"><button type="button" class="button button-quiet" id="detail-cancel">Cerrar</button><button type="button" class="button button-primary" id="edit-detail-product" data-action="edit-from-detail">Editar ficha</button></div>
     </div>
@@ -200,10 +211,10 @@
   <dialog class="modal order-detail-modal" id="order-detail-dialog" aria-labelledby="order-detail-title">
     <div class="modal-card">
       <div class="modal-heading">
-        <div><span class="eyebrow">VENTAS · DETALLE DEMO</span><h2 id="order-detail-title">Pedido</h2></div>
+        <div><span class="eyebrow">VENTAS · DETALLE OPERATIVO</span><h2 id="order-detail-title">Pedido</h2></div>
         <button type="button" class="icon-button modal-close" id="order-detail-close" aria-label="Cerrar">×</button>
       </div>
-      <p class="modal-note" id="order-detail-subtitle">Registro ficticio para pruebas; no representa una venta real.</p>
+      <p class="modal-note" id="order-detail-subtitle">Detalle del pedido guardado en Neon. Verifica sus productos, importes y estado antes de continuar.</p>
       <div id="order-detail-content"></div>
       <div class="order-status-editor">
         <label for="order-status-select">Estado del pedido
@@ -224,15 +235,15 @@
   </dialog>
   <dialog class="modal business-modal" id="business-dialog" aria-labelledby="business-modal-title">
     <form id="business-form" method="dialog" class="modal-card">
-      <div class="modal-heading"><div><span class="eyebrow">GESTIÓN · DEMO LOCAL</span><h2 id="business-modal-title">Nuevo registro</h2></div><button type="button" class="icon-button modal-close" id="business-close" aria-label="Cerrar">×</button></div>
+      <div class="modal-heading"><div><span class="eyebrow">GESTIÓN ERP · OPERACIONES</span><h2 id="business-modal-title">Nuevo registro</h2></div><button type="button" class="icon-button modal-close" id="business-close" aria-label="Cerrar">×</button></div>
       <div id="business-form-body"></div>
-      <div class="modal-actions"><button type="button" class="button button-quiet" id="business-cancel">Cancelar</button><button type="submit" class="button button-primary" id="business-save">Guardar en demo</button></div>
+      <div class="modal-actions"><button type="button" class="button button-quiet" id="business-cancel">Cancelar</button><button type="submit" class="button button-primary" id="business-save">Guardar en Neon</button></div>
     </form>
   </dialog>
   <dialog class="modal invoice-preview-modal" id="invoice-preview-dialog" aria-labelledby="invoice-preview-title">
     <div class="invoice-preview-modal-card">
       <div class="modal-heading invoice-preview-actions-heading">
-        <div><span class="eyebrow">FACTURACIÓN · DOCUMENTO DEMO</span><h2 id="invoice-preview-title">Vista previa de factura</h2></div>
+        <div><span class="eyebrow">FACTURACIÓN · COMPROBANTE INTERNO</span><h2 id="invoice-preview-title">Vista previa de factura</h2></div>
         <button type="button" class="icon-button modal-close" data-action="close-invoice-preview" aria-label="Salir de vista previa">×</button>
       </div>
       <div id="invoice-print-document"></div>

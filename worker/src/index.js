@@ -1,6 +1,7 @@
 // Production deployment is gated through GitHub Actions from main.
 import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { handleERPRequest } from "./erp.js";
 
 const jwksCache = new Map();
 const HR_ROLES = ["owner", "admin", "hr"];
@@ -39,7 +40,7 @@ function withCors(request, env, response) {
   headers.set("vary", "Origin");
   if (origin && allowedOrigins(env).includes(origin)) {
     headers.set("access-control-allow-origin", origin);
-    headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+    headers.set("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
     headers.set("access-control-allow-headers", "authorization, content-type");
     headers.set("access-control-max-age", "86400");
   }
@@ -278,6 +279,9 @@ export default {
       response = await getEmployees(request, env);
     } else if (path === "/api/hr/employees" && request.method === "POST") {
       response = await createEmployee(request, env);
+    } else if (path.startsWith("/api/erp/")) {
+      const auth = await requireUser(request, env);
+      response = auth.response || await handleERPRequest(request, env, auth.user, auth.sql);
     } else if (["/api/config", "/api/health", "/api/auth/profile", "/api/hr/employees"].includes(path)) {
       response = errorResponse(405, "METHOD_NOT_ALLOWED", "This HTTP method is not supported for the requested endpoint.");
       response.headers.set("allow", path === "/api/hr/employees" ? "GET, POST, OPTIONS" : "GET, OPTIONS");
