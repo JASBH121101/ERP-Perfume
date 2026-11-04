@@ -451,6 +451,26 @@ async function reviewLeaveRequest(sql,user,id,body) {
   return erpJson({record:rows[0]});
 }
 
+async function createCashAccount(sql,user,body) {
+  const name=String(body.name||"").trim();
+  const currency=body.currency==="NIO"?"NIO":"USD";
+  const accountType=["Caja","Banco","Otro"].includes(body.account_type)?body.account_type:"Caja";
+  const opening=Number(body.opening_balance||0),rate=Number(body.exchange_rate||1);
+  if(!name||name.length>80||!Number.isFinite(opening)||opening<0||!Number.isFinite(rate)||rate<=0)return erpError(400,"INVALID_CASH_ACCOUNT","Revisa nombre, saldo inicial y tipo de cambio.");
+  const openingUsd=currency==="NIO"?opening/rate:opening;
+  try{
+    const rows=await sql.query(
+      "WITH created AS (INSERT INTO cash_accounts(name,currency,account_type,active) VALUES($1,$2,$3,TRUE) RETURNING *), opening AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'income','Saldo inicial · '||created.name,created.id,$2,$4,CASE WHEN $2='NIO' THEN $5 ELSE 1 END,$6,'opening_balance',created.id::text,$7 FROM created WHERE $4>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $7,'create','cash_account',created.id::text,jsonb_build_object('name',created.name,'currency',created.currency,'account_type',created.account_type,'opening_balance',$4) FROM created) SELECT * FROM created",
+      [name,currency,accountType,opening,rate,openingUsd,user.id]
+    );
+    return erpJson({record:rows[0]},201);
+  }catch(error){
+    if(error?.code==="23505")return erpError(409,"DUPLICATE_CASH_ACCOUNT","Ya existe una cuenta con ese nombre.");
+    console.error("[finance] Cash account creation failed:",error?.message||"database error");
+    return erpError(503,"CASH_ACCOUNT_SAVE_FAILED","No se pudo crear la cuenta.");
+  }
+}
+
 async function createExpense(sql,user,body) {
   const amount=Number(body.original_amount),rate=Number(body.exchange_rate||1),amountUsd=Number(body.amount_usd);
   if(!body.category||!body.description||!Number.isFinite(amount)||amount<=0||!Number.isFinite(rate)||rate<=0||!Number.isFinite(amountUsd)||amountUsd<=0||!body.account_name) return erpError(400,"INVALID_EXPENSE","Revisa categoría, descripción, importe, tasa y cuenta.");
@@ -598,6 +618,11 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.hr_leave_requests.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para revisar solicitudes.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return reviewLeaveRequest(sql,user,id,body);
+  }
+  if (resource === "cash-accounts" && request.method === "POST") {
+    if (!canAccess(user, RESOURCE_DEFS.cash_accounts.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para crear cuentas.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return createCashAccount(sql,user,body);
   }
   if (resource === "expenses" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.expenses.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar gastos.");
