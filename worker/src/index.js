@@ -1,6 +1,7 @@
 // Production deployment is gated through GitHub Actions from main.
 import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { handleCatalogApi } from "./catalog.js";
 
 const jwksCache = new Map();
 const HR_ROLES = ["owner", "admin", "hr"];
@@ -39,7 +40,7 @@ function withCors(request, env, response) {
   headers.set("vary", "Origin");
   if (origin && allowedOrigins(env).includes(origin)) {
     headers.set("access-control-allow-origin", origin);
-    headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+    headers.set("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
     headers.set("access-control-allow-headers", "authorization, content-type");
     headers.set("access-control-max-age", "86400");
   }
@@ -282,7 +283,8 @@ export default {
       response = errorResponse(405, "METHOD_NOT_ALLOWED", "This HTTP method is not supported for the requested endpoint.");
       response.headers.set("allow", path === "/api/hr/employees" ? "GET, POST, OPTIONS" : "GET, OPTIONS");
     } else {
-      response = errorResponse(404, "NOT_FOUND", "The requested API route was not found.");
+      response = await handleCatalogApi(request, env, { requireUser, json, errorResponse, getDatabase });
+      if (!response) response = errorResponse(404, "NOT_FOUND", "The requested API route was not found.");
     }
 
     return withCors(request, env, response);
