@@ -45,7 +45,11 @@ El área DGI permite:
 
 Los avisos de C$100,000 y C$500,000 son controles preventivos. No bloquean ventas ni cambian automáticamente el régimen. Los cobros vinculados a facturas y los ingresos de caja sin vínculo documental se incluyen en el indicador de ingresos; estos últimos aparecen señalados para conciliación. Si un movimiento está incompleto, duplicado o mal clasificado, corrígelo en el flujo original antes de utilizar el informe.
 
-## 5. Archivo de documentos tributarios
+## 5. Control sanitario de perfumes
+
+Registra y conserva con cada compra la factura del proveedor nacional y solicita el número de registro sanitario vigente del perfume. Guarda evidencia de la etiqueta original, fabricante/titular, presentación, lote y referencia de registro cuando esté disponible. No vendas productos rellenados, decantados, reenvasados o reetiquetados sin confirmar antes los requisitos de ANRS/MINSA. La clasificación sanitaria del punto de venta minorista de JB PARFUMS y la posible licencia de establecimiento están pendientes de confirmación con ANRS; consulta el expediente `docs/cumplimiento-dgi-nicaragua.md`.
+
+## 6. Archivo de documentos tributarios
 
 Para guardar un soporte:
 
@@ -58,14 +62,14 @@ Para guardar un soporte:
 
 Conserva los originales fuera del ERP según los plazos y obligaciones aplicables. El archivo privado en R2 no sustituye la conservación del documento original cuando sea exigida.
 
-## 6. Recursos Humanos
+## 7. Recursos Humanos
 
 RR. HH. permanece disponible para preparar la futura administración del personal. No registres trabajadores ficticios ni calcules nómina legal hasta que existan empleados y se hayan configurado los datos, deducciones, prestaciones e inscripciones requeridas.
 
-## 7. Errores y soporte
+## 8. Errores y soporte
 
 Si una operación falla, conserva el mensaje, fecha, módulo y referencia del registro. No repitas varias veces un pago, una compra o una factura sin comprobar primero si el primer intento se guardó. Notifica al administrador para revisar el registro y la auditoría.
 
-## 8. Advertencia de entorno
+## 9. Advertencia de entorno
 
 Los datos de esta etapa pertenecen a Neon Development y al Preview de la rama de desarrollo. No introduzcas datos reales de clientes o empleados hasta que se confirme la configuración de producción, copias de seguridad, permisos y recuperación.
