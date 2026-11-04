@@ -1,4 +1,5 @@
-import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
+import { parseCatalogCSV as pars    if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
+eCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
 import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
 
 'use strict';
@@ -474,6 +475,47 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       nav.hidden = !visible;
       const caption = nav.previousElementSibling;
       if (caption?.classList.contains("nav-caption")) caption.hidden = !visible;
+    });
+  }
+  const actionPermissions = {
+    "new-order": ["orders.records.create"], "preview-order": ["orders.records.view"],
+    "new-invoice": ["billing.invoices.create"], "new-invoice-after-preview": ["billing.invoices.create"],
+    "add-invoice-product": ["billing.invoices.create"], "remove-invoice-product": ["billing.invoices.create"],
+    "view-invoice": ["billing.invoices.view"], "new-payment": ["billing.payments.create"],
+    "new-customer": ["customers.records.create"], "new-product": ["products.catalog.create"],
+    "edit-product": ["products.catalog.edit"], "delete-product": ["products.catalog.delete"],
+    "toggle-product": ["products.catalog.edit"], "import-products": ["products.catalog.create"],
+    "stock-new": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
+    "stock-product": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
+    "export-inventory": ["inventory.stock.view"], "new-purchase": ["purchases.receipts.receive"],
+    "new-purchase-payment": ["payables.payments.create"], "new-supplier": ["suppliers.records.create"],
+    "new-expense": ["expenses.records.create"], "new-cash": ["cash.entries.create"],
+    "new-cash-account": ["cash.entries.create"], "new-employee": ["hr.employees.create"],
+    "new-attendance": ["hr.attendance.create"], "new-leave": ["hr.leave.create"],
+    "approve-leave": ["hr.leave.approve"], "reject-leave": ["hr.leave.reject"],
+    "new-payroll-period": ["hr.payroll.create"], "new-payroll-item": ["hr.payroll.create"],
+    "approve-payroll": ["hr.payroll.approve"], "pay-payroll": ["hr.payroll.approve"],
+    "download-dgi-document": ["dgi.documents.view"], "reload-dgi-documents": ["dgi.documents.view"],
+    "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
+    "clear-inventory-filters": ["inventory.stock.view"], "clear-inventory-product-filters": ["inventory.stock.view"],
+    "inventory-page": ["inventory.stock.view"]
+  };
+  function applyPermissionActions() {
+    root.querySelectorAll("button[data-action]").forEach((button) => {
+      const action = button.getAttribute("data-action");
+      if (action === "hr-tab") {
+        const tabPermission = {
+          employees: "hr.employees.view", attendance: "hr.attendance.view",
+          leaves: "hr.leave.view", payroll: "hr.payroll.view", contracts: "hr.contracts.view"
+        }[button.getAttribute("data-tab")];
+        if (tabPermission) button.hidden = !permissionGranted(tabPermission);
+        return;
+      }
+      const keys = actionPermissions[action];
+      if (keys) button.hidden = !keys.some(permissionGranted);
+    });
+    root.querySelectorAll("button[data-view]").forEach((button) => {
+      button.hidden = !canViewERPView(button.getAttribute("data-view"));
     });
   }
   const root = document.getElementById('view-root');
@@ -1915,9 +1957,9 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       expenses: renderExpenses,
       cash: renderCash
     };
-    if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
     root.innerHTML = (renderers[state.view] || renderDashboard)();
     applyPermissionNavigation();
+    applyPermissionActions();
     updateNotificationIndicator();
     document.querySelector('.page-context')?.classList.toggle('page-context-hr',state.view==='hr');
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
