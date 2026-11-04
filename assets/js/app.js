@@ -904,7 +904,7 @@
     if(typeof previewDialog.showModal==='function')previewDialog.showModal();
   }
   function openBusinessDialog(type,recordId){
-    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra',expense:'Registrar gasto',cash:'Registrar recibo o pago',invoice:'Nueva factura',payment:'Registrar abono',employee:'Agregar colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
+    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra',expense:'Registrar gasto',cash:'Registrar recibo o pago','cash-account':'Nueva cuenta de caja o banco',invoice:'Nueva factura',payment:'Registrar abono',employee:'Agregar colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
     let body='';
     if(type==='customer')body='<div class="form-grid">'+formField('Nombre del cliente','name','text',true,'maxlength="80"')+formField('Teléfono o contacto','contact','text',false,'maxlength="40"')+'</div>';
     if(type==='supplier')body='<div class="form-grid">'+formField('Nombre del proveedor','name','text',true,'maxlength="80"')+formField('Contacto','contact','text',false,'maxlength="80"')+formField('Teléfono','phone','tel',false,'maxlength="40"')+formField('Correo','email','email',false,'maxlength="120"')+currencyField('USD')+'</div>';
@@ -927,6 +927,7 @@
     }
     if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div>';
     if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
+    if(type==='cash-account')body='<div class="form-grid">'+formField('Nombre de la cuenta','name','text',true,'maxlength="80"')+selectField('Tipo de cuenta','accountType','<option>Caja</option><option>Banco</option><option>Otro</option>',true)+currencyField('USD')+formField('Saldo inicial','openingBalance','number',false,'min="0" step="0.01" value="0"')+'</div><p class="form-helper">El saldo inicial se registrará como una entrada de apertura, no como ingreso de ventas ni utilidad. Puedes iniciar en cero si todavía no deseas cargar un saldo.</p>';
     if(type==='invoice'){
       invoiceDraftItems=[];
       const customerOptions=customers.map(item=>'<option value="'+esc(item.name)+'"></option>').join('');
@@ -1068,6 +1069,13 @@
         await erpApi('expenses',{method:'POST',body:JSON.stringify({
           category:get('category'),description,currency,original_amount:amount,exchange_rate:rate,amount_usd:toUsd(amount,currency),account_name:account
         })});
+      } else if(type==='cash-account'){
+        const accountName=get('name'),accountType=get('accountType'),opening=num('openingBalance');
+        if(!accountName||!['Caja','Banco','Otro'].includes(accountType)||!Number.isFinite(opening)||opening<0)throw new Error('Revisa nombre, tipo y saldo inicial de la cuenta.');
+        if(cashAccounts.some(a=>String(a.name).toLocaleLowerCase('es')===accountName.toLocaleLowerCase('es')))throw new Error('Ya existe una cuenta con ese nombre.');
+        await erpApi('cash-accounts',{method:'POST',body:JSON.stringify({
+          name:accountName,currency,account_type:accountType,opening_balance:opening,exchange_rate:rate
+        })});
       } else if(type==='cash'){
         const amount=num('amount'),account=get('account'),accountRow=accountFor(account,currency);
         if(!get('concept')||!Number.isFinite(amount)||amount<=0)throw new Error('Revisa el concepto y el importe.');
@@ -1192,6 +1200,7 @@
           expense:'Gasto registrado en Neon y reflejado en caja y resultados.',cash:'Movimiento registrado en Caja y bancos.',
           payment:'Abono de cliente registrado.', 'purchase-payment':'Abono a proveedor registrado.',
           employee:'Colaborador registrado en Neon Development.',
+          'cash-account':'Cuenta creada y saldo inicial registrado.',
           attendance:'Asistencia registrada en Neon.',
           leave:'Solicitud de permiso o vacaciones registrada.',
           'payroll-period':'Período de nómina creado en estado Borrador.',
@@ -1818,7 +1827,7 @@
   document.addEventListener('click',function(event){
     const action=event.target.closest('[data-action]');
     if(!action){if(event.target.closest('#business-close')||event.target.closest('#business-cancel'))businessDialog.close();return;}
-    const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-expense':'expense','new-cash':'cash','new-invoice':'invoice','new-employee':'employee','new-attendance':'attendance','new-leave':'leave','new-payroll-period':'payroll-period','new-payroll-item':'payroll-item'};
+    const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-expense':'expense','new-cash':'cash','new-cash-account':'cash-account','new-invoice':'invoice','new-employee':'employee','new-attendance':'attendance','new-leave':'leave','new-payroll-period':'payroll-period','new-payroll-item':'payroll-item'};
     if(name==='hr-tab'){
       const tab=action.getAttribute('data-tab');
       if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
