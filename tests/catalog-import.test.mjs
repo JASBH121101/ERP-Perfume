@@ -862,3 +862,23 @@ test("DGI cannot mark computerized invoicing not applicable without a written re
   assert.equal(queryCount,0);
 });
 
+test("DGI confirmation date must use the YYYY-MM-DD format", async () => {
+  let queryCount=0;
+  const sql={query:async()=>{queryCount+=1;return []; }};
+  const response=await handleERPRequest(requestFor("settings","PATCH",{
+    setting_key:"dgi_compliance",
+    setting_value:{
+      taxpayer_name:"JB PARFUMS",ruc:"RUC-TEST",business_address:"Granada",
+      regime_status:"not_confirmed",regime_confirmation_reference:"",
+      quota_fixed_amount_nio:0,certificate_available:false,certificate_displayed:false,
+      computerized_invoicing_status:"not_confirmed",dgi_confirmation_date:"04/11/2026",
+      computerized_invoicing_authorization_number:"",
+      computerized_invoicing_confirmation_reference:""
+    }
+  }),{},owner,sql);
+  const body=await response.json();
+  assert.equal(response.status,400);
+  assert.equal(body.error.code,"INVALID_DGI_CONFIRMATION_DATE");
+  assert.equal(queryCount,0);
+});
+
