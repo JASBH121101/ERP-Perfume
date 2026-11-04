@@ -39,37 +39,170 @@
   function rateLabel(rate) { const value=Number(rate||exchangeRate),cents=Math.round(value*100);return 'C$ '+value.toFixed(Math.abs(value*100-cents)<0.000001?2:4)+' por US$ 1'; }
   function currencyOptions(selected) { return '<option value="USD"'+(selected==='USD'?' selected':'')+'>USD · Dólar</option><option value="NIO"'+(selected==='NIO'?' selected':'')+'>NIO · Córdoba</option>'; }
 
-  let products = [
-    { id: 1, name: 'Club de Nuit Intense Man', brand: 'Armaf', sku: 'JBP-001', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Amaderada', sizeMl: 105, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: toUsd(1450), additionalCost: toUsd(100), unitCost: toUsd(1550), price: toUsd(2450), profit: toUsd(900), margin: 36.7, stock: 14, minStock: 4, location: 'A-01', tone: 'art-night', active: true },
-    { id: 2, name: 'Yara Lattafa', brand: 'Lattafa', sku: 'JBP-002', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1050), additionalCost: toUsd(100), unitCost: toUsd(1150), price: toUsd(1850), profit: toUsd(700), margin: 37.8, stock: 8, minStock: 3, location: 'A-02', tone: 'art-rose', active: true },
-    { id: 3, name: 'Khamrah Lattafa', brand: 'Lattafa', sku: 'JBP-003', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1350), additionalCost: toUsd(100), unitCost: toUsd(1450), price: toUsd(2200), profit: toUsd(750), margin: 34.1, stock: 3, minStock: 5, location: 'A-03', tone: 'art-olive', active: true },
-    { id: 4, name: 'Badee Al Oud Amethyst', brand: 'Lattafa', sku: 'JBP-004', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Floral', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1250), additionalCost: toUsd(100), unitCost: toUsd(1350), price: toUsd(2100), profit: toUsd(750), margin: 35.7, stock: 0, minStock: 3, location: 'A-04', tone: 'art-violet', active: true },
-    { id: 5, name: '9PM Afnan', brand: 'Afnan', sku: 'JBP-005', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Masculino', family: 'Ámbar / Oriental', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1200), additionalCost: toUsd(100), unitCost: toUsd(1300), price: toUsd(1950), profit: toUsd(650), margin: 33.3, stock: 11, minStock: 3, location: 'A-05', tone: 'art-night', active: true },
-    { id: 6, name: 'Good Girl Carolina Herrera', brand: 'Carolina Herrera', sku: 'JBP-006', category: 'Diseñador', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Ámbar / Oriental', sizeMl: 80, presentation: 'Caja original', supplier: 'Proveedor de muestra A', purchaseCost: toUsd(1950), additionalCost: toUsd(100), unitCost: toUsd(2050), price: toUsd(3100), profit: toUsd(1050), margin: 33.9, stock: 5, minStock: 4, location: 'B-01', tone: 'art-night', active: true },
-    { id: 7, name: 'Ana Abiyedh Rouge', brand: 'Lattafa', sku: 'JBP-007', category: 'Unisex', concentration: 'Eau de Parfum (EDP)', gender: 'Unisex', family: 'Ambar / Oriental', sizeMl: 60, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1000), additionalCost: toUsd(100), unitCost: toUsd(1100), price: toUsd(1750), profit: toUsd(650), margin: 37.1, stock: 2, minStock: 4, location: 'B-02', tone: 'art-rose', active: true },
-    { id: 8, name: 'Eclaire Lattafa', brand: 'Lattafa', sku: 'JBP-008', category: 'Árabes', concentration: 'Eau de Parfum (EDP)', gender: 'Femenino', family: 'Gourmand / Dulce', sizeMl: 100, presentation: 'Caja original', supplier: 'Proveedor de muestra B', purchaseCost: toUsd(1250), additionalCost: toUsd(100), unitCost: toUsd(1350), price: toUsd(2050), profit: toUsd(700), margin: 34.1, stock: 9, minStock: 3, location: 'B-03', tone: 'art-olive', active: true }
-  ];
-  let orders = [
-    { id: 'JP-1048', customer: 'María Gutiérrez', phone: '+505 8888 1204', date: '02 nov 2026', amount: toUsd(4050), status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: toUsd(0), deliveryFee: toUsd(150), items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: toUsd(1850) }, { name: 'Eclaire Lattafa', sku: 'JBP-008', quantity: 1, unitPrice: toUsd(2050) }] },
-    { id: 'JP-1047', customer: 'Carlos Mendoza', phone: '+505 8777 2310', date: '02 nov 2026', amount: toUsd(2200), status: 'Pendiente', paymentMethod: 'Efectivo contra entrega', paymentStatus: 'Pendiente', deliveryMode: 'Retiro en tienda', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: 'Khamrah Lattafa', sku: 'JBP-003', quantity: 1, unitPrice: toUsd(2200) }] },
-    { id: 'JP-1046', customer: 'Andrea López', phone: '+505 8666 3421', date: '01 nov 2026', amount: toUsd(1850), status: 'Completado', paymentMethod: 'Transferencia', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: 'Yara Lattafa', sku: 'JBP-002', quantity: 1, unitPrice: toUsd(1850) }] },
-    { id: 'JP-1045', customer: 'Daniela Ruiz', phone: '+505 8555 4532', date: '01 nov 2026', amount: toUsd(3100), status: 'En preparación', paymentMethod: 'Tarjeta', paymentStatus: 'Pagado', deliveryMode: 'Entrega coordinada', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: 'Good Girl Carolina Herrera', sku: 'JBP-006', quantity: 1, unitPrice: toUsd(3100) }] },
-    { id: 'JP-1044', customer: 'Luis Salazar', phone: 'No registrado', date: '31 oct 2026', amount: toUsd(1950), status: 'Completado', paymentMethod: 'Efectivo', paymentStatus: 'Pagado', deliveryMode: 'Retiro en tienda', discount: toUsd(0), deliveryFee: toUsd(0), items: [{ name: '9PM Afnan', sku: 'JBP-005', quantity: 1, unitPrice: toUsd(1950) }] }
-  ];
-  let customers = [
-    { name: 'María Gutiérrez', contact: '+505 8888 1204', orders: 8, spent: toUsd(12450), since: 'Ago 2026' },
-    { name: 'Carlos Mendoza', contact: '+505 8777 2310', orders: 5, spent: toUsd(8950), since: 'Sep 2026' },
-    { name: 'Andrea López', contact: '+505 8666 3421', orders: 4, spent: toUsd(7300), since: 'Sep 2026' },
-    { name: 'Daniela Ruiz', contact: '+505 8555 4532', orders: 3, spent: toUsd(6100), since: 'Oct 2026' }
-  ];
-  let suppliers=[];
-  let purchases=[];
-  let expenses=[];
-  let cashEntries=[];
-  let invoices=[];
-  let invoiceDraftItems=[];
-  let employees=[];
-  let hrRecordsLoaded=false,hrRecordsLoading=false,hrLoadAttempted=false,hrLoadError='';
+  let products = [];
+  let orders = [];
+  let customers = [];
+  let suppliers = [];
+  let purchases = [];
+  let expenses = [];
+  let cashEntries = [];
+  let cashAccounts = [];
+  let invoices = [];
+  let invoiceDraftItems = [];
+  let employees = [];
+  let inventoryMovements = [];
+  let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
+  let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
+
+  async function erpApi(path, options = {}) {
+    const auth = window.JBAuth;
+    if (!auth || auth.mode !== "authenticated" || !auth.profile) throw new Error("Inicia sesión con un perfil ERP autorizado.");
+    const token = await auth.getToken();
+    if (!token) throw new Error("La sesión expiró. Vuelve a iniciar sesión.");
+    const headers = new Headers(options.headers || {});
+    headers.set("authorization", "Bearer " + token);
+    if (options.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+    const response = await fetch(auth.apiUrl("/api/erp/" + path.replace(/^\\/+/, "")), {
+      ...options, headers, cache: "no-store"
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || "La operación no se pudo completar (HTTP " + response.status + ").");
+    return body;
+  }
+
+  function dbDate(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("es-NI", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  async function loadERPFromNeon(force = false) {
+    if (erpDataLoading || (erpDataLoaded && !force)) return;
+    erpDataLoading = true;
+    erpLoadError = "";
+    try {
+      const response = await erpApi("bootstrap");
+      const data = response.data || {};
+      const rawProducts = Array.isArray(data.products) ? data.products : [];
+      products = rawProducts.map((p) => {
+        const purchaseCost = Number(p.purchase_cost_usd || 0);
+        const additionalCost = Number(p.additional_cost_usd || 0);
+        const price = Number(p.price_usd || 0);
+        const unitCost = Number(p.unit_cost_usd || purchaseCost + additionalCost);
+        const profit = price - unitCost;
+        return {
+          id: p.id, name: p.name, brand: p.brand || "", sku: p.sku, category: p.category || "Perfumería",
+          concentration: p.concentration || "", gender: p.gender || "", family: p.family || "",
+          sizeMl: p.size_ml == null ? null : Number(p.size_ml), presentation: p.presentation || "",
+          purchaseCost, additionalCost, unitCost, price, wholesalePrice: p.wholesale_price_usd == null ? null : Number(p.wholesale_price_usd),
+          profit, margin: price > 0 ? profit / price * 100 : 0, stock: Number(p.stock || 0), minStock: Number(p.min_stock || 0),
+          location: p.location || "", barcode: p.barcode || "", notes: p.notes || "", tone: p.tone || "art-violet",
+          supplier: p.supplier_name || "", active: p.active !== false, createdAt: p.created_at
+        };
+      });
+      inventoryMovements = (data.inventory_movements || []).map((m) => ({
+        id: m.id, productId: m.product_id, productName: products.find(p => p.id === m.product_id)?.name || "Producto",
+        sku: products.find(p => p.id === m.product_id)?.sku || "", type: m.movement_type,
+        quantity: Number(m.quantity), delta: Number(m.quantity_delta), previousStock: Number(m.previous_stock),
+        newStock: Number(m.new_stock), note: m.note || "", sourceType: m.reference_type || "",
+        sourceId: m.reference_id || "", createdAt: m.created_at
+      }));
+      suppliers = (data.suppliers || []).map(s => ({
+        id: s.id, name: s.name, contact: s.contact || "", phone: s.phone || "", email: s.email || "",
+        currency: s.currency || "USD", notes: s.notes || "", active: s.active !== false
+      }));
+      customers = (data.customers || []).map(x => ({
+        id: x.id, name: x.name, contact: x.contact || x.phone || "", phone: x.phone || x.contact || "",
+        email: x.email || "", customerType: x.customer_type || "particular", orders: 0, spent: 0,
+        since: dbDate(x.created_at), notes: x.notes || "", active: x.active !== false
+      }));
+      const rawOrderItems = data.order_items || [];
+      orders = (data.orders || []).map(o => ({
+        id: o.order_number, dbId: o.id, customerId: o.customer_id, customer: o.customer_name, phone: o.phone || "",
+        date: dbDate(o.created_at), createdAt: o.created_at, amount: Number(o.total_usd || 0),
+        status: o.status, paymentMethod: o.payment_method || "", paymentStatus: o.payment_status,
+        deliveryMode: o.delivery_mode || "", discount: Number(o.discount_usd || 0), deliveryFee: Number(o.delivery_fee_usd || 0),
+        paymentCurrency: o.currency || "USD", paymentAmount: Number(o.original_amount || 0), exchangeRate: Number(o.exchange_rate || exchangeRate),
+        items: rawOrderItems.filter(i => i.order_id === o.id).map(i => ({
+          productId: i.product_id, name: i.product_name, sku: i.sku_snapshot || "", quantity: Number(i.quantity),
+          unitPrice: Number(i.unit_price_usd)
+        })),
+        inventoryAppliedAt: inventoryMovements.some(m => m.sourceType === "order" && m.sourceId === o.id && m.delta < 0) ? o.updated_at : null
+      }));
+      customers.forEach(customer => {
+        const related = orders.filter(o => o.customerId === customer.id);
+        customer.orders = related.length;
+        customer.spent = roundMoney(related.reduce((sum, order) => sum + Number(order.amount || 0), 0));
+      });
+      const rawPurchaseItems = data.purchase_items || [];
+      purchases = (data.purchases || []).map(p => {
+        const lines = rawPurchaseItems.filter(i => i.purchase_id === p.id);
+        const line = lines[0] || {};
+        const paymentRows = (data.cash_entries || []).filter(e => e.source_type === "purchase" && e.source_id === p.id);
+        return {
+          id: p.id, purchaseNumber: p.purchase_number, supplierId: p.supplier_id, supplier: p.supplier_name,
+          productId: line.product_id || "", product: line.product_name || (lines.length + " productos"),
+          quantity: Number(line.quantity || lines.reduce((sum, i) => sum + Number(i.quantity || 0), 0)),
+          currency: p.currency || "USD", originalUnitCost: Number(line.unit_cost_usd || 0) * (p.currency === "NIO" ? Number(p.exchange_rate || exchangeRate) : 1),
+          originalTotal: Number(p.total_usd || 0) * (p.currency === "NIO" ? Number(p.exchange_rate || exchangeRate) : 1),
+          exchangeRate: Number(p.exchange_rate || exchangeRate), unitCostUsd: Number(line.unit_cost_usd || 0),
+          totalUsd: Number(p.total_usd || 0), paidUsd: Number(p.paid_usd || 0), status: p.status,
+          payments: paymentRows.map(e => ({ amount: Number(e.original_amount), currency: e.currency, exchangeRate: Number(e.exchange_rate), amountUsd: Number(e.amount_usd), account: (data.cash_accounts || []).find(a => a.id === e.account_id)?.name || "", createdAt: e.created_at })),
+          createdAt: p.created_at
+        };
+      });
+      const rawInvoiceItems = data.invoice_items || [];
+      const rawInvoicePayments = data.invoice_payments || [];
+      invoices = (data.invoices || []).map(i => ({
+        id: i.invoice_number, dbId: i.id, orderId: i.order_number_snapshot || "",
+        customerId: i.customer_id, customerName: i.customer_name, customerPhone: i.customer_phone || "",
+        source: i.source, currency: i.currency || "USD", exchangeRate: Number(i.exchange_rate || exchangeRate),
+        subtotalUsd: Number(i.subtotal_usd || 0), discountUsd: Number(i.discount_usd || 0),
+        deliveryFeeUsd: Number(i.delivery_fee_usd || 0), totalUsd: Number(i.total_usd || 0), paidUsd: Number(i.paid_usd || 0),
+        status: i.status === "Pagada" ? "Pagado" : i.status, paymentMethod: i.payment_method || "",
+        notes: i.notes || "", createdAt: i.created_at, date: dbDate(i.created_at),
+        items: rawInvoiceItems.filter(x => x.invoice_id === i.id).map(x => ({
+          productId: x.product_id, name: x.product_name, sku: x.sku_snapshot || "", quantity: Number(x.quantity),
+          unitPriceUsd: Number(x.unit_price_usd), unitCostUsd: Number(x.unit_cost_usd || 0)
+        })),
+        payments: rawInvoicePayments.filter(x => x.invoice_id === i.id).map(x => ({
+          amount: Number(x.original_amount), currency: x.currency, exchangeRate: Number(x.exchange_rate),
+          amountUsd: Number(x.amount_usd), account: x.account_name || "", createdAt: x.created_at
+        })),
+        inventoryAppliedAt: inventoryMovements.some(m => m.sourceType === "invoice" && m.sourceId === i.id && m.delta < 0) ? i.created_at : null
+      }));
+      expenses = (data.expenses || []).map(e => ({
+        id: e.id, category: e.category, description: e.description, currency: e.currency,
+        originalAmount: Number(e.original_amount), exchangeRate: Number(e.exchange_rate), amountUsd: Number(e.amount_usd),
+        createdAt: e.created_at
+      }));
+      cashAccounts = data.cash_accounts || [];
+      cashEntries = (data.cash_entries || []).map(e => ({
+        id: e.id, direction: e.direction, concept: e.concept,
+        account: cashAccounts.find(a => a.id === e.account_id)?.name || "Cuenta no asignada",
+        accountId: e.account_id, currency: e.currency, originalAmount: Number(e.original_amount),
+        exchangeRate: Number(e.exchange_rate), amountUsd: Number(e.amount_usd),
+        sourceType: e.source_type || "", sourceId: e.source_id || "", createdAt: e.created_at,
+        supplier: suppliers.find(s => s.id === e.supplier_id)?.name || ""
+      }));
+      employees = (data.employees || []).map(e => ({
+        id: e.id, employeeCode: e.employee_code || "", name: e.name, position: e.position,
+        department: e.department || "", salaryNio: Number(e.salary_nio || 0), status: e.status || "Activo",
+        hireDate: e.hire_date || null, phone: e.phone || "", email: e.email || "", notes: e.notes || ""
+      }));
+      const rateSetting = (data.settings || []).find(s => s.setting_key === "default_exchange_rate");
+      if (rateSetting && Number(rateSetting.setting_value?.value) > 0) exchangeRate = Number(rateSetting.setting_value.value);
+      erpDataLoaded = true;
+      hrRecordsLoaded = Array.isArray(data.employees);
+      hrLoadAttempted = true;
+      return true;
+    } catch (error) {
+      erpLoadError = error?.message || "No se pudieron cargar los registros reales.";
+      throw error;
+    } finally {
+      erpDataLoading = false;
+    }
+  }
   const views = {
     dashboard: { title: 'Resumen', eyebrow: 'CENTRO DE CONTROL', heading: 'Buenos días', subtitle: 'Una mirada clara al movimiento de tu negocio.' },
     products: { title: 'Productos', eyebrow: 'CATÁLOGO', heading: 'Catálogo de productos', subtitle: 'Administra las fragancias, sus precios y la disponibilidad.' },
