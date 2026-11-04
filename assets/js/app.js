@@ -73,6 +73,84 @@
     if (!response.ok) throw new Error(body?.error?.message || "La operación no se pudo completar (HTTP " + response.status + ").");
     return body;
   }
+  const productAssetUrlCache=new Map();
+  async function productAssetUrl(key){
+    if(productAssetUrlCache.has(key))return productAssetUrlCache.get(key);
+    const auth=window.JBAuth;
+    if(!auth?.profile)throw new Error("Inicia sesión para consultar las imágenes.");
+    const pending=(async()=>{
+      const token=await auth.getToken();
+      const response=await fetch(auth.apiUrl("/api/erp/assets?key="+encodeURIComponent(key)),{
+        headers:{authorization:"Bearer "+token},cache:"no-store"
+      });
+      if(!response.ok){
+        const body=await response.json().catch(()=>({}));
+        throw new Error(body?.error?.message||"No se pudo consultar la imagen.");
+      }
+      return URL.createObjectURL(await response.blob());
+    })();
+    productAssetUrlCache.set(key,pending);
+    try{return await pending;}catch(error){productAssetUrlCache.delete(key);throw error;}
+  }
+  async function uploadProductAsset(productId,file){
+    const auth=window.JBAuth;
+    if(!auth?.profile)throw new Error("Inicia sesión para subir imágenes.");
+    const token=await auth.getToken();
+    const formData=new FormData();
+    formData.append("product_id",productId);
+    formData.append("file",file,file.name);
+    const response=await fetch(auth.apiUrl("/api/erp/assets"),{
+      method:"POST",headers:{authorization:"Bearer "+token},body:formData,cache:"no-store"
+    });
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(body?.error?.message||"No se pudo subir la imagen.");
+    return body.asset;
+  }
+  async function deleteProductAsset(productId,key){
+    await erpApi("assets",{method:"DELETE",body:JSON.stringify({product_id:productId,key})});
+    const cached=productAssetUrlCache.get(key);
+    if(cached&&typeof cached.then==="function"){
+      try{URL.revokeObjectURL(await cached);}catch{}
+    }else if(cached){URL.revokeObjectURL(cached);}
+    productAssetUrlCache.delete(key);
+  }
+  async function hydrateProductImageSlots(){
+    const slots=Array.from(document.querySelectorAll("[data-product-image-slot]")).slice(0,60);
+    await Promise.all(slots.map(async slot=>{
+      const product=products.find(item=>String(item.id)===slot.getAttribute("data-product-image-slot"));
+      const image=product?.images?.[0];
+      if(!image?.key)return;
+      try{
+        const url=await productAssetUrl(image.key);
+        if(!slot.isConnected)return;
+        const img=document.createElement("img");
+        img.src=url;img.alt=product.name;img.loading="lazy";
+        slot.replaceChildren(img);
+      }catch{}
+    }));
+  }
+  async function mountProductImageGallery(container,product){
+    if(!container)return;
+    container.replaceChildren();
+    const images=Array.isArray(product?.images)?product.images:[];
+    if(!images.length){
+      const empty=document.createElement("span");empty.className="table-secondary";empty.textContent="Todavía no hay imágenes guardadas.";
+      container.appendChild(empty);return;
+    }
+    for(const image of images){
+      const card=document.createElement("div");card.className="product-image-card";
+      try{
+        const url=await productAssetUrl(image.key);
+        const img=document.createElement("img");img.src=url;img.alt=image.name||product.name;img.loading="lazy";card.appendChild(img);
+      }catch{
+        const failed=document.createElement("span");failed.textContent="Imagen no disponible";failed.className="table-secondary";card.appendChild(failed);
+      }
+      const remove=document.createElement("button");remove.type="button";remove.className="product-image-remove";
+      remove.textContent="×";remove.setAttribute("aria-label","Eliminar imagen");
+      remove.setAttribute("data-action","remove-product-image");remove.setAttribute("data-product-id",product.id);remove.setAttribute("data-key",image.key);
+      card.appendChild(remove);container.appendChild(card);
+    }
+  }
 
   function dbDate(value) {
     if (!value) return "";
@@ -101,7 +179,7 @@
           purchaseCost, additionalCost, unitCost, price, wholesalePrice: p.wholesale_price_usd == null ? null : Number(p.wholesale_price_usd),
           profit, margin: price > 0 ? profit / price * 100 : 0, stock: Number(p.stock || 0), minStock: Number(p.min_stock || 0),
           location: p.location || "", barcode: p.barcode || "", notes: p.notes || "", tone: p.tone || "art-violet",
-          supplier: p.supplier_name || "", active: p.active !== false, createdAt: p.created_at
+          supplier: p.supplier_name || "", images:Array.isArray(p.images)?p.images:[], active: p.active !== false, createdAt: p.created_at
         };
       });
       inventoryMovements = (data.inventory_movements || []).map((m) => ({
