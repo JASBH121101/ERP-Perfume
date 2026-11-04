@@ -266,7 +266,7 @@ async function createProduct(sql, user, body) {
 }
 
 
-async function importProducts(sql, user, body) {
+export async function importProducts(sql, user, body) {
   const incoming = Array.isArray(body.records) ? body.records : [];
   if (!incoming.length || incoming.length > 200) {
     return erpError(400, "INVALID_IMPORT_SIZE", "Selecciona entre 1 y 200 productos por importación.");
@@ -402,7 +402,7 @@ async function createPurchase(sql, user, body) {
   }
 }
 
-async function createInvoice(sql, user, body) {
+export async function createInvoice(sql, user, body) {
   const items=Array.isArray(body.items)?body.items:[];
   const total=Number(body.total_usd),paid=Number(body.paid_usd||0),rate=Number(body.exchange_rate||1);
   const subtotal=Number(body.subtotal_usd??total),discount=Number(body.discount_usd||0),delivery=Number(body.delivery_fee_usd||0);

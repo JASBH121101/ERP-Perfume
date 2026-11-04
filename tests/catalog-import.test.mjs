@@ -1,19 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-
-const appSource = await readFile(new URL("../assets/js/app.js", import.meta.url), "utf8");
-const parserStart = appSource.indexOf("  function catalogNumber(value)");
-const parserEnd = appSource.indexOf("  function loadCatalogScript", parserStart);
-assert.ok(parserStart >= 0 && parserEnd > parserStart, "catalog import parser must remain present");
-const parsers = new Function(
-  "roundMoney",
-  "Date",
-  appSource.slice(parserStart, parserEnd) + "\nreturn { parseCatalogCSV, parseCatalogTextRows };"
-)((value) => Math.round(value * 100) / 100, Date);
+import { parseCatalogCSV, parseCatalogTextRows } from "../assets/js/catalog-import.mjs";
+import { calculateFinancialSnapshot } from "../assets/js/financial-snapshot.mjs";
+import { handleERPRequest, importProducts, createInvoice } from "../worker/src/erp.js";
 
 test("CSV imports Spanish headers, semicolon delimiter and decimal comma", () => {
-  const rows = parsers.parseCatalogCSV(
+  const rows = parseCatalogCSV(
     '\uFEFFSKU;Producto;Marca;Costo de compra;Precio de venta;Stock\n' +
     'DIO-001;"Sauvage Elixir";Dior;75,50;109,99;4\n' +
     'ARM-002;Stronger With You;Armani;50,00;89,00;2'
@@ -30,7 +22,7 @@ test("CSV imports Spanish headers, semicolon delimiter and decimal comma", () =>
 });
 
 test("CSV blank purchase-cost breakdown preserves an explicit unit-cost column", () => {
-  const rows = parsers.parseCatalogCSV(
+  const rows = parseCatalogCSV(
     "SKU,Producto,Costo de compra,Costos adicionales,Costo unitario,Precio,Stock\n" +
     "UNIT-02,Perfume unitario,, ,15,30,1"
   );
@@ -40,7 +32,7 @@ test("CSV blank purchase-cost breakdown preserves an explicit unit-cost column",
 });
 
 test("CSV unit-cost-only catalogs retain unit cost when purchase-cost breakdown is absent", () => {
-  const rows = parsers.parseCatalogCSV(
+  const rows = parseCatalogCSV(
     "SKU,Producto,Costo unitario,Precio,Stock\n" +
     "UNIT-01,Perfume unitario,15,30,1"
   );
@@ -50,7 +42,7 @@ test("CSV unit-cost-only catalogs retain unit cost when purchase-cost breakdown 
 });
 
 test("CSV keeps commas and escaped quotation marks inside quoted product names", () => {
-  const rows = parsers.parseCatalogCSV(
+  const rows = parseCatalogCSV(
     'SKU,Product,Brand,Price,Stock\n' +
     'SKU-01,"Rose, ""Noir""",Maison,45.5,3'
   );
@@ -60,7 +52,7 @@ test("CSV keeps commas and escaped quotation marks inside quoted product names",
 });
 
 test("PDF text extraction parser retains aligned product columns", () => {
-  const rows = parsers.parseCatalogTextRows(
+  const rows = parseCatalogTextRows(
     "SKU          PRODUCTO                  PRECIO          STOCK\n" +
     "DIO-001     Dior Sauvage Elixir        109.99          4\n" +
     "ARM-002     Armani Code Parfum         89.50           2"
@@ -74,7 +66,7 @@ test("PDF text extraction parser retains aligned product columns", () => {
 });
 
 test("OCR parser reads plain text rows from PNG/JPG screenshots", () => {
-  const rows = parsers.parseCatalogTextRows(
+  const rows = parseCatalogTextRows(
     "DIO-001 Dior Sauvage Elixir $109.99 stock 4\n" +
     "ARM-002 Armani Code Parfum USD 89.50 existencias 2"
   );
@@ -88,7 +80,7 @@ test("OCR parser reads plain text rows from PNG/JPG screenshots", () => {
 });
 
 test("PDF/image parser rejects text without identifiable product rows", () => {
-  assert.throws(() => parsers.parseCatalogTextRows("Página 1\nSubtotal\nTotal"), /No pude extraer nombres/);
+  assert.throws(() => parseCatalogTextRows("Página 1\nSubtotal\nTotal"), /No pude extraer nombres/);
 });
 
 test("CSV rejects files over 200 products instead of silently truncating them", () => {
@@ -96,7 +88,7 @@ test("CSV rejects files over 200 products instead of silently truncating them", 
   for (let index = 1; index <= 201; index += 1) {
     lines.push("SKU-" + index + ",Perfume QA " + index + ",10,1");
   }
-  assert.throws(() => parsers.parseCatalogCSV(lines.join("\n")), /máximo de 200 productos/);
+  assert.throws(() => parseCatalogCSV(lines.join("\n")), /máximo de 200 productos/);
 });
 
 test("PDF/OCR parser rejects more than 200 detected unique products", () => {
@@ -104,13 +96,8 @@ test("PDF/OCR parser rejects more than 200 detected unique products", () => {
   for (let index = 1; index <= 201; index += 1) {
     lines.push("QA-" + index + " Perfume QA " + index + " USD 10.00");
   }
-  assert.throws(() => parsers.parseCatalogTextRows(lines.join("\n")), /más de 200 productos/);
+  assert.throws(() => parseCatalogTextRows(lines.join("\n")), /más de 200 productos/);
 });
-
-const workerSource = await readFile(new URL("../worker/src/erp.js", import.meta.url), "utf8");
-const importEnd = workerSource.indexOf("async function createInventoryMovement");
-assert.ok(importEnd > 0, "bulk import handler must remain present");
-const importProducts = new Function(workerSource.slice(0, importEnd) + "\nreturn importProducts;")();
 
 function mockSql(existingSkus = []) {
   const statements = [];
@@ -176,9 +163,6 @@ test("backend rejects malformed stock and caps each import at 200 records", asyn
 });
 
 
-const operationalWorkerSource = workerSource.replace(/\bexport\s+(?=async function|function)/g, "");
-const handleERPRequest = new Function(operationalWorkerSource + "\nreturn handleERPRequest;")();
-const createInvoice = new Function(operationalWorkerSource + "\nreturn createInvoice;")();
 
 test("HR leave approval route records reviewer and review timestamp", async () => {
   const statements = [];
@@ -349,14 +333,7 @@ test("order status calculation uses net stock movements rather than historical n
 
 
 test("financial snapshot uses invoice totals including discount and delivery, not only line subtotals", () => {
-  const start = appSource.indexOf("  function financialSnapshot(){");
-  const end = appSource.indexOf("\n  function renderDashboard", start);
-  assert.ok(start >= 0 && end > start, "financial snapshot function must remain available");
-  const calculate = new Function(
-    "invoices", "expenses", "roundMoney",
-    appSource.slice(start, end) + "\nreturn financialSnapshot();"
-  );
-  const result = calculate(
+  const result = calculateFinancialSnapshot(
     [{
       totalUsd: 100,
       subtotalUsd: 80,

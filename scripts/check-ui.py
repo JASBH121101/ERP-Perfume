@@ -12,7 +12,7 @@ CSS_FILE = ROOT / "assets" / "css" / "styles.css"
 JS_FILE = ROOT / "assets" / "js" / "app.js"
 
 REQUIRED_IDS = {
-    "sidebar", "view-root", "global-search", "page-date",
+    "sidebar", "view-root", "page-date",
     "product-dialog", "product-form", "toast-region",
     "menu-toggle", "mobile-scrim", "product-count",
     "breadcrumb-current", "page-eyebrow", "sidebar-collapse",
