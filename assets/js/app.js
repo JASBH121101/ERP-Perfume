@@ -1693,7 +1693,7 @@
     return parsed;
   }
   function parseCatalogTextRows(text) {
-    const skip=/^(sku|codigo|producto|nombre|descripcion|marca|brand|precio|price|stock|existencias|total|subtotal|pagina|page|www\.|https?:)/i;
+    const skip=/^(sku|codigo|producto|nombre|descripcion|marca|brand|precio|price|stock|existencias|total|subtotal|p[aá]gina|page|www\.|https?:)/i;
     const lines=String(text||'').replace(/\u00a0/g,' ').split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
     const rows=[];
     for(const line of lines){
@@ -1729,7 +1729,7 @@
         }
         name=name.replace(/\s+\b(?:stock|existencias|qty|cantidad|unidades)\s*:?\s*\d+\b.*$/i,'').replace(/^\d{1,4}[\s.)-]+/,'').replace(/\s{2,}/g,' ').trim();
       }
-      if(name.length<3||!/[a-záéíóúñ]{3}/i.test(name)||/^(pagina|page|total|subtotal|iva|impuesto|descuento|direccion|telefono|fecha|cliente|proveedor)\b/i.test(name))continue;
+      if(name.length<3||!/[a-záéíóúñ]{3}/i.test(name)||/^(p[aá]gina|page|total|subtotal|iva|impuesto|descuento|direccion|telefono|fecha|cliente|proveedor)\b/i.test(name))continue;
       rows.push({sku:catalogSku(rows.length),name:name.slice(0,120),brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock,min_stock:3,active:true,images:[],_detected_amount:amount});
       if(rows.length>=200)break;
     }
