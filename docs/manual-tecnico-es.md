@@ -76,7 +76,7 @@ La obligación de respaldo diario que aparece en la Disposición Técnica 09-200
 
 Se añadió `.github/workflows/daily-db-backup.yml`, una tarea opcional que:
 - Ejecuta diariamente a las 02:00 de Nicaragua (08:00 UTC).
-- Realiza un `pg_dump` de Neon Development.
+- Instala el cliente `pg_dump` 18 desde el repositorio oficial PGDG para ser compatible con Neon PostgreSQL 18 y realiza un dump de Neon Development.
 - Cifra el dump con GPG/AES-256 antes de transferirlo.
 - Lo sube al prefijo privado `database-backups/erp_perfume/` del bucket R2 existente.
 - Verifica el tamaño remoto y conserva los siete respaldos más recientes.
