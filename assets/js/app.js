@@ -1694,7 +1694,7 @@
     return parsed;
   }
   function parseCatalogTextRows(text) {
-    const skip = /^(sku|codigo|producto|nombre|descripcion|descripci[oó]n|marca|brand|precio|price|stock|existencias|total|subtotal|pagina|page|www\\.|https?:)/i;
+    const skip = /^(sku|codigo|producto|nombre|descripcion|descripci[oó]n|marca|brand|precio|price|stock|existencias|total|subtotal|pagina|page|www\.|https?:)/i;
     const lines=String(text||'').replace(/\u00a0/g,' ').split(/\r?\n/).map(line=>line.replace(/\s+/g,' ').trim()).filter(Boolean);
     const rows=[];
     for (const line of lines) {
@@ -1745,11 +1745,11 @@
       const positionedItems=(textContent.items||[]).filter(item=>String(item.str||'').trim()).map(item=>({text:String(item.str||'').trim(),x:Number(item.transform?.[4]||0),y:Number(item.transform?.[5]||0)})).sort((a,b)=>b.y-a.y||a.x-b.x);
       const textLines=[];
       for(const item of positionedItems){
-        let line=textLines.find(candidate=>Math.abs(candidate.y-item.y)<=2.5);
-        if(!line){line={y:item.y,items:[]};textLines.push(line);}
+        let line=textLines[textLines.length-1];
+        if(!line||Math.abs(line.y-item.y)>2.5){line={y:item.y,items:[]};textLines.push(line);}
         line.items.push(item);
       }
-      let pageText=textLines.sort((a,b)=>b.y-a.y).map(line=>line.items.sort((a,b)=>a.x-b.x).map(item=>item.text).join('  ')).join('\\n').trim();
+      let pageText=textLines.sort((a,b)=>b.y-a.y).map(line=>line.items.sort((a,b)=>a.x-b.x).map(item=>item.text).join('  ')).join('\n').trim();
       if(!pageText){
         status('PDF escaneado: aplicando OCR local a la página '+pageNumber+'…');
         await loadCatalogScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',()=>Boolean(window.Tesseract));
