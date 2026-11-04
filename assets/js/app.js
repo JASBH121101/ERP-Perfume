@@ -1704,7 +1704,7 @@
       let name='',amount=null,stock=0;
       if(columns.length>1){
         const first=columns[0];
-        const codeLike=/^[A-Z0-9][A-Z0-9._/-]{2,}$/i.test(first)&&(/[0-9_-]/.test(first)||first===first.toUpperCase());
+        const codeLike=/^[A-Z0-9][A-Z0-9._\/-]{2,}$/i.test(first)&&(/[0-9_-]/.test(first)||first===first.toUpperCase());
         const nameStart=codeLike?1:0;
         const firstNum=nums.find(x=>x.index>=nameStart);
         name=columns.slice(nameStart,firstNum?firstNum.index:columns.length).filter(x=>/[a-záéíóúñ]{3}/i.test(x)).join(' ').trim();
