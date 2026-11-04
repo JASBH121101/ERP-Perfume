@@ -51,12 +51,15 @@
 
       <div class="nav-caption nav-caption-spaced">ABASTECIMIENTO</div>
       <nav class="primary-nav">
-        <button class="nav-item" data-view="purchases"><span class="nav-icon" data-icon="receipt"></span><span>Compras</span></button>
+        <button class="nav-item" data-view="purchaseOrders"><span class="nav-icon" data-icon="receipt"></span><span>Órdenes de compra</span></button>
+        <button class="nav-item" data-view="purchases"><span class="nav-icon" data-icon="receipt"></span><span>Facturas proveedor</span></button>
         <button class="nav-item" data-view="suppliers"><span class="nav-icon" data-icon="users"></span><span>Proveedores</span></button>
       </nav>
       <div class="nav-caption nav-caption-spaced">FINANZAS</div>
       <nav class="primary-nav">
         <button class="nav-item" data-view="expenses"><span class="nav-icon" data-icon="receipt"></span><span>Gastos</span></button>
+        <button class="nav-item" data-view="profitability"><span class="nav-icon" data-icon="chart"></span><span>Rentabilidad</span></button>
+        <button class="nav-item" data-view="capital"><span class="nav-icon" data-icon="wallet"></span><span>Capital y flujo</span></button>
         <button class="nav-item" data-view="cash"><span class="nav-icon" data-icon="chart"></span><span>Caja y bancos</span></button>
         <button class="nav-item" data-view="payables"><span class="nav-icon" data-icon="wallet"></span><span>Cuentas por pagar</span></button>
       </nav>
@@ -143,6 +146,7 @@
           <label class="form-field"><span>Contenido (ml)</span><input name="sizeMl" type="number" min="0" max="10000" step="1"></label>
           <label class="form-field"><span>Presentación</span><select name="presentation"><option value="">Seleccionar</option><option>Caja original</option><option>Tester</option><option>Sin caja</option><option>Decant</option><option>Set / Estuche</option></select></label>
           <label class="form-field"><span>Código de barras</span><input name="barcode" maxlength="40"></label>
+          <label class="form-field full-field"><span>Descripción comercial</span><textarea name="description" rows="2" maxlength="500"></textarea></label>
         </div>
       </section>
 
@@ -166,7 +170,7 @@
       <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="boxes"></span><div><strong>Inventario y ubicación</strong><small>Existencias iniciales y control de reposición</small></div></div>
         <div class="form-grid">
-          <label class="form-field"><span>Existencias iniciales <span class="required-mark" aria-hidden="true">*</span></span><input name="stock" type="number" min="0" step="1" required></label>
+          <label class="form-field"><span>Existencias iniciales <span class="required-mark" aria-hidden="true">*</span></span><input name="stock" type="number" min="0" step="1" value="0" required></label>
           <label class="form-field"><span>Stock mínimo</span><input name="minStock" type="number" min="0" step="1" value="3"></label>
           <label class="form-field full-field"><span>Ubicación en bodega</span><input name="location" maxlength="40"></label>
           <label class="form-field full-field"><span>Notas internas</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
