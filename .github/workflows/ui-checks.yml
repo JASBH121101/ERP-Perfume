@@ -1,6 +1,7 @@
 name: ERP quality gate
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -15,6 +16,7 @@ on:
       - "docs/**"
       - "assets/**"
       - "functions/**"
+      - "worker/**"
       - "db/**"
       - "scripts/**"
       - "tests/**"
@@ -38,7 +40,7 @@ jobs:
       - name: Checkout pull request code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -50,6 +52,11 @@ jobs:
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      - name: Validate Worker module syntax
+        run: |
+          node --input-type=module --check < worker/src/index.js
+          node --input-type=module --check < worker/src/erp.js
 
       - name: Run all deterministic checks
         run: bash scripts/run-validation.sh
@@ -166,7 +173,7 @@ jobs:
 
   jb-expert-qa:
     name: JB Expert QA — deterministic source audit
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
