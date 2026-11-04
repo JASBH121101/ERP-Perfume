@@ -26,6 +26,10 @@ echo "=== Static structure and asset checks ==="
 python3 scripts/check-ui.py
 
 echo
+echo "=== Import/API deterministic unit tests ==="
+npm run test:unit
+
+echo
 echo "=== Browser end-to-end tests (Chromium; no screenshots) ==="
 npm test -- --reporter=line
 
