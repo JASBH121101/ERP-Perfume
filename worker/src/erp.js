@@ -419,7 +419,7 @@ async function createInvoice(sql, user, body) {
   if(source==="web"){
     if(!orderId)return erpError(400,"WEB_ORDER_REQUIRED","Selecciona el pedido web que se va a facturar.");
     const sourceRows=await sql.query(
-      "SELECT o.order_number,o.customer_name,o.discount_usd::text AS discount_usd,o.delivery_fee_usd::text AS delivery_fee_usd,o.total_usd::text AS total_usd,oi.product_id::text AS product_id,oi.product_name,oi.sku_snapshot,oi.quantity,oi.unit_price_usd::text AS unit_price_usd FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.id=$1::uuid AND o.status<>'Cancelado' ORDER BY oi.id ASC",
+      "SELECT o.order_number,o.customer_id::text AS customer_id,o.customer_name,o.discount_usd::text AS discount_usd,o.delivery_fee_usd::text AS delivery_fee_usd,o.total_usd::text AS total_usd,oi.product_id::text AS product_id,oi.product_name,oi.sku_snapshot,oi.quantity,oi.unit_price_usd::text AS unit_price_usd FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.id=$1::uuid AND o.status<>'Cancelado' ORDER BY oi.id ASC",
       [orderId]
     );
     if(!sourceRows.length)return erpError(404,"WEB_ORDER_NOT_FOUND","El pedido web no existe, está cancelado o no contiene productos.");
@@ -428,6 +428,7 @@ async function createInvoice(sql, user, body) {
       Number(item.quantity),Number(item.unit_price_usd).toFixed(2)
     ].join("|")).sort();
     if(String(body.order_number_snapshot||"")!==String(sourceRows[0].order_number)||
+       String(body.customer_id||"")!==String(sourceRows[0].customer_id||"")||
        String(body.customer_name||"").trim().toLocaleLowerCase("es")!==String(sourceRows[0].customer_name||"").trim().toLocaleLowerCase("es")||
        Math.abs(discount-Number(sourceRows[0].discount_usd||0))>0.02||
        Math.abs(delivery-Number(sourceRows[0].delivery_fee_usd||0))>0.02||
