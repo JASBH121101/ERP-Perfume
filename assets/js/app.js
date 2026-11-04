@@ -1670,6 +1670,7 @@
     row.push(cell);
     if (row.some(value=>String(value).trim())) rows.push(row);
     if (rows.length < 2) throw new Error('El CSV debe incluir encabezados y al menos una fila de productos.');
+    if (rows.length - 1 > 200) throw new Error('El archivo supera el máximo de 200 productos por importación. Divide el catálogo en varios archivos.');
     const headers = rows[0].map(catalogHeader);
     const mapping = headers.map(catalogField);
     if (!mapping.includes('name')) throw new Error('No pude identificar la columna del producto. Usa un encabezado como Producto, Nombre o Perfume.');
@@ -1731,11 +1732,11 @@
       }
       if(name.length<3||!/[a-záéíóúñ]{3}/i.test(name)||/^(p[aá]gina|page|total|subtotal|iva|impuesto|descuento|direccion|telefono|fecha|cliente|proveedor)\b/i.test(name))continue;
       rows.push({sku:catalogSku(rows.length),name:name.slice(0,120),brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock,min_stock:3,active:true,images:[],_detected_amount:amount});
-      if(rows.length>=200)break;
     }
     const unique=[],seen=new Set();
     for(const row of rows){const key=row.name.toLowerCase();if(!seen.has(key)){seen.add(key);unique.push(row);}}
     if(!unique.length)throw new Error('No pude extraer nombres de productos. Revisa que el archivo sea legible o prueba con un CSV.');
+    if(unique.length>200)throw new Error('El archivo contiene más de 200 productos detectados. Divide el catálogo en varios archivos.');
     return unique;
   }
   function loadCatalogScript(src, ready) {
