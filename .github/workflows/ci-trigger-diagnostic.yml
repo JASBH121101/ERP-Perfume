@@ -1,0 +1,30 @@
+name: ERP CI trigger diagnostic
+
+on:
+  push:
+    branches:
+      - feat/erp-operational-modules
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  runner-smoke:
+    name: Confirm GitHub Actions runner allocation
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm event and runner
+        run: |
+          echo "GitHub Actions runner allocated successfully."
+          echo "Event: $GITHUB_EVENT_NAME"
+          echo "Revision: $GITHUB_SHA"
+          node --version
