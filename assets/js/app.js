@@ -59,6 +59,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   let payrollItems = [];
   let inventoryMovements = [];
   let dgiSupportDocuments = [];
+  let dgiDocumentsLoaded = false, dgiDocumentsLoading = false, dgiDocumentsLoadAttempted = false, dgiDocumentsError = "";
   let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"" };
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
@@ -300,14 +301,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       if (dgiSetting && dgiSetting.setting_value && typeof dgiSetting.setting_value === "object") {
         dgiCompliance = { ...dgiCompliance, ...dgiSetting.setting_value };
       }
-      dgiSupportDocuments = (data.dgi_support_documents || []).map(document => ({
-        id:document.id, documentDate:document.document_date, documentType:document.document_type,
-        issuer:document.issuer, referenceNumber:document.reference_number||"", description:document.description||"",
-        fiscalPeriod:document.fiscal_period||"", currency:document.currency||"NIO",
-        originalAmount:Number(document.original_amount||0), amountNio:Number(document.amount_nio||0),
-        formalInvoice:document.formal_invoice===true, fileName:document.file_name||"",
-        fileType:document.file_type||"", fileSize:Number(document.file_size||0), notes:document.notes||""
-      }));
+
       erpDataLoaded = true;
       hrRecordsLoaded = Array.isArray(data.employees);
       hrLoadAttempted = true;
@@ -1453,6 +1447,23 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       '<article class="list-panel"><div class="panel-heading"><div><h2>Libro de caja y bancos</h2><p>Entradas, salidas, cobros, pagos y aperturas de cuenta</p></div><span class="ledger-count">'+cashEntries.length+' movimientos</span></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>MOVIMIENTO</th><th>CONCEPTO / CUENTA</th><th>IMPORTE / CONVERSIÓN</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">No hay recibos ni pagos registrados.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Libro de caja y bancos</strong><p>Los saldos reflejan movimientos que registres en el ERP, incluidos los saldos iniciales. No consulta entidades bancarias ni ejecuta transferencias; la conciliación se realiza con estados de cuenta.</p></div></div>';
   }
+  async function loadDgiSupportDocuments(force){
+    if(dgiDocumentsLoading||(dgiDocumentsLoaded&&!force)||(!force&&dgiDocumentsLoadAttempted))return;
+    dgiDocumentsLoading=true;dgiDocumentsLoadAttempted=true;dgiDocumentsError='';
+    try{
+      const response=await erpApi('dgi-support-documents');
+      dgiSupportDocuments=(response.records||[]).map(document=>({
+        id:document.id,documentDate:document.document_date,documentType:document.document_type,
+        issuer:document.issuer,referenceNumber:document.reference_number||'',description:document.description||'',
+        fiscalPeriod:document.fiscal_period||'',currency:document.currency||'NIO',
+        originalAmount:Number(document.original_amount||0),amountNio:Number(document.amount_nio||0),
+        formalInvoice:document.formal_invoice===true,fileName:document.file_name||'',
+        fileType:document.file_type||'',fileSize:Number(document.file_size||0),notes:document.notes||''
+      }));
+      dgiDocumentsLoaded=true;
+    }catch(error){dgiDocumentsError=error?.message||'No se pudo consultar el archivo DGI.';}
+    finally{dgiDocumentsLoading=false;if(state.view==='dgi')renderView();}
+  }
   function dgiPeriodKey(date){
     const value=date instanceof Date?date:new Date(date);
     return value.getFullYear()+'-'+String(value.getMonth()+1).padStart(2,'0');
@@ -1463,11 +1474,11 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   function dgiAmountNio(usd,rate){return roundMoney(Number(usd||0)*Number(rate||exchangeRate));}
   function exportDgiBook(){
     const rows=[['Fecha','Tipo de operación','Tercero / descripción','Referencia','Importe NIO','Clasificación'],...invoices.map(i=>[
-      dateText(i.createdAt),'Venta registrada',i.customer,i.id,dgiAmountNio(i.totalUsd,i.exchangeRate),'Ingreso'
+      dateText(i.createdAt),'Venta registrada',i.customer,i.id,dgiAmountNio(i.totalUsd,i.exchangeRate||exchangeRate),'Ingreso'
     ]),...purchases.map(p=>[
-      dateText(p.createdAt),'Compra de inventario',p.supplier,p.purchaseNumber,dgiAmountNio(p.totalUsd,p.exchangeRate),'Egreso / compra'
+      dateText(p.createdAt),'Compra de inventario',p.supplier,p.purchaseNumber,dgiAmountNio(p.totalUsd,p.exchangeRate||exchangeRate),'Egreso / compra'
     ]),...expenses.map(e=>[
-      dateText(e.createdAt),'Gasto · '+e.category,e.description,e.id,dgiAmountNio(e.amountUsd,1),'Egreso'
+      dateText(e.createdAt),'Gasto · '+e.category,e.description,e.id,dgiAmountNio(e.amountUsd,e.exchangeRate),'Egreso'
     ])];
     exportCsvFile('jb-parfums-libro-auxiliar-dgi.csv',rows);
     toast('Libro auxiliar exportado. Concílialo con comprobantes y registros exigibles antes de presentarlo.');
@@ -1510,7 +1521,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       const response=await fetch(auth.apiUrl('/api/erp/dgi-support-documents'),{method:'POST',headers:{authorization:'Bearer '+token},body:data,cache:'no-store'});
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(result?.error?.message||'No se pudo guardar el documento.');
-      await loadERPFromNeon(true);renderView();toast('Documento archivado en Neon y Cloudflare R2.');
+      dgiDocumentsLoaded=false;dgiDocumentsLoadAttempted=false;await loadDgiSupportDocuments(true);renderView();toast('Documento archivado en Neon y Cloudflare R2.');
     }catch(error){toast(error?.message||'No se pudo archivar el documento.');}
     finally{if(button){button.disabled=false;button.textContent='Guardar respaldo en R2';}}
   }
@@ -1531,6 +1542,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   }
   function renderDgi(){
     const role=window.JBAuth?.profile?.role||'';
+    if(!dgiDocumentsLoaded&&!dgiDocumentsLoading&&!dgiDocumentsLoadAttempted)loadDgiSupportDocuments(false);
     if(!['owner','admin','finance'].includes(role))return heading(views.dgi,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Acceso restringido</strong><p>El centro DGI está disponible para propietario, administración y finanzas.</p></div></div>';
     const now=new Date(), monthStart=new Date(now.getFullYear(),now.getMonth(),1), nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);
     const currentInvoices=invoices.filter(i=>{const d=new Date(i.createdAt);return d>=monthStart&&d<nextMonth&&!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status);});
@@ -1540,7 +1552,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     const sixMonthTotal=sixMonthInvoices.reduce((sum,i)=>sum+dgiAmountNio(i.totalUsd,i.exchangeRate),0);
     const sixMonthAverage=sixMonthTotal/6;
     const inventoryCost=products.reduce((sum,p)=>sum+Math.max(0,Number(p.stock||0))*Math.max(0,Number(p.unitCost||0))*exchangeRate,0);
-    const monthPendingOrders=orders.filter(o=>{const d=new Date(o.createdAt);return d>=monthStart&&d<nextMonth&&!['Cancelado','Completado'].includes(o.status)&&!invoices.some(i=>i.orderId===o.id);}).length;
+    const monthPendingOrders=orders.filter(o=>{const d=new Date(o.createdAt);return d>=monthStart&&d<nextMonth&&o.status==='Completado'&&!invoices.some(i=>i.orderId===o.id);}).length;
     const regime=dgiCompliance.regime_status||'not_confirmed';
     const dgiPaymentPeriod=dgiPeriodKey(new Date(now.getFullYear(),now.getMonth()-1,1));
     const dgiPayment=dgiSupportDocuments.find(d=>d.documentType==='dgi_payment'&&d.fiscalPeriod===dgiPaymentPeriod);
@@ -1583,7 +1595,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     const periodNotice=regime==='cuota_fija'?'<div class="notice-panel"><span>'+svg(overdue?'warning':'spark')+'</span><div><strong>Pago de Cuota Fija · período '+esc(dgiPaymentPeriod)+'</strong><p>'+(dgiPayment?'El comprobante del período está archivado. Importe registrado: '+moneyInCurrency(dgiPayment.amountNio,'NIO')+'.':(cuota>0?'Cuota configurada: '+moneyInCurrency(cuota,'NIO')+'. ':'Aún no se ha configurado el monto de cuota. ')+(overdue?'La fecha usual de pago de los primeros 15 días ya pasó; verifica el estado con la DGI.':'El pago del período anterior vence dentro de los primeros 15 días de este mes.'))+'</p></div></div>':'';
     return heading(views.dgi,'<button class="button button-primary" data-action="export-dgi-book">Exportar libro auxiliar CSV</button>')+
       dgiAlert+
-      '<div class="summary-strip"><div class="summary-mini"><span>Ventas registradas del mes · NIO</span><strong>'+moneyInCurrency(monthSales,'NIO')+'</strong><small class="table-secondary">Referencia legal: C$ 100,000 mensuales</small></div><div class="summary-mini"><span>Promedio mensual · últimos 6 meses</span><strong>'+moneyInCurrency(sixMonthAverage,'NIO')+'</strong><small class="table-secondary">Referencia de transición: C$ 100,000</small></div><div class="summary-mini"><span>Inventario al costo · NIO</span><strong>'+moneyInCurrency(inventoryCost,'NIO')+'</strong><small class="table-secondary">Referencia legal: C$ 500,000</small></div><div class="summary-mini"><span>Pedidos sin factura del mes</span><strong>'+monthPendingOrders+'</strong><small class="table-secondary">Revisa que las ventas estén registradas</small></div></div>'+
+      '<div class="summary-strip"><div class="summary-mini"><span>Ventas registradas del mes · NIO</span><strong>'+moneyInCurrency(monthSales,'NIO')+'</strong><small class="table-secondary">Referencia legal: C$ 100,000 mensuales</small></div><div class="summary-mini"><span>Promedio mensual · últimos 6 meses</span><strong>'+moneyInCurrency(sixMonthAverage,'NIO')+'</strong><small class="table-secondary">Referencia de transición: C$ 100,000</small></div><div class="summary-mini"><span>Inventario al costo · NIO</span><strong>'+moneyInCurrency(inventoryCost,'NIO')+'</strong><small class="table-secondary">Referencia legal: C$ 500,000</small></div><div class="summary-mini"><span>Pedidos completados sin factura</span><strong>'+monthPendingOrders+'</strong><small class="table-secondary">Revisa la facturación de ventas</small></div></div>'+
       (limitSales?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Ventas del mes superiores a C$100,000</strong><p>El ERP no bloquea ventas. Revisa tu elegibilidad y consulta a la DGI; este dato mensual no sustituye el cálculo del promedio legal de seis meses.</p></div></div>':'')+
       (limitAverage?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Promedio de seis meses superior a C$100,000</strong><p>Puede activarse el deber de comunicar a la DGI el cambio de régimen dentro de los 30 días calendario previstos por la Ley. Solicita revisión profesional y conserva la constancia.</p></div></div>':'')+
       (limitStock?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Inventario al costo superior a C$500,000</strong><p>Consulta inmediatamente con la DGI la continuidad del régimen. El sistema informa el umbral, pero no bloquea la operación ni cambia el régimen automáticamente.</p></div></div>':'')+
@@ -1596,7 +1608,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       periodNotice+
       settingsForm+
       docForm+
-      '<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
+      (dgiDocumentsError?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Archivo DGI no disponible</strong><p>'+esc(dgiDocumentsError)+'. Aplica la migración 0006 en Neon Development y vuelve a cargar esta sección.</p></div></div>':'')+'<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar</strong><p>Los indicadores se calculan con ventas y operaciones registradas en el ERP. No son una declaración tributaria ni certifican la elegibilidad al régimen. Este módulo no presenta declaraciones ni sustituye la validación de un contador o la respuesta formal de la DGI.</p></div></div>';
   }
   function renderSettings(){
