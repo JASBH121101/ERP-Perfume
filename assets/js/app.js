@@ -1,5 +1,4 @@
-import { parseCatalogCSV as pars    if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
-eCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
+import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
 import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
 
 'use strict';
