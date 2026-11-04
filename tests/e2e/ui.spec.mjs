@@ -71,6 +71,47 @@ test('authenticated ERP renders dashboard and primary modules from API data', as
   await expect(page.getByRole('heading', { name: 'Informes y análisis' })).toBeVisible();
 });
 
+test('new order allows registering a customer inline without a prior customer record', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'orders');
+  await page.locator('[data-action="new-order"]').click();
+  const dialog=page.locator('#business-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[name="newCustomerName"]')).toBeVisible();
+  await expect(dialog.locator('[data-target="customerIndex"]')).toBeVisible();
+  const customerName=dialog.locator('[name="newCustomerName"]');
+  await customerName.fill('Cliente nuevo QA');
+  const productSearch=dialog.locator('[data-lookup="product"]');
+  await productSearch.fill('QA Fixture Perfume');
+  await expect(dialog.locator('[data-lookup-select]')).toBeVisible();
+  await dialog.locator('[data-lookup-select]').first().click();
+  const post=page.waitForRequest(request=>request.url().endsWith('/api/erp/orders')&&request.method()==='POST');
+  await dialog.locator('#business-save').click();
+  const request=await post;
+  const payload=request.postDataJSON();
+  expect(payload.customer_id).toBeNull();
+  expect(payload.customer_name).toBe('Cliente nuevo QA');
+  expect(payload.new_customer.name).toBe('Cliente nuevo QA');
+  expect(payload.items).toHaveLength(1);
+});
+
+test('HR permissions tab explains how to add the first collaborator', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'hr');
+  await page.locator('[data-action="hr-tab"][data-tab="leaves"]').click();
+  await expect(page.locator('[data-action="go-hr-employees"]')).toContainText('Agregar colaborador');
+  await expect(page.getByText('Primero registra al colaborador')).toBeVisible();
+});
+
+test('DGI workspace displays thresholds as alerts and starts with regime unconfirmed', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'dgi');
+  await expect(page.getByRole('heading', { name: 'Control tributario DGI' })).toBeVisible();
+  await expect(page.locator('#dgi-settings-form [name="regimeStatus"]')).toHaveValue('not_confirmed');
+  await expect(page.getByRole('button', { name: 'Exportar libro auxiliar CSV' })).toBeVisible();
+  await expect(page.getByText('El ERP no supone que JB PARFUMS está inscrito en Cuota Fija.')).toBeVisible();
+});
+
 test('catalog import explicitly accepts CSV, PDF, PNG, JPG and JPEG', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'products');
