@@ -1,6 +1,22 @@
 name: ERP quality gate
 
 on:
+  push:
+    branches:
+      - feat/erp-operational-modules
+    paths:
+      - "index.html"
+      - "README.md"
+      - "docs/**"
+      - "assets/**"
+      - "functions/**"
+      - "worker/**"
+      - "db/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "jb-expert-qa.config.json"
+      - ".github/workflows/**"
   workflow_dispatch:
   pull_request:
     branches:
@@ -173,7 +189,10 @@ jobs:
 
   jb-expert-qa:
     name: JB Expert QA — deterministic source audit
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'push' && github.ref == 'refs/heads/feat/erp-operational-modules') ||
+          github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
