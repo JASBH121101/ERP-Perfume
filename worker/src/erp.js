@@ -312,6 +312,43 @@ async function createInvoice(sql, user, body) {
   }
 }
 
+async function createPayrollItem(sql,user,body) {
+  const periodId=String(body.payroll_period_id||"");
+  const employeeId=String(body.employee_id||"");
+  const base=Number(body.base_salary_nio),bonus=Number(body.bonuses_nio||0),deductions=Number(body.deductions_nio||0);
+  if(!periodId||!employeeId||![base,bonus,deductions].every(Number.isFinite)||base<0||bonus<0||deductions<0||deductions>base+bonus)
+    return erpError(400,"INVALID_PAYROLL_ITEM","Revisa período, colaborador, salario base, bonos y deducciones.");
+  try{
+    const rows=await sql.query(
+      "WITH period AS (SELECT id,status FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), employee AS (SELECT id FROM employees WHERE id=$2::uuid AND status='Activo'), created AS (INSERT INTO hr_payroll_items(payroll_period_id,employee_id,base_salary_nio,bonuses_nio,deductions_nio,net_salary_nio,notes) SELECT period.id,employee.id,$3,$4,$5,ROUND($3+$4-$5,2),$6 FROM period CROSS JOIN employee WHERE period.status='Borrador' RETURNING *), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $7,'create','hr_payroll_item',id::text,to_jsonb(created) FROM created) SELECT created.* FROM created",
+      [periodId,employeeId,base,bonus,deductions,body.notes||null,user.id]
+    );
+    if(!rows[0]){
+      const status=await sql.query("SELECT status FROM hr_payroll_periods WHERE id=$1::uuid",[periodId]);
+      if(!status[0])return erpError(404,"PAYROLL_PERIOD_NOT_FOUND","No existe el período de nómina.");
+      if(status[0].status!=="Borrador")return erpError(409,"PAYROLL_PERIOD_LOCKED","Solo se pueden agregar partidas a un período en borrador.");
+      return erpError(404,"ACTIVE_EMPLOYEE_NOT_FOUND","El colaborador no existe o está inactivo.");
+    }
+    return erpJson({record:rows[0]},201);
+  }catch(error){
+    if(error?.code==="23505")return erpError(409,"DUPLICATE_PAYROLL_ITEM","Ya existe una partida de este colaborador en el período.");
+    if(error?.code==="23503")return erpError(400,"RELATED_RECORD_NOT_FOUND","El período o colaborador seleccionado no existe.");
+    console.error("[hr] Payroll item insert failed:",error?.message||"database error");
+    return erpError(503,"PAYROLL_SAVE_FAILED","No se pudo guardar la partida de nómina.");
+  }
+}
+
+async function reviewLeaveRequest(sql,user,id,body) {
+  const status=String(body.status||"");
+  if(!["Aprobado","Rechazado"].includes(status))return erpError(400,"INVALID_LEAVE_STATUS","La solicitud solo puede aprobarse o rechazarse.");
+  const rows=await sql.query(
+    "WITH changed AS (UPDATE hr_leave_requests SET status=$1,reviewed_by=$2,reviewed_at=NOW() WHERE id=$3::uuid AND status='Pendiente' RETURNING *), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $2,'review','hr_leave_request',id::text,jsonb_build_object('status',$1) FROM changed) SELECT * FROM changed",
+    [status,user.id,id]
+  );
+  if(!rows[0])return erpError(409,"LEAVE_REQUEST_NOT_PENDING","La solicitud no existe o ya fue revisada.");
+  return erpJson({record:rows[0]});
+}
+
 async function createExpense(sql,user,body) {
   const amount=Number(body.original_amount),rate=Number(body.exchange_rate||1),amountUsd=Number(body.amount_usd);
   if(!body.category||!body.description||!Number.isFinite(amount)||amount<=0||!Number.isFinite(rate)||rate<=0||!Number.isFinite(amountUsd)||amountUsd<=0||!body.account_name) return erpError(400,"INVALID_EXPENSE","Revisa categoría, descripción, importe, tasa y cuenta.");
@@ -443,6 +480,16 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.purchases.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar compras.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createPurchase(sql,user,body);
+  }
+  if (resource === "hr-payroll-items" && request.method === "POST") {
+    if (!canAccess(user, RESOURCE_DEFS.hr_payroll_items.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return createPayrollItem(sql,user,body);
+  }
+  if (resource === "hr-leave-requests" && request.method === "PATCH" && id) {
+    if (!canAccess(user, RESOURCE_DEFS.hr_leave_requests.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para revisar solicitudes.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return reviewLeaveRequest(sql,user,id,body);
   }
   if (resource === "expenses" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.expenses.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar gastos.");
