@@ -790,3 +790,29 @@ body.auth-locked .app-shell {
   .page-heading-dashboard + .metric-grid .metric-label{font-size:8px}
   .page-heading-dashboard + .metric-grid .metric-value{font-size:18px}
 }
+
+/* Procurement prototype: line items and receipt rows */
+.po-lines-panel{margin:18px 0;padding:16px;border:1px solid var(--border,#e8e2d8);border-radius:12px;background:var(--surface,#fff)}
+.po-lines-panel .panel-heading{align-items:center;gap:12px;margin-bottom:12px}
+.po-lines-panel .panel-heading h3{margin:0;font-size:15px}
+.po-lines-panel .panel-heading p{margin:4px 0 0;font-size:12px;color:var(--muted,#777)}
+.po-line-row{display:grid;grid-template-columns:minmax(180px,2fr) minmax(90px,.75fr) minmax(110px,.9fr) 34px;gap:10px;align-items:end;padding:10px 0;border-bottom:1px solid var(--border,#e8e2d8)}
+.po-line-row:last-child{border-bottom:0}
+.po-line-row .form-field,.po-receipt-row .form-field{min-width:0;margin:0}
+.po-remove-line{align-self:end;margin-bottom:7px}
+.po-actions{display:flex;flex-wrap:wrap;gap:6px;min-width:180px}
+.po-receipt-list{display:grid;gap:10px;margin-top:12px}
+.po-receipt-row{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:14px;align-items:center;padding:12px;border:1px solid var(--border,#e8e2d8);border-radius:10px}
+.po-receipt-row>div{min-width:0}
+.po-receipt-row strong,.po-receipt-row small{display:block}
+.po-receipt-row small{margin-top:4px;color:var(--muted,#777);font-size:12px}
+@media(max-width:620px){
+  .po-lines-panel{padding:11px}
+  .po-lines-panel .panel-heading{align-items:flex-start;flex-direction:column}
+  .po-line-row{grid-template-columns:1fr 1fr;gap:8px}
+  .po-product-field{grid-column:1/-1}
+  .po-cost-field{grid-column:1}
+  .po-remove-line{grid-column:2;justify-self:end;margin-bottom:7px}
+  .po-receipt-row{grid-template-columns:1fr;gap:8px}
+  .po-receipt-row .form-field{max-width:180px}
+}
