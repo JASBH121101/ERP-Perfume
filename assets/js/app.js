@@ -861,6 +861,8 @@
       });
       if(receiptValidationError){toast(receiptValidationError);return;}
       if(!receiptLines.length){toast('Indica al menos una cantidad recibida.');return;}
+      const missingProduct=receiptLines.find(line=>!products.some(product=>String(product.id)===String(line.item.productId)));
+      if(missingProduct){toast('El producto '+missingProduct.item.name+' ya no existe en el catálogo. No se modificó el inventario.');return;}
       const actualFreightUsd=toUsd(num('actualFreight'),order.currency);
       if(!Number.isFinite(actualFreightUsd)||actualFreightUsd<0){toast('El flete real no es válido.');return;}
       const receivedValue=receiptLines.reduce((sum,line)=>sum+line.quantity*Number(line.item.unitCostUsd||0),0);
