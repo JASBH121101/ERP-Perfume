@@ -102,6 +102,26 @@ test('CSV import parses the selected file and exposes an editable preview', asyn
   await expect(dialog.locator('[data-import-field="name"]').first()).toHaveValue('Sauvage Elixir QA editado');
 });
 
+test('catalog import submits the reviewed rows to the backend endpoint', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'products');
+  await page.getByRole('button', { name: /Importar catálogo/ }).click();
+  const dialog = page.locator('#catalog-import-dialog');
+  await dialog.locator('#catalog-import-file').setInputFiles({
+    name: 'catalogo.csv', mimeType: 'text/csv',
+    buffer: Buffer.from('SKU,Producto,Marca,Precio,Stock\nQA-200,Perfume de prueba,QA Maison,35.00,3', 'utf8')
+  });
+  await expect(dialog.locator('#catalog-import-status')).toContainText('Se detectaron 1 filas');
+  const importResponse = page.waitForResponse(response =>
+    response.url().endsWith('/api/erp/products/import') && response.request().method() === 'POST'
+  );
+  await dialog.getByRole('button', { name: 'Importar 1 productos a Neon' }).click();
+  const response = await importResponse;
+  expect(response.status()).toBe(201);
+  await expect(page.locator('#toast-region')).toContainText('1 productos importados');
+  await expect(dialog).not.toBeVisible();
+});
+
 test('sidebar and font preferences persist without storing operational records locally', async ({ page }) => {
   await page.setViewportSize({ width: 1365, height: 900 });
   await page.goto('/');
