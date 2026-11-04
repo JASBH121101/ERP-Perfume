@@ -11,13 +11,6 @@ CREATE TABLE IF NOT EXISTS erp_roles (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE app_users
-  ADD COLUMN IF NOT EXISTS position_title text NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS account_status text NOT NULL DEFAULT 'active'
-    CHECK (account_status IN ('invited','registered','active','rejected','disabled')),
-  ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS role_template_key text REFERENCES erp_roles(role_key) DEFAULT 'viewer';
-
 INSERT INTO erp_roles(role_key,name,description,is_system) VALUES
  ('owner','Propietario','Control total protegido del ERP',true),
  ('admin','Administrador','Plantilla editable de administración',true),
@@ -27,6 +20,15 @@ INSERT INTO erp_roles(role_key,name,description,is_system) VALUES
  ('sales','Ventas','Plantilla editable de ventas',true),
  ('viewer','Consulta','Plantilla editable de solo lectura',true)
 ON CONFLICT(role_key) DO NOTHING;
+
+ALTER TABLE app_users
+  ADD COLUMN IF NOT EXISTS position_title text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS account_status text NOT NULL DEFAULT 'active'
+    CHECK (account_status IN ('invited','registered','active','rejected','disabled')),
+  ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS role_template_key text REFERENCES erp_roles(role_key) DEFAULT 'viewer';
+
+
 
 UPDATE app_users
 SET role_template_key = role
