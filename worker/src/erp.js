@@ -143,6 +143,21 @@ async function updateGeneric(sql, user, resource, def, id, body) {
   const { keys, values } = safeFields(def, body);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
   if (keys.includes("created_by") || keys.includes("created_at")) return erpError(400, "INVALID_FIELD", "No se permite modificar la autoría ni la fecha de creación.");
+  if (def.table === "products" && ["purchase_cost_usd","additional_cost_usd","unit_cost_usd"].some((key)=>keys.includes(key))) {
+    const current = await sql.query("SELECT purchase_cost_usd,additional_cost_usd FROM products WHERE id=$1::uuid LIMIT 1",[id]);
+    if (!current[0]) return erpError(404,"RECORD_NOT_FOUND","No se encontró el producto solicitado.");
+    const purchaseIndex=keys.indexOf("purchase_cost_usd");
+    const additionalIndex=keys.indexOf("additional_cost_usd");
+    const purchaseCost=purchaseIndex>=0?Number(values[purchaseIndex]):Number(current[0].purchase_cost_usd||0);
+    const additionalCost=additionalIndex>=0?Number(values[additionalIndex]):Number(current[0].additional_cost_usd||0);
+    if(!Number.isFinite(purchaseCost)||purchaseCost<0||!Number.isFinite(additionalCost)||additionalCost<0) {
+      return erpError(400,"INVALID_PRODUCT_COST","El costo de compra y los costos adicionales deben ser valores no negativos.");
+    }
+    const unitCostIndex=keys.indexOf("unit_cost_usd");
+    const derivedUnitCost=Math.round((purchaseCost+additionalCost)*100)/100;
+    if(unitCostIndex>=0) values[unitCostIndex]=derivedUnitCost;
+    else { keys.push("unit_cost_usd"); values.push(derivedUnitCost); }
+  }
   if (["products","customers","suppliers","employees","orders","purchases","invoices","hr_payroll_periods"].includes(def.table)) {
     keys.push("updated_at");
     values.push(new Date().toISOString());
@@ -289,9 +304,13 @@ async function importProducts(sql, user, body) {
       }
       record[field] = value;
     }
+    const hasPurchaseCost = source.purchase_cost_usd != null && source.purchase_cost_usd !== "";
+    const hasAdditionalCost = source.additional_cost_usd != null && source.additional_cost_usd !== "";
     record.purchase_cost_usd = record.purchase_cost_usd ?? 0;
     record.additional_cost_usd = record.additional_cost_usd ?? 0;
-    record.unit_cost_usd = record.unit_cost_usd ?? (record.purchase_cost_usd + record.additional_cost_usd);
+    record.unit_cost_usd = hasPurchaseCost || hasAdditionalCost
+      ? Math.round((record.purchase_cost_usd + record.additional_cost_usd) * 100) / 100
+      : (record.unit_cost_usd ?? 0);
     record.price_usd = record.price_usd ?? 0;
     record.wholesale_price_usd = record.wholesale_price_usd;
     record.size_ml = record.size_ml;
