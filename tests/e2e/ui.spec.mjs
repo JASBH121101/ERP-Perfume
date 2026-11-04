@@ -57,7 +57,7 @@ test.beforeEach(async ({ page }) => {
     body: "document.body.classList.remove('auth-pending','auth-locked');" +
       "document.body.classList.add('erp-authorized');" +
       "window.JBAuth = {" +
-      "mode:'authenticated', user:{id:'qa-owner',email:'qa-owner@example.test'}, profile:{id:'qa-owner',name:'QA Owner',role:'owner'}," +
+      "mode:'authenticated', user:{id:'qa-owner',email:'qa-owner@example.test'}, profile:{id:'qa-owner',name:'QA Owner',role:'owner',permissions:['*']}," +
       "apiUrl:path=>new URL(path,'" + apiBase + "').toString()," +
       "getToken:async()=> 'qa-only-token' }; import('./app.js');"
   }));
@@ -182,6 +182,33 @@ test('HR permissions tab explains how to add the first collaborator', async ({ p
   await page.locator('[data-action="hr-tab"][data-tab="leaves"]').click();
   await expect(page.locator('[data-action="go-hr-employees"]')).toContainText('Agregar colaborador');
   await expect(page.getByText('Primero registra al colaborador')).toBeVisible();
+});
+
+test('custom role can open DGI when the explicit view permission is granted', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
+  await page.evaluate(() => {
+    window.JBAuth.profile = {
+      id: 'qa-custom-dgi', name: 'QA DGI', role: 'custom-dgi',
+      permissions: ['dashboard.view', 'dgi.documents.view']
+    };
+  });
+  await page.locator('#sidebar button[data-view="dgi"]').click();
+  await expect(page.getByRole('heading', { name: 'Control tributario DGI' })).toBeVisible();
+});
+
+test('custom role without DGI permission is returned to an allowed module', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
+  await page.evaluate(() => {
+    window.JBAuth.profile = {
+      id: 'qa-custom-no-dgi', name: 'QA Limited', role: 'custom-limited',
+      permissions: ['dashboard.view']
+    };
+  });
+  await page.locator('#sidebar button[data-view="dgi"]').click();
+  await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
+  await expect(page.locator('#sidebar button[data-view="dgi"]')).toBeHidden();
 });
 
 test('DGI workspace displays thresholds as alerts and starts with regime unconfirmed', async ({ page }) => {
