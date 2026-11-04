@@ -563,3 +563,40 @@ test("manual cash entries cannot spoof automated payroll or invoice references",
   assert.equal(insertParams[7], "manual");
   assert.equal(insertParams[8], null);
 });
+
+
+test("catalog batch import derives unit cost from purchase and additional cost", async () => {
+  const sql = mockSql();
+  await importProducts(sql, owner, {
+    records: [{
+      sku: "COST-IMP-01",
+      name: "Perfume Cost QA",
+      purchase_cost_usd: 20,
+      additional_cost_usd: 5,
+      unit_cost_usd: 999,
+      stock: 0
+    }]
+  });
+  const records = JSON.parse(sql.statements[1].params[0]);
+  assert.equal(records[0].unit_cost_usd, 25);
+});
+
+test("editing a product cannot overwrite derived unit cost independently", async () => {
+  let updateParams = [];
+  const sql = {
+    query: async (query, params) => {
+      if (query.startsWith("SELECT purchase_cost_usd")) {
+        return [{ purchase_cost_usd: "20.00", additional_cost_usd: "5.00" }];
+      }
+      updateParams = params;
+      return [{ id: "00000000-0000-0000-0000-000000000101", unit_cost_usd: 25 }];
+    }
+  };
+  const response = await handleERPRequest(requestFor(
+    "products/00000000-0000-0000-0000-000000000101",
+    "PATCH",
+    { purchase_cost_usd: 20, additional_cost_usd: 5, unit_cost_usd: 999 }
+  ), {}, owner, sql);
+  assert.equal(response.status, 200);
+  assert.equal(updateParams[2], 25);
+});
