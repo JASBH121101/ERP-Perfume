@@ -1551,7 +1551,6 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     const auth=window.JBAuth,backendMode=Boolean(auth&&auth.mode==='authenticated');
     if(backendMode&&!auth.user)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Sección protegida</strong><p>Inicia sesión para consultar los expedientes de personal.</p></div></div>';
     if(backendMode&&!auth.profile)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Cuenta pendiente de autorización</strong><p>'+esc(auth.profileError||'Verifica tu correo y vuelve a iniciar sesión.')+'</p></div></div>';
-    if(backendMode&&!['owner','admin','hr'].includes(auth.profile.role))return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Permiso insuficiente</strong><p>Tu cuenta no tiene acceso al expediente de personal.</p></div></div>';
     if(backendMode&&!hrRecordsLoaded){
       if(!hrRecordsLoading&&!hrLoadAttempted)loadHRFromAPI(false);
       const message=hrLoadError||'Consultando los registros protegidos de Neon…';
@@ -1559,12 +1558,15 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     }
     const activeEmployees=employees.filter(e=>e.status==='Activo');
     const totalPayroll=payrollItems.reduce((sum,item)=>sum+Number(item.netSalaryNio||0),0);
-    const tabs=[
-      ['employees','Personal',employees.length],
-      ['attendance','Asistencia',attendanceRecords.length],
-      ['leaves','Permisos',leaveRequests.filter(x=>x.status==='Pendiente').length],
-      ['payroll','Nómina',payrollPeriods.length]
+    const availableTabs=[
+      ['employees','Personal',employees.length,'hr.employees.view'],
+      ['attendance','Asistencia',attendanceRecords.length,'hr.attendance.view'],
+      ['leaves','Permisos',leaveRequests.filter(x=>x.status==='Pendiente').length,'hr.leave.view'],
+      ['payroll','Nómina',payrollPeriods.length,'hr.payroll.view']
     ];
+    const tabs=availableTabs.filter(tab=>permissionGranted(tab[3]));
+    if(!tabs.length)return heading(views.hr,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>RR. HH. sin apartados habilitados</strong><p>El propietario debe asignarte acceso a uno o varios apartados de Recursos Humanos.</p></div></div>';
+    if(!tabs.some(tab=>tab[0]===state.hrTab))state.hrTab=tabs[0][0];
     const tabsHtml='<div class="toolbar products-toolbar hr-tabs"><div class="toolbar-left">'+tabs.map(([id,label,count])=>'<button type="button" class="button hr-tab-button '+(state.hrTab===id?'button-primary':'button-quiet')+' button-small" data-action="hr-tab" data-tab="'+id+'">'+label+' <span class="ledger-count">'+count+'</span></button>').join('')+'</div></div>';
     let actions='',content='';
     if(state.hrTab==='employees'){
