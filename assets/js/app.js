@@ -98,19 +98,126 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     productAssetUrlCache.set(key,pending);
     try{return await pending;}catch(error){productAssetUrlCache.delete(key);throw error;}
   }
-  async function uploadProductAsset(productId,file){
+  const PRODUCT_IMAGE_MAX_INPUT_BYTES=8*1024*1024;
+  const PRODUCT_IMAGE_MAX_UPLOAD_BYTES=2*1024*1024;
+  const PRODUCT_IMAGE_OPTIMIZE_THRESHOLD=400*1024;
+  const PRODUCT_IMAGE_MAX_EDGE=1600;
+  const PRODUCT_IMAGE_UPLOAD_CONCURRENCY=3;
+  let pendingProductImagePreviewUrls=[];
+
+  async function prepareProductImageForUpload(file){
+    const supported=new Set(["image/jpeg","image/png","image/webp","image/avif"]);
+    if(!supported.has(String(file?.type||"").toLowerCase()))throw new Error("Formato no compatible. Usa JPG, PNG, WebP o AVIF.");
+    if(file.size>PRODUCT_IMAGE_MAX_INPUT_BYTES)throw new Error("El archivo original supera 8 MB.");
+    if(file.size<=PRODUCT_IMAGE_OPTIMIZE_THRESHOLD)return file;
+    let bitmap=null,source=null,width=0,height=0,release=()=>{};
+    try{
+      if(typeof createImageBitmap==="function"){
+        try{bitmap=await createImageBitmap(file);source=bitmap;width=bitmap.width;height=bitmap.height;release=()=>bitmap?.close?.();}catch{}
+      }
+      if(!source){
+        const url=URL.createObjectURL(file);
+        try{
+          const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error("No se pudo decodificar la imagen."));img.src=url;});
+          source=image;width=image.naturalWidth;height=image.naturalHeight;
+        }finally{URL.revokeObjectURL(url);}
+      }
+      if(!width||!height)throw new Error("La imagen no tiene dimensiones válidas.");
+      const scale=Math.min(1,PRODUCT_IMAGE_MAX_EDGE/Math.max(width,height));
+      const canvas=document.createElement("canvas");
+      canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
+      const context=canvas.getContext("2d",{alpha:true});
+      if(!context)throw new Error("No se pudo procesar la imagen.");
+      context.imageSmoothingEnabled=true;context.imageSmoothingQuality="high";
+      context.drawImage(source,0,0,canvas.width,canvas.height);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/webp",0.82));
+      if(!blob||blob.type!=="image/webp")return file;
+      if(blob.size>=file.size&&scale===1)return file;
+      const base=file.name.replace(/\.[^.]+$/,"")||"fotografia";
+      return new File([blob],base+".webp",{type:"image/webp",lastModified:file.lastModified||Date.now()});
+    }catch(error){
+      console.warn("No se pudo optimizar la fotografía; se intentará usar el original.",file.name,error);
+      return file;
+    }finally{try{release();}catch{}}
+  }
+
+  async function uploadProductAsset(productId,file,onProgress){
     const auth=window.JBAuth;
     if(!auth?.profile)throw new Error("Inicia sesión para subir imágenes.");
-    const token=await auth.getToken();
-    const formData=new FormData();
-    formData.append("product_id",productId);
-    formData.append("file",file,file.name);
-    const response=await fetch(auth.apiUrl("/api/erp/assets"),{
-      method:"POST",headers:{authorization:"Bearer "+token},body:formData,cache:"no-store"
+    const uploadFile=await prepareProductImageForUpload(file);
+    if(uploadFile.size>PRODUCT_IMAGE_MAX_UPLOAD_BYTES)throw new Error(file.name+" supera 2 MB después de optimizar. Reduce la resolución o elige otra imagen.");
+    let lastError;
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        const token=await auth.getToken();
+        if(!token)throw new Error("La sesión expiró. Inicia sesión nuevamente.");
+        const formData=new FormData();
+        formData.append("product_id",productId);
+        formData.append("file",uploadFile,uploadFile.name);
+        const asset=await new Promise((resolve,reject)=>{
+          const xhr=new XMLHttpRequest();
+          xhr.open("POST",auth.apiUrl("/api/erp/assets"),true);
+          xhr.setRequestHeader("authorization","Bearer "+token);
+          xhr.timeout=120000;
+          xhr.upload.addEventListener("progress",event=>{
+            if(event.lengthComputable&&typeof onProgress==="function")onProgress(Math.max(0,Math.min(100,Math.round(event.loaded/event.total*100))));
+          });
+          xhr.onload=()=>{
+            let body={};try{body=JSON.parse(xhr.responseText||"{}");}catch{}
+            if(xhr.status>=200&&xhr.status<300)resolve(body.asset);
+            else reject(new Error(body?.error?.message||"No se pudo subir la imagen (HTTP "+xhr.status+")."));
+          };
+          xhr.onerror=()=>reject(new Error("Failed to fetch: conexión interrumpida durante la subida."));
+          xhr.ontimeout=()=>reject(new Error("Failed to fetch: la subida superó 120 segundos."));
+          xhr.onabort=()=>reject(new Error("Failed to fetch: la subida fue interrumpida."));
+          xhr.send(formData);
+        });
+        if(typeof onProgress==="function")onProgress(100);
+        return asset;
+      }catch(error){
+        lastError=error;
+        if(!/failed to fetch|networkerror|connection|timed? ?out|interrumpida|interrumpido/i.test(String(error?.message||error))||attempt===2)break;
+        await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
+      }
+    }
+    throw lastError||new Error("No se pudo subir la imagen.");
+  }
+
+  async function runWithConcurrency(items,limit,task){
+    let next=0;
+    const workers=Array.from({length:Math.min(limit,items.length)},async()=>{
+      while(next<items.length){const index=next++;await task(items[index],index);}
     });
-    const body=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(body?.error?.message||"No se pudo subir la imagen.");
-    return body.asset;
+    await Promise.all(workers);
+  }
+
+  function renderPendingProductImagePreviews(files){
+    const container=document.getElementById("product-image-pending-gallery");
+    if(!container)return;
+    pendingProductImagePreviewUrls.forEach(url=>URL.revokeObjectURL(url));
+    pendingProductImagePreviewUrls=[];
+    container.replaceChildren();
+    files.forEach((file,index)=>{
+      const card=document.createElement("div");card.className="product-image-pending-card";card.dataset.uploadIndex=String(index);
+      const image=document.createElement("img");const url=URL.createObjectURL(file);pendingProductImagePreviewUrls.push(url);
+      image.src=url;image.alt="Vista previa "+(index+1);image.loading="lazy";
+      const details=document.createElement("div");
+      const name=document.createElement("strong");name.textContent=file.name;
+      const status=document.createElement("small");status.dataset.uploadStatus=String(index);status.textContent="Lista para optimizar";
+      const progress=document.createElement("progress");progress.max=100;progress.value=0;progress.dataset.uploadProgress=String(index);
+      details.append(name,status,progress);card.append(image,details);container.append(card);
+    });
+  }
+  function updatePendingProductImageProgress(index,status,percent){
+    const card=document.querySelector('[data-upload-index="'+index+'"]');
+    if(!card)return;
+    const label=card.querySelector("[data-upload-status]"),progress=card.querySelector("[data-upload-progress]");
+    if(label)label.textContent=status;
+    if(progress&&Number.isFinite(percent))progress.value=Math.max(0,Math.min(100,percent));
+  }
+  function clearPendingProductImagePreviews(){
+    pendingProductImagePreviewUrls.forEach(url=>URL.revokeObjectURL(url));pendingProductImagePreviewUrls=[];
+    document.getElementById("product-image-pending-gallery")?.replaceChildren();
   }
   async function deleteProductAsset(productId,key){
     await erpApi("assets",{method:"DELETE",body:JSON.stringify({product_id:productId,key})});
@@ -2072,6 +2179,25 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     if (event.target && event.target.id === 'stock-movement-type') updateStockQuantityMode();
   });
   form.addEventListener('input', updateProductCostPreview);
+  form.elements.productImages?.addEventListener('change',()=>{
+    const files=Array.from(form.elements.productImages.files||[]);
+    const existing=products.find(product=>String(product.id)===String(form.dataset.editingId||''));
+    if(files.length+Number(existing?.images?.length||0)>3){
+      form.elements.productImages.value='';
+      toast('Cada producto puede conservar hasta tres fotografías en total.');
+      renderPendingProductImagePreviews([]);
+      return;
+    }
+    if(files.some(file=>file.size>PRODUCT_IMAGE_MAX_INPUT_BYTES||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
+      form.elements.productImages.value='';
+      toast('Usa JPG, PNG, WebP o AVIF de máximo 8 MB antes de optimizar.');
+      renderPendingProductImagePreviews([]);
+      return;
+    }
+    renderPendingProductImagePreviews(files);
+    const status=document.getElementById('product-image-upload-status');
+    if(status)status.textContent=files.length?files.length+' fotografía(s) listas. Se optimizarán y cargarán hasta 3 simultáneamente al guardar.':'';
+  });
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') closeMobileMenu();
   });
@@ -2093,8 +2219,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       toast('Revisa nombre, precio, costos y existencias iniciales.');if(button)button.disabled=false;return;
     }
     if(files.length+Number(existing?.images?.length||0)>3){toast('Cada producto puede conservar hasta tres fotografías. Elimina una antes de agregar otra.');if(button)button.disabled=false;return;}
-    if(files.some(file=>file.size>2*1024*1024||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
-      toast('Cada imagen debe ser JPG, PNG, WebP o AVIF y pesar máximo 2 MB.');if(button)button.disabled=false;return;
+    if(files.some(file=>file.size>PRODUCT_IMAGE_MAX_INPUT_BYTES||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
+      toast('Cada imagen debe ser JPG, PNG, WebP o AVIF y pesar máximo 8 MB antes de optimizar.');if(button)button.disabled=false;return;
     }
     if(products.some(p=>String(p.sku).toLowerCase()===sku.toLowerCase()&&(!existing||String(p.id)!==String(existing.id)))){
       toast('Ese SKU ya existe. Utiliza un código diferente.');form.elements.sku.focus();if(button)button.disabled=false;return;
@@ -2123,9 +2249,22 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       }
       saved=true;
       if(files.length&&!savedProductId)imageErrors.push('No se pudo obtener el identificador del producto para adjuntar sus imágenes.');
-      else for(const file of files){
-        try{await uploadProductAsset(savedProductId,file);}
-        catch(error){imageErrors.push(file.name+': '+(error?.message||'falló la carga'));}
+      else if(files.length){
+        const status=document.getElementById('product-image-upload-status');
+        if(status)status.textContent='Optimizando y subiendo '+files.length+' fotografía(s), máximo 3 simultáneas…';
+        await runWithConcurrency(files,PRODUCT_IMAGE_UPLOAD_CONCURRENCY,async(file,index)=>{
+          updatePendingProductImageProgress(index,'Optimizando…',0);
+          try{
+            const asset=await uploadProductAsset(savedProductId,file,percent=>updatePendingProductImageProgress(index,'Subiendo · '+percent+'%',percent));
+            updatePendingProductImageProgress(index,'Subida completada · '+Math.round(Number(asset?.size||file.size)/1024)+' KB',100);
+          }catch(error){
+            imageErrors.push(file.name+': '+(error?.message||'falló la carga'));
+            updatePendingProductImageProgress(index,'Error · '+(error?.message||'falló la carga'),0);
+          }
+        });
+        if(status)status.textContent=imageErrors.length
+          ?imageErrors.length+' fotografía(s) no se pudieron subir. Revisa los errores antes de volver a intentarlo.'
+          :'Todas las fotografías se optimizaron y subieron correctamente.';
       }
       await loadERPFromNeon(true);
       form.reset();form.dataset.editingId='';form.elements.stock.readOnly=false;
