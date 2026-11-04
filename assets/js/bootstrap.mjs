@@ -10,6 +10,7 @@ const apiUrl = (path) => API_BASE_URL + (path.startsWith("/") ? path : "/" + pat
 let authClient = null;
 let authSession = null;
 let authUser = null;
+let authBaseUrl = "";
 let erpProfile = null;
 let profileError = "";
 let appLoaded = false;
@@ -18,33 +19,61 @@ async function readJson(response) {
   try { return await response.json(); } catch { return {}; }
 }
 
+function extractJwt(value) {
+  const candidates = [
+    value,
+    value?.token,
+    value?.access_token,
+    value?.data?.token,
+    value?.data?.access_token,
+    value?.data?.session?.access_token,
+    value?.session?.access_token
+  ];
+  return candidates.find((item) => typeof item === "string" && item.split(".").length === 3) || null;
+}
+
 async function getToken() {
   if (!authClient) return null;
 
-  let sdkToken = null;
-  let sdkError = null;
-  try {
-    if (typeof authClient.token === "function") {
-      const result = await authClient.token();
-      if (result?.error) throw new Error(result.error.message || "No se pudo renovar la sesión.");
-      sdkToken = result?.data?.token || result?.token || result?.data?.access_token || result?.access_token || null;
+  // Fetch the short-lived JWT from Neon Auth using its HttpOnly session cookie.
+  // Do not use authClient.token(): SDK versions may return cached session data
+  // rather than the signed JWT required by the ERP Worker.
+  let endpointError = "";
+  if (authBaseUrl) {
+    try {
+      const response = await fetch(authBaseUrl + "/token", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { accept: "application/json" }
+      });
+      const body = await readJson(response);
+      const directToken = extractJwt(body);
+      if (response.ok && directToken) return directToken;
+      endpointError = response.ok
+        ? "Neon Auth respondió, pero no entregó un JWT."
+        : "Neon Auth respondió HTTP " + response.status + " al solicitar el JWT.";
+    } catch (error) {
+      endpointError = "No se pudo consultar el endpoint de sesión de Neon Auth. " +
+        (error?.message || "Comprueba la conexión y las cookies del navegador.");
     }
-  } catch (error) {
-    sdkError = error;
   }
 
-  // Neon Auth 0.7 exposes the JWT through token(). Some session responses
-  // also include the short-lived JWT directly as session.access_token.
-  const sessionToken =
-    authSession?.access_token ||
-    authSession?.session?.access_token ||
-    authSession?.data?.session?.access_token ||
-    null;
+  // Use the documented client helper when available, then session payloads.
+  try {
+    if (typeof authClient.getJWTToken === "function") {
+      const result = await authClient.getJWTToken();
+      const helperToken = extractJwt(result);
+      if (helperToken) return helperToken;
+    }
+  } catch (error) {
+    if (!endpointError) endpointError = error?.message || "No se pudo renovar la sesión.";
+  }
 
-  const token = sdkToken || sessionToken;
-  if (token) return token;
-  if (sdkError) throw new Error(sdkError.message || "No se pudo renovar la sesión.");
-  return null;
+  const sessionToken = extractJwt(authSession);
+  if (sessionToken) return sessionToken;
+
+  throw new Error(endpointError || "Neon Auth no entregó un JWT válido. Cierra sesión, vuelve a iniciar y comprueba que el navegador permita cookies.");
 }
 
 async function refreshProfile() {
@@ -206,8 +235,10 @@ async function initialize() {
     return;
   }
 
+  authBaseUrl = String(config.authBaseUrl).replace(/\\/+$/, "");
+
   try {
-    authClient = createAuthClient(config.authBaseUrl, {
+    authClient = createAuthClient(authBaseUrl, {
       // Pages and Neon Auth are on different origins. Include the managed
       // Better Auth session cookie so token() can return the user's JWT.
       fetchOptions: { credentials: "include" }
