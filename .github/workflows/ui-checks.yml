@@ -53,7 +53,7 @@ jobs:
       - name: Checkout pull request code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -255,7 +255,7 @@ jobs:
           echo "Report generation completed (JSON exit: $json_status; Markdown exit: $markdown_status). The gate below decides whether findings block CI."
 
       - name: Upload resolved ERP package lockfile for commit
-        if: always() && hashFiles("package-lock.json") != ''
+        if: always() && hashFiles('package-lock.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: erp-package-lock
