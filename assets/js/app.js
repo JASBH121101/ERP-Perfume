@@ -1968,7 +1968,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     }
 
     const roleOptions = accessManager.roles.filter(role => role.role_key !== "owner")
-      .map(role => '<option value="'+esc(role.role_key)+'">'+esc(role.name)+'</option>').join("");
+      .map(role => '<option value="'+esc(role.role_key)+'"'+(role.role_key==="viewer"?' selected':'')+'>'+esc(role.name)+'</option>').join("");
     const userRows = accessManager.users.map(user => {
       if (user.role === "owner") {
         return '<tr><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td>Propietario</td><td>Protegido</td><td><span class="status-chip status-success">Activo</span></td><td>—</td></tr>';
