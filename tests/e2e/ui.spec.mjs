@@ -5,10 +5,12 @@ const TEST_AUTH_JWT = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJxYS11c2VyIn0.signature';
 
 async function installAuthenticatedTestSession(page) {
   // Tests must never depend on the live Worker, Neon Auth or a real account.
+  // The existing browser suite validates the local DEMO experience by default.
+  // Authenticated backend behavior is enabled explicitly only in tests that need it.
   await page.route('**/api/config', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ mode: 'authenticated', authBaseUrl: TEST_AUTH_BASE_URL })
+    body: JSON.stringify({ mode: 'demo', authBaseUrl: null, environment: 'test' })
   }));
 
   await page.route('**/__qa-auth/**', route => {
@@ -508,6 +510,11 @@ test('supplier invoice in córdobas retains rate without changing inventory',asy
  await navigateToView(page, 'inventory');await expect(page.locator('.inventory-stock-table tbody tr').filter({hasText:'Yara Lattafa'})).toContainText('8 unidades');
 });
 test('payroll is NIO-only',async({page})=>{
+ await page.route('**/api/config', route => route.fulfill({
+  status: 200,
+  contentType: 'application/json',
+  body: JSON.stringify({ mode: 'authenticated', authBaseUrl: TEST_AUTH_BASE_URL, environment: 'test' })
+ }));
  await page.goto('/');await navigateToView(page, 'hr');await page.getByRole('button',{name:/Agregar colaborador/}).click();
  const dialog=page.locator('#business-dialog');await expect(dialog.locator('select[name="currency"]')).toHaveCount(0);
  await dialog.locator('input[name="name"]').fill('Colaborador QA');await dialog.locator('input[name="position"]').fill('Asistente');await dialog.locator('input[name="salaryNio"]').fill('15000');
