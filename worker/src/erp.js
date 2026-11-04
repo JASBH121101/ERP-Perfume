@@ -981,11 +981,13 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
   }
   if (resource === "inventory-movements") {
     if (method === "GET") return "inventory.stock.view";
+    if (method === "PATCH" || method === "DELETE") return "inventory.stock.view";
     if (method !== "POST") return null;
     const movement = String(body?.movement_type || body?.type || body?.direction || "").toLowerCase();
     if (["salida", "out", "egreso"].includes(movement)) return "inventory.manual_out.create";
     if (["ajuste", "adjustment", "adjust"].includes(movement)) return "inventory.adjustments.adjust";
     if (["entrada", "in", "ingreso"].includes(movement)) return "inventory.receipts.receive";
+    if (["devolucion", "devolución", "return", "reversion", "reversión", "reversal"].includes(movement)) return "inventory.manual_out.create";
     return null;
   }
   if (resource === "purchases") {
@@ -1023,6 +1025,21 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
   if (resource === "dgi-support-documents") {
     if (method === "GET") return "dgi.documents.view";
     return method === "POST" ? "dgi.documents.manage" : null;
+  }
+
+  if (method === "PATCH" || method === "DELETE") {
+    const immutableReadPermissions = {
+      inventory_movements: "inventory.stock.view",
+      cash_entries: "cash.entries.view",
+      invoices: "billing.invoices.view",
+      purchases: "purchases.receipts.view",
+      expenses: "expenses.records.view",
+      cash_accounts: "cash.entries.view",
+      hr_payroll_items: "hr.payroll.view",
+      hr_payroll_periods: "hr.payroll.view"
+    };
+    const key = immutableReadPermissions[resource.replace(/-/g, "_")];
+    if (key) return key;
   }
 
   const resourcePolicies = {
