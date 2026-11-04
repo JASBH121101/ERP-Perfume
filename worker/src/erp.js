@@ -397,39 +397,126 @@ async function createInventoryMovement(sql, user, body) {
 
 
 async function createPurchase(sql, user, body) {
-  const quantity = Number(body.quantity), unitCostUsd = Number(body.unit_cost_usd);
-  const rate = Number(body.exchange_rate || 1), paidUsd = Number(body.paid_usd || 0);
-  if (!body.supplier_id || !body.product_id || !body.supplier_name || !Number.isInteger(quantity) || quantity < 1 || !Number.isFinite(unitCostUsd) || unitCostUsd <= 0 || !Number.isFinite(rate) || rate <= 0) {
-    return erpError(400, "INVALID_PURCHASE", "Revisa proveedor, producto, cantidad, costo y tipo de cambio.");
-  }
-  const totalUsd = Math.round(unitCostUsd * quantity * 100) / 100;
-  if (!Number.isFinite(paidUsd) || paidUsd < 0 || paidUsd > totalUsd) return erpError(400, "INVALID_INITIAL_PAYMENT", "El pago inicial debe estar entre cero y el total de la compra.");
+  const roundCurrency = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  const rate = Number(body.exchange_rate ?? 1);
+  const paidUsd = roundCurrency(body.paid_usd ?? 0);
   const purchaseNumber = String(body.purchase_number || "").trim();
-  if (!purchaseNumber) return erpError(400, "PURCHASE_NUMBER_REQUIRED", "El número de compra es obligatorio.");
-  const currency = body.currency === "NIO" ? "NIO" : "USD";
-  const originalAmount = Number(body.initial_payment_amount || 0);
-  if (paidUsd > 0 && (!Number.isFinite(originalAmount) || originalAmount <= 0 || !body.account_name)) return erpError(400, "INVALID_INITIAL_PAYMENT", "El pago inicial requiere importe, moneda y cuenta.");
+  const supplierName = String(body.supplier_name || "").trim();
+  const currency = String(body.currency || "USD").toUpperCase();
+  const notes = body.notes == null ? null : String(body.notes).trim();
+  const rawItems = Array.isArray(body.items) ? body.items : [{
+    product_id: body.product_id,
+    quantity: body.quantity,
+    unit_cost_usd: body.unit_cost_usd
+  }];
+  if (!body.supplier_id || !supplierName || supplierName.length > 160 ||
+      !purchaseNumber || purchaseNumber.length > 80 ||
+      !["USD","NIO"].includes(currency) ||
+      !Number.isFinite(rate) || rate <= 0 || rate > 100000 ||
+      (notes && notes.length > 500) ||
+      !Array.isArray(rawItems) || rawItems.length < 1 || rawItems.length > 100) {
+    return erpError(400, "INVALID_PURCHASE", "Revisa proveedor, número de compra, moneda y líneas recibidas.");
+  }
+  const seenProducts = new Set();
+  const items = [];
+  for (const item of rawItems) {
+    const productId = String(item?.product_id || "").trim();
+    const quantity = Number(item?.quantity);
+    const unitCostUsd = Number(item?.unit_cost_usd);
+    if (!productId || !Number.isInteger(quantity) || quantity < 1 || quantity > 2147483647 ||
+        !Number.isFinite(unitCostUsd) || unitCostUsd <= 0 || unitCostUsd > 999999999999.99) {
+      return erpError(400, "INVALID_PURCHASE_LINE", "Cada línea requiere un producto, cantidad entera y costo unitario válidos.");
+    }
+    if (seenProducts.has(productId)) {
+      return erpError(400, "DUPLICATE_PURCHASE_PRODUCT", "No repitas un producto en la misma compra; combina las unidades en una sola línea.");
+    }
+    seenProducts.add(productId);
+    const roundedCost = roundCurrency(unitCostUsd);
+    const lineTotalUsd = roundCurrency(quantity * roundedCost);
+    if (!Number.isFinite(lineTotalUsd) || lineTotalUsd <= 0 || lineTotalUsd > 999999999999.99) {
+      return erpError(400, "INVALID_PURCHASE_LINE_TOTAL", "El total de una línea supera el importe permitido.");
+    }
+    items.push({ product_id: productId, quantity, unit_cost_usd: roundedCost });
+  }
+  const totalUsd = roundCurrency(items.reduce((sum, item) => sum + roundCurrency(item.quantity * item.unit_cost_usd), 0));
+  if (!Number.isFinite(totalUsd) || totalUsd <= 0 || totalUsd > 999999999999.99) {
+    return erpError(400, "INVALID_PURCHASE_TOTAL", "El total de la compra debe ser un importe positivo y válido.");
+  }
+  const originalAmount = roundCurrency(body.initial_payment_amount ?? 0);
+  if (!Number.isFinite(paidUsd) || paidUsd < 0 || paidUsd > totalUsd + 0.001 ||
+      !Number.isFinite(originalAmount) || originalAmount < 0) {
+    return erpError(400, "INVALID_INITIAL_PAYMENT", "El pago inicial debe estar entre cero y el total de la compra.");
+  }
+  const convertedPayment = currency === "NIO" ? originalAmount / rate : originalAmount;
+  if (Math.abs(convertedPayment - paidUsd) > 0.02) {
+    return erpError(400, "PAYMENT_CONVERSION_MISMATCH", "El pago inicial no coincide con el importe convertido a USD.");
+  }
+  const accountName = String(body.account_name || "").trim();
+  if (paidUsd > 0 && (!accountName || accountName.length > 120)) {
+    return erpError(400, "INVALID_INITIAL_PAYMENT", "El pago inicial requiere una cuenta de caja o banco.");
+  }
   if (paidUsd > 0) {
-    const expected = currency === "NIO" ? originalAmount / rate : originalAmount;
-    if (Math.abs(expected - paidUsd) > 0.02) return erpError(400, "PAYMENT_CONVERSION_MISMATCH", "El pago inicial no coincide con el importe convertido a USD.");
-    const account = await sql.query("SELECT id FROM cash_accounts WHERE name=$1 AND currency=$2 AND active=TRUE LIMIT 1", [body.account_name, currency]);
+    const account = await sql.query("SELECT id FROM cash_accounts WHERE name=$1 AND currency=$2 AND active=TRUE LIMIT 1", [accountName, currency]);
     if (!account[0]) return erpError(400, "CASH_ACCOUNT_NOT_FOUND", "La cuenta de pago no existe o no coincide con la moneda.");
   }
+  const status = paidUsd >= totalUsd - 0.001 ? "Pagado" : (paidUsd > 0 ? "Abono parcial" : "Pendiente");
   try {
     const rows = await sql.query(
-      "WITH input AS (SELECT $1::text AS purchase_number,$2::uuid AS supplier_id,$3::text AS supplier_name,$4::text AS currency,$5::numeric AS rate,$6::numeric AS total_usd,$7::numeric AS paid_usd,$8::text AS notes,$9::uuid AS product_id,$10::int AS quantity,$11::numeric AS unit_cost_usd,$12::numeric AS original_payment,$13::text AS account_name,$14::uuid AS actor), target AS (SELECT p.id,p.name,p.sku,p.stock,p.purchase_cost_usd,p.additional_cost_usd,i.quantity,i.unit_cost_usd FROM products p JOIN input i ON i.product_id=p.id WHERE p.active=TRUE FOR UPDATE), created AS (INSERT INTO purchases(purchase_number,supplier_id,supplier_name,currency,exchange_rate,total_usd,paid_usd,status,notes,created_by) SELECT purchase_number,supplier_id,supplier_name,currency,rate,total_usd,paid_usd,CASE WHEN paid_usd>=total_usd THEN 'Pagado' WHEN paid_usd>0 THEN 'Abono parcial' ELSE 'Pendiente' END,notes,actor FROM input WHERE EXISTS(SELECT 1 FROM target) RETURNING *), item AS (INSERT INTO purchase_items(purchase_id,product_id,product_name,quantity,unit_cost_usd,line_total_usd) SELECT created.id,target.id,target.name,input.quantity,input.unit_cost_usd,input.total_usd FROM created CROSS JOIN target CROSS JOIN input RETURNING id), updated AS (UPDATE products p SET stock=t.stock+t.quantity,purchase_cost_usd=CASE WHEN t.stock+t.quantity>0 THEN ROUND(((t.purchase_cost_usd*t.stock)+(t.unit_cost_usd*t.quantity))/(t.stock+t.quantity),2) ELSE t.unit_cost_usd END,unit_cost_usd=CASE WHEN t.stock+t.quantity>0 THEN ROUND(((t.purchase_cost_usd*t.stock)+(t.unit_cost_usd*t.quantity))/(t.stock+t.quantity),2)+t.additional_cost_usd ELSE t.unit_cost_usd+t.additional_cost_usd END,updated_at=NOW() FROM target t WHERE p.id=t.id AND p.active=TRUE AND EXISTS(SELECT 1 FROM created) RETURNING p.id,p.name,p.sku,t.stock AS previous_stock,t.quantity,p.stock AS new_stock), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,'Entrada',quantity,quantity,previous_stock,new_stock,'Entrada por compra '||(SELECT purchase_number FROM input),'purchase',(SELECT id::text FROM created),(SELECT actor FROM input) FROM updated RETURNING id), cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'expense','Pago inicial de compra '||created.purchase_number,(SELECT id FROM cash_accounts WHERE name=input.account_name AND currency=input.currency AND active=TRUE LIMIT 1),input.currency,input.original_payment,input.rate,input.paid_usd,'purchase',created.id::text,input.actor FROM created CROSS JOIN input WHERE input.paid_usd>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT input.actor,'create','purchase',created.id::text,to_jsonb(created) FROM created CROSS JOIN input) SELECT created.* FROM created",
-      [purchaseNumber,body.supplier_id,body.supplier_name,currency,rate,totalUsd,paidUsd,body.notes || null,body.product_id,quantity,unitCostUsd,originalAmount,body.account_name || null,user.id]
+      "WITH input AS (" +
+      "SELECT $1::text AS purchase_number,$2::uuid AS supplier_id,$3::text AS supplier_name,$4::text AS currency," +
+      "$5::numeric AS rate,$6::numeric AS total_usd,$7::numeric AS paid_usd,$8::text AS status,$9::text AS notes," +
+      "$10::jsonb AS items,$11::numeric AS original_payment,$12::text AS account_name,$13::uuid AS actor" +
+      "), lines AS (" +
+      "SELECT product_id,quantity,unit_cost_usd,ROUND(quantity*unit_cost_usd,2) AS line_total_usd " +
+      "FROM jsonb_to_recordset((SELECT items FROM input)) AS x(product_id uuid,quantity integer,unit_cost_usd numeric)" +
+      "), validation AS (" +
+      "SELECT COUNT(*) FILTER (WHERE p.id IS NULL OR p.active IS NOT TRUE) AS invalid_count,COUNT(*) AS line_count " +
+      "FROM lines l LEFT JOIN products p ON p.id=l.product_id" +
+      "), targets AS (" +
+      "SELECT p.id,p.name,p.sku,p.stock,p.purchase_cost_usd,p.additional_cost_usd,l.quantity,l.unit_cost_usd,l.line_total_usd " +
+      "FROM products p JOIN lines l ON l.product_id=p.id WHERE p.active=TRUE FOR UPDATE OF p" +
+      "), created AS (" +
+      "INSERT INTO purchases(purchase_number,supplier_id,supplier_name,currency,exchange_rate,total_usd,paid_usd,status,notes,created_by) " +
+      "SELECT i.purchase_number,i.supplier_id,i.supplier_name,i.currency,i.rate,i.total_usd,i.paid_usd,i.status,i.notes,i.actor " +
+      "FROM input i CROSS JOIN validation v WHERE v.invalid_count=0 AND v.line_count=jsonb_array_length(i.items) RETURNING *" +
+      "), item_rows AS (" +
+      "INSERT INTO purchase_items(purchase_id,product_id,product_name,quantity,unit_cost_usd,line_total_usd) " +
+      "SELECT created.id,targets.id,targets.name,targets.quantity,targets.unit_cost_usd,targets.line_total_usd FROM created CROSS JOIN targets RETURNING id" +
+      "), updated AS (" +
+      "UPDATE products p SET stock=t.stock+t.quantity," +
+      "purchase_cost_usd=ROUND(((t.purchase_cost_usd*t.stock)+(t.unit_cost_usd*t.quantity))/(t.stock+t.quantity),2)," +
+      "unit_cost_usd=ROUND(((t.purchase_cost_usd*t.stock)+(t.unit_cost_usd*t.quantity))/(t.stock+t.quantity),2)+t.additional_cost_usd," +
+      "updated_at=NOW() FROM targets t WHERE p.id=t.id AND EXISTS(SELECT 1 FROM created) " +
+      "RETURNING p.id,p.name,p.sku,t.stock AS previous_stock,t.quantity,p.stock AS new_stock" +
+      "), movements AS (" +
+      "INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) " +
+      "SELECT id,'Entrada',quantity,quantity,previous_stock,new_stock,'Entrada por compra '||(SELECT purchase_number FROM input),'purchase'," +
+      "(SELECT id::text FROM created),(SELECT actor FROM input) FROM updated RETURNING id" +
+      "), cash AS (" +
+      "INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) " +
+      "SELECT 'expense','Pago inicial de compra '||created.purchase_number," +
+      "(SELECT id FROM cash_accounts WHERE name=input.account_name AND currency=input.currency AND active=TRUE LIMIT 1)," +
+      "input.currency,input.original_payment,input.rate,input.paid_usd,'purchase',created.id::text,input.actor " +
+      "FROM created CROSS JOIN input WHERE input.paid_usd>0 RETURNING id" +
+      "), logged AS (" +
+      "INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT input.actor,'create','purchase',created.id::text," +
+      "jsonb_build_object('purchase',to_jsonb(created),'line_count',(SELECT COUNT(*) FROM item_rows),'total_usd',created.total_usd) " +
+      "FROM created CROSS JOIN input RETURNING id" +
+      ") SELECT created.*,(SELECT COUNT(*) FROM item_rows)::int AS item_count FROM created",
+      [purchaseNumber,body.supplier_id,supplierName,currency,rate,totalUsd,paidUsd,status,notes,JSON.stringify(items),originalAmount,paidUsd>0?accountName:null,user.id]
     );
-    if (!rows[0]) return erpError(409, "PURCHASE_PRODUCT_NOT_FOUND", "No se pudo registrar la compra: el producto no existe o está inactivo.");
+    if (!rows[0]) return erpError(409, "PURCHASE_PRODUCT_NOT_FOUND", "No se pudo registrar la compra: uno o más productos no existen o están inactivos.");
     return erpJson({ record: rows[0] }, 201);
   } catch (error) {
+    if (error?.code === "22P02") return erpError(400, "INVALID_PURCHASE_REFERENCE", "El proveedor o uno de los productos tiene un identificador no válido.");
     if (error?.code === "23505") return erpError(409, "DUPLICATE_PURCHASE", "El número de compra ya existe.");
-    if (error?.code === "23503") return erpError(400, "RELATED_RECORD_NOT_FOUND", "El proveedor o producto seleccionado no existe.");
+    if (error?.code === "23503") return erpError(400, "RELATED_RECORD_NOT_FOUND", "El proveedor, producto o cuenta seleccionada no existe.");
+    if (error?.code === "23514" || error?.code === "22003") return erpError(400, "INVALID_PURCHASE", "Los datos de la compra no cumplen las reglas del sistema.");
     console.error("[erp] Purchase creation failed:", error?.message || "database error");
     return erpError(503, "PURCHASE_SAVE_FAILED", "No se pudo registrar la compra.");
   }
 }
-
 export async function createInvoice(sql, user, body) {
   const items=Array.isArray(body.items)?body.items:[];
   const total=Number(body.total_usd),paid=Number(body.paid_usd||0),rate=Number(body.exchange_rate||1);

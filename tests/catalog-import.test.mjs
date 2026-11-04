@@ -627,16 +627,85 @@ test("purchase receipt atomically updates stock, weighted average unit cost, kar
   assert.equal(response.status, 201);
   assert.equal(body.record.purchase_number, "JBC-QA-601");
   assert.equal(executedParams[0], "JBC-QA-601");
-  assert.equal(executedParams[9], 4);
-  assert.equal(executedParams[10], 12.5);
-  assert.match(executedSql, /FOR UPDATE/);
-  assert.match(executedSql, /stock=t\.stock\+t\.quantity/);
-  assert.match(executedSql, /purchase_cost_usd=CASE/);
-  assert.match(executedSql, /\(t\.purchase_cost_usd\*t\.stock\)\+\(t\.unit_cost_usd\*t\.quantity\)/);
-  assert.match(executedSql, /unit_cost_usd=CASE/);
+  assert.equal(executedParams[5], 50);
+  assert.deepEqual(JSON.parse(executedParams[9]), [{
+    product_id: "00000000-0000-0000-0000-000000000101", quantity: 4, unit_cost_usd: 12.5
+  }]);
+  assert.match(executedSql, /jsonb_to_recordset/);
+  assert.match(executedSql, /INSERT INTO purchase_items/);
+  assert.match(executedSql, /FOR UPDATE OF p/);
+  assert.match(executedSql, /UPDATE products p SET stock=t\.stock\+t\.quantity/);
+  assert.match(executedSql, /purchase_cost_usd=ROUND/);
+  assert.match(executedSql, /unit_cost_usd=ROUND/);
+  assert.match(executedSql, /INSERT INTO inventory_movements/);
   assert.match(executedSql, /'Entrada'/);
   assert.match(executedSql, /'purchase'/);
   assert.match(executedSql, /audit_log/);
+});
+
+test("multi-line purchase receipt posts every line, updates per-product stock and weighted costs atomically", async () => {
+  let executedSql = "";
+  let executedParams = [];
+  const sql = { query: async (query, params) => {
+    executedSql = query;
+    executedParams = params;
+    return [{ id: "00000000-0000-0000-0000-000000000611", purchase_number: "JBC-QA-611", item_count: 2 }];
+  }};
+  const items = [
+    { product_id: "00000000-0000-0000-0000-000000000101", quantity: 4, unit_cost_usd: 12.5 },
+    { product_id: "00000000-0000-0000-0000-000000000102", quantity: 2, unit_cost_usd: 20 }
+  ];
+  const response = await handleERPRequest(requestFor("purchases", "POST", {
+    purchase_number: "JBC-QA-611",
+    supplier_id: "00000000-0000-0000-0000-000000000602",
+    supplier_name: "Proveedor QA",
+    currency: "USD",
+    exchange_rate: 36.6,
+    paid_usd: 0,
+    initial_payment_amount: 0,
+    items
+  }), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(body.record.item_count, 2);
+  assert.equal(executedParams[5], 90);
+  assert.equal(JSON.parse(executedParams[9]).length, 2);
+  assert.match(executedSql, /jsonb_to_recordset/);
+  assert.match(executedSql, /INSERT INTO purchase_items/);
+  assert.match(executedSql, /FOR UPDATE OF p/);
+  assert.match(executedSql, /UPDATE products p SET stock=t\.stock\+t\.quantity/);
+  assert.match(executedSql, /INSERT INTO inventory_movements/);
+  assert.match(executedSql, /audit_log/);
+});
+
+test("multi-line purchase rejects duplicate products and malformed lines before database writes", async () => {
+  let queryCount = 0;
+  const sql = { query: async () => { queryCount += 1; return []; } };
+  const base = {
+    purchase_number: "JBC-QA-612",
+    supplier_id: "00000000-0000-0000-0000-000000000602",
+    supplier_name: "Proveedor QA",
+    currency: "USD",
+    exchange_rate: 36.6,
+    paid_usd: 0,
+    initial_payment_amount: 0
+  };
+  const duplicate = await handleERPRequest(requestFor("purchases", "POST", {
+    ...base,
+    items: [
+      { product_id: "00000000-0000-0000-0000-000000000101", quantity: 1, unit_cost_usd: 10 },
+      { product_id: "00000000-0000-0000-0000-000000000101", quantity: 2, unit_cost_usd: 11 }
+    ]
+  }), {}, owner, sql);
+  assert.equal(duplicate.status, 400);
+  assert.equal((await duplicate.json()).error.code, "DUPLICATE_PURCHASE_PRODUCT");
+  const malformed = await handleERPRequest(requestFor("purchases", "POST", {
+    ...base,
+    items: [{ product_id: "00000000-0000-0000-0000-000000000101", quantity: 1.5, unit_cost_usd: 10 }]
+  }), {}, owner, sql);
+  assert.equal(malformed.status, 400);
+  assert.equal((await malformed.json()).error.code, "INVALID_PURCHASE_LINE");
+  assert.equal(queryCount, 0);
 });
 
 test("manual cash entries cannot spoof automated payroll or invoice references", async () => {
