@@ -1638,6 +1638,12 @@
   });
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);
   businessForm.addEventListener('change',function(event){
+    if(businessForm.dataset.recordType==='payroll-item'&&event.target.name==='employeeId'){
+      const selected=event.target.selectedOptions?.[0];
+      const salary=businessForm.querySelector('[name="baseSalaryNio"]');
+      if(salary&&selected){salary.value=selected.getAttribute('data-salary')||'0';}
+      return;
+    }
     if(businessForm.dataset.recordType!=='invoice')return;
     if(event.target.name==='saleSource')refreshInvoiceSourceUI();
     if(event.target.name==='customerType')applyInvoiceCustomerPricing();
@@ -1685,8 +1691,20 @@
   document.addEventListener('click',function(event){
     const action=event.target.closest('[data-action]');
     if(!action){if(event.target.closest('#business-close')||event.target.closest('#business-cancel'))businessDialog.close();return;}
-    const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-expense':'expense','new-cash':'cash','new-invoice':'invoice','new-employee':'employee'};
-    if(types[name])openBusinessDialog(types[name]);
+    const name=action.getAttribute('data-action'),types={'new-customer':'customer','new-supplier':'supplier','new-order':'order','new-purchase':'purchase','new-expense':'expense','new-cash':'cash','new-invoice':'invoice','new-employee':'employee','new-attendance':'attendance','new-leave':'leave','new-payroll-period':'payroll-period','new-payroll-item':'payroll-item'};
+    if(name==='hr-tab'){
+      const tab=action.getAttribute('data-tab');
+      if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
+    } else if(types[name])openBusinessDialog(types[name]);
+    else if(name==='approve-leave'||name==='reject-leave'){
+      const id=action.getAttribute('data-id'),status=name==='approve-leave'?'Aprobado':'Rechazado';
+      if(!window.confirm(status==='Aprobado'?'¿Aprobar esta solicitud?':'¿Rechazar esta solicitud?'))return;
+      action.disabled=true;
+      erpApi('hr_leave_requests/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({status})})
+        .then(()=>loadERPFromNeon(true)).then(()=>{renderView();toast('Solicitud '+status.toLowerCase()+'.');})
+        .catch(error=>toast(error?.message||'No se pudo revisar la solicitud.'))
+        .finally(()=>{action.disabled=false;});
+    }
     else if(name==='new-payment')openBusinessDialog('payment',action.getAttribute('data-id'));
     else if(name==='new-purchase-payment')openBusinessDialog('purchase-payment',action.getAttribute('data-id'));
     else if(name==='add-invoice-product'){
