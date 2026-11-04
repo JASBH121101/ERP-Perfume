@@ -1091,6 +1091,10 @@
           payroll_period_id:periodId,employee_id:employeeId,base_salary_nio:base,
           bonuses_nio:bonus,deductions_nio:deductions,notes:get('notes')||null
         })});
+      } else if(type==='payroll-payment'){
+        const periodId=businessForm.dataset.recordId,account=get('account');
+        if(!periodId||!accountFor(account,'NIO'))throw new Error('Selecciona una cuenta activa en córdobas.');
+        await erpApi('payroll-periods/'+encodeURIComponent(periodId)+'/status',{method:'PATCH',body:JSON.stringify({status:'Pagada',account_name:account})});
       } else {
         throw new Error('Este tipo de operación todavía no está conectado.');
       }
@@ -1112,7 +1116,8 @@
           attendance:'Asistencia registrada en Neon.',
           leave:'Solicitud de permiso o vacaciones registrada.',
           'payroll-period':'Período de nómina creado en estado Borrador.',
-          'payroll-item':'Partida de nómina calculada y registrada en NIO.'
+          'payroll-item':'Partida de nómina calculada y registrada en NIO.',
+          'payroll-payment':'Nómina pagada. Se registró el egreso y la salida de caja/banco.'
         };
         toast(messages[type]||'Operación guardada en Neon.');
       }
@@ -1708,6 +1713,16 @@
       const tab=action.getAttribute('data-tab');
       if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
     } else if(types[name])openBusinessDialog(types[name]);
+    else if(name==='pay-payroll')openBusinessDialog('payroll-payment',action.getAttribute('data-id'));
+    else if(name==='approve-payroll'){
+      const id=action.getAttribute('data-id');
+      if(!window.confirm('¿Aprobar el período? Al aprobarlo ya no se podrán agregar partidas.'))return;
+      action.disabled=true;
+      erpApi('payroll-periods/'+encodeURIComponent(id)+'/status',{method:'PATCH',body:JSON.stringify({status:'Aprobada'})})
+        .then(()=>loadERPFromNeon(true)).then(()=>{renderView();toast('Período de nómina aprobado. Ya puede pagarse.');})
+        .catch(error=>toast(error?.message||'No se pudo aprobar el período.'))
+        .finally(()=>{action.disabled=false;});
+    }
     else if(name==='approve-leave'||name==='reject-leave'){
       const id=action.getAttribute('data-id'),status=name==='approve-leave'?'Aprobado':'Rechazado';
       if(!window.confirm(status==='Aprobado'?'¿Aprobar esta solicitud?':'¿Rechazar esta solicitud?'))return;
