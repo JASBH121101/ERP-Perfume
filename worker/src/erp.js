@@ -223,6 +223,114 @@ async function createInventoryMovement(sql, user, body) {
   return erpJson({ record: rows[0] }, 201);
 }
 
+
+async function createPurchase(sql, user, body) {
+  const quantity = Number(body.quantity), unitCostUsd = Number(body.unit_cost_usd);
+  const rate = Number(body.exchange_rate || 1), paidUsd = Number(body.paid_usd || 0);
+  if (!body.supplier_id || !body.product_id || !body.supplier_name || !Number.isInteger(quantity) || quantity < 1 || !Number.isFinite(unitCostUsd) || unitCostUsd <= 0 || !Number.isFinite(rate) || rate <= 0) {
+    return erpError(400, "INVALID_PURCHASE", "Revisa proveedor, producto, cantidad, costo y tipo de cambio.");
+  }
+  const totalUsd = Math.round(unitCostUsd * quantity * 100) / 100;
+  if (!Number.isFinite(paidUsd) || paidUsd < 0 || paidUsd > totalUsd) return erpError(400, "INVALID_INITIAL_PAYMENT", "El pago inicial debe estar entre cero y el total de la compra.");
+  const purchaseNumber = String(body.purchase_number || "").trim();
+  if (!purchaseNumber) return erpError(400, "PURCHASE_NUMBER_REQUIRED", "El número de compra es obligatorio.");
+  const currency = body.currency === "NIO" ? "NIO" : "USD";
+  const originalAmount = Number(body.initial_payment_amount || 0);
+  if (paidUsd > 0 && (!Number.isFinite(originalAmount) || originalAmount <= 0 || !body.account_name)) return erpError(400, "INVALID_INITIAL_PAYMENT", "El pago inicial requiere importe, moneda y cuenta.");
+  try {
+    const rows = await sql.query(
+      "WITH input AS (SELECT $1::text AS purchase_number,$2::uuid AS supplier_id,$3::text AS supplier_name,$4::text AS currency,$5::numeric AS rate,$6::numeric AS total_usd,$7::numeric AS paid_usd,$8::text AS notes,$9::uuid AS product_id,$10::int AS quantity,$11::numeric AS unit_cost_usd,$12::numeric AS original_payment,$13::text AS account_name,$14::uuid AS actor), target AS (SELECT p.id,p.name,p.sku,p.stock,p.purchase_cost_usd,p.additional_cost_usd,i.quantity,i.unit_cost_usd FROM products p JOIN input i ON i.product_id=p.id WHERE p.active=TRUE FOR UPDATE), created AS (INSERT INTO purchases(purchase_number,supplier_id,supplier_name,currency,exchange_rate,total_usd,paid_usd,status,notes,created_by) SELECT purchase_number,supplier_id,supplier_name,currency,rate,total_usd,paid_usd,CASE WHEN paid_usd>=total_usd THEN 'Pagado' WHEN paid_usd>0 THEN 'Abono parcial' ELSE 'Pendiente' END,notes,actor FROM input WHERE EXISTS(SELECT 1 FROM target) RETURNING *), item AS (INSERT INTO purchase_items(purchase_id,product_id,product_name,quantity,unit_cost_usd,line_total_usd) SELECT created.id,target.id,target.name,input.quantity,input.unit_cost_usd,input.total_usd FROM created CROSS JOIN target CROSS JOIN input RETURNING id), updated AS (UPDATE products p SET stock=t.stock+t.quantity,purchase_cost_usd=CASE WHEN t.stock+t.quantity>0 THEN ROUND(((t.purchase_cost_usd*t.stock)+(t.unit_cost_usd*t.quantity))/(t.stock+t.quantity),2) ELSE t.unit_cost_usd END,unit_cost_usd=CASE WHEN t.stock+t.quantity>0 THEN ROUND(((t.purchase_cost_usd*t.stock)+(t.unit_cost_usd*t.quantity))/(t.stock+t.quantity),2)+t.additional_cost_usd ELSE t.unit_cost_usd+t.additional_cost_usd END,updated_at=NOW() FROM target t WHERE p.id=t.id AND EXISTS(SELECT 1 FROM created) RETURNING p.id,p.name,p.sku,t.stock AS previous_stock,t.quantity,p.stock AS new_stock), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,'Entrada',quantity,quantity,previous_stock,new_stock,'Entrada por compra '||(SELECT purchase_number FROM input),'purchase',(SELECT id::text FROM created),(SELECT actor FROM input) FROM updated RETURNING id), cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'expense','Pago inicial de compra '||created.purchase_number,(SELECT id FROM cash_accounts WHERE name=input.account_name AND currency=input.currency AND active=TRUE LIMIT 1),input.currency,input.original_payment,input.rate,input.paid_usd,'purchase',created.id::text,input.actor FROM created CROSS JOIN input WHERE input.paid_usd>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT input.actor,'create','purchase',created.id::text,to_jsonb(created) FROM created CROSS JOIN input) SELECT created.* FROM created",
+      [purchaseNumber,body.supplier_id,body.supplier_name,currency,rate,totalUsd,paidUsd,body.notes || null,body.product_id,quantity,unitCostUsd,originalAmount,body.account_name || null,user.id]
+    );
+    if (!rows[0]) return erpError(409, "PURCHASE_PRODUCT_NOT_FOUND", "No se pudo registrar la compra: el producto no existe o está inactivo.");
+    return erpJson({ record: rows[0] }, 201);
+  } catch (error) {
+    if (error?.code === "23505") return erpError(409, "DUPLICATE_PURCHASE", "El número de compra ya existe.");
+    if (error?.code === "23503") return erpError(400, "RELATED_RECORD_NOT_FOUND", "El proveedor o producto seleccionado no existe.");
+    console.error("[erp] Purchase creation failed:", error?.message || "database error");
+    return erpError(503, "PURCHASE_SAVE_FAILED", "No se pudo registrar la compra.");
+  }
+}
+
+async function createInvoice(sql, user, body) {
+  const items = Array.isArray(body.items) ? body.items : [];
+  const total = Number(body.total_usd), paid = Number(body.paid_usd || 0), rate = Number(body.exchange_rate || 1);
+  if (!body.customer_name || !items.length || !Number.isFinite(total) || total < 0 || !Number.isFinite(paid) || paid < 0 || paid > total || !Number.isFinite(rate) || rate <= 0) {
+    return erpError(400, "INVALID_INVOICE", "Revisa cliente, productos, total, pago y tipo de cambio.");
+  }
+  if (items.some((item) => !item.product_id || !item.product_name || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1 || !Number.isFinite(Number(item.unit_price_usd)) || Number(item.unit_price_usd) < 0)) {
+    return erpError(400, "INVALID_INVOICE_ITEMS", "Cada renglón requiere producto, cantidad y precio válidos.");
+  }
+  const number = String(body.invoice_number || "").trim();
+  if (!number) return erpError(400, "INVOICE_NUMBER_REQUIRED", "El número de comprobante es obligatorio.");
+  const currency = body.currency === "NIO" ? "NIO" : "USD";
+  const originalPayment = Number(body.original_payment_amount || 0);
+  if (paid > 0 && (!Number.isFinite(originalPayment) || originalPayment <= 0 || !body.account_name)) return erpError(400, "INVALID_PAYMENT", "El cobro inicial requiere importe y cuenta.");
+  try {
+    const rows = await sql.query(
+      "WITH input AS (SELECT $1::text AS invoice_number,$2::text AS source,$3::uuid AS order_id,$4::text AS order_number,$5::uuid AS customer_id,$6::text AS customer_name,$7::text AS customer_phone,$8::text AS currency,$9::numeric AS rate,$10::numeric AS subtotal,$11::numeric AS discount,$12::numeric AS delivery,$13::numeric AS total,$14::numeric AS paid,$15::text AS payment_method,$16::text AS notes,$17::jsonb AS items,$18::numeric AS original_payment,$19::text AS account_name,$20::uuid AS actor), item_totals AS (SELECT product_id,SUM(quantity)::int AS quantity FROM jsonb_to_recordset((SELECT items FROM input)) AS x(product_id uuid,product_name text,sku_snapshot text,quantity integer,unit_price_usd numeric,unit_cost_usd numeric) GROUP BY product_id), targets AS (SELECT p.id,p.name,p.sku,p.stock,t.quantity FROM products p JOIN item_totals t ON t.product_id=p.id), validation AS (SELECT COUNT(*) FILTER(WHERE targets.id IS NULL OR targets.stock<targets.quantity) AS invalid_count FROM item_totals LEFT JOIN targets ON targets.id=item_totals.product_id), created AS (INSERT INTO invoices(invoice_number,source,order_id,order_number_snapshot,customer_id,customer_name,customer_phone,currency,exchange_rate,subtotal_usd,discount_usd,delivery_fee_usd,total_usd,paid_usd,status,payment_method,notes,created_by) SELECT invoice_number,CASE WHEN source IN('store','web','manual') THEN source ELSE 'manual' END,order_id,order_number,customer_id,customer_name,customer_phone,currency,rate,subtotal,discount,delivery,total,paid,CASE WHEN paid>=total AND total>0 THEN 'Pagada' WHEN paid>0 THEN 'Abono parcial' ELSE 'Pendiente' END,payment_method,notes,actor FROM input WHERE (SELECT invalid_count FROM validation)=0 AND NOT EXISTS(SELECT 1 FROM input WHERE source='web' AND order_id IS NOT NULL AND EXISTS(SELECT 1 FROM invoices i WHERE i.order_id=input.order_id)) RETURNING *), invoice_lines AS (INSERT INTO invoice_items(invoice_id,product_id,product_name,sku_snapshot,quantity,unit_price_usd,line_total_usd,unit_cost_usd) SELECT created.id,x.product_id,x.product_name,x.sku_snapshot,x.quantity,x.unit_price_usd,x.quantity*x.unit_price_usd,COALESCE(x.unit_cost_usd,0) FROM created CROSS JOIN input CROSS JOIN LATERAL jsonb_to_recordset(input.items) AS x(product_id uuid,product_name text,sku_snapshot text,quantity integer,unit_price_usd numeric,unit_cost_usd numeric) RETURNING id), updated AS (UPDATE products p SET stock=p.stock-t.quantity,updated_at=NOW() FROM targets t WHERE p.id=t.id AND EXISTS(SELECT 1 FROM created) RETURNING p.id,p.name,p.sku,t.stock AS previous_stock,t.quantity,p.stock AS new_stock), movements AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,'Salida',quantity,-quantity,previous_stock,new_stock,'Venta por factura '||(SELECT invoice_number FROM created),'invoice',(SELECT id::text FROM created),(SELECT actor FROM input) FROM updated RETURNING id), payment AS (INSERT INTO invoice_payments(invoice_id,currency,original_amount,exchange_rate,amount_usd,account_name,payment_method,created_by) SELECT created.id,input.currency,input.original_payment,input.rate,input.paid,input.account_name,input.payment_method,input.actor FROM created CROSS JOIN input WHERE input.paid>0 RETURNING id), cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'income','Cobro inicial factura '||created.invoice_number,(SELECT id FROM cash_accounts WHERE name=input.account_name AND currency=input.currency AND active=TRUE LIMIT 1),input.currency,input.original_payment,input.rate,input.paid,'invoice',created.id::text,input.actor FROM created CROSS JOIN input WHERE input.paid>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT input.actor,'create','invoice',created.id::text,to_jsonb(created) FROM created CROSS JOIN input) SELECT created.* FROM created",
+      [number,body.source || "manual",body.order_id || null,body.order_number_snapshot || null,body.customer_id || null,String(body.customer_name).trim(),body.customer_phone || null,currency,rate,Number(body.subtotal_usd || total),Number(body.discount_usd || 0),Number(body.delivery_fee_usd || 0),total,paid,body.payment_method || null,body.notes || null,JSON.stringify(items),originalPayment,body.account_name || null,user.id]
+    );
+    if (!rows[0]) {
+      const check = await sql.query("SELECT COUNT(*)::int AS invalid_count FROM jsonb_to_recordset($1::jsonb) AS x(product_id uuid,quantity integer) LEFT JOIN products p ON p.id=x.product_id AND p.active=TRUE WHERE p.id IS NULL OR p.stock < x.quantity", [JSON.stringify(items)]);
+      if (check[0]?.invalid_count) return erpError(409, "INSUFFICIENT_STOCK", "Uno o más perfumes no tienen existencias suficientes o están inactivos.");
+      return erpError(409, "DUPLICATE_WEB_INVOICE", "El pedido web seleccionado ya tiene una factura.");
+    }
+    return erpJson({ record: rows[0] }, 201);
+  } catch (error) {
+    if (error?.code === "23505") return erpError(409, "DUPLICATE_INVOICE", "El número de factura ya existe.");
+    if (error?.code === "23503") return erpError(400, "RELATED_RECORD_NOT_FOUND", "El cliente, pedido o producto relacionado no existe.");
+    console.error("[erp] Invoice creation failed:", error?.message || "database error");
+    return erpError(503, "INVOICE_SAVE_FAILED", "No se pudo registrar la factura.");
+  }
+}
+
+async function addInvoicePayment(sql, user, body) {
+  const original = Number(body.original_amount), rate = Number(body.exchange_rate || 1), usd = Number(body.amount_usd);
+  if (!body.invoice_id || !Number.isFinite(original) || original <= 0 || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(usd) || usd <= 0 || !body.account_name) return erpError(400, "INVALID_PAYMENT", "Revisa factura, importe, tipo de cambio y cuenta.");
+  const currency = body.currency === "NIO" ? "NIO" : "USD";
+  try {
+    const rows = await sql.query(
+      "WITH target AS (SELECT id,invoice_number,total_usd,paid_usd FROM invoices WHERE id=$1::uuid FOR UPDATE), updated AS (UPDATE invoices i SET paid_usd=t.paid_usd+$2,status=CASE WHEN t.paid_usd+$2>=t.total_usd THEN 'Pagada' ELSE 'Abono parcial' END,updated_at=NOW() FROM target t WHERE i.id=t.id AND t.paid_usd+$2<=t.total_usd RETURNING i.*), payment AS (INSERT INTO invoice_payments(invoice_id,currency,original_amount,exchange_rate,amount_usd,account_name,payment_method,created_by) SELECT id,$3,$4,$5,$2,$6,$7,$8 FROM updated RETURNING id), cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'income','Abono factura '||invoice_number,(SELECT id FROM cash_accounts WHERE name=$6 AND currency=$3 AND active=TRUE LIMIT 1),$3,$4,$5,$2,'invoice',id::text,$8 FROM updated RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $8,'payment','invoice',id::text,jsonb_build_object('amount_usd',$2,'currency',$3,'original_amount',$4) FROM updated) SELECT * FROM updated",
+      [body.invoice_id,usd,currency,original,rate,body.account_name,body.payment_method || null,user.id]
+    );
+    if (!rows[0]) return erpError(409, "PAYMENT_EXCEEDS_BALANCE", "La factura no existe o el abono supera su saldo pendiente.");
+    return erpJson({ record: rows[0] }, 201);
+  } catch (error) {
+    console.error("[erp] Invoice payment failed:", error?.message || "database error");
+    return erpError(503, "PAYMENT_FAILED", "No se pudo registrar el abono.");
+  }
+}
+
+async function addPurchasePayment(sql, user, body) {
+  const original = Number(body.original_amount), rate = Number(body.exchange_rate || 1), usd = Number(body.amount_usd);
+  if (!body.purchase_id || !Number.isFinite(original) || original <= 0 || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(usd) || usd <= 0 || !body.account_name) return erpError(400, "INVALID_PAYMENT", "Revisa compra, importe, tipo de cambio y cuenta.");
+  const currency = body.currency === "NIO" ? "NIO" : "USD";
+  try {
+    const rows = await sql.query(
+      "WITH target AS (SELECT id,purchase_number,total_usd,paid_usd FROM purchases WHERE id=$1::uuid FOR UPDATE), updated AS (UPDATE purchases p SET paid_usd=t.paid_usd+$2,status=CASE WHEN t.paid_usd+$2>=t.total_usd THEN 'Pagado' ELSE 'Abono parcial' END,updated_at=NOW() FROM target t WHERE p.id=t.id AND t.paid_usd+$2<=t.total_usd RETURNING p.*), cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'expense','Abono compra '||purchase_number,(SELECT id FROM cash_accounts WHERE name=$6 AND currency=$3 AND active=TRUE LIMIT 1),$3,$4,$5,$2,'purchase',id::text,$8 FROM updated RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $8,'payment','purchase',id::text,jsonb_build_object('amount_usd',$2,'currency',$3,'original_amount',$4) FROM updated) SELECT * FROM updated",
+      [body.purchase_id,usd,currency,original,rate,body.account_name,body.payment_method || null,user.id]
+    );
+    if (!rows[0]) return erpError(409, "PAYMENT_EXCEEDS_BALANCE", "La compra no existe o el abono supera su saldo pendiente.");
+    return erpJson({ record: rows[0] }, 201);
+  } catch (error) {
+    console.error("[erp] Purchase payment failed:", error?.message || "database error");
+    return erpError(503, "PAYMENT_FAILED", "No se pudo registrar el abono.");
+  }
+}
+
+async function updateOrderStatus(sql, user, id, body) {
+  const status = String(body.status || "");
+  const allowed = ["Pendiente","En preparación","Listo para entrega","En tránsito","Completado","Cancelado"];
+  if (!allowed.includes(status)) return erpError(400, "INVALID_ORDER_STATUS", "El estado del pedido no es válido.");
+  const rows = await sql.query(
+    "WITH target AS (SELECT o.id,o.order_number,o.status AS old_status FROM orders o WHERE o.id=$1::uuid FOR UPDATE), totals AS (SELECT product_id,SUM(quantity)::int AS quantity FROM order_items WHERE order_id=$1::uuid AND product_id IS NOT NULL GROUP BY product_id), products_before AS (SELECT p.id,p.name,p.sku,p.stock,t.quantity FROM products p JOIN totals t ON t.product_id=p.id), direction AS (SELECT CASE WHEN target.old_status='Pendiente' AND $2<>'Pendiente' THEN -1 WHEN target.old_status<>'Pendiente' AND $2='Pendiente' THEN 1 ELSE 0 END AS factor FROM target), validation AS (SELECT COUNT(*) FILTER(WHERE products_before.stock < products_before.quantity OR products_before.id IS NULL) AS insufficient FROM totals LEFT JOIN products_before ON products_before.id=totals.product_id CROSS JOIN direction WHERE direction.factor=-1), changed_stock AS (UPDATE products p SET stock=p.stock+(direction.factor*products_before.quantity),updated_at=NOW() FROM products_before CROSS JOIN direction WHERE p.id=products_before.id AND direction.factor<>0 AND (direction.factor=1 OR products_before.stock>=products_before.quantity) AND (SELECT insufficient FROM validation)=0 RETURNING p.id,p.name,p.sku,products_before.stock AS previous_stock,products_before.quantity,p.stock AS new_stock), movements AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,CASE WHEN quantity_delta<0 THEN 'Salida' ELSE 'Reversion' END,quantity,quantity_delta,previous_stock,new_stock,'Cambio de estado del pedido '||(SELECT order_number FROM target),'order',$1::text,$3 FROM (SELECT id,quantity,previous_stock,new_stock,(new_stock-previous_stock) AS quantity_delta FROM changed_stock) s RETURNING id), changed_order AS (UPDATE orders o SET status=$2,updated_at=NOW() FROM target WHERE o.id=target.id AND (SELECT insufficient FROM validation)=0 RETURNING o.*), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $3,'status_change','order',id::text,jsonb_build_object('status',$2) FROM changed_order) SELECT * FROM changed_order",
+    [id,status,user.id]
+  );
+  if (!rows[0]) return erpError(409, "ORDER_STOCK_CONFLICT", "No se pudo cambiar el estado: el pedido no existe o no hay existencias suficientes.");
+  return erpJson({ record: rows[0] });
+}
+
 export async function handleERPRequest(request, env, user, sql) {
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean);
