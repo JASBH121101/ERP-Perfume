@@ -1987,12 +1987,12 @@ import { profileHasPermission } from './permission-utils.mjs';
       const overrideRows = userOverrides.map(override => {
         const permission = accessManager.permissions.find(item=>item.permission_key===override.permission_key);
         return '<div class="permission-override-row" data-override-key="'+esc(override.permission_key)+'">'+
-          '<span>'+esc(permission?.label||override.permission_key)+'<small>'+esc(override.permission_key)+'</small></span>'+
+          '<span>'+esc(permission?.label||"Permiso")+'</span>'+
           '<select class="filter-select" data-override-value><option value="allow"'+(override.allowed?' selected':'')+'>Permitir</option><option value="deny"'+(!override.allowed?' selected':'')+'>Denegar</option></select>'+
           '<button type="button" class="button button-quiet button-small" data-action="remove-user-override" aria-label="Quitar excepción">Quitar</button></div>';
       }).join("");
       const overridePermissionOptions = accessManager.permissions.map(permission =>
-        '<option value="'+esc(permission.permission_key)+'">'+esc(permission.label)+' · '+esc(permission.permission_key)+'</option>'
+        '<option value="'+esc(permission.permission_key)+'">'+esc(permission.label)+'</option>'
       ).join("");
       return '<tr data-user-id="'+esc(user.id)+'"><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td>'+
         '<td><input class="filter-select" data-user-position value="'+esc(user.position_title||"")+'" maxlength="120" placeholder="Cargo libre"></td>'+
@@ -2019,13 +2019,14 @@ import { profileHasPermission } from './permission-utils.mjs';
     const granted = new Set(accessManager.grants.filter(grant=>grant.role_key===accessSelectedRole && grant.allowed===true).map(grant=>grant.permission_key));
     const moduleRows = accessManager.permissions.filter(permission=>permission.permission_type==="module");
     const permissionGroups = moduleRows.map(module => {
-      const rows = accessManager.permissions.filter(permission=>permission.module_key===module.module_key)
-        .map(permission => {
-          const level = permission.permission_type==="module" ? "Módulo" : permission.permission_type==="section" ? "Sección" : "Acción";
-          const indent = permission.permission_type==="module" ? 0 : permission.permission_type==="section" ? 16 : 34;
-          return '<label class="permission-editor-row" style="padding-left:'+indent+'px"><input type="checkbox" name="permission" value="'+esc(permission.permission_key)+'"'+(granted.has(permission.permission_key)?' checked':'')+'><span>'+esc(permission.label)+'</span><small>'+level+'</small><code>'+esc(permission.permission_key)+'</code></label>';
-        }).join("");
-      return '<section class="permission-editor-module"><h4>'+esc(module.label)+'</h4>'+rows+'</section>';
+      const modulePermissions = accessManager.permissions.filter(permission=>permission.module_key===module.module_key);
+      const rows = modulePermissions.map(permission => {
+        const level = permission.permission_type==="module" ? "Módulo" : permission.permission_type==="section" ? "Sección" : "Acción";
+        const indent = permission.permission_type==="module" ? 0 : permission.permission_type==="section" ? 16 : 34;
+        return '<label class="permission-editor-row" style="padding-left:'+indent+'px"><input type="checkbox" name="permission" value="'+esc(permission.permission_key)+'"'+(granted.has(permission.permission_key)?' checked':'')+'><span>'+esc(permission.label)+'</span><small>'+level+'</small></label>';
+      }).join("");
+      const enabledCount = modulePermissions.filter(permission=>granted.has(permission.permission_key)).length;
+      return '<details class="permission-editor-module"><summary><span>'+esc(module.label)+'</span><small>'+enabledCount+' / '+modulePermissions.length+' permisos</small></summary><div class="permission-editor-module-content">'+rows+'</div></details>';
     }).join("");
 
     const auditRows = accessManager.audit.slice(0,100).map(record =>

@@ -903,3 +903,19 @@ body.auth-locked .app-shell {
 @media(max-width:620px){.permission-override-row,.permission-override-add{grid-template-columns:minmax(0,1fr) minmax(88px,100px)}.permission-override-row button,.permission-override-add button{grid-column:1/-1;justify-self:start}}
 /* Permission navigation: author display rules must not override the HTML hidden state. */
 .sidebar [hidden] { display: none !important; }
+
+
+/* Compact, centered and collapsible permission editor */
+.access-manager-section{width:min(100%,1180px);margin-inline:auto}
+.access-manager-section .permission-editor-grid{width:min(100%,980px);margin-inline:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}
+.permission-editor-module{min-width:0;padding:0;border:1px solid var(--line,#e7e2d9);border-radius:11px;background:var(--surface,#fff);overflow:hidden}
+.permission-editor-module>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:10px 13px;cursor:pointer;list-style:none;font-size:13px;font-weight:700}
+.permission-editor-module>summary::-webkit-details-marker{display:none}
+.permission-editor-module>summary::after{content:"+";font-size:17px;color:var(--muted,#8d8273);font-weight:400}
+.permission-editor-module[open]>summary::after{content:"−"}
+.permission-editor-module>summary small{font-size:10px;font-weight:500;color:var(--muted,#8d8273);white-space:nowrap}
+.permission-editor-module-content{padding:0 12px 10px;border-top:1px solid var(--line,#e7e2d9)}
+.permission-editor-row{grid-template-columns:16px minmax(0,1fr) auto;min-height:34px;padding-block:5px;font-size:12px}
+.permission-editor-row small{font-size:10px}
+.permission-editor-row code{display:none!important}
+@media(max-width:760px){.access-manager-section .permission-editor-grid{grid-template-columns:minmax(0,1fr);padding:10px}.permission-editor-module>summary{min-height:42px}.permission-editor-row{min-height:36px}}
