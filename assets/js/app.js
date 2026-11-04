@@ -916,17 +916,17 @@
     if(type==='purchase'){
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
       if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
-      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+formField('Pago inicial','initialPayment','number',false,'min="0" step="0.01" value="0"')+selectField('Cuenta para pago inicial','initialAccount','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',false)+'</div><p class="form-helper">El importe inicial se registra como salida de caja. La diferencia queda como saldo pendiente con el proveedor.</p>';
+      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+formField('Pago inicial','initialPayment','number',false,'min="0" step="0.01" value="0"')+selectField('Cuenta para pago inicial','initialAccount',cashAccountOptions(),false)+'</div><p class="form-helper">El importe inicial se registra como salida de caja. La diferencia queda como saldo pendiente con el proveedor.</p>';
     }
     if(type==='purchase-payment'){
       const purchase=purchases.find(item=>String(item.id)===String(recordId));
       if(!purchase){toast('No se encontró la compra seleccionada.');return;}
       const balance=Math.max(0,Number(purchase.totalUsd||0)-Number(purchase.paidUsd||0));
       if(balance<=0.001){toast('Esta compra ya está pagada.');return;}
-      body='<div class="form-grid"><div class="detail-field full-field"><span>Proveedor · '+esc(purchase.supplier)+'</span><strong>Saldo pendiente: '+money(balance)+'</strong><small>'+esc(purchase.product)+' · '+purchase.quantity+' unidades</small></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div><p class="form-helper">El abono se convierte con el tipo de cambio vigente y se registra en Caja y bancos sin modificar inventario.</p>';
+      body='<div class="form-grid"><div class="detail-field full-field"><span>Proveedor · '+esc(purchase.supplier)+'</span><strong>Saldo pendiente: '+money(balance)+'</strong><small>'+esc(purchase.product)+' · '+purchase.quantity+' unidades</small></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account',cashAccountOptions(),true)+'</div><p class="form-helper">El abono se convierte con el tipo de cambio vigente y se registra en Caja y bancos sin modificar inventario.</p>';
     }
-    if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div>';
-    if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
+    if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account',cashAccountOptions(),true)+'</div>';
+    if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account',cashAccountOptions(),true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
     if(type==='cash-account')body='<div class="form-grid">'+formField('Nombre de la cuenta','name','text',true,'maxlength="80"')+selectField('Tipo de cuenta','accountType','<option>Caja</option><option>Banco</option><option>Otro</option>',true)+currencyField('USD')+formField('Saldo inicial','openingBalance','number',false,'min="0" step="0.01" value="0"')+'</div><p class="form-helper">El saldo inicial se registrará como una entrada de apertura, no como ingreso de ventas ni utilidad. Puedes iniciar en cero si todavía no deseas cargar un saldo.</p>';
     if(type==='invoice'){
       invoiceDraftItems=[];
@@ -944,7 +944,7 @@
         formField('Descuento (USD)','discountUsd','number',false,'min="0" step="0.01" value="0"')+
         formField('Cargo de entrega (USD)','deliveryFeeUsd','number',false,'min="0" step="0.01" value="0"')+
         selectField('Moneda de cobro','currency',currencyOptions('USD'),true)+
-        selectField('Método de pago','paymentMethod','<option selected>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Pago móvil</option><option>Cheque</option><option>Efectivo contra entrega</option><option>Pendiente / crédito</option><option>Otro</option>',true)+
+        selectField('Método de pago','paymentMethod','<option selected>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Pago móvil</option><option>Cheque</option><option>Efectivo contra entrega</option><option>Pendiente / crédito</option><option>Otro</option>',true)+selectField('Cuenta de cobro','accountName',cashAccountOptions('USD'),false)+
         formField('Importe recibido (moneda de cobro)','amountReceived','number',false,'min="0" step="0.01" value="0"')+
         '<p class="form-helper full-field">En una venta directa, el sistema propone cobrar el total automáticamente. Si recibes solo una parte, cambia el importe para registrar el abono inicial; el resto quedará como saldo pendiente. Para una venta a crédito, selecciona «Pendiente / crédito».</p>'+ '<p class="form-helper full-field">Para clientes de negocio se utilizará el precio mayorista del producto cuando esté configurado; de lo contrario se conserva el precio normal. La factura guarda una copia del precio aplicado.</p>'+
         '<section class="invoice-preview full-field" id="invoice-preview" aria-live="polite"><div class="invoice-preview-empty">Agrega perfumes para calcular la factura.</div></section>'+
@@ -953,7 +953,7 @@
     if(type==='payment'){
       const invoice=invoices.find(f=>f.id===recordId);if(!invoice){toast('No se encontró el comprobante.');return;}
       const balance=Math.max(0,Number(invoice.totalUsd)-Number(invoice.paidUsd||0));
-      body='<div class="form-grid"><div class="detail-field full-field"><span>Saldo pendiente</span><strong>'+money(balance)+'</strong></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div>';
+      body='<div class="form-grid"><div class="detail-field full-field"><span>Saldo pendiente</span><strong>'+money(balance)+'</strong></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account',cashAccountOptions(),true)+'</div>';
     }
     if(type==='employee')body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+'</div><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
     if(type==='attendance'){
@@ -991,6 +991,8 @@
     const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
     document.querySelector('#business-dialog .eyebrow').textContent=window.JBAuth?.profile?'GESTIÓN · NEON DEVELOPMENT':'ACCESO REQUERIDO';
     document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon');
+    if(businessForm.querySelector('[name="currency"]'))refreshCashAccountOptions(businessForm,businessForm.querySelector('[name="currency"]').value);
+    if(type==='payroll-payment')refreshCashAccountOptions(businessForm,'NIO');
     if(type==='invoice'){
       businessForm.dataset.invoiceReceivedEdited='0';
       businessForm.dataset.invoiceCurrency=businessForm.querySelector('[name="currency"]')?.value||'NIO';
@@ -1010,6 +1012,23 @@
   function accountFor(name, currency) {
     const account = cashAccounts.find(item => item.name === name && item.currency === currency && item.active !== false);
     return account || null;
+  }
+  function cashAccountOptions(currencyFilter){
+    const available=cashAccounts.filter(account=>account.active!==false&&(!currencyFilter||account.currency===currencyFilter));
+    if(!available.length)return '<option value="">No hay cuentas activas</option>';
+    return available.map(account=>'<option value="'+esc(account.name)+'">'+esc(account.name)+' · '+esc(account.currency)+'</option>').join('');
+  }
+  function refreshCashAccountOptions(formElement,currencyFilter){
+    if(!formElement)return;
+    ['account','initialAccount','accountName'].forEach(name=>{
+      const select=formElement.querySelector('[name="'+name+'"]');
+      if(!select)return;
+      const current=select.value;
+      const options=cashAccountOptions(currencyFilter);
+      select.innerHTML=options;
+      if(Array.from(select.options).some(option=>option.value===current))select.value=current;
+      else if(select.options.length)select.selectedIndex=0;
+    });
   }
   async function saveBusinessRecord(event){
     event.preventDefault();
@@ -1122,7 +1141,7 @@
         if(!Number.isFinite(received)||received<0)throw new Error('El importe recibido no puede ser negativo.');
         const paidUsd=toUsd(received,currency);
         if(paidUsd>totals.totalUsd+0.001)throw new Error('El importe recibido supera el total de la factura.');
-        const account=(get('paymentMethod')==='Transferencia'?'Banco ':'Caja ')+currency;
+        const account=get('accountName')||((get('paymentMethod')==='Transferencia'?'Banco ':'Caja ')+currency);
         if(paidUsd>0&&!accountFor(account,currency))throw new Error('La cuenta de cobro no está configurada.');
         const number=nextDocumentNumber('JBI-',invoices,1000);
         const existingCustomer=customers.find(item=>String(item.name||'').trim().toLocaleLowerCase('es')===customerName.toLocaleLowerCase('es'));
@@ -1784,6 +1803,7 @@
   });
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);
   businessForm.addEventListener('change',function(event){
+    if(event.target.name==='currency')refreshCashAccountOptions(businessForm,event.target.value);
     if(businessForm.dataset.recordType==='payroll-item'&&event.target.name==='employeeId'){
       const selected=event.target.selectedOptions?.[0];
       const salary=businessForm.querySelector('[name="baseSalaryNio"]');
