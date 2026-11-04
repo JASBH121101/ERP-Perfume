@@ -1159,7 +1159,7 @@
         if(items.some(item=>!item.product_id))throw new Error('Uno de los productos ya no existe en el catálogo.');
         await erpApi('invoices',{method:'POST',body:JSON.stringify({
           invoice_number:number,source,order_id:source==='web'?order.dbId:null,order_number_snapshot:source==='web'?order.id:null,
-          customer_id:existingCustomer?.id||null,customer_name:customerName,customer_phone:phone||'',
+          customer_id:source==='web'?(order?.customerId||null):(existingCustomer?.id||null),customer_name:customerName,customer_phone:phone||'',
           currency,exchange_rate:rate,subtotal_usd:totals.subtotalUsd,discount_usd:totals.discountUsd,
           delivery_fee_usd:totals.deliveryFeeUsd,total_usd:totals.totalUsd,paid_usd:paidUsd,
           payment_method:get('paymentMethod')||'Pendiente / crédito',notes:'',
