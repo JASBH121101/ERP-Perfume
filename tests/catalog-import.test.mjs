@@ -244,7 +244,12 @@ test("web invoice rejects items or prices that differ from the original order", 
         return [{
           order_number: "JP-1001",
           customer_name: "Cliente QA",
+          discount_usd: "0.00",
+          delivery_fee_usd: "0.00",
+          total_usd: "50.00",
           product_id: "00000000-0000-0000-0000-000000000101",
+          product_name: "Perfume QA",
+          sku_snapshot: "QA-001",
           quantity: 2,
           unit_price_usd: "25.00"
         }];
