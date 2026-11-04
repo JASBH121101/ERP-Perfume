@@ -89,7 +89,6 @@
   };
   const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active' };
   const root = document.getElementById('view-root');
-  const globalSearch = document.getElementById('global-search');
   const dialog = document.getElementById('product-dialog');
   const form = document.getElementById('product-form');
   const stockDialog = document.getElementById('stock-dialog');
@@ -1106,7 +1105,6 @@
     state.filter = 'all';
     state.category = 'all';
     state.productStatus = 'active';
-    globalSearch.value = '';
     renderView();
     closeMobileMenu();
   }
@@ -1296,20 +1294,10 @@
     if (event.target.closest('.notification-button')) toast('No hay notificaciones reales: el sistema aún está en modo demo.');
   });
   document.addEventListener('input', function (event) {
-    if (event.target === globalSearch) {
-      state.query = event.target.value;
-      if (state.view === 'products') {
-        const body = document.getElementById('product-table-body');
-        if (body) body.innerHTML = productTable(filteredProducts());
-        const local = document.getElementById('view-search');
-        if (local && local !== document.activeElement) local.value = state.query;
-      }
-    }
     if (event.target && event.target.id === 'view-search') {
       state.query = event.target.value;
       const body = document.getElementById('product-table-body');
       if (body) body.innerHTML = productTable(filteredProducts());
-      globalSearch.value = state.query;
     }
   });
   document.addEventListener('change', function (event) {
@@ -1332,10 +1320,6 @@
   });
   form.addEventListener('input', updateProductCostPreview);
   document.addEventListener('keydown', function (event) {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-      event.preventDefault();
-      globalSearch.focus();
-    }
     if (event.key === 'Escape') closeMobileMenu();
   });
   form.addEventListener('submit', function (event) {
