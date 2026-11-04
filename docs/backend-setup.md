@@ -1,84 +1,133 @@
 # Backend setup — Neon Development
 
-This repository uses `main` as its single working branch. Cloudflare Pages publishes the static ERP interface; a separate Cloudflare Worker handles API requests. Pages Functions are intentionally not used.
+This repository uses `main` as its single integration branch. Cloudflare Pages publishes the static ERP interface; a separate Cloudflare Worker handles authenticated API requests. Pages Functions are intentionally not used.
 
 ## Current architecture
 
 - Frontend: static HTML/CSS/JavaScript, bundled with esbuild into `dist/`.
-- Hosting: Cloudflare Pages project `erp-perfume`, production branch `main`.
-- API: Cloudflare Worker `jb-parfums-erp-api`, source in `worker/src/index.js`.
-- Worker configuration: `worker/wrangler.toml`.
-- Database: Neon PostgreSQL database `erp_perfume`, development branch only for this phase.
-- Identity: Neon Managed Auth; the Worker verifies JWTs and checks the verified email and ERP role.
-- Files: private R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
-- HR: employee list/create only are connected so far. Attendance, leave, payroll and the rest of the ERP modules are not yet migrated.
+- Hosting: Cloudflare Pages project `erp-perfume`, connected to GitHub `main`.
+- API: Cloudflare Worker `jb-parfums-erp-api`, source in `worker/src/index.js` and `worker/src/erp.js`.
+- Worker configuration used by deployment: `worker/wrangler.toml`.
+- Database: Neon PostgreSQL database `erp_perfume`; the deployed Worker is configured to use the Neon `development` branch.
+- Identity: Neon Managed Auth; the Worker verifies signed JWTs, verified email, account status and ERP role.
+- Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
+- Frontend API origin: `https://jb-parfums-erp-api.jaredblancoh19.workers.dev`.
 
-The old Pages Functions source has been removed so Pages no longer attempts to publish API Functions.
+The current UI and Worker have database-backed workflows for the catalog, stock movements, customers, suppliers, orders, purchases, invoices, payments, cash, expenses, HR and DGI support documents. The database-backed workflows are implemented in code; operational data still requires live end-to-end verification before production business use.
 
-## One-time GitHub Actions configuration
+## Connected modules and current limitations
 
-The workflow `.github/workflows/deploy-worker.yml` deploys the Worker when relevant files change on `main`.
+The authenticated frontend loads operational records through `GET /api/erp/bootstrap`. The Worker applies role-based filtering and reads the datasets in a Neon transaction.
 
-Create a Cloudflare API token:
-1. In Cloudflare Dashboard, open **My Profile → API Tokens**.
-2. Create a custom token using the **Edit Cloudflare Workers** permission template, limited to this Cloudflare account.
-3. Save the token in GitHub at **JASBH121101/ERP-Perfume → Settings → Secrets and variables → Actions → New repository secret**.
-4. Name the secret exactly `CLOUDFLARE_API_TOKEN`.
+Connected data areas include:
 
-The Cloudflare account ID is already declared in the Wrangler configuration and does not need to be stored as a GitHub secret. Do not paste the API token into source files or chat.
+- Products, product images, initial stock, catalog import and inventory movements.
+- Customers, orders, order items and order-state changes.
+- Suppliers, purchases, purchase items and supplier payments.
+- Invoices, invoice lines, customer payments, cash accounts and cash entries.
+- Expenses, HR employees, attendance, leave requests and payroll.
+- DGI support-document metadata and secure file upload/download.
 
-If the workflow ran before the secret was added, it will complete with a warning and skip deployment. After adding the secret, open **Actions → Deploy JB PARFUMS API Worker → Run workflow** (branch `main`).
+Important boundaries:
 
-## One-time Worker database secret
+- The current purchase-registration path is a simplified purchase workflow. Although `purchase_orders`, `purchase_order_items`, `purchase_receipts` and `purchase_receipt_items` tables exist, their dedicated multi-line purchase-order and partial goods-receipt workflow is not yet exposed through `RESOURCE_DEFS` or the current UI.
+- Invoice preview/print is an internal non-fiscal document. DGI support-document storage and reference indicators are not a fiscal authorization or electronic invoicing integration.
+- Payroll values are stored in NIO. USD/NIO conversion is available for commercial and cash/payment operations using a saved exchange rate.
+- Product and DGI files are stored privately in R2 and are accessed through authenticated Worker endpoints.
+- Do not enter live business transactions until the live Worker health/authentication path and the critical workflows have been tested end to end.
 
-After the Worker is deployed, add its database connection directly in Cloudflare:
-1. Open **Workers & Pages → jb-parfums-erp-api → Settings → Variables and Secrets**.
-2. Add `DATABASE_URL` as a **Secret**.
-3. Use the connection string for the Neon `development` branch, database `erp_perfume`, login role `jb_erp_runtime_sql`.
-4. Save and redeploy the Worker if the dashboard asks for it.
+## GitHub Actions and Worker deployment
 
-Use the same development connection string already prepared for the Pages Preview secret. The password is intentionally not stored in this repository and must not be shared in GitHub comments or chat. If the password contains URI-reserved characters, URL-encode the password segment in the connection string.
+The workflow `.github/workflows/deploy-worker.yml` deploys the Worker from the `worker/` directory when relevant Worker files change on `main`.
 
-The Worker configuration already contains the development Neon Auth base URL, JWKS URL, owner bootstrap email, `ERP_ENVIRONMENT=development`, the production Pages origin allowed for CORS, and the private R2 bucket binding. The database URL is the only Worker runtime secret required by the current API.
+Required repository secret:
+
+- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token with Worker edit/deploy permissions, limited to the intended Cloudflare account.
+
+The workflow checks the token, validates frontend and Worker syntax, builds the frontend, then runs `wrangler deploy` with the working directory set to `worker`. The Worker uses `worker/wrangler.toml`.
+
+Never store the token in source files, workflow logs, issues, or chat.
+
+## Worker database secret
+
+The deployed Worker must have the secret `DATABASE_URL` configured in Cloudflare Workers & Pages → `jb-parfums-erp-api` → Settings → Variables and Secrets.
+
+Use the connection string for:
+
+- Neon project: `erp-perfume`
+- Database: `erp_perfume`
+- Branch: `development`
+- Runtime role: `jb_erp_runtime_sql`
+
+The actual connection string and password are secrets. Do not paste them into GitHub, source files, logs, documentation or chat. If credentials change, update the Worker secret directly in Cloudflare and redeploy if required.
+
+The Worker also requires the Neon Auth base URL, JWKS URL, owner bootstrap email, `ERP_ENVIRONMENT=development`, the allowed Pages origin, and the R2 bucket binding. These settings are configured as Worker variables/bindings, not committed credentials.
 
 ## Neon Auth security checklist
 
 On the Neon `development` branch:
-- Enable **Verify email on sign-up** and **Require email verification**.
-- Add `https://erp-perfume.pages.dev` to the Neon Auth trusted domains/origins.
-- Verify the owner account's email before opening protected ERP records.
-- Keep self-registered non-owner accounts at the default `viewer` role unless an administrator explicitly changes their role.
 
-The Worker checks the verified email in Neon Auth's `neon_auth.user` table. The owner email in the Wrangler variables is used only for the initial owner-role bootstrap. HR endpoints permit only `owner`, `admin`, or `hr`.
+- Enable email verification for new accounts.
+- Add `https://erp-perfume.pages.dev` to Neon Auth trusted origins/domains.
+- Verify the owner account's email before accessing protected ERP records.
+- Keep newly registered non-owner accounts at the default `viewer` role until an administrator assigns a permitted role.
+- Review role permissions in `worker/src/erp.js`; the Worker enforces permissions server-side.
 
-## Routes and validation
+The Worker resolves the Neon Auth user and ERP profile before allowing `/api/erp/*` operations. The frontend remains locked until a valid ERP profile is returned.
 
-- `GET https://jb-parfums-erp-api.jaredblancoh19.workers.dev/api/health` checks the database and R2 binding.
-- `GET /api/config` tells the frontend whether Neon Auth is configured.
-- `GET /api/auth/profile` returns the authenticated user's ERP role.
-- `GET /api/hr/employees` returns the protected employee list.
-- `POST /api/hr/employees` creates a protected employee and writes an audit event.
+## API surface
 
-Run local checks:
+Public/configuration endpoints:
+
+- `GET /api/config` — authentication configuration for the frontend.
+- `GET /api/health` — checks database connectivity and reports auth/storage binding readiness.
+- `GET /api/auth/profile` — validates the session and returns the ERP profile.
+- `GET /api/hr/employees` and `POST /api/hr/employees` — protected employee list/create endpoints retained for HR compatibility.
+
+Authenticated operational API:
+
+- `GET /api/erp/bootstrap` — role-filtered initial datasets.
+- `GET /api/erp/settings` and `PATCH /api/erp/settings` — permitted system settings.
+- `GET /api/erp/{resource}` — list a permitted resource.
+- `POST /api/erp/{resource}`, `PATCH /api/erp/{resource}/{id}`, and `DELETE /api/erp/{resource}/{id}` — resource operations where explicitly allowed by the Worker.
+- Dedicated transaction routes include product import, product asset upload/download/delete, inventory movements, order creation/status changes, purchase creation/payments, invoice creation/payments, cash account/entry creation, payroll status/payment operations, leave reviews, expenses and DGI support-document uploads/downloads.
+
+Not every resource supports generic update or delete. Financial, payroll and inventory history is intentionally protected from generic mutation; use the specific transaction flows. See `worker/src/erp.js` for the authoritative route and role rules.
+
+## Database migrations
+
+SQL migrations are kept in `db/migrations/` and tracked in `public.app_schema_migrations` on the Development branch. The current application migration history contains versions `0001` through `0006`.
+
+Migrations are not automatically executed by GitHub Actions, Pages or Worker deployments. Apply and verify migrations deliberately against Development first. Do not migrate Neon Production until the owner explicitly approves a reviewed cutover and backup plan.
+
+## Validation
+
+Run locally:
 
 ```sh
 npm install
 npm run build
+npm run test:unit
 npm test
 ```
 
-No sample employee or business records are inserted by deployment. Test the GET endpoints first; only create a real employee after the owner verifies the connection and explicitly chooses to do so.
+GitHub Actions also runs the deterministic JB Expert QA source/visual audit. This is a separate check from the ERP quality gate. Passing source analysis or browser tests does not, by itself, prove the live Neon connection, account permissions, R2 operations or every business transaction works end to end.
 
-## Production boundary and free-tier safeguards
+Before using real records, verify the live Worker `/api/health`, sign in using the owner account, check `/api/auth/profile`, then smoke-test product creation, initial stock, stock entry/exit, image upload, purchase, order, invoice and payment flows on Development.
 
-- The Worker is deployed as an API service, but its configured Neon connection is for `development` only.
-- Neon `production` has no application runtime secret and is not queried or modified by this integration.
-- No migrations are run automatically during deployment.
-- No scheduled polling, cron jobs, AI repair calls, or background database tasks are enabled.
-- The R2 bucket remains private; only the Worker receives a bucket binding.
-- Remove the old unused Pages Preview variables and binding only after the Worker health check and HR authentication are confirmed.
-- Review Cloudflare and Neon usage before enabling more modules or increasing traffic.
+## Environment boundary and operational safeguards
 
-## Scope still outstanding
+- The deployed Worker is configured with `ERP_ENVIRONMENT=development` and a Neon Development connection.
+- Neon Production currently has no application tables in its `public` schema and is not the runtime target.
+- Do not change the Worker connection to Production or apply Production migrations without explicit owner approval.
+- The R2 bucket is private; only the Worker receives its bucket binding.
+- No application migrations run automatically during deployment.
+- Optional AI repair is disabled by default. No AI repair execution is part of the normal deployment.
+- Review Cloudflare and Neon usage before enabling scheduled jobs or expanding traffic.
 
-Only the employee list/create path is backed by Neon. Product catalog, inventory movements, customers, orders, supplier purchases, accounts payable/receivable, expenses, cash/bank transactions, attendance, leave and payroll must remain labeled DEMO until their schemas, APIs, permission checks, audit events and migration tests are implemented.
+## Known items for the next implementation phase
+
+1. Complete a live authenticated smoke test of the deployed Worker and R2 paths.
+2. Extend automated tests to cover database-backed inventory and transaction paths, including stock conflict, order-to-invoice transitions and duplicate prevention.
+3. Implement the dedicated purchase-order and partial goods-receipt workflow if it remains in scope.
+4. Continue the inventory module audit and strengthen any missing UX, validation, traceability and reporting before loading real catalog data.
