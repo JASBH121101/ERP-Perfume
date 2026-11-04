@@ -1585,7 +1585,7 @@
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') closeMobileMenu();
   });
-  form.addEventListener('submit', function (event) {
+  form.addEventListener('submit', async function (event) {
     event.preventDefault(); if (!form.reportValidity()) return;
     const data = new FormData(form), value = function (key) { return String(data.get(key) || '').trim(); }, number = function (key) { return Number(data.get(key) || 0); };
     const editingId = form.dataset.editingId, existing = editingId ? products.find(function (product) { return String(product.id) === editingId; }) : null;
@@ -1602,6 +1602,25 @@
     const wholesalePrice=number('wholesalePrice');
     if(!Number.isFinite(wholesalePrice)||wholesalePrice<0){toast('El precio mayorista debe ser cero o mayor.');return;}
     const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),description:value('description'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,wholesalePrice:wholesalePrice||null,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
+    if(BACKEND_MODE){
+      const payload={sku:fields.sku,name:fields.name,brand:fields.brand,category:fields.category,concentration:fields.concentration,
+        gender:fields.gender,family:fields.family,sizeMl:fields.sizeMl,presentation:fields.presentation,barcode:fields.barcode,
+        description:fields.description,supplier:fields.supplier,purchaseCost:fields.purchaseCost,additionalCost:fields.additionalCost,
+        price:fields.price,wholesalePrice:fields.wholesalePrice,minStock:fields.minStock,location:fields.location,
+        tone:existing?existing.tone:'art-violet',notes:fields.notes};
+      try{
+        const response=existing
+          ?await apiRequest('/api/catalog/products/'+encodeURIComponent(existing.id),'PATCH',payload)
+          :await apiRequest('/api/catalog/products','POST',payload);
+        const saved=mapDbProduct(response.product);
+        if(existing){const index=products.findIndex(p=>String(p.id)===String(existing.id));if(index>=0)products[index]=saved;}
+        else products.unshift(saved);
+        form.reset();form.dataset.editingId='';form.elements.stock.readOnly=true;form.elements.stock.value='0';
+        updateProductCostPreview();dialog.close();renderView();
+        toast(existing?'Producto actualizado en Neon Development.':'Producto guardado en Neon Development con stock inicial cero.');
+      }catch(error){toast(error?.message||'No se pudo guardar el producto en Neon.');}
+      return;
+    }
     const snapshot=captureDemoState();
     if (existing) {
       Object.assign(existing,fields); if(!persistDemoData()){restoreDemoState(snapshot);return;} form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=true;
@@ -1617,7 +1636,7 @@
     while (products.some(function (product) { return String(product.sku).toLowerCase() === ('jbp-' + String(index).padStart(3,'0')).toLowerCase(); })) index+=1;
     return 'JBP-' + String(index).padStart(3,'0');
   }
-  stockForm.addEventListener('submit', function (event) {
+  stockForm.addEventListener('submit', async function (event) {
     event.preventDefault(); if (!stockForm.reportValidity()) return;
     const data=new FormData(stockForm), product=products.find(function (item) { return String(item.id)===String(data.get('productId')); });
     const type=String(data.get('type')||''), quantity=Number(data.get('quantity')), note=String(data.get('note')||'').trim();
@@ -1629,6 +1648,15 @@
     const newStock=previousStock+delta;
     if(newStock<0){toast('Stock insuficiente. La salida no puede dejar existencias negativas.');return;}
     if(delta===0){toast('El ajuste coincide con el stock actual; no se registró ningún movimiento.');return;}
+    if(BACKEND_MODE){
+      try{
+        const result=await apiRequest('/api/inventory/movements','POST',{productId:product.id,type,quantity,note});
+        const movement=mapDbMovement(result.movement);product.stock=movement.newStock;inventoryMovements.unshift(movement);
+        stockForm.reset();stockDialog.close();renderView();
+        toast(label+' registrada en Neon: '+product.name+' · '+(movement.delta>0?'+':'')+movement.delta+' unidades.');
+      }catch(error){toast(error?.message||'No se pudo registrar el movimiento.');}
+      return;
+    }
     const snapshot=captureDemoState();
     product.stock=newStock;
     inventoryMovements.unshift({id:Date.now(),productId:product.id,productName:product.name,sku:product.sku,type:label,quantity:Math.abs(delta),delta:delta,previousStock:previousStock,newStock:newStock,note:note,createdAt:new Date().toISOString()});
