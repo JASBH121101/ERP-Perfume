@@ -872,7 +872,7 @@ export async function handleERPRequest(request, env, user, sql) {
       const regimeReference = String(value.regime_confirmation_reference || "").trim();
       const authorizationNumber = String(value.computerized_invoicing_authorization_number || "").trim();
       const invoicingConfirmationReference = String(value.computerized_invoicing_confirmation_reference || "").trim();
-      if (confirmationDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(confirmationDate)) {
+      if (confirmationDate && !/^\d{4}-\d{2}-\d{2}$/.test(confirmationDate)) {
         return erpError(400, "INVALID_DGI_CONFIRMATION_DATE", "La fecha de confirmación DGI debe tener formato AAAA-MM-DD.");
       }
       if (value.regime_status !== "not_confirmed" && (!ruc || !confirmationDate || !regimeReference)) {
