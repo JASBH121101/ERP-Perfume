@@ -206,7 +206,53 @@
       inventoryMovements = [];
     }
   }
-  loadDemoData();
+  const BACKEND_MODE = Boolean(window.JBAuth && window.JBAuth.mode === 'authenticated');
+  let erpBootstrapLoaded=false,erpBootstrapLoading=false,erpBootstrapError='';
+  async function apiRequest(path,method,body){
+    const auth=window.JBAuth;
+    if(!BACKEND_MODE||!auth||auth.mode!=='authenticated')throw new Error('La sesión del ERP no está disponible.');
+    const token=await auth.getToken();
+    if(!token)throw new Error('La sesión expiró. Inicia sesión nuevamente.');
+    const response=await fetch(auth.apiUrl?auth.apiUrl(path):path,{
+      method:method||'GET',
+      headers:Object.assign({authorization:'Bearer '+token},body?{'content-type':'application/json'}:{}),
+      body:body?JSON.stringify(body):undefined,cache:'no-store'
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(result?.error?.message||result?.error?.code||'La operación no pudo completarse.');
+    return result;
+  }
+  function mapDbProduct(p){
+    const cost=Number(p.unit_cost_usd||0),price=Number(p.price_usd||0);
+    return {id:p.id,name:p.name,brand:p.brand||'',sku:p.sku,category:p.category||'Perfumería',
+      concentration:p.concentration||'',gender:p.gender||'',family:p.family||'',sizeMl:p.size_ml==null?null:Number(p.size_ml),
+      presentation:p.presentation||'',barcode:p.barcode||'',description:p.description||'',supplier:p.supplier_name||'',
+      purchaseCost:Number(p.purchase_cost_usd||0),additionalCost:Number(p.additional_cost_usd||0),unitCost:cost,
+      price:price,wholesalePrice:p.wholesale_price_usd==null?null:Number(p.wholesale_price_usd),
+      profit:price-cost,margin:price>0?(price-cost)/price*100:0,stock:Number(p.stock||0),minStock:Number(p.min_stock||0),
+      location:p.location||'',tone:p.tone||'art-violet',notes:p.notes||'',images:Array.isArray(p.images)?p.images:[],active:p.active!==false};
+  }
+  function mapDbSupplier(s){return {id:s.id,name:s.name,contact:s.contact||'',phone:s.phone||'',email:s.email||'',currency:s.currency||'USD',notes:s.notes||'',active:s.active!==false};}
+  function mapDbCustomer(c){return {id:c.id,name:c.name,contact:c.contact||c.phone||'',phone:c.phone||'',email:c.email||'',customerType:c.customer_type||'particular',orders:Number(c.orders||0),spent:Number(c.spent_usd||0),since:dateText(c.created_at)};}
+  function mapDbMovement(m){return {id:m.id,productId:m.product_id,productName:m.product_name,sku:m.sku_snapshot||'',type:m.movement_type,quantity:Number(m.quantity||0),delta:Number(m.quantity_delta||0),previousStock:Number(m.previous_stock||0),newStock:Number(m.new_stock||0),note:m.note||'',sourceType:m.reference_type||'',sourceId:m.reference_id||'',createdAt:m.created_at};}
+  async function loadERPBootstrap(){
+    if(!BACKEND_MODE||erpBootstrapLoading||erpBootstrapLoaded)return;
+    erpBootstrapLoading=true;erpBootstrapError='';
+    try{
+      const data=await apiRequest('/api/erp/bootstrap','GET');
+      products=(Array.isArray(data.products)?data.products:[]).map(mapDbProduct);
+      suppliers=(Array.isArray(data.suppliers)?data.suppliers:[]).map(mapDbSupplier);
+      customers=(Array.isArray(data.customers)?data.customers:[]).map(mapDbCustomer);
+      inventoryMovements=(Array.isArray(data.inventoryMovements)?data.inventoryMovements:[]).map(mapDbMovement);
+      exchangeRate=Number(data.exchangeRate)>0?Number(data.exchangeRate):36.6;
+      erpBootstrapLoaded=true;
+    }catch(error){erpBootstrapError=error?.message||'No se pudo cargar Neon Development.';toast(erpBootstrapError);}
+    finally{erpBootstrapLoading=false;renderView();}
+  }
+  if(BACKEND_MODE){
+    products=[];orders=[];customers=[];suppliers=[];purchases=[];expenses=[];cashEntries=[];invoices=[];
+    employees=[];inventoryMovements=[];purchaseOrders=[];purchaseReceipts=[];
+  }else{loadDemoData();}
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
