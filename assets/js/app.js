@@ -859,8 +859,9 @@
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
     const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
-    document.querySelector('#business-dialog .eyebrow').textContent=secureHR?'RR. HH. · NEON DEVELOPMENT':'GESTIÓN · DEMO LOCAL';
-    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':(secureHR?'Guardar en Neon':'Guardar en demo'));
+    const secureBackend=BACKEND_MODE&&['customer','supplier','employee'].includes(type);
+    document.querySelector('#business-dialog .eyebrow').textContent=secureHR?'RR. HH. · NEON DEVELOPMENT':(secureBackend?'GESTIÓN · NEON DEVELOPMENT':(BACKEND_MODE?'MÓDULO PENDIENTE DE CONEXIÓN':'GESTIÓN · DEMO LOCAL'));
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':(secureBackend?'Guardar en Neon':(BACKEND_MODE?'No disponible':'Guardar en demo')));
     if(type==='invoice'){
       businessForm.dataset.invoiceReceivedEdited='0';
       businessForm.dataset.invoiceCurrency=businessForm.querySelector('[name="currency"]')?.value||'NIO';
@@ -1403,7 +1404,7 @@
     form.elements.stock.readOnly = true;
     form.elements.stock.value = product ? String(product.stock) : '0';
     document.getElementById('modal-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
-    document.getElementById('save-product').textContent = product ? 'Guardar cambios' : 'Agregar a demo';
+    document.getElementById('save-product').textContent = product ? (BACKEND_MODE?'Guardar en Neon':'Guardar cambios') : (BACKEND_MODE?'Crear en Neon':'Agregar a demo');
     document.querySelector('#product-dialog .modal-note').textContent = BACKEND_MODE
       ? (product?'Ficha de producto en Neon Development. El stock se modifica únicamente desde Existencias.':'Nuevo producto en Neon Development. El stock inicial siempre será cero; registra las existencias desde Inventario.')
       : (product?'Edición de ficha DEMO. Las existencias no se cambian aquí: registra movimientos desde Existencias.':'Ficha DEMO. Los datos se guardan localmente en este navegador y todavía no se sincronizan con Neon.');
