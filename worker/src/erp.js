@@ -1096,7 +1096,9 @@ export async function handleERPRequest(request, env, user, sql) {
       const [users, pendingIdentities] = await Promise.all([
         sql.query(
           "SELECT u.id,u.auth_user_id,u.email,u.display_name,u.position_title,u.role,u.role_template_key," +
-          "u.account_status,u.active,u.must_change_password,u.created_at,u.updated_at,r.name AS role_template_name " +
+          "u.account_status,u.active,u.must_change_password,u.created_at,u.updated_at,r.name AS role_template_name," +
+          "COALESCE((SELECT jsonb_agg(jsonb_build_object('permission_key',uo.permission_key,'allowed',uo.allowed) ORDER BY uo.permission_key) " +
+          "FROM user_permission_overrides uo WHERE uo.user_id=u.id),'[]'::jsonb) AS overrides " +
           "FROM app_users u LEFT JOIN erp_roles r ON r.role_key=u.role_template_key ORDER BY u.created_at DESC LIMIT 500"
         ),
         sql.query(
