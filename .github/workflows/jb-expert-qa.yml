@@ -1,0 +1,154 @@
+name: JB Expert QA
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "index.html"
+      - "docs/**"
+      - "assets/**"
+      - "functions/**"
+      - "worker/**"
+      - "db/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "jb-expert-qa.config.json"
+      - "wrangler.toml"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jb-expert-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Deterministic source and visual audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout ERP main revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify private QA repository token
+        env:
+          JBQA_REPO_READ_TOKEN: ${{ secrets.JBQA_REPO_READ_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$JBQA_REPO_READ_TOKEN" ]; then
+            echo "::error::Missing JBQA_REPO_READ_TOKEN. Add a read-only GitHub token with access to JASBH121101/JB-Expert-QA."
+            exit 1
+          fi
+          echo "Private QA repository token is configured."
+
+      - name: Checkout pinned JB Expert QA engine
+        uses: actions/checkout@v4
+        with:
+          repository: JASBH121101/JB-Expert-QA
+          ref: 92f23fafd679c31dcbe496a4e1b3801d3f14fb7f
+          token: ${{ secrets.JBQA_REPO_READ_TOKEN }}
+          path: .jb-expert-qa
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned ERP dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install pinned JB Expert QA dependencies
+        run: npm --prefix .jb-expert-qa install --ignore-scripts --no-audit --no-fund --package-lock=false
+
+      - name: Install Chromium for visual audit
+        run: .jb-expert-qa/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Create clean ERP source snapshot
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/erp-project" "$RUNNER_TEMP/jb-expert-qa-report"
+          git archive "$GITHUB_SHA" | tar -x -C "$RUNNER_TEMP/erp-project"
+          cp package-lock.json "$RUNNER_TEMP/erp-project/package-lock.json"
+
+      - name: Run JB Expert QA source audit
+        shell: bash
+        run: |
+          set +e
+          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
+            --format=json \
+            --output="$RUNNER_TEMP/jb-expert-qa-report/report.json"
+          json_status=$?
+          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
+            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
+            --format=markdown \
+            --output="$RUNNER_TEMP/jb-expert-qa-report/report.md"
+          markdown_status=$?
+          set -e
+          if [ "$json_status" -ne 0 ] || [ "$markdown_status" -ne 0 ]; then
+            echo "::error::JB Expert QA source audit failed. Inspect the report artifact."
+            exit 1
+          fi
+          test -s "$RUNNER_TEMP/jb-expert-qa-report/report.json"
+          test -s "$RUNNER_TEMP/jb-expert-qa-report/report.md"
+
+      - name: Enforce completeness, critical findings and score
+        env:
+          REPORT_PATH: ${{ runner.temp }}/jb-expert-qa-report/report.json
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const report = JSON.parse(readFileSync(process.env.REPORT_PATH, "utf8"));
+          const diagnostics = report.diagnostics ?? [];
+          const critical = diagnostics.filter((item) => item.severity === "critical");
+          const ruleErrors = (report.execution ?? []).filter((item) => item.status !== "passed");
+          const complete = report.analysisScope?.complete === true;
+          const score = report.scoring?.score;
+          const minimum = report.scoring?.minimumScore;
+          const scorePassed = Number.isFinite(score) && Number.isFinite(minimum) &&
+            minimum >= 90 && score >= minimum && report.scoring?.passed === true;
+          const advisories = report.dependencyAdvisories ?? {};
+          const advisoryBlockers = diagnostics.filter((item) =>
+            item.metadata?.advisoryId && ["critical", "high"].includes(item.severity));
+
+          console.log("Engine:", report.version ?? "unknown");
+          console.log("Profile:", report.profile ?? "unknown");
+          console.log("Files analyzed:", report.analysisScope?.filesAnalyzed ?? 0);
+          console.log("Scan complete:", complete);
+          console.log("Score:", score ?? "n/a", "/", minimum ?? "n/a");
+          console.log("Critical findings:", critical.length);
+          console.log("Rule execution errors:", ruleErrors.length);
+          console.log("Dependency advisory status:", advisories.status ?? "not reported");
+          console.log("Dependency advisories found:", advisories.vulnerabilitiesFound ?? 0);
+
+          if (report.profile !== "jb-parfums-erp") throw new Error("Unexpected JB Expert QA profile.");
+          if (!complete || critical.length || ruleErrors.length) throw new Error("Incomplete audit, critical finding, or rule execution error.");
+          if (advisories.required === true && advisories.complete !== true) throw new Error("Required dependency advisory coverage is incomplete.");
+          if (advisoryBlockers.length) throw new Error("High or critical dependency advisory found.");
+          if (!scorePassed) throw new Error("Score below configured threshold (90) or scoring did not pass.");
+          console.log("JB Expert QA source gate passed.");
+          NODE
+
+      - name: Run responsive and interaction visual audit
+        run: node scripts/jb-expert-qa-visual.mjs
+
+      - name: Upload JB Expert QA reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jb-expert-qa-main-report
+          path: |
+            ${{ runner.temp }}/jb-expert-qa-report/
+            .ai-output/jb-expert-qa-visual/
+          retention-days: 7
+          if-no-files-found: warn
