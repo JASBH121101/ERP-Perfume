@@ -349,7 +349,7 @@ async function createInventoryMovement(request, env, context) {
     const movementRows = await auth.sql.query(
       "SELECT m.id, m.product_id, p.name AS product_name, p.sku AS sku_snapshot, m.movement_type, m.quantity, " +
       "m.quantity_delta, m.previous_stock, m.new_stock, m.note, m.reference_type, m.created_at " +
-      "FROM inventory_movements m JOIN products p ON p.id=m.product_id WHERE m.id=$1::bigint LIMIT 1",
+      "FROM inventory_movements m JOIN products p ON p.id=m.product_id WHERE m.id=$1::uuid LIMIT 1",
       [rows[0].entity_id]
     );
     return context.json({ movement: movementRows[0] }, 201);
