@@ -1742,7 +1742,14 @@
       status('Leyendo página '+pageNumber+' de '+pdf.numPages+'…');
       const page=await pdf.getPage(pageNumber);
       const textContent=await page.getTextContent();
-      let pageText=textContent.items.map(item=>item.str||'').join(' ').trim();
+      const positionedItems=(textContent.items||[]).filter(item=>String(item.str||'').trim()).map(item=>({text:String(item.str||'').trim(),x:Number(item.transform?.[4]||0),y:Number(item.transform?.[5]||0)})).sort((a,b)=>b.y-a.y||a.x-b.x);
+      const textLines=[];
+      for(const item of positionedItems){
+        let line=textLines.find(candidate=>Math.abs(candidate.y-item.y)<=2.5);
+        if(!line){line={y:item.y,items:[]};textLines.push(line);}
+        line.items.push(item);
+      }
+      let pageText=textLines.sort((a,b)=>b.y-a.y).map(line=>line.items.sort((a,b)=>a.x-b.x).map(item=>item.text).join('  ')).join('\\n').trim();
       if(!pageText){
         status('PDF escaneado: aplicando OCR local a la página '+pageNumber+'…');
         await loadCatalogScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',()=>Boolean(window.Tesseract));
