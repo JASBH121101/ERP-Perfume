@@ -51,11 +51,25 @@ async function installAuthenticatedTestSession(page) {
     } })
   }));
 
-  await page.route('**/api/hr/employees', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ employees: [] })
-  }));
+  await page.route('**/api/hr/employees', route => {
+    if (route.request().method() === 'POST') {
+      const payload = route.request().postDataJSON() || {};
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ employee: {
+          id: 'qa-employee-001', employee_code: 'QA-001',
+          name: payload.name, position: payload.position, department: payload.department,
+          salary_nio: Number(payload.salaryNio || 0), status: 'Activo'
+        } })
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ employees: [] })
+    });
+  });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -330,8 +344,9 @@ test('mobile drawer scroll is isolated from page background', async ({ page }) =
 test('mobile drawer scroll responds to wheel input without moving the page', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
   await page.goto('/');
-  await page.evaluate(() => window.scrollTo(0, 240));
-  await page.waitForFunction(() => window.scrollY > 0);
+  await navigateToView(page, 'products');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   const pageScrollBefore = await page.evaluate(() => window.scrollY);
 
   await page.getByRole('button', { name: 'Abrir menú' }).click();
@@ -364,6 +379,7 @@ test('the DEMO catalogue still contains the eight original sample perfumes', asy
 
 test('form fields have no placeholder or optional copy; required fields use a red asterisk only', async ({ page }) => {
   await page.goto('/');
+  await navigateToView(page, 'products');
   const productDialog = page.locator('#product-dialog');
   await page.getByRole('button', { name: /Nuevo producto/ }).click();
 
@@ -412,7 +428,7 @@ test('legacy DEMO data is converted once from córdobas to USD at 36.60', async 
   await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body')).toContainText('$10.00');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('jbparfums-demo-data-v2')));
-  expect(saved.version).toBe(3);
+  expect(saved.version).toBe(4);
   expect(saved.products[0].price).toBe(10);
   expect(saved.products[0].unitCost).toBe(6);
   expect(saved.orders[0].amount).toBe(11);
@@ -495,7 +511,7 @@ test('payroll is NIO-only',async({page})=>{
  await page.goto('/');await navigateToView(page, 'hr');await page.getByRole('button',{name:/Agregar colaborador/}).click();
  const dialog=page.locator('#business-dialog');await expect(dialog.locator('select[name="currency"]')).toHaveCount(0);
  await dialog.locator('input[name="name"]').fill('Colaborador QA');await dialog.locator('input[name="position"]').fill('Asistente');await dialog.locator('input[name="salaryNio"]').fill('15000');
- await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('Colaborador QA');await expect(page.locator('#view-root')).toContainText('15,000.00');
+ await dialog.getByRole('button',{name:'Guardar en Neon'}).click();await expect(page.locator('#view-root')).toContainText('Colaborador QA');await expect(page.locator('#view-root')).toContainText('15,000.00');
 });
 test('expenses support two currencies and cash account enforces currency match',async({page})=>{
  await page.goto('/');await navigateToView(page, 'expenses');await page.getByRole('button',{name:/Nuevo gasto/}).click();
@@ -1129,6 +1145,6 @@ test('profitability and capital dashboards are clearly separated', async ({ page
   await expect(page.getByRole('heading', { name: 'Capital y flujo de efectivo' })).toBeVisible();
   await expect(page.locator('#view-root')).toContainText('no incluye saldo inicial');
   await navigateToView(page, 'profitability');
-  await expect(page.getByRole('heading', { name: 'Rentabilidad' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rentabilidad', exact: true })).toBeVisible();
   await expect(page.locator('#view-root')).toContainText('no es contabilidad oficial');
 });
