@@ -83,7 +83,8 @@ test('a new product can be added to the demo session', async ({ page }) => {
   await page.getByLabel('SKU / Código interno').fill('QA-ERP-001');
   await dialog.locator('select[name="category"]').selectOption('Árabes');
   await page.getByLabel('Precio de venta (USD)').fill('1250');
-  await dialog.getByLabel('Existencias iniciales').fill('4');
+  await expect(dialog.getByLabel('Existencias al registrar')).toHaveValue('0');
+  await expect(dialog.getByLabel('Existencias al registrar')).toHaveAttribute('readonly', '');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
   await expect(dialog).not.toBeVisible();
@@ -114,7 +115,8 @@ test('product master calculates unit cost, profit and gross margin', async ({ pa
   await expect(dialog.locator('#unit-profit-preview')).toHaveText('$25.00');
   await expect(dialog.locator('#gross-margin-preview')).toHaveText('50.0%');
 
-  await dialog.getByLabel('Existencias iniciales').fill('7');
+  await expect(dialog.getByLabel('Existencias al registrar')).toHaveValue('0');
+  await expect(dialog.getByLabel('Existencias al registrar')).toHaveAttribute('readonly', '');
   await dialog.getByLabel('Stock mínimo').fill('2');
   await dialog.getByLabel('Ubicación en bodega').fill('Estante QA A-01');
   await dialog.getByRole('button', { name: /Agregar a demo/ }).click();
@@ -163,7 +165,7 @@ test('product names are rendered as text, not executable markup', async ({ page 
   const payload = '<img src=x onerror=alert(1)>';
   await page.getByLabel('Nombre del perfume').fill(payload);
   await page.getByLabel('Precio de venta (USD)').fill('100');
-  await dialog.getByLabel('Existencias iniciales').fill('1');
+  await expect(dialog.getByLabel('Existencias al registrar')).toHaveValue('0');
   await page.getByRole('button', { name: /Agregar a demo/ }).click();
 
   await expect(page.locator('#product-table-body')).toContainText(payload);
@@ -191,17 +193,17 @@ test('product creation and edits persist locally after reload without changing s
   await dialog.getByLabel('Nombre del perfume').fill('QA Persistente');
   await dialog.getByLabel('SKU / Código interno').fill('QA-PERSIST-01');
   await dialog.getByLabel('Precio de venta (USD)').fill('1500');
-  await dialog.getByLabel('Existencias iniciales').fill('6');
+  await expect(dialog.getByLabel('Existencias al registrar')).toHaveValue('0');
   await dialog.getByRole('button', { name: /Agregar a demo/ }).click();
   await page.reload(); await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente');
   await page.getByRole('button', { name: 'Editar QA Persistente' }).click();
   await dialog.getByLabel('Nombre del perfume').fill('QA Persistente Editado');
   await dialog.getByLabel('Precio de venta (USD)').fill('1750');
-  await expect(dialog.getByLabel('Existencias iniciales')).toHaveValue('6');
+  await expect(dialog.getByLabel('Existencias al registrar')).toHaveValue('0');
   await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente Editado');
-  await expect(page.locator('#product-table-body')).toContainText('6 uds.');
+  await expect(page.locator('#product-table-body')).toContainText('0 uds.');
   await page.reload(); await navigateToView(page, 'products');
   await expect(page.locator('#product-table-body')).toContainText('QA Persistente Editado');
 });
@@ -436,8 +438,10 @@ test('payroll is NIO-only',async({page})=>{
 test('expenses support two currencies and cash account enforces currency match',async({page})=>{
  await page.goto('/');await navigateToView(page, 'expenses');await page.getByRole('button',{name:/Nuevo gasto/}).click();
  const dialog=page.locator('#business-dialog');await dialog.locator('select[name="category"]').selectOption({label:'Transporte'});
- await dialog.locator('input[name="description"]').fill('Transporte QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
+ await dialog.locator('input[name="description"]').fill('Transporte QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');await dialog.locator('select[name="account"]').selectOption('Caja NIO');
  await dialog.getByRole('button',{name:'Guardar en demo'}).click();await expect(page.locator('#view-root')).toContainText('$10.00');
+ await navigateToView(page, 'capital');
+ await expect(page.locator('.summary-mini').filter({hasText:'Salidas acumuladas'})).toContainText('$10.00');
  await navigateToView(page, 'cash');await page.getByRole('button',{name:/Registrar movimiento/}).click();
  await dialog.locator('input[name="concept"]').fill('Cobro QA');await dialog.locator('input[name="amount"]').fill('366');await dialog.locator('select[name="currency"]').selectOption('NIO');
  await dialog.locator('select[name="account"]').selectOption({label:'Caja USD'});await dialog.getByRole('button',{name:'Guardar en demo'}).click();
