@@ -449,7 +449,7 @@
         '<button class="table-action" type="button" data-action="edit-product" data-id="' + product.id + '" aria-label="Editar ' + esc(product.name) + '" title="Editar">' + svg('edit') + '</button>' +
         '<button class="table-action" type="button" data-action="toggle-product" data-id="' + product.id + '" aria-label="' + (inactive ? 'Activar ' : 'Desactivar ') + esc(product.name) + '" title="' + (inactive ? 'Activar' : 'Desactivar') + '">' + (inactive ? '↻' : '⏸') + '</button>' +
         '<button class="table-action table-action-danger" type="button" data-action="delete-product" data-id="' + product.id + '" aria-label="Eliminar ' + esc(product.name) + '" title="Eliminar">×</button>';
-      return '<tr class="' + (inactive ? 'row-inactive' : '') + '"><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + productMeta(product) + '</small></span></div></td><td data-label="Categoría">' + esc(product.category) + '</td><td data-label="Precio y costo" class="table-primary">' + money(product.price) + '<small class="table-secondary">Costo ' + money(costs.unitCost) + ' · Margen ' + costs.margin.toFixed(1) + '%</small></td><td data-label="Existencias">' + product.stock + ' uds. <small class="table-secondary">Mín. ' + product.minStock + '</small></td><td data-label="Estado">' + productStatus + '</td><td data-label="Acciones"><div class="table-actions">' + actions + '</div></td></tr>';
+      return '<tr class="' + (inactive ? 'row-inactive' : '') + '"><td data-label="Perfume"><div class="product-cell"><span class="product-image-slot" data-product-image-slot="' + esc(product.id) + '">' + art(product.tone) + '</span><span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + productMeta(product) + '</small></span></div></td><td data-label="Categoría">' + esc(product.category) + '</td><td data-label="Precio y costo" class="table-primary">' + money(product.price) + '<small class="table-secondary">Costo ' + money(costs.unitCost) + ' · Margen ' + costs.margin.toFixed(1) + '%</small></td><td data-label="Existencias">' + product.stock + ' uds. <small class="table-secondary">Mín. ' + product.minStock + '</small></td><td data-label="Estado">' + productStatus + '</td><td data-label="Acciones"><div class="table-actions">' + actions + '</div></td></tr>';
     }).join('');
   }
   function renderProducts() {
@@ -499,7 +499,8 @@
     document.getElementById('product-detail-title').textContent = product.name;
     document.getElementById('product-detail-content').innerHTML = '<div class="detail-grid">' + fields.map(function (field) {
       return '<div class="detail-field"><span>' + esc(field[0]) + '</span><strong>' + esc(field[1] || '—') + '</strong></div>';
-    }).join('') + '</div>' + (product.notes ? '<p class="detail-notes">' + esc(product.notes) + '</p>' : '');
+    }).join('') + '</div>' + (product.notes ? '<p class="detail-notes">' + esc(product.notes) + '</p>' : '') + '<div class="detail-image-gallery product-image-gallery" id="product-detail-images"></div>';
+    mountProductImageGallery(document.getElementById('product-detail-images'),product);
     document.getElementById('edit-detail-product').setAttribute('data-id', String(product.id));
     if (typeof detailDialog.showModal === 'function') detailDialog.showModal();
   }
@@ -1424,6 +1425,7 @@
     };
     root.innerHTML = (renderers[state.view] || renderDashboard)();
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
+    hydrateProductImageSlots();
   }
   function goToView(view) {
     if (!views[view]) return;
@@ -1472,6 +1474,7 @@
       ? 'Edición de ficha en Neon. Las existencias no se modifican aquí: registra entradas, salidas o ajustes desde Existencias.'
       : 'La ficha y las existencias iniciales se guardarán en Neon Development.';
     updateProductCostPreview();
+    mountProductImageGallery(document.getElementById('product-image-gallery'),product||{images:[]});
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else toast('El formulario emergente no es compatible con este navegador.');
   }
