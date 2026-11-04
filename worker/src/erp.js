@@ -954,6 +954,7 @@ export async function handleERPRequest(request, env, user, sql) {
   const normalizedResource = resource.replace(/-/g, "_");
   const def = RESOURCE_DEFS[normalizedResource];
   if (!def) return erpError(404, "RESOURCE_NOT_FOUND", "El módulo solicitado no existe.");
+  if (normalizedResource === "dgi_support_documents" && request.method !== "GET") return erpError(405, "DGI_DOCUMENT_WRITE_REQUIRES_UPLOAD", "Los respaldos DGI solo se registran mediante el flujo seguro de carga de archivos.");
   if (!canAccess(user, def.roles)) return erpError(403, "FORBIDDEN", "Tu rol no permite operar este módulo.");
   if (request.method === "GET" && !id) {
     try {
