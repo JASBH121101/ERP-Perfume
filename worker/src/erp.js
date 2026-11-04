@@ -787,6 +787,10 @@ export async function handleERPRequest(request, env, user, sql) {
       if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para cambiar pedidos.");
       return updateOrderStatus(sql,user,id,body);
     }
+    if (normalizedResource === "hr_leave_requests" && Object.prototype.hasOwnProperty.call(body,"status")) {
+      if (!canAccess(user, RESOURCE_DEFS.hr_leave_requests.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para revisar solicitudes.");
+      return reviewLeaveRequest(sql,user,id,body);
+    }
     return updateGeneric(sql, user, normalizedResource, def, id, body);
   }
   if (request.method === "DELETE" && id) return softDelete(sql, user, normalizedResource, def, id);
