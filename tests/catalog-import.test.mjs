@@ -528,6 +528,9 @@ test("manual inventory movements cannot spoof order or invoice references", asyn
   const sql = {
     query: async (query, params) => {
       insertParams = params;
+      assert.match(query, /FOR UPDATE/);
+      assert.match(query, /c\.previous_stock\+c\.delta>=0/);
+      assert.match(query, /c\.delta<>0/);
       return [{
         id: "00000000-0000-0000-0000-000000000402",
         movement_type: "Entrada",
@@ -539,12 +542,101 @@ test("manual inventory movements cannot spoof order or invoice references", asyn
     product_id: "00000000-0000-0000-0000-000000000101",
     movement_type: "Entrada",
     quantity: 1,
+    note: "Compra inicial",
     reference_type: "order",
     reference_id: "00000000-0000-0000-0000-000000000201"
   }), {}, owner, sql);
   assert.equal(response.status, 201);
-  assert.equal(insertParams[4], "manual");
-  assert.equal(insertParams[5], null);
+  assert.equal(insertParams[3], "Compra inicial");
+  assert.equal(insertParams[4], owner.id);
+  assert.doesNotMatch(insertParams.join("|"), /00000000-0000-0000-0000-000000000201/);
+});
+
+test("manual inventory endpoint rejects return and reversal labels without a source document", async () => {
+  let queryCount = 0;
+  const sql = { query: async () => { queryCount += 1; return []; } };
+  for (const movement_type of ["Devolucion", "Reversion"]) {
+    const response = await handleERPRequest(requestFor("inventory-movements", "POST", {
+      product_id: "00000000-0000-0000-0000-000000000101",
+      movement_type,
+      quantity: 1
+    }), {}, owner, sql);
+    const body = await response.json();
+    assert.equal(response.status, 400);
+    assert.equal(body.error.code, "INVALID_MOVEMENT");
+  }
+  assert.equal(queryCount, 0);
+});
+
+test("manual inventory endpoint rejects invalid, fractional, oversized and overlong movement data", async () => {
+  let queryCount = 0;
+  const sql = { query: async () => { queryCount += 1; return []; } };
+  const invalidInputs = [
+    { movement_type: "Entrada", quantity: 0 },
+    { movement_type: "Salida", quantity: 2.5 },
+    { movement_type: "Ajuste", quantity: 2147483648 },
+    { movement_type: "Entrada", quantity: 1, note: "x".repeat(121) }
+  ];
+  for (const input of invalidInputs) {
+    const response = await handleERPRequest(requestFor("inventory-movements", "POST", {
+      product_id: "00000000-0000-0000-0000-000000000101",
+      ...input
+    }), {}, owner, sql);
+    assert.equal(response.status, 400);
+  }
+  assert.equal(queryCount, 0);
+});
+
+test("manual inventory movement returns a stock conflict when the locked stock update changes no row", async () => {
+  let executedSql = "";
+  const sql = { query: async (query) => { executedSql = query; return []; } };
+  const response = await handleERPRequest(requestFor("inventory-movements", "POST", {
+    product_id: "00000000-0000-0000-0000-000000000101",
+    movement_type: "Salida",
+    quantity: 999
+  }), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, "STOCK_CONFLICT");
+  assert.match(executedSql, /FOR UPDATE/);
+  assert.match(executedSql, /c\.previous_stock\+c\.delta>=0/);
+});
+
+test("purchase receipt atomically updates stock, weighted average unit cost, kardex and audit trail", async () => {
+  let executedSql = "";
+  let executedParams = [];
+  const sql = { query: async (query, params) => {
+    executedSql = query;
+    executedParams = params;
+    return [{ id: "00000000-0000-0000-0000-000000000601", purchase_number: "JBC-QA-601" }];
+  }};
+  const response = await handleERPRequest(requestFor("purchases", "POST", {
+    purchase_number: "JBC-QA-601",
+    supplier_id: "00000000-0000-0000-0000-000000000602",
+    supplier_name: "Proveedor QA",
+    product_id: "00000000-0000-0000-0000-000000000101",
+    quantity: 4,
+    unit_cost_usd: 12.5,
+    currency: "USD",
+    exchange_rate: 36.6,
+    paid_usd: 0,
+    initial_payment_amount: 0,
+    account_name: null
+  }), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(body.record.purchase_number, "JBC-QA-601");
+  assert.equal(executedParams[0], "JBC-QA-601");
+  assert.equal(executedParams[9], 4);
+  assert.equal(executedParams[10], 12.5);
+  assert.match(executedSql, /FOR UPDATE/);
+  assert.match(executedSql, /stock=t\.stock\+t\.quantity/);
+  assert.match(executedSql, /purchase_cost_usd=CASE/);
+  assert.match(executedSql, /\(t\.purchase_cost_usd\*t\.stock\)\+\(t\.unit_cost_usd\*t\.quantity\)/);
+  assert.match(executedSql, /unit_cost_usd=CASE/);
+  assert.match(executedSql, /'Entrada'/);
+  assert.match(executedSql, /'purchase'/);
+  assert.match(executedSql, /audit_log/);
 });
 
 test("manual cash entries cannot spoof automated payroll or invoice references", async () => {

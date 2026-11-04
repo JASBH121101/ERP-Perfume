@@ -373,15 +373,26 @@ export async function importProducts(sql, user, body) {
 async function createInventoryMovement(sql, user, body) {
   const type = String(body.movement_type || "");
   const quantity = Number(body.quantity);
-  if (!body.product_id || !["Entrada","Salida","Ajuste","Devolucion","Reversion"].includes(type) || !Number.isInteger(quantity) || quantity < 0 || (type !== "Ajuste" && quantity < 1)) {
-    return erpError(400, "INVALID_MOVEMENT", "Selecciona un tipo de movimiento y una cantidad válida.");
+  const note = body.note == null ? "" : String(body.note).trim();
+  if (!body.product_id || !["Entrada","Salida","Ajuste"].includes(type) ||
+      !Number.isInteger(quantity) || quantity < 0 || quantity > 2147483647 ||
+      (type !== "Ajuste" && quantity < 1) || note.length > 120) {
+    return erpError(400, "INVALID_MOVEMENT", "Los movimientos manuales solo permiten Entrada, Salida o Ajuste; revisa producto, cantidad y nota.");
   }
-  const rows = await sql.query(
-    "WITH target AS (SELECT id,stock FROM products WHERE id=$1::uuid AND active=TRUE FOR UPDATE), calc AS (SELECT id,stock AS previous_stock, CASE WHEN $2='Salida' THEN -$3 WHEN $2='Ajuste' THEN $3-stock ELSE $3 END AS delta FROM target), updated AS (UPDATE products p SET stock=c.previous_stock+c.delta, updated_at=NOW() FROM calc c WHERE p.id=c.id AND c.previous_stock+c.delta>=0 AND c.delta<>0 RETURNING p.id,p.name,p.sku,c.previous_stock,c.delta,p.stock AS new_stock), movement AS (INSERT INTO inventory_movements (product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,$2,ABS(delta),delta,previous_stock,new_stock,$4,$5,$6,$7 FROM updated RETURNING *), logged AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) SELECT $7,'inventory_movement','product',updated.id::text,jsonb_build_object('movement',movement.movement_type,'delta',movement.quantity_delta,'new_stock',movement.new_stock) FROM movement JOIN updated ON updated.id=movement.product_id) SELECT movement.*, updated.name AS product_name, updated.sku FROM movement JOIN updated ON updated.id=movement.product_id",
-    [body.product_id,type,quantity,body.note || null,"manual",null,user.id]
-  );
-  if (!rows[0]) return erpError(409, "STOCK_CONFLICT", "No se pudo aplicar el movimiento: el producto no existe, está inactivo, el ajuste no cambia el stock o la salida supera las existencias.");
-  return erpJson({ record: rows[0] }, 201);
+  try {
+    const rows = await sql.query(
+      "WITH target AS (SELECT id,stock FROM products WHERE id=$1::uuid AND active=TRUE FOR UPDATE), calc AS (SELECT id,stock AS previous_stock, CASE WHEN $2='Salida' THEN -$3 WHEN $2='Ajuste' THEN $3-stock ELSE $3 END AS delta FROM target), updated AS (UPDATE products p SET stock=c.previous_stock+c.delta, updated_at=NOW() FROM calc c WHERE p.id=c.id AND c.previous_stock+c.delta>=0 AND c.delta<>0 RETURNING p.id,p.name,p.sku,c.previous_stock,c.delta,p.stock AS new_stock), movement AS (INSERT INTO inventory_movements (product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,$2,ABS(delta),delta,previous_stock,new_stock,$4,'manual',NULL,$5 FROM updated RETURNING *), logged AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) SELECT $5,'inventory_movement','product',updated.id::text,jsonb_build_object('movement',movement.movement_type,'delta',movement.quantity_delta,'new_stock',movement.new_stock) FROM movement JOIN updated ON updated.id=movement.product_id) SELECT movement.*, updated.name AS product_name, updated.sku FROM movement JOIN updated ON updated.id=movement.product_id",
+      [body.product_id,type,quantity,note || null,user.id]
+    );
+    if (!rows[0]) return erpError(409, "STOCK_CONFLICT", "No se pudo aplicar el movimiento: el producto no existe, está inactivo, el ajuste no cambia el stock o la salida supera las existencias.");
+    return erpJson({ record: rows[0] }, 201);
+  } catch (error) {
+    if (error?.code === "22P02") return erpError(400, "INVALID_PRODUCT_ID", "El producto seleccionado no tiene un identificador válido.");
+    if (error?.code === "23503") return erpError(400, "PRODUCT_NOT_FOUND", "El producto relacionado no existe.");
+    if (error?.code === "23514" || error?.code === "22003") return erpError(400, "INVALID_MOVEMENT", "La cantidad o los datos del movimiento no cumplen las reglas del inventario.");
+    console.error("[erp] Inventory movement failed:",error?.message || "database error");
+    return erpError(503, "MOVEMENT_SAVE_FAILED", "No se pudo guardar el movimiento en Neon.");
+  }
 }
 
 

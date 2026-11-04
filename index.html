@@ -191,7 +191,7 @@
   <dialog class="modal stock-modal" id="stock-dialog" aria-labelledby="stock-modal-title">
     <form id="stock-form" method="dialog" class="modal-card">
       <div class="modal-heading"><div><span class="eyebrow">INVENTARIO · KARDEX EN NEON</span><h2 id="stock-modal-title">Registrar movimiento</h2></div><button type="button" class="icon-button modal-close" id="stock-modal-close" aria-label="Cerrar">×</button></div>
-      <p class="modal-note">Cada movimiento actualiza el stock y registra el saldo anterior y posterior en el kardex de Neon.</p>
+      <p class="modal-note">Cada movimiento actualiza el stock y registra el saldo anterior y posterior en el kardex de Neon. Las devoluciones y reversiones deben originarse en un proceso vinculado, no como ajuste manual.</p>
       <div class="form-grid">
         <div class="form-field full-field search-field" data-search-field><label for="stock-product-search">Producto <span class="required-mark" aria-hidden="true">*</span></label><input id="stock-product-search" type="search" data-lookup="product" data-target="productId" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="stock-product-results" required><input type="hidden" name="productId"><div class="search-results" id="stock-product-results" role="listbox" hidden></div></div>
         <label class="form-field full-field"><span>Tipo de movimiento <span class="required-mark" aria-hidden="true">*</span></span><select name="type" id="stock-movement-type" required><option value="entry">Entrada</option><option value="exit">Salida</option><option value="adjustment">Ajuste de inventario</option></select></label>
