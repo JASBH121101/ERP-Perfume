@@ -60,7 +60,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   let inventoryMovements = [];
   let dgiSupportDocuments = [];
   let dgiDocumentsLoaded = false, dgiDocumentsLoading = false, dgiDocumentsLoadAttempted = false, dgiDocumentsError = "";
-  let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"" };
+  let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", regime_confirmation_reference:"", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"", computerized_invoicing_authorization_number:"", computerized_invoicing_confirmation_reference:"" };
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
 
@@ -1497,7 +1497,10 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       certificate_available:data.get('certificateAvailable')==='on',
       certificate_displayed:data.get('certificateDisplayed')==='on',
       computerized_invoicing_status:String(data.get('computerizedInvoicingStatus')||'not_confirmed'),
-      dgi_confirmation_date:String(data.get('dgiConfirmationDate')||'').trim()
+      dgi_confirmation_date:String(data.get('dgiConfirmationDate')||'').trim(),
+      regime_confirmation_reference:String(data.get('regimeConfirmationReference')||'').trim(),
+      computerized_invoicing_authorization_number:String(data.get('computerizedInvoicingAuthorizationNumber')||'').trim(),
+      computerized_invoicing_confirmation_reference:String(data.get('computerizedInvoicingConfirmationReference')||'').trim()
     };
     if(!Number.isFinite(value.quota_fixed_amount_nio)||value.quota_fixed_amount_nio<0){toast('La cuota mensual debe ser un importe válido.');return;}
     if(button){button.disabled=true;button.textContent='Guardando…';}
@@ -1554,15 +1557,22 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
         date:new Date(payment.createdAt),
         amount:dgiAmountNio(payment.amountUsd,payment.exchangeRate||1)
       })));
-    const monthSales=salesRows.filter(row=>row.date>=monthStart&&row.date<nextMonth).reduce((sum,row)=>sum+row.amount,0);
+    const unlinkedCashIncome=cashEntries.filter(entry=>entry.direction==='income'&&!entry.sourceType);
+    const unlinkedIncomeRows=unlinkedCashIncome.map(entry=>({
+      date:new Date(entry.createdAt),
+      amount:dgiAmountNio(entry.amountUsd,entry.exchangeRate||1)
+    }));
+    // Standalone cash receipts are included in control thresholds to avoid understating income.
+    // Linked cash entries are excluded here because their invoice payment is already counted.
+    const incomeRows=[...salesRows,...unlinkedIncomeRows];
+    const monthSales=incomeRows.filter(row=>row.date>=monthStart&&row.date<nextMonth).reduce((sum,row)=>sum+row.amount,0);
     const sixMonthStart=new Date(now.getFullYear(),now.getMonth()-6,1);
-    const sixMonthSales=salesRows.filter(row=>row.date>=sixMonthStart&&row.date<monthStart);
+    const sixMonthSales=incomeRows.filter(row=>row.date>=sixMonthStart&&row.date<monthStart);
     const sixMonthTotal=sixMonthSales.reduce((sum,row)=>sum+row.amount,0);
     const sixMonthAverage=sixMonthTotal/6;
     const inventoryCost=products.reduce((sum,p)=>sum+Math.max(0,Number(p.stock||0))*Math.max(0,Number(p.unitCost||0))*exchangeRate,0);
     const monthPendingOrders=completedOrdersWithoutInvoice.filter(o=>{const d=new Date(o.createdAt);return d>=monthStart&&d<nextMonth;}).length;
-    const unlinkedCashIncome=cashEntries.filter(entry=>entry.direction==='income'&&!entry.sourceType);
-    const unlinkedCashIncomeNio=unlinkedCashIncome.reduce((sum,entry)=>sum+dgiAmountNio(entry.amountUsd,entry.exchangeRate||1),0);
+    const unlinkedCashIncomeNio=unlinkedIncomeRows.reduce((sum,row)=>sum+row.amount,0);
     const regime=dgiCompliance.regime_status||'not_confirmed';
     const dgiPaymentPeriod=dgiPeriodKey(new Date(now.getFullYear(),now.getMonth()-1,1));
     const dgiPayment=dgiSupportDocuments.find(d=>d.documentType==='dgi_payment'&&d.fiscalPeriod===dgiPaymentPeriod);
@@ -1579,8 +1589,11 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       formField('Dirección del establecimiento','businessAddress','text',false,'maxlength="180" value="'+esc(dgiCompliance.business_address||'')+'"')+
       selectField('Régimen confirmado por DGI','regimeStatus','<option value="not_confirmed" '+(regime==='not_confirmed'?'selected':'')+'>Pendiente de confirmación</option><option value="cuota_fija" '+(regime==='cuota_fija'?'selected':'')+'>Cuota Fija</option><option value="general" '+(regime==='general'?'selected':'')+'>Régimen General</option>',true)+
       formField('Cuota fija mensual confirmada (C$)','quotaFixedAmountNio','number',false,'min="0" max="10000000" step="0.01" value="'+cuota.toFixed(2)+'"')+
+      formField('Referencia de constancia o resolución del régimen','regimeConfirmationReference','text',false,'maxlength="180" value="'+esc(dgiCompliance.regime_confirmation_reference||'')+'"')+
       selectField('Estado de autorización para facturación computarizada','computerizedInvoicingStatus','<option value="not_confirmed" '+((dgiCompliance.computerized_invoicing_status||'not_confirmed')==='not_confirmed'?'selected':'')+'>No confirmado con DGI</option><option value="pending_authorization" '+(dgiCompliance.computerized_invoicing_status==='pending_authorization'?'selected':'')+'>Solicitud pendiente</option><option value="authorized" '+(dgiCompliance.computerized_invoicing_status==='authorized'?'selected':'')+'>Autorización recibida</option><option value="not_applicable_confirmed" '+(dgiCompliance.computerized_invoicing_status==='not_applicable_confirmed'?'selected':'')+'>DGI confirmó que no aplica</option>',true)+
-      formField('Fecha de confirmación DGI','dgiConfirmationDate','date',false,'value="'+esc(dgiCompliance.dgi_confirmation_date||'')+'"')+
+      formField('Número de autorización de facturación computarizada','computerizedInvoicingAuthorizationNumber','text',false,'maxlength="180" value="'+esc(dgiCompliance.computerized_invoicing_authorization_number||'')+'"')+
+      formField('Referencia de respuesta escrita si DGI confirma que no aplica','computerizedInvoicingConfirmationReference','text',false,'maxlength="180" value="'+esc(dgiCompliance.computerized_invoicing_confirmation_reference||'')+'"')+
+      formField('Fecha de confirmación o autorización DGI','dgiConfirmationDate','date',false,'value="'+esc(dgiCompliance.dgi_confirmation_date||'')+'"')+
       '<label class="form-field"><span><input type="checkbox" name="certificateAvailable" '+(dgiCompliance.certificate_available?'checked':'')+'> Certificado de inscripción disponible</span></label>'+
       '<label class="form-field"><span><input type="checkbox" name="certificateDisplayed" '+(dgiCompliance.certificate_displayed?'checked':'')+'> Certificado exhibido en el establecimiento</span></label>'+
       '<div class="full-field modal-actions"><button class="button button-primary" type="submit">Guardar configuración DGI</button></div></form></article>':'';
@@ -1620,7 +1633,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       settingsForm+
       docForm+
       (dgiDocumentsError?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Archivo DGI no disponible</strong><p>'+esc(dgiDocumentsError)+'</p><button type="button" class="button button-quiet button-small" data-action="reload-dgi-documents">Reintentar consulta</button></div></div>':'')+'<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
-      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar</strong><p>Los indicadores de ingresos utilizan cobros asociados a facturas; ingresos de caja sin vínculo y pedidos completados sin factura se muestran aparte para conciliación. El tipo de cambio y la integridad de los registros afectan el resultado. No son una declaración tributaria ni certifican la elegibilidad al régimen. Este módulo no presenta declaraciones ni sustituye la validación de un contador o la respuesta formal de la DGI.</p></div></div>';
+      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar y de los umbrales</strong><p>Los indicadores incluyen pagos asociados a facturas y también ingresos de caja sin documento vinculado, para evitar subestimar los ingresos registrados. Los ingresos sin vínculo se señalan aparte para conciliación y no se suman dos veces cuando ya están ligados a una factura. El tipo de cambio, fechas y registros faltantes afectan el resultado. Son indicadores de control, no una declaración fiscal ni una certificación de elegibilidad. Este módulo no presenta declaraciones ni sustituye la validación de un contador o la respuesta escrita de la DGI.</p></div></div>';
   }
   function renderSettings(){
     const role=window.JBAuth?.profile?.role||'sin perfil';
