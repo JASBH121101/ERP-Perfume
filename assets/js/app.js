@@ -1109,26 +1109,51 @@
   }
   function renderHR(){
     const auth=window.JBAuth,backendMode=Boolean(auth&&auth.mode==='authenticated');
-    if(backendMode&&!auth.user){
-      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Sección protegida</strong><p>Inicia sesión con tu cuenta autorizada para consultar expedientes y salarios. RR. HH. permanece habilitado, pero los datos reales no se muestran sin autenticación.</p></div></div>';
-    }
-    if(backendMode&&!auth.profile){
-      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Cuenta pendiente de autorización</strong><p>'+esc(auth.profileError||'Verifica tu correo y vuelve a iniciar sesión para validar tus permisos de ERP.')+'</p></div></div>';
-    }
-    if(backendMode&&!['owner','admin','hr'].includes(auth.profile.role)){
-      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Permiso insuficiente</strong><p>Tu cuenta no tiene acceso al expediente de personal. Solicita el rol RR. HH. a la cuenta propietaria.</p></div></div>';
-    }
+    if(backendMode&&!auth.user)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Sección protegida</strong><p>Inicia sesión para consultar los expedientes de personal.</p></div></div>';
+    if(backendMode&&!auth.profile)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Cuenta pendiente de autorización</strong><p>'+esc(auth.profileError||'Verifica tu correo y vuelve a iniciar sesión.')+'</p></div></div>';
+    if(backendMode&&!['owner','admin','hr'].includes(auth.profile.role))return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Permiso insuficiente</strong><p>Tu cuenta no tiene acceso al expediente de personal.</p></div></div>';
     if(backendMode&&!hrRecordsLoaded){
       if(!hrRecordsLoading&&!hrLoadAttempted)loadHRFromAPI(false);
       const message=hrLoadError||'Consultando los registros protegidos de Neon…';
       return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>RR. HH. · Neon Development</strong><p>'+esc(message)+'</p>'+(hrLoadError?'<button class="button button-quiet button-small" data-action="reload-hr">Reintentar</button>':'')+'</div></div>';
     }
-    const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip status-success">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
-    const action=!backendMode||['owner','admin','hr'].includes(auth.profile.role)?'<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>':'';
-    const countLabel='Colaboradores registrados';
-    const noticeTitle='RR. HH. · Neon Development';
-    const noticeText='Los expedientes y salarios están protegidos por sesión y roles. La nómina se mantiene en córdobas; antes de automatizar deducciones se validarán prestaciones y normativa laboral.';
-    return heading(views.hr,action)+'<div class="summary-strip"><div class="summary-mini"><span>'+countLabel+'</span><strong>'+employees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual (C$)</span><strong>'+moneyInCurrency(employees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Moneda salarial</span><strong>NIO</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">'+'No hay colaboradores registrados.'+'</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>'+noticeTitle+'</strong><p>'+noticeText+'</p></div></div>';
+    const activeEmployees=employees.filter(e=>e.status==='Activo');
+    const totalPayroll=payrollItems.reduce((sum,item)=>sum+Number(item.netSalaryNio||0),0);
+    const tabs=[
+      ['employees','Personal',employees.length],
+      ['attendance','Asistencia',attendanceRecords.length],
+      ['leaves','Permisos y vacaciones',leaveRequests.filter(x=>x.status==='Pendiente').length],
+      ['payroll','Nómina',payrollPeriods.length]
+    ];
+    const tabsHtml='<div class="toolbar products-toolbar"><div class="toolbar-left">'+tabs.map(([id,label,count])=>'<button type="button" class="button '+(state.hrTab===id?'button-primary':'button-quiet')+' button-small" data-action="hr-tab" data-tab="'+id+'">'+label+' <span class="ledger-count">'+count+'</span></button>').join('')+'</div></div>';
+    let actions='',content='';
+    if(state.hrTab==='employees'){
+      actions='<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>';
+      const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Sin código')+' · '+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Contacto">'+esc(e.phone||e.email||'—')+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>CONTACTO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
+    } else if(state.hrTab==='attendance'){
+      actions=activeEmployees.length?'<button class="button button-primary" data-action="new-attendance">'+svg('plus')+' Registrar asistencia</button>':'';
+      const employeeName=id=>employees.find(e=>e.id===id)?.name||'Colaborador';
+      const rows=attendanceRecords.map(a=>'<tr><td data-label="Fecha">'+dateText(a.workDate)+'</td><td data-label="Colaborador" class="table-primary">'+esc(employeeName(a.employeeId))+'</td><td data-label="Entrada">'+esc(a.checkIn?new Date(a.checkIn).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'}):'—')+'</td><td data-label="Salida">'+esc(a.checkOut?new Date(a.checkOut).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'}):'—')+'</td><td data-label="Estado"><span class="status-chip '+(a.status==='Ausente'?'status-danger':(a.status==='Tardanza'?'status-pending':'status-success'))+'">'+esc(a.status)+'</span></td><td data-label="Descanso">'+Number(a.breakMinutes||0)+' min</td></tr>').join('');
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>COLABORADOR</th><th>ENTRADA</th><th>SALIDA</th><th>ESTADO</th><th>DESCANSO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay asistencias registradas.</td></tr>')+'</tbody></table></div></article>';
+    } else if(state.hrTab==='leaves'){
+      actions=activeEmployees.length?'<button class="button button-primary" data-action="new-leave">'+svg('plus')+' Nueva solicitud</button>':'';
+      const employeeName=id=>employees.find(e=>e.id===id)?.name||'Colaborador';
+      const rows=leaveRequests.map(l=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(employeeName(l.employeeId))+'</td><td data-label="Tipo">'+esc(l.leaveType)+'</td><td data-label="Período">'+dateText(l.startDate)+' – '+dateText(l.endDate)+'</td><td data-label="Días">'+Number(l.days||0)+'</td><td data-label="Estado"><span class="status-chip '+(l.status==='Aprobado'?'status-success':(l.status==='Rechazado'?'status-danger':'status-pending'))+'">'+esc(l.status)+'</span></td><td data-label="Acciones">'+(l.status==='Pendiente'?'<button class="button button-quiet button-small" data-action="approve-leave" data-id="'+l.id+'">Aprobar</button><button class="button button-quiet button-small" data-action="reject-leave" data-id="'+l.id+'">Rechazar</button>':'—')+'</td></tr>').join('');
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR</th><th>TIPO</th><th>PERÍODO</th><th>DÍAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay permisos o vacaciones registrados.</td></tr>')+'</tbody></table></div></article>';
+    } else {
+      actions='<div class="heading-actions-inline">'+(payrollPeriods.length?'<button class="button button-quiet" data-action="new-payroll-item">'+svg('plus')+' Agregar a nómina</button>':'')+'<button class="button button-primary" data-action="new-payroll-period">'+svg('plus')+' Nuevo período</button></div>';
+      const rows=payrollPeriods.map(p=>{
+        const items=payrollItems.filter(item=>item.payrollPeriodId===p.id);
+        const total=items.reduce((sum,item)=>sum+Number(item.netSalaryNio||0),0);
+        return '<tr><td data-label="Período" class="table-primary">'+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</td><td data-label="Colaboradores">'+items.length+'</td><td data-label="Neto a pagar">'+moneyInCurrency(total,'NIO')+'</td><td data-label="Fecha de pago">'+dateText(p.paymentDate)+'</td><td data-label="Estado"><span class="status-chip '+(p.status==='Pagada'?'status-success':'status-pending')+'">'+esc(p.status)+'</span></td></tr>';
+      }).join('');
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Cálculo de nómina</strong><p>Se calculan salario base, bonos y deducciones capturadas. Antes de automatizar deducciones legales o pagos se debe configurar y validar la normativa laboral aplicable.</p></div></div>';
+    }
+    return heading(views.hr,actions)+
+      '<div class="summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Solicitudes pendientes</span><strong>'+leaveRequests.filter(l=>l.status==='Pendiente').length+'</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
+      tabsHtml+content+
+      '<div class="notice-panel">'+svg('spark')+'<div><strong>RR. HH. conectado a Neon Development</strong><p>Personal, asistencia, permisos y nómina se consultan desde Neon. Los cambios quedan ligados a la cuenta y a la auditoría del sistema.</p></div></div>';
   }
   function renderAnalytics(){
     const finance=financialSnapshot();
