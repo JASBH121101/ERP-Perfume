@@ -321,7 +321,7 @@
     const categoryOptions = categories.map(function (category) {
       return '<option value="' + esc(category) + '"' + (state.category === category ? ' selected' : '') + '>' + esc(category) + '</option>';
     }).join('');
-    return heading(views.products, '<button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
+    return heading(views.products, '<button class="button button-quiet" data-action="export-product-catalog">'+svg('download')+' Catálogo PDF</button><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Productos activos</span><strong>' + activeCount + '</strong></div><div class="summary-mini"><span>Desactivados</span><strong>' + inactiveCount + '</strong></div><div class="summary-mini"><span>Requieren reposición</span><strong>' + products.filter(function (product) { return product.active !== false && needsRestock(product); }).length + '</strong></div></div>' +
       '<div class="toolbar products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="product-status-filter" aria-label="Estado del producto"><option value="active"' + (state.productStatus === 'active' ? ' selected' : '') + '>Activos</option><option value="inactive"' + (state.productStatus === 'inactive' ? ' selected' : '') + '>Desactivados</option><option value="all"' + (state.productStatus === 'all' ? ' selected' : '') + '>Todos</option></select><select class="filter-select" id="category-filter" aria-label="Filtrar por categoría"><option value="all"' + (state.category === 'all' ? ' selected' : '') + '>Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO / COSTO</th><th>EXISTENCIAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody id="product-table-body">' + productTable(filteredProducts()) + '</tbody></table></div></article>' +
@@ -768,7 +768,7 @@
     if(type==='purchase'){
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
       if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
-      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo unitario','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+formField('Pago inicial','initialPayment','number',false,'min="0" step="0.01" value="0"')+selectField('Cuenta para pago inicial','initialAccount','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',false)+'</div><p class="form-helper">El importe inicial se registra como salida de caja. La diferencia queda como saldo pendiente con el proveedor.</p>';
+      body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Unidades facturadas','quantity','number',true,'min="1" step="1"')+formField('Costo unitario facturado','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+formField('Pago / abono inicial','initialPayment','number',false,'min="0" step="0.01" value="0"')+selectField('Cuenta para pago inicial','initialAccount','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',false)+'</div><p class="form-helper">El importe inicial se registra como salida de caja. La diferencia queda como saldo pendiente con el proveedor.</p>';
     }
     if(type==='purchase-payment'){
       const purchase=purchases.find(item=>String(item.id)===String(recordId));
@@ -849,13 +849,14 @@
     }else if(type==='purchase-receipt'){
       const order=purchaseOrders.find(item=>String(item.id)===String(businessForm.dataset.purchaseOrderId||businessForm.dataset.recordId||''));
       if(!order){toast('No se encontró la orden seleccionada.');return;}
-      const receiptLines=[];
+      const receiptLines=[];let receiptValidationError='';
       (order.items||[]).forEach((item,index)=>{
         const input=businessForm.querySelector('[data-receipt-quantity="'+index+'"]'),quantity=Number(input?.value||0);
         const remaining=Math.max(0,Number(item.quantity||0)-Number(item.receivedQuantity||0));
-        if(!Number.isInteger(quantity)||quantity<0||quantity>remaining)throw new Error('La cantidad recibida supera las unidades pendientes.');
+        if(!Number.isInteger(quantity)||quantity<0||quantity>remaining){receiptValidationError='Una cantidad recibida supera las unidades pendientes.';return;}
         if(quantity>0)receiptLines.push({item,index,quantity});
       });
+      if(receiptValidationError){toast(receiptValidationError);return;}
       if(!receiptLines.length){toast('Indica al menos una cantidad recibida.');return;}
       const actualFreightUsd=toUsd(num('actualFreight'),order.currency);
       if(!Number.isFinite(actualFreightUsd)||actualFreightUsd<0){toast('El flete real no es válido.');return;}
@@ -894,9 +895,7 @@
     }else if(type==='purchase'){
       const supplier=suppliers[num('supplierIndex')],product=products.find(p=>String(p.id)===get('productId')),quantity=num('quantity'),unitCost=num('unitCost');
       if(!supplier||!product||!Number.isInteger(quantity)||quantity<1||!Number.isFinite(unitCost)||unitCost<=0){toast('Revisa proveedor, producto, cantidad y costo.');return;}
-      const unitUsd=toUsd(unitCost,currency),previous=product.stock,nextStock=previous+quantity;
-      const previousPurchaseCost=Number(product.purchaseCost||0),additionalCost=Number(product.additionalCost||0);
-      const weightedPurchaseCost=nextStock>0?roundMoney((previousPurchaseCost*previous+unitUsd*quantity)/nextStock):unitUsd;
+      const unitUsd=toUsd(unitCost,currency);
       const totalUsd=roundMoney(unitUsd*quantity),initialPayment=num('initialPayment'),initialAccount=get('initialAccount')||'Caja USD';
       const initialPaidUsd=initialPayment>0?toUsd(initialPayment,currency):0;
       const initialAccountCurrency=/NIO$/.test(initialAccount)?'NIO':'USD';
@@ -905,9 +904,7 @@
       const purchase={id,supplier:supplier.name,productId:product.id,product:product.name,quantity,currency,originalUnitCost:unitCost,originalTotal:roundMoney(unitCost*quantity),exchangeRate:rate,unitCostUsd:unitUsd,totalUsd,paidUsd:initialPaidUsd,status:initialPaidUsd>=totalUsd-0.001?'Pagado':(initialPaidUsd>0?'Abono parcial':'Pendiente'),payments:[],createdAt:new Date().toISOString()};
       if(initialPayment>0){purchase.payments.push({amount:initialPayment,currency,exchangeRate:rate,amountUsd:initialPaidUsd,account:initialAccount,createdAt:new Date().toISOString()});cashEntries.unshift({id:Date.now()+1,direction:'expense',concept:'Pago inicial de compra a '+supplier.name,currency,originalAmount:initialPayment,exchangeRate:rate,amountUsd:initialPaidUsd,account:initialAccount,supplier:supplier.name,sourceType:'purchase',sourceId:String(id),createdAt:new Date().toISOString()});}
       purchases.unshift(purchase);
-      product.purchaseCost=weightedPurchaseCost;product.unitCost=roundMoney(weightedPurchaseCost+additionalCost);product.profit=roundMoney(Number(product.price||0)-product.unitCost);product.margin=product.price>0?roundMoney(product.profit/product.price*100):0;product.stock=nextStock;
-      inventoryMovements.unshift({id,productId:product.id,productName:product.name,sku:product.sku,type:'Entrada por compra',quantity,delta:quantity,previousStock:previous,newStock:nextStock,note:'Compra a '+supplier.name,createdAt:new Date().toISOString()});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Compra registrada; costo y existencias actualizados en DEMO.');
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Factura de proveedor registrada. El saldo se refleja en Cuentas por pagar; el inventario no cambia.');
     }else if(type==='expense'){
       const amount=num('amount');if(!get('description')||!Number.isFinite(amount)||amount<=0){toast('Revisa descripción e importe.');return;}
       expenses.unshift({id,category:get('category'),description:get('description'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),createdAt:new Date().toISOString()});
@@ -1308,7 +1305,7 @@
     const product = productId == null ? null : products.find(function (item) { return String(item.id) === String(productId); });
     if (productId != null && !product) return;
     form.reset(); form.dataset.editingId = product ? String(product.id) : '';
-    const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','supplier','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
+    const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','description','supplier','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
     if (product) fields.forEach(function (field) { if (form.elements[field]) form.elements[field].value = product[field] == null ? '' : String(product[field]); });
     form.elements.stock.readOnly = Boolean(product);
     form.elements.stock.value = product ? String(product.stock) : (form.elements.stock.value || '');
@@ -1511,7 +1508,7 @@
     }
     const wholesalePrice=number('wholesalePrice');
     if(!Number.isFinite(wholesalePrice)||wholesalePrice<0){toast('El precio mayorista debe ser cero o mayor.');return;}
-    const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,wholesalePrice:wholesalePrice||null,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
+    const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),description:value('description'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,wholesalePrice:wholesalePrice||null,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
     const snapshot=captureDemoState();
     if (existing) {
       Object.assign(existing,fields); if(!persistDemoData()){restoreDemoState(snapshot);return;} form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false;
