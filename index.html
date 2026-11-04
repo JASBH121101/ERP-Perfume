@@ -69,12 +69,12 @@
 
       <div class="sidebar-bottom">
         <div class="storage-card">
-          <div class="storage-heading"><span class="tiny-status"></span> MODO DEMO ACTIVO</div>
-          <p>Los cambios se guardan en este navegador.</p>
+          <div class="storage-heading"><span class="tiny-status"></span> SERVICIOS DEL ERP</div>
+          <p>Datos operativos alojados en los servicios conectados.</p>
           <div class="storage-connection-list">
-            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Almacenamiento local</span><strong>Activo</strong></div>
-            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Neon PostgreSQL</span><strong>Pendiente</strong></div>
-            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Cloudflare R2</span><strong>Pendiente</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Neon PostgreSQL</span><strong id="db-connection-status">Verificando</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Cloudflare R2</span><strong id="r2-connection-status">Vinculado</strong></div>
+            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Preferencias de interfaz</span><strong>Local</strong></div>
           </div>
         </div>
         <button class="profile-button" type="button">
@@ -99,7 +99,7 @@
             <span id="font-scale-label" aria-live="polite">110%</span>
             <button type="button" id="font-increase" aria-label="Aumentar tamaño de letra" title="Aumentar letra">A+</button>
           </div>
-          <button class="button button-quiet button-small auth-control" id="auth-control" type="button" hidden>Iniciar sesión</button><span class="demo-pill" id="connection-pill"><i></i> MODO DEMO</span>
+          <button class="button button-quiet button-small auth-control" id="auth-control" type="button" hidden>Iniciar sesión</button><span class="demo-pill" id="connection-pill"><i></i> NEON · DESARROLLO</span>
           <button class="icon-button notification-button" type="button" aria-label="Notificaciones"><span data-icon="bell"></span><i></i></button>
           <span class="topbar-divider"></span>
           <button class="top-avatar" type="button" aria-label="Perfil del administrador">JB</button>
@@ -114,7 +114,7 @@
         <div id="view-root" aria-live="polite"></div>
         <footer class="app-footer">
           <span>JB PARFUMS <b>•</b> BUSINESS SUITE</span>
-          <span>INTERFAZ INICIAL <b>•</b> 2026</span>
+          <span>OPERACIÓN COMERCIAL <b>•</b> 2026</span>
         </footer>
       </div>
     </main>
@@ -128,7 +128,7 @@
         <div><span class="eyebrow">CATÁLOGO · FICHA TÉCNICA</span><h2 id="modal-title">Nuevo producto</h2></div>
         <button type="button" class="icon-button modal-close" id="modal-close" aria-label="Cerrar">×</button>
       </div>
-      <p class="modal-note">Ficha DEMO. Los datos se guardan localmente en este navegador; todavía no se sincronizan con Neon.</p>
+      <p class="modal-note">La ficha se guardará en Neon Development. Las existencias iniciales quedarán asentadas en el kardex.</p>
 
       <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="bottle"></span><div><strong>Identificación y fragancia</strong><small>Información comercial y características del perfume</small></div></div>
