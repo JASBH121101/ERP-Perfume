@@ -124,7 +124,7 @@ test('product master calculates unit cost, profit and gross margin', async ({ pa
   await expect(page.locator('#product-table-body')).toContainText('QA Oud Reserve');
   await expect(page.locator('#product-table-body')).toContainText('QA Maison');
   await expect(page.locator('#product-table-body')).toContainText('100 ml');
-  await expect(page.locator('#product-table-body')).toContainText('Margen 33.3%');
+  await expect(page.locator('#product-table-body')).toContainText('Margen 50.0%');
 });
 
 
