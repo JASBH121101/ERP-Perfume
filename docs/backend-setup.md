@@ -11,7 +11,8 @@ This repository uses `main` as its single working branch. Cloudflare Pages publi
 - Database: Neon PostgreSQL database `erp_perfume`, development branch only for this phase.
 - Identity: Neon Managed Auth; the Worker verifies JWTs and checks the verified email and ERP role.
 - Files: private R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
-- HR: employee list/create only are connected so far. Attendance, leave, payroll and the rest of the ERP modules are not yet migrated.
+- HR: employee list/create are connected; attendance, leave and payroll are still pending.
+- Catalog/inventory (feature branch): product master, suppliers, customers and manual inventory movements have Neon-backed Worker routes and authenticated UI persistence. The Worker changes are not deployed until an approved merge to `main`.
 
 The old Pages Functions source has been removed so Pages no longer attempts to publish API Functions.
 
@@ -56,8 +57,13 @@ The Worker checks the verified email in Neon Auth's `neon_auth.user` table. The 
 - `GET https://jb-parfums-erp-api.jaredblancoh19.workers.dev/api/health` checks the database and R2 binding.
 - `GET /api/config` tells the frontend whether Neon Auth is configured.
 - `GET /api/auth/profile` returns the authenticated user's ERP role.
-- `GET /api/hr/employees` returns the protected employee list.
-- `POST /api/hr/employees` creates a protected employee and writes an audit event.
+- `GET /api/hr/employees` and `POST /api/hr/employees` — protected employee list/create.
+- `GET /api/erp/bootstrap` — initial product, supplier, customer and inventory data.
+- `GET/POST/PATCH/DELETE /api/catalog/products` — product master, state changes and guarded deletion.
+- `GET/POST /api/catalog/suppliers` and `GET/POST /api/catalog/customers` — contact records.
+- `POST /api/inventory/movements` — stock entries, exits and adjustments, with a transactionally recorded stock snapshot and audit event.
+
+The catalog/inventory endpoints and matching frontend are implemented on `feature/erp-procurement-finance-catalog`; they are not yet in the deployed Worker. The active Worker from `main` still serves the HR endpoints only.
 
 Run local checks:
 
@@ -81,4 +87,4 @@ No sample employee or business records are inserted by deployment. Test the GET 
 
 ## Scope still outstanding
 
-Only the employee list/create path is backed by Neon. Product catalog, inventory movements, customers, orders, supplier purchases, accounts payable/receivable, expenses, cash/bank transactions, attendance, leave and payroll must remain labeled DEMO until their schemas, APIs, permission checks, audit events and migration tests are implemented.
+On Neon Development, migrations 0001–0003 are recorded. Migrations 0002 and 0003 were applied to Development only; Production remains untouched. Product catalog, suppliers, customers and inventory are the first additional Neon-backed modules in the feature branch. Orders, purchase orders/receipts, supplier bills, accounts payable/receivable, expenses, cash/bank transactions, attendance, leave and payroll must remain DEMO until their persistence APIs, permission checks, transactional rules and tests are completed.
