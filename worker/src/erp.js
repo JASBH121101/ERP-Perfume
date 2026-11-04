@@ -338,6 +338,41 @@ async function createPayrollItem(sql,user,body) {
   }
 }
 
+async function changePayrollPeriodStatus(sql,user,id,body) {
+  const status=String(body.status||"");
+  if(status==="Aprobada"){
+    const rows=await sql.query(
+      "WITH target AS (SELECT id,status FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), totals AS (SELECT COUNT(*)::int AS item_count FROM hr_payroll_items WHERE payroll_period_id=$1::uuid), updated AS (UPDATE hr_payroll_periods p SET status='Aprobada',updated_at=NOW() FROM target,totals WHERE p.id=target.id AND target.status='Borrador' AND otals.item_count>0 RETURNING p.*), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $2,'approve','hr_payroll_period',id::text,to_jsonb(updated) FROM updated) SELECT * FROM updated",
+      [id,user.id]
+    );
+    if(!rows[0])return erpError(409,"PAYROLL_CANNOT_APPROVE","El período no está en borrador o no contiene partidas de nómina.");
+    return erpJson({record:rows[0]});
+  }
+  if(status==="Anulada"){
+    const rows=await sql.query(
+      "WITH changed AS (UPDATE hr_payroll_periods SET status='Anulada',updated_at=NOW() WHERE id=$1::uuid AND status='Borrador' RETURNING *), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $2,'void','hr_payroll_period',id::text,to_jsonb(changed) FROM changed) SELECT * FROM changed",
+      [id,user.id]
+    );
+    if(!rows[0])return erpError(409,"PAYROLL_CANNOT_VOID","Solo se puede anular un período que siga en borrador.");
+    return erpJson({record:rows[0]});
+  }
+  if(status==="Pagada"){
+    const accountName=String(body.account_name||"");
+    const account=await sql.query("SELECT id FROM cash_accounts WHERE name=$1 AND currency='NIO' AND active=TRUE LIMIT 1",[accountName]);
+    if(!account[0])return erpError(400,"PAYROLL_ACCOUNT_NOT_FOUND","Selecciona una cuenta activa en córdobas.");
+    const setting=await sql.query("SELECT setting_value->>'value' AS value FROM app_settings WHERE setting_key='default_exchange_rate' LIMIT 1");
+    const rate=Number(setting[0]?.value||36.6);
+    if(!Number.isFinite(rate)||rate<=0)return erpError(409,"PAYROLL_EXCHANGE_RATE_INVALID","Configura un tipo de cambio válido antes de pagar la nómina.");
+    const rows=await sql.query(
+      "WITH target AS (SELECT id,period_start,period_end,status FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), totals AS (SELECT COUNT(*)::int AS item_count,COALESCE(SUM(net_salary_nio),0)::numeric(14,2) AS total_nio FROM hr_payroll_items WHERE payroll_period_id=$1::uuid), updated AS (UPDATE hr_payroll_periods p SET status='Pagada',payment_date=COALESCE(p.payment_date,CURRENT_DATE),updated_at=NOW() FROM target,totals WHERE p.id=target.id AND target.status='Aprobada' AND totals.item_count>0 AND totals.total_nio>0 AND NOT EXISTS(SELECT 1 FROM cash_entries ce WHERE ce.source_type='payroll' AND ce.source_id=target.id::text) RETURNING p.*), expense AS (INSERT INTO expenses(category,description,currency,original_amount,exchange_rate,amount_usd,created_by) SELECT 'Nómina','Pago de nómina '||to_char(updated.period_start,'YYYY-MM-DD')||' al '||to_char(updated.period_end,'YYYY-MM-DD'),'NIO',totals.total_nio,$3,ROUND(totals.total_nio/$3,2),$4 FROM updated CROSS JOIN totals RETURNING id), cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'expense','Pago de nómina '||to_char(updated.period_start,'YYYY-MM-DD')||' al '||to_char(updated.period_end,'YYYY-MM-DD'),$5,'NIO',totals.total_nio,$3,ROUND(totals.total_nio/$3,2),'payroll',updated.id::text,$4 FROM updated CROSS JOIN totals RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $4,'pay','hr_payroll_period',updated.id::text,jsonb_build_object('total_nio',totals.total_nio,'exchange_rate',$3,'account',$6) FROM updated CROSS JOIN totals) SELECT updated.* FROM updated",
+      [id,account[0].id,rate,user.id,account[0].id,accountName]
+    );
+    if(!rows[0])return erpError(409,"PAYROLL_CANNOT_PAY","El período debe estar aprobado, tener partidas y no haber sido pagado.");
+    return erpJson({record:rows[0]});
+  }
+  return erpError(400,"INVALID_PAYROLL_STATUS","La acción solicitada para el período no está permitida.");
+}
+
 async function reviewLeaveRequest(sql,user,id,body) {
   const status=String(body.status||"");
   if(!["Aprobado","Rechazado"].includes(status))return erpError(400,"INVALID_LEAVE_STATUS","La solicitud solo puede aprobarse o rechazarse.");
@@ -480,6 +515,11 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.purchases.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar compras.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createPurchase(sql,user,body);
+  }
+  if (resource === "payroll-periods" && parts[4] === "status" && request.method === "PATCH") {
+    if (!canAccess(user, RESOURCE_DEFS.hr_payroll_periods.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return changePayrollPeriodStatus(sql,user,id,body);
   }
   if (resource === "hr-payroll-items" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.hr_payroll_items.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
