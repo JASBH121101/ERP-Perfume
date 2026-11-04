@@ -312,6 +312,73 @@ async function createInvoice(sql, user, body) {
   }
 }
 
+async function handleProductAsset(request,env,user,sql) {
+  if(!canAccess(user,RESOURCE_DEFS.products.roles))return erpError(403,"FORBIDDEN","No tienes permiso para administrar imágenes de productos.");
+  if(!env?.ERP_ASSETS)return erpError(503,"R2_NOT_CONFIGURED","El almacenamiento privado de imágenes no está disponible.");
+  if(request.method==="POST"){
+    let form;
+    try{form=await request.formData();}catch{return erpError(400,"INVALID_FORM_DATA","El formulario de carga no es válido.");}
+    const productId=String(form.get("product_id")||"");
+    const file=form.get("file");
+    if(!/^[0-9a-f-]{36}$/i.test(productId)||!file||typeof file.stream!=="function")return erpError(400,"INVALID_UPLOAD","Selecciona un producto e imagen válidos.");
+    const allowed=new Map([["image/jpeg","jpg"],["image/png","png"],["image/webp","webp"],["image/avif","avif"]]);
+    const extension=allowed.get(String(file.type||"").toLowerCase());
+    if(!extension)return erpError(415,"UNSUPPORTED_IMAGE_TYPE","Solo se permiten imágenes JPG, PNG, WebP o AVIF.");
+    if(file.size<1||file.size>8*1024*1024)return erpError(413,"IMAGE_TOO_LARGE","La imagen debe pesar como máximo 8 MB.");
+    const product=await sql.query("SELECT id,name,images FROM products WHERE id=$1::uuid LIMIT 1",[productId]);
+    if(!product[0])return erpError(404,"PRODUCT_NOT_FOUND","No se encontró el producto.");
+    const key="products/"+productId+"/"+crypto.randomUUID()+"."+extension;
+    try{
+      await env.ERP_ASSETS.put(key,file.stream(),{
+        httpMetadata:{contentType:file.type,cacheControl:"private, no-store"},
+        customMetadata:{productId,uploadedBy:user.id,originalName:String(file.name||"image").slice(0,180)}
+      });
+      const imageRecord={key,name:String(file.name||("product-image."+extension)).slice(0,180),contentType:file.type,size:file.size,uploadedAt:new Date().toISOString()};
+      const rows=await sql.query(
+        "UPDATE products SET images=COALESCE(images,'[]'::jsonb)||$2::jsonb,updated_at=NOW() WHERE id=$1::uuid RETURNING id,images",
+        [productId,JSON.stringify([imageRecord])]
+      );
+      await auditQuery(sql,user.id,"upload","product_asset",key,{productId,fileName:imageRecord.name,contentType:file.type,size:file.size});
+      return erpJson({asset:imageRecord,productId:rows[0].id},201);
+    }catch(error){
+      try{await env.ERP_ASSETS.delete(key);}catch{}
+      console.error("[r2] Product image upload failed:",error?.message||"storage error");
+      return erpError(503,"IMAGE_UPLOAD_FAILED","No se pudo guardar la imagen y asociarla al producto.");
+    }
+  }
+  if(request.method==="GET"){
+    const key=String(new URL(request.url).searchParams.get("key")||"");
+    const match=key.match(/^products\/([0-9a-f-]{36})\/[A-Za-z0-9._-]+$/i);
+    if(!match)return erpError(400,"INVALID_ASSET_KEY","La referencia de imagen no es válida.");
+    const productId=match[1];
+    const rows=await sql.query("SELECT 1 FROM products WHERE id=$1::uuid AND images @> $2::jsonb LIMIT 1",[productId,JSON.stringify([{key}])]);
+    if(!rows[0])return erpError(404,"ASSET_NOT_FOUND","La imagen no está asociada a un producto autorizado.");
+    const object=await env.ERP_ASSETS.get(key);
+    if(!object)return erpError(404,"ASSET_NOT_FOUND","La imagen no existe en el almacenamiento.");
+    const headers=new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set("etag",object.httpEtag);
+    headers.set("cache-control","private, no-store");
+    headers.set("x-content-type-options","nosniff");
+    headers.set("content-security-policy","default-src 'none'; sandbox");
+    return new Response(object.body,{status:200,headers});
+  }
+  if(request.method==="DELETE"){
+    let body;try{body=await request.json();}catch{return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido.");}
+    const key=String(body.key||""),productId=String(body.product_id||"");
+    if(!/^[0-9a-f-]{36}$/i.test(productId)||!key.startsWith("products/"+productId+"/"))return erpError(400,"INVALID_ASSET_KEY","La referencia de imagen no corresponde al producto.");
+    const rows=await sql.query(
+      "UPDATE products SET images=COALESCE((SELECT jsonb_agg(image) FROM jsonb_array_elements(COALESCE(images,'[]'::jsonb)) image WHERE image->>'key'<>$2),'[]'::jsonb),updated_at=NOW() WHERE id=$1::uuid AND images @> $3::jsonb RETURNING id",
+      [productId,key,JSON.stringify([{key}])]
+    );
+    if(!rows[0])return erpError(404,"ASSET_NOT_FOUND","La imagen no está asociada al producto.");
+    await env.ERP_ASSETS.delete(key);
+    await auditQuery(sql,user.id,"delete","product_asset",key,{productId});
+    return erpJson({deleted:true,key});
+  }
+  return erpError(405,"METHOD_NOT_ALLOWED","Método no permitido para el archivo.");
+}
+
 async function createPayrollItem(sql,user,body) {
   const periodId=String(body.payroll_period_id||"");
   const employeeId=String(body.employee_id||"");
@@ -521,6 +588,7 @@ export async function handleERPRequest(request, env, user, sql) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return changePayrollPeriodStatus(sql,user,id,body);
   }
+  if (resource === "assets") return handleProductAsset(request,env,user,sql);
   if (resource === "hr-payroll-items" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.hr_payroll_items.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
