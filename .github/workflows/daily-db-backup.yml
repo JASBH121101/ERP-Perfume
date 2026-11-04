@@ -1,0 +1,138 @@
+name: ERP daily encrypted database backup
+
+on:
+  schedule:
+    # 02:00 in Nicaragua (UTC-6). This job stays skipped until explicitly enabled.
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: erp-daily-database-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Encrypted Neon Development backup to private R2
+    if: vars.ERP_DAILY_BACKUP_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEON_DATABASE_URL: ${{ secrets.ERP_BACKUP_DATABASE_URL }}
+      R2_ACCOUNT_ID: ${{ secrets.ERP_BACKUP_R2_ACCOUNT_ID }}
+      R2_BUCKET_NAME: ${{ secrets.ERP_BACKUP_R2_BUCKET_NAME }}
+      R2_ACCESS_KEY_ID: ${{ secrets.ERP_BACKUP_R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.ERP_BACKUP_R2_SECRET_ACCESS_KEY }}
+      BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.ERP_BACKUP_ENCRYPTION_PASSPHRASE }}
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - name: Validate required secrets before installing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in NEON_DATABASE_URL R2_ACCOUNT_ID R2_BUCKET_NAME R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY BACKUP_ENCRYPTION_PASSPHRASE; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing required GitHub Actions secret for ${name}."
+              exit 1
+            fi
+          done
+          if [[ "$NEON_DATABASE_URL" != postgres://* && "$NEON_DATABASE_URL" != postgresql://* ]]; then
+            echo "::error::ERP_BACKUP_DATABASE_URL must be a PostgreSQL connection URI."
+            exit 1
+          fi
+          if [[ ! "$R2_ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]]; then
+            echo "::error::ERP_BACKUP_R2_ACCOUNT_ID must be a 32-character Cloudflare account ID."
+            exit 1
+          fi
+
+      - name: Install PostgreSQL, encryption and S3-compatible tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends postgresql-client gnupg awscli jq
+          pg_dump --version
+          gpg --version | head -n 1
+          aws --version
+
+      - name: Create, encrypt and upload the daily database dump
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          stamp="$(date -u +'%Y-%m-%dT%H-%M-%SZ')"
+          prefix="database-backups/erp_perfume/"
+          dump_file="$tmpdir/erp_perfume.dump"
+          encrypted_file="$tmpdir/erp_perfume.dump.gpg"
+          object_key="${prefix}${stamp}.dump.gpg"
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          pg_dump --format=custom --no-owner --no-acl --file="$dump_file" "$NEON_DATABASE_URL"
+          test -s "$dump_file"
+
+          printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" |
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+              --symmetric --cipher-algo AES256 --output "$encrypted_file" "$dump_file"
+          rm -f "$dump_file"
+          test -s "$encrypted_file"
+
+          digest="$(sha256sum "$encrypted_file" | awk '{print $1}')"
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+
+          aws --endpoint-url "$endpoint" s3 cp "$encrypted_file" \
+            "s3://${R2_BUCKET_NAME}/${object_key}" --region auto \
+            --only-show-errors --metadata "sha256=${digest}"
+
+          remote_size="$(aws --endpoint-url "$endpoint" s3api head-object \
+            --bucket "$R2_BUCKET_NAME" --key "$object_key" \
+            --query 'ContentLength' --output text)"
+          local_size="$(stat -c '%s' "$encrypted_file")"
+          if [[ "$remote_size" != "$local_size" || "$remote_size" -le 0 ]]; then
+            echo "::error::Uploaded backup failed the size verification."
+            exit 1
+          fi
+
+          printf 'backup_key=%s\nbackup_size=%s\nbackup_sha256=%s\n' \
+            "$object_key" "$remote_size" "$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Retain the seven newest verified daily backups
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+
+          objects="$(aws --endpoint-url "$endpoint" s3api list-objects-v2 \
+            --bucket "$R2_BUCKET_NAME" --prefix "database-backups/erp_perfume/" \
+            --query 'Contents[].{Key:Key,LastModified:LastModified}' --output json)"
+          mapfile -t expired < <(
+            jq -r '(. // []) | sort_by(.LastModified) |
+              if length > 7 then .[0:(length - 7)][]?.Key else empty end' <<< "$objects"
+          )
+          for key in "${expired[@]}"; do
+            [[ -n "$key" ]] || continue
+            aws --endpoint-url "$endpoint" s3api delete-object \
+              --bucket "$R2_BUCKET_NAME" --key "$key" >/dev/null
+          done
+
+      - name: Record backup verification summary
+        if: success()
+        run: |
+          {
+            echo "## ERP database backup"
+            echo ""
+            echo "- Environment: Neon Development / erp_perfume"
+            echo "- R2 object: ` ${{ steps.backup.outputs.backup_key }} `"
+            echo "- Encrypted size: ${{ steps.backup.outputs.backup_size }} bytes"
+            echo "- SHA-256: ${{ steps.backup.outputs.backup_sha256 }}"
+            echo "- Verification: uploaded object size confirmed with R2 HEAD"
+            echo "- Retention: seven newest verified backups"
+            echo ""
+            echo "A successful upload is not a restore test. Run the documented restore drill before declaring the backup control operational."
+          } >> "$GITHUB_STEP_SUMMARY"
