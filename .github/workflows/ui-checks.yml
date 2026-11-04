@@ -15,6 +15,7 @@ on:
       - "docs/**"
       - "assets/**"
       - "functions/**"
+      - "worker/**"
       - "db/**"
       - "scripts/**"
       - "tests/**"
@@ -50,6 +51,11 @@ jobs:
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      - name: Validate Worker module syntax
+        run: |
+          node --input-type=module --check < worker/src/index.js
+          node --input-type=module --check < worker/src/erp.js
 
       - name: Run all deterministic checks
         run: bash scripts/run-validation.sh
