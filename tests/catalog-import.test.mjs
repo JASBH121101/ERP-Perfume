@@ -310,10 +310,10 @@ test("an invoiced web order cannot be cancelled and return stock automatically",
   assert.equal(response.status, 409);
   assert.equal(body.error.code, "ORDER_ALREADY_INVOICED");
   assert.match(statements[0], /linked_invoice/);
-  assert.match(statements[0], /SUM\(quantity_delta\)/);
+  assert.doesNotMatch(statements[0], /INSERT INTO inventory_movements|UPDATE products/);
 });
 
-test("order status calculation uses net stock movements rather than historical negative rows", async () => {
+test("changing an order status never changes inventory; invoices own stock-out", async () => {
   let executedSql = "";
   const sql = {
     query: async (query) => {
@@ -327,9 +327,9 @@ test("order status calculation uses net stock movements rather than historical n
     { status: "En preparación" }
   ), {}, owner, sql);
   assert.equal(response.status, 200);
-  assert.match(executedSql, /BOOL_AND/);
-  assert.match(executedSql, /SUM\(quantity_delta\)/);
-  assert.match(executedSql, /linked_invoice\.is_invoiced/);
+  assert.match(executedSql, /linked_invoice/);
+  assert.match(executedSql, /status_change/);
+  assert.doesNotMatch(executedSql, /BOOL_AND|SUM\(quantity_delta\)|UPDATE products|INSERT INTO inventory_movements/);
 });
 
 

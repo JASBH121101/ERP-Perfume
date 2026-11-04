@@ -63,6 +63,12 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", regime_confirmation_reference:"", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"", computerized_invoicing_authorization_number:"", computerized_invoicing_confirmation_reference:"" };
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
+  const accessManager = {
+    attempted:false, loading:false, loaded:false, error:"",
+    users:[], pendingIdentities:[], roles:[], permissions:[], grants:[], audit:[]
+  };
+  let accessSelectedRole = "";
+
 
   async function erpApi(path, options = {}) {
     const auth = window.JBAuth;
@@ -443,6 +449,88 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
   const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all' };
+  const permissionViews = {
+    dashboard: ["dashboard.view"], products: ["products.catalog.view"],
+    inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"],
+    orders: ["orders.records.view"], billing: ["billing.invoices.view"],
+    receivables: ["receivables.view","billing.payments.view"], customers: ["customers.records.view"],
+    hr: ["hr.employees.view","hr.attendance.view","hr.payroll.view","hr.leave.view","hr.contracts.view"],
+    dgi: ["dgi.documents.view"], analytics: ["analytics.reports.view"], settings: ["settings.general.view"],
+    purchases: ["purchases.purchase_orders.view","purchases.receipts.view","purchases.supplier_invoices.view"],
+    payables: ["payables.payments.view"], suppliers: ["suppliers.records.view"],
+    expenses: ["expenses.records.view"], cash: ["cash.entries.view"]
+  };
+  function permissionGranted(key) {
+    const profile = window.JBAuth?.profile;
+    // The Worker grants an explicit owner bypass; mirror it in navigation only.
+    if (String(profile?.role || "").toLowerCase() === "owner") return true;
+    const grants = profile?.permissions;
+    return Array.isArray(grants) && (grants.includes("*") || grants.includes(key));
+  }
+  function canViewERPView(view) {
+    const keys = permissionViews[view] || [];
+    return keys.some(permissionGranted);
+  }
+  function firstPermittedView() {
+    return Object.keys(permissionViews).find(canViewERPView) || null;
+  }
+  function applyPermissionNavigation() {
+    document.querySelectorAll(".primary-nav .nav-item[data-view]").forEach((button) => {
+      button.hidden = !canViewERPView(button.getAttribute("data-view"));
+    });
+    document.querySelectorAll(".primary-nav").forEach((nav) => {
+      const visible = Array.from(nav.querySelectorAll(".nav-item")).some((button) => !button.hidden);
+      nav.hidden = !visible;
+      const caption = nav.previousElementSibling;
+      if (caption?.classList.contains("nav-caption")) caption.hidden = !visible;
+    });
+  }
+  const actionPermissions = {
+    "new-order": ["orders.records.create"], "preview-order": ["orders.records.view"],
+    "new-invoice": ["billing.invoices.create"], "new-invoice-after-preview": ["billing.invoices.create"],
+    "add-invoice-product": ["billing.invoices.create"], "remove-invoice-product": ["billing.invoices.create"],
+    "view-invoice": ["billing.invoices.view"], "new-payment": ["billing.payments.create"],
+    "new-customer": ["customers.records.create"], "new-product": ["products.catalog.create"],
+    "edit-product": ["products.catalog.edit"], "delete-product": ["products.catalog.delete"],
+    "toggle-product": ["products.catalog.edit"], "import-products": ["products.catalog.create"],
+    "stock-new": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
+    "stock-product": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
+    "export-inventory": ["inventory.stock.view"], "new-purchase": ["purchases.receipts.receive"],
+    "new-purchase-payment": ["payables.payments.create"], "new-supplier": ["suppliers.records.create"],
+    "new-expense": ["expenses.records.create"], "new-cash": ["cash.entries.create"],
+    "new-cash-account": ["cash.entries.create"], "new-employee": ["hr.employees.create"],
+    "new-attendance": ["hr.attendance.create"], "new-leave": ["hr.leave.create"],
+    "approve-leave": ["hr.leave.approve"], "reject-leave": ["hr.leave.reject"],
+    "new-payroll-period": ["hr.payroll.create"], "new-payroll-item": ["hr.payroll.create"],
+    "approve-payroll": ["hr.payroll.approve"], "pay-payroll": ["hr.payroll.approve"],
+    "download-dgi-document": ["dgi.documents.view"], "reload-dgi-documents": ["dgi.documents.view"],
+    "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
+    "clear-inventory-filters": ["inventory.stock.view"], "clear-inventory-product-filters": ["inventory.stock.view"],
+    "inventory-page": ["inventory.stock.view"], "refresh-access-manager": ["users.accounts.view"],
+    "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
+  };
+  function applyPermissionActions() {
+    root.querySelectorAll("button[data-action]").forEach((button) => {
+      const action = button.getAttribute("data-action");
+      if (action === "hr-tab") {
+        const tabPermission = {
+          employees: "hr.employees.view", attendance: "hr.attendance.view",
+          leaves: "hr.leave.view", payroll: "hr.payroll.view", contracts: "hr.contracts.view"
+        }[button.getAttribute("data-tab")];
+        if (tabPermission) button.hidden = !permissionGranted(tabPermission);
+        return;
+      }
+      if (action === "new-purchase") {
+        button.hidden = !(permissionGranted("purchases.receipts.receive") && permissionGranted("inventory.receipts.receive"));
+        return;
+      }
+      const keys = actionPermissions[action];
+      if (keys) button.hidden = !keys.some(permissionGranted);
+    });
+    root.querySelectorAll("button[data-view]").forEach((button) => {
+      button.hidden = !canViewERPView(button.getAttribute("data-view"));
+    });
+  }
   const root = document.getElementById('view-root');
   const dialog = document.getElementById('product-dialog');
   const form = document.getElementById('product-form');
@@ -681,7 +769,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     return heading(views.inventory, '<div class="heading-actions-inline"><button class="button button-quiet" data-action="export-inventory">' + svg('download') + ' Exportar CSV</button><button class="button button-primary" data-action="stock-new">' + svg('plus') + ' Registrar movimiento</button></div>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Referencias activas</span><strong>' + activeProducts.length + '</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong>' + activeProducts.reduce(function (sum, product) { return sum + product.stock; }, 0) + '</strong></div><div class="summary-mini"><span>Para reponer</span><strong>' + activeProducts.filter(needsRestock).length + '</strong></div></div>' +
       '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="inventory-product-search" type="search" value="' + esc(state.inventoryProductQuery) + '" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"' + (state.inventoryProductStock === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.inventoryProductStock === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.inventoryProductStock === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.inventoryProductStock === 'out' ? ' selected' : '') + '>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">' + rows.length + ' de ' + activeProducts.length + ' productos</span><span>Ordenados por menor existencia</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th></th></tr></thead><tbody id="inventory-product-body">' + (rows || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>') + '</tbody></table></div></article>' +
-      renderInventoryLedger() +
+      (["inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted) ? renderInventoryLedger() : "") +
       '<div class="notice-panel"><span>' + svg('warning') + '</span><div><strong>Stock mínimo configurable por producto · Kardex conectado</strong><p>El sistema valida que las salidas no dejen existencias negativas. Cada movimiento conserva stock anterior, variación y stock resultante. Cada operación se registra en Neon y conserva su trazabilidad.</p></div></div>';
   }
   function showProductDetails(productId) {
@@ -1518,7 +1606,6 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     const auth=window.JBAuth,backendMode=Boolean(auth&&auth.mode==='authenticated');
     if(backendMode&&!auth.user)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Sección protegida</strong><p>Inicia sesión para consultar los expedientes de personal.</p></div></div>';
     if(backendMode&&!auth.profile)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Cuenta pendiente de autorización</strong><p>'+esc(auth.profileError||'Verifica tu correo y vuelve a iniciar sesión.')+'</p></div></div>';
-    if(backendMode&&!['owner','admin','hr'].includes(auth.profile.role))return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Permiso insuficiente</strong><p>Tu cuenta no tiene acceso al expediente de personal.</p></div></div>';
     if(backendMode&&!hrRecordsLoaded){
       if(!hrRecordsLoading&&!hrLoadAttempted)loadHRFromAPI(false);
       const message=hrLoadError||'Consultando los registros protegidos de Neon…';
@@ -1526,12 +1613,15 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     }
     const activeEmployees=employees.filter(e=>e.status==='Activo');
     const totalPayroll=payrollItems.reduce((sum,item)=>sum+Number(item.netSalaryNio||0),0);
-    const tabs=[
-      ['employees','Personal',employees.length],
-      ['attendance','Asistencia',attendanceRecords.length],
-      ['leaves','Permisos',leaveRequests.filter(x=>x.status==='Pendiente').length],
-      ['payroll','Nómina',payrollPeriods.length]
+    const availableTabs=[
+      ['employees','Personal',employees.length,'hr.employees.view'],
+      ['attendance','Asistencia',attendanceRecords.length,'hr.attendance.view'],
+      ['leaves','Permisos',leaveRequests.filter(x=>x.status==='Pendiente').length,'hr.leave.view'],
+      ['payroll','Nómina',payrollPeriods.length,'hr.payroll.view']
     ];
+    const tabs=availableTabs.filter(tab=>permissionGranted(tab[3]));
+    if(!tabs.length)return heading(views.hr,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>RR. HH. sin apartados habilitados</strong><p>El propietario debe asignarte acceso a uno o varios apartados de Recursos Humanos.</p></div></div>';
+    if(!tabs.some(tab=>tab[0]===state.hrTab))state.hrTab=tabs[0][0];
     const tabsHtml='<div class="toolbar products-toolbar hr-tabs"><div class="toolbar-left">'+tabs.map(([id,label,count])=>'<button type="button" class="button hr-tab-button '+(state.hrTab===id?'button-primary':'button-quiet')+' button-small" data-action="hr-tab" data-tab="'+id+'">'+label+' <span class="ledger-count">'+count+'</span></button>').join('')+'</div></div>';
     let actions='',content='';
     if(state.hrTab==='employees'){
@@ -1842,8 +1932,121 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       featureCard('users','Personal y nómina','RR. HH. permanece habilitado. La nómina legal requiere configurar deducciones y prestaciones conforme a la normativa vigente.')+
       featureCard('spark','Trazabilidad','Las operaciones comerciales, cambios relevantes y ajustes de inventario registran auditoría.')+
       '</div>'+
+      renderAccessManager()+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Entorno de trabajo: Neon Development</strong><p>Los cambios de esta etapa se prueban en Desarrollo. Neon Production no recibe migraciones ni datos hasta validar el sistema y revisar los consumos.</p></div></div>';
   }
+  async function loadAccessManager(force = false) {
+    if (window.JBAuth?.profile?.role !== "owner") return;
+    if (accessManager.loading || (accessManager.loaded && !force) || (accessManager.attempted && !force)) return;
+    accessManager.attempted = true;
+    accessManager.loading = true;
+    accessManager.error = "";
+    try {
+      const [users, roles, audit] = await Promise.all([
+        erpApi("users"), erpApi("roles"), erpApi("audit")
+      ]);
+      accessManager.users = users.users || [];
+      accessManager.pendingIdentities = users.pendingIdentities || [];
+      accessManager.roles = roles.roles || [];
+      accessManager.permissions = roles.permissions || [];
+      accessManager.grants = roles.grants || [];
+      accessManager.audit = audit.records || [];
+      if (!accessSelectedRole || !accessManager.roles.some(role => role.role_key === accessSelectedRole)) {
+        accessSelectedRole = accessManager.roles.find(role => role.role_key !== "owner")?.role_key || "";
+      }
+      accessManager.loaded = true;
+    } catch (error) {
+      accessManager.error = error?.message || "No se pudo cargar la administración de accesos.";
+      accessManager.loaded = false;
+    } finally {
+      accessManager.loading = false;
+      if (state.view === "settings") renderView();
+    }
+  }
+
+  function renderAccessManager() {
+    if (window.JBAuth?.profile?.role !== "owner") return "";
+    if (!accessManager.attempted) loadAccessManager();
+    if (accessManager.loading && !accessManager.loaded) {
+      return '<article class="panel"><div class="panel-heading"><div><h2>Administración de accesos</h2><p>Cargando cuentas, plantillas, permisos y auditoría…</p></div></div></article>';
+    }
+    if (accessManager.error && !accessManager.loaded) {
+      return '<article class="panel"><div class="panel-heading"><div><h2>Administración de accesos</h2><p>'+esc(accessManager.error)+'</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Reintentar</button></div></article>';
+    }
+
+    const roleOptions = accessManager.roles.filter(role => role.role_key !== "owner")
+      .map(role => '<option value="'+esc(role.role_key)+'"'+(role.role_key==="viewer"?' selected':'')+'>'+esc(role.name)+'</option>').join("");
+    const userRows = accessManager.users.map(user => {
+      if (user.role === "owner") {
+        return '<tr><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td>Propietario</td><td>Protegido</td><td><span class="status-chip status-success">Activo</span></td><td>—</td></tr>';
+      }
+      const statusOptions = ["invited","registered","active","rejected","disabled"]
+        .map(status => '<option value="'+status+'"'+(user.account_status===status?' selected':'')+'>'+({
+          invited:"Invitado",registered:"Registrado",active:"Activo",rejected:"Rechazado",disabled:"Deshabilitado"
+        })[status]+'</option>').join("");
+      const userOverrides = Array.isArray(user.overrides) ? user.overrides : [];
+      const overrideRows = userOverrides.map(override => {
+        const permission = accessManager.permissions.find(item=>item.permission_key===override.permission_key);
+        return '<div class="permission-override-row" data-override-key="'+esc(override.permission_key)+'">'+
+          '<span>'+esc(permission?.label||override.permission_key)+'<small>'+esc(override.permission_key)+'</small></span>'+
+          '<select class="filter-select" data-override-value><option value="allow"'+(override.allowed?' selected':'')+'>Permitir</option><option value="deny"'+(!override.allowed?' selected':'')+'>Denegar</option></select>'+
+          '<button type="button" class="button button-quiet button-small" data-action="remove-user-override" aria-label="Quitar excepción">Quitar</button></div>';
+      }).join("");
+      const overridePermissionOptions = accessManager.permissions.map(permission =>
+        '<option value="'+esc(permission.permission_key)+'">'+esc(permission.label)+' · '+esc(permission.permission_key)+'</option>'
+      ).join("");
+      return '<tr data-user-id="'+esc(user.id)+'"><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td>'+
+        '<td><input class="filter-select" data-user-position value="'+esc(user.position_title||"")+'" maxlength="120" placeholder="Cargo libre"></td>'+
+        '<td><select class="filter-select" data-user-role>'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(user.role_template_key===role.role_key?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></td>'+
+        '<td><select class="filter-select" data-user-status>'+statusOptions+'</select></td>'+
+        '<td class="user-access-controls"><label><input type="checkbox" data-user-password'+(user.must_change_password?' checked':'')+'> Cambio inicial</label>'+
+        '<details class="user-overrides"><summary>Excepciones ('+userOverrides.length+')</summary><div data-user-overrides>'+overrideRows+'</div>'+
+        '<div class="permission-override-add"><select class="filter-select" data-new-override-permission aria-label="Permiso individual">'+overridePermissionOptions+'</select>'+
+        '<select class="filter-select" data-new-override-value aria-label="Efecto"><option value="allow">Permitir</option><option value="deny">Denegar</option></select>'+
+        '<button type="button" class="button button-quiet button-small" data-action="add-user-override">Añadir</button></div>'+
+        '<small class="form-helper">Las excepciones reemplazan el valor de la plantilla para esta cuenta.</small></details>'+
+        '<button class="button button-quiet button-small" data-action="save-user-access">Guardar cuenta</button></td></tr>';
+    }).join("");
+
+    const pendingRows = accessManager.pendingIdentities.map(identity =>
+      '<tr data-pending-email="'+esc(identity.email)+'"><td><strong>'+esc(identity.email)+'</strong><small class="table-secondary">'+(identity.email_verified?'Correo verificado':'Correo pendiente de verificar')+'</small></td>'+
+      '<td><input class="filter-select" data-pending-name value="'+esc(identity.display_name||"")+'" maxlength="180" placeholder="Nombre completo"></td>'+
+      '<td><input class="filter-select" data-pending-position maxlength="120" placeholder="Cargo libre"></td>'+
+      '<td><select class="filter-select" data-pending-role>'+roleOptions+'</select></td>'+
+      '<td><button class="button button-primary button-small" data-action="provision-user-account">Preparar cuenta ERP</button></td></tr>'
+    ).join("");
+
+    const selectedRole = accessManager.roles.find(role=>role.role_key===accessSelectedRole);
+    const granted = new Set(accessManager.grants.filter(grant=>grant.role_key===accessSelectedRole && grant.allowed===true).map(grant=>grant.permission_key));
+    const moduleRows = accessManager.permissions.filter(permission=>permission.permission_type==="module");
+    const permissionGroups = moduleRows.map(module => {
+      const rows = accessManager.permissions.filter(permission=>permission.module_key===module.module_key)
+        .map(permission => {
+          const level = permission.permission_type==="module" ? "Módulo" : permission.permission_type==="section" ? "Sección" : "Acción";
+          const indent = permission.permission_type==="module" ? 0 : permission.permission_type==="section" ? 16 : 34;
+          return '<label class="permission-editor-row" style="padding-left:'+indent+'px"><input type="checkbox" name="permission" value="'+esc(permission.permission_key)+'"'+(granted.has(permission.permission_key)?' checked':'')+'><span>'+esc(permission.label)+'</span><small>'+level+'</small><code>'+esc(permission.permission_key)+'</code></label>';
+        }).join("");
+      return '<section class="permission-editor-module"><h4>'+esc(module.label)+'</h4>'+rows+'</section>';
+    }).join("");
+
+    const auditRows = accessManager.audit.slice(0,100).map(record =>
+      '<tr><td>'+esc(new Date(record.created_at).toLocaleString("es-NI"))+'</td><td>'+esc(record.actor_name||"Sistema")+'</td><td>'+esc(record.action)+'</td><td>'+esc(record.entity_type)+(record.entity_id?' · '+esc(record.entity_id):'')+'</td></tr>'
+    ).join("");
+
+    return '<section class="access-manager-section">'+
+      '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>El cargo es texto libre. El estado activo es lo que habilita la entrada al ERP.</p></div><span class="ledger-count">'+accessManager.users.length+' cuentas</span></div>'+
+      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>La identidad ya debe existir en Neon Auth. Esta acción crea el perfil ERP, inicialmente bloqueado; no crea la contraseña ni envía una invitación.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
+      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p></div>'+
+      '<select class="filter-select" id="access-role-select">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div>'+
+      (selectedRole ? '<form id="role-permissions-form" data-role-key="'+esc(accessSelectedRole)+'"><div class="permission-editor-grid">'+permissionGroups+'</div><div class="modal-actions"><button class="button button-primary" type="submit">Guardar permisos de plantilla</button></div></form>' : '<p>No hay plantillas editables disponibles.</p>')+
+      '<form id="role-create-form" class="rate-form"><label class="form-field"><span>Clave nueva</span><input name="role_key" maxlength="32" pattern="[a-z][a-z0-9_-]{2,31}" placeholder="supervisor" required></label><label class="form-field"><span>Nombre</span><input name="name" maxlength="80" placeholder="Supervisor de tienda" required></label><label class="form-field"><span>Descripción</span><input name="description" maxlength="240" placeholder="Responsabilidades del puesto"></label><button class="button button-quiet" type="submit">Crear plantilla vacía</button></form></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Auditoría reciente</h3><p>Últimos 100 cambios registrados.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>ACTOR</th><th>ACCIÓN</th><th>REGISTRO</th></tr></thead><tbody>'+(auditRows||'<tr><td colspan="4">Todavía no hay eventos de auditoría.</td></tr>')+'</tbody></table></div></article>'+
+      '</section>';
+  }
+
   function updateNotificationIndicator(){
     const dot=document.querySelector('.notification-button i');
     const button=document.querySelector('.notification-button');
@@ -1856,6 +2059,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     button.setAttribute('aria-label',hasAlerts?'Notificaciones: hay alertas operativas':'Notificaciones: sin alertas');
   }
   function renderView() {
+    if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
     const meta = views[state.view] || views.dashboard;
     document.getElementById('breadcrumb-current').textContent = meta.title;
     document.getElementById('page-eyebrow').textContent = meta.eyebrow;
@@ -1881,13 +2085,15 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       cash: renderCash
     };
     root.innerHTML = (renderers[state.view] || renderDashboard)();
+    applyPermissionNavigation();
+    applyPermissionActions();
     updateNotificationIndicator();
     document.querySelector('.page-context')?.classList.toggle('page-context-hr',state.view==='hr');
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
     hydrateProductImageSlots();
   }
   function goToView(view) {
-    if (!views[view]) return;
+    if (!views[view] || !canViewERPView(view)) return;
     state.view = view;
     state.query = '';
     state.filter = 'all';
@@ -1945,7 +2151,20 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   function openStockModal(productId) {
     const activeProducts = products.filter(function (product) { return product.active !== false; });
     if (!activeProducts.length) { toast('Primero activa o registra un producto para mover existencias.'); return; }
+    const movementSelect = stockForm.elements.type;
+    const allowedTypes = [
+      { value: "entry", permission: "inventory.receipts.receive" },
+      { value: "exit", permission: "inventory.manual_out.create" },
+      { value: "adjustment", permission: "inventory.adjustments.adjust" }
+    ].filter((item) => permissionGranted(item.permission));
+    if (!allowedTypes.length) { toast("Tu cuenta no tiene permiso para registrar movimientos manuales."); return; }
+    Array.from(movementSelect.options).forEach((option) => {
+      const allowed = allowedTypes.some((item) => item.value === option.value);
+      option.hidden = !allowed;
+      option.disabled = !allowed;
+    });
     stockForm.reset();
+    movementSelect.value = allowedTypes[0].value;
     const productSearch=stockForm.querySelector('[data-lookup="product"]');
     if(productSearch){productSearch.value='';productSearch.setCustomValidity('');}
     if(productId!=null&&productSearch)selectLookupValue(productSearch,productId);
@@ -2591,6 +2810,150 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       openBusinessDialog('invoice');
     }else if(name==='print-invoice')window.print();
     else if(name==='close-invoice-preview')document.getElementById('invoice-preview-dialog').close();
+  });
+  document.addEventListener("change",function(event){
+    if(event.target?.id==="access-role-select"){
+      accessSelectedRole=event.target.value;
+      renderView();
+    }
+  });
+  document.addEventListener("click",async function(event){
+    const button=event.target.closest("[data-action]");
+    if(!button)return;
+    const action=button.getAttribute("data-action");
+    if(action==="refresh-access-manager"){
+      button.disabled=true;
+      await loadAccessManager(true);
+      if(accessManager.loaded)toast("Administración de accesos actualizada.");
+      else toast(accessManager.error||"No se pudo actualizar.");
+      button.disabled=false;
+      return;
+    }
+    if(action==="provision-user-account"){
+      const row=button.closest("tr");
+      if(!row)return;
+      const email=row.getAttribute("data-pending-email");
+      const payload={
+        email,
+        display_name:row.querySelector("[data-pending-name]")?.value.trim()||"",
+        position_title:row.querySelector("[data-pending-position]")?.value.trim()||"",
+        role_template_key:row.querySelector("[data-pending-role]")?.value||"viewer",
+        must_change_password:true
+      };
+      if(!payload.display_name){toast("Escribe el nombre completo antes de preparar la cuenta.");return;}
+      button.disabled=true;
+      try{
+        await erpApi("users",{method:"POST",body:JSON.stringify(payload)});
+        await loadAccessManager(true);
+        toast("Perfil ERP creado y bloqueado. Actívalo solo después de completar la autorización.");
+      }catch(error){toast(error?.message||"No se pudo preparar la cuenta.");}
+      finally{button.disabled=false;}
+      return;
+    }
+    if(action==="remove-user-override"){
+      const overrideRow=button.closest("[data-override-key]");
+      const userRow=button.closest("tr[data-user-id]");
+      if(overrideRow)overrideRow.remove();
+      const summary=userRow?.querySelector(".user-overrides summary");
+      if(summary&&userRow)summary.textContent="Excepciones ("+userRow.querySelectorAll("[data-override-key]").length+")";
+      return;
+    }
+    if(action==="add-user-override"){
+      const userRow=button.closest("tr[data-user-id]");
+      const container=userRow?.querySelector("[data-user-overrides]");
+      const selector=userRow?.querySelector("[data-new-override-permission]");
+      const effect=userRow?.querySelector("[data-new-override-value]");
+      if(!userRow||!container||!selector||!effect)return;
+      const key=selector.value;
+      if(userRow.querySelector('[data-override-key="'+CSS.escape(key)+'"]')){
+        toast("Ese permiso ya tiene una excepción. Edita su valor en la lista.");
+        return;
+      }
+      const permission=accessManager.permissions.find(item=>item.permission_key===key);
+      if(!permission)return;
+      const row=document.createElement("div");
+      row.className="permission-override-row";
+      row.setAttribute("data-override-key",key);
+      const label=document.createElement("span");
+      label.textContent=permission.label;
+      const code=document.createElement("small");
+      code.textContent=key;
+      label.appendChild(code);
+      const value=document.createElement("select");
+      value.className="filter-select";
+      value.setAttribute("data-override-value","");
+      value.innerHTML='<option value="allow">Permitir</option><option value="deny">Denegar</option>';
+      value.value=effect.value;
+      const remove=document.createElement("button");
+      remove.type="button";
+      remove.className="button button-quiet button-small";
+      remove.setAttribute("data-action","remove-user-override");
+      remove.textContent="Quitar";
+      row.append(label,value,remove);
+      container.appendChild(row);
+      const summary=userRow.querySelector(".user-overrides summary");
+      if(summary)summary.textContent="Excepciones ("+userRow.querySelectorAll("[data-override-key]").length+")";
+      return;
+    }
+    if(action==="save-user-access"){
+      const row=button.closest("tr"), id=row?.getAttribute("data-user-id");
+      if(!id)return;
+      const payload={
+        position_title:row.querySelector("[data-user-position]")?.value.trim()||"",
+        role_template_key:row.querySelector("[data-user-role]")?.value||"viewer",
+        account_status:row.querySelector("[data-user-status]")?.value||"registered",
+        must_change_password:row.querySelector("[data-user-password]")?.checked===true,
+        overrides:Array.from(row.querySelectorAll("[data-override-key]")).map(item=>({
+          permission_key:item.getAttribute("data-override-key"),
+          allowed:item.querySelector("[data-override-value]")?.value==="allow"
+        }))
+      };
+      button.disabled=true;
+      try{
+        await erpApi("users/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
+        await loadAccessManager(true);
+        toast("Cuenta ERP actualizada.");
+      }catch(error){toast(error?.message||"No se pudo actualizar la cuenta.");}
+      finally{button.disabled=false;}
+    }
+  });
+  document.addEventListener("submit",async function(event){
+    const form=event.target;
+    if(form?.id==="role-permissions-form"){
+      event.preventDefault();
+      if(window.JBAuth?.profile?.role!=="owner")return;
+      const roleKey=form.getAttribute("data-role-key");
+      const enabled=new Set(new FormData(form).getAll("permission").map(String));
+      const permissions=accessManager.permissions.map(permission=>({
+        permission_key:permission.permission_key,
+        allowed:enabled.has(permission.permission_key)
+      }));
+      const submit=form.querySelector('[type="submit"]');
+      if(submit){submit.disabled=true;submit.textContent="Guardando…";}
+      try{
+        await erpApi("roles/"+encodeURIComponent(roleKey),{method:"PATCH",body:JSON.stringify({permissions})});
+        await loadAccessManager(true);
+        toast("Permisos de la plantilla actualizados.");
+      }catch(error){toast(error?.message||"No se pudo guardar la plantilla.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Guardar permisos de plantilla";}}
+      return;
+    }
+    if(form?.id==="role-create-form"){
+      event.preventDefault();
+      if(window.JBAuth?.profile?.role!=="owner")return;
+      const data=new FormData(form);
+      const payload={role_key:String(data.get("role_key")||"").trim(),name:String(data.get("name")||"").trim(),description:String(data.get("description")||"").trim()};
+      const submit=form.querySelector('[type="submit"]');
+      if(submit){submit.disabled=true;submit.textContent="Creando…";}
+      try{
+        const result=await erpApi("roles",{method:"POST",body:JSON.stringify(payload)});
+        accessSelectedRole=result.role?.role_key||accessSelectedRole;
+        form.reset();
+        await loadAccessManager(true);
+        toast("Plantilla vacía creada. Asigna cada módulo, sección y acción antes de utilizarla.");
+      }catch(error){toast(error?.message||"No se pudo crear la plantilla.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Crear plantilla vacía";}}
+    }
   });
   document.addEventListener('submit',function(event){
     if(event.target?.id==='dgi-settings-form'){event.preventDefault();saveDgiSettings(event);}

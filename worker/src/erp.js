@@ -1,3 +1,5 @@
+import { loadUserPermissions, hasPermission, hasAnyModuleAccess } from "./permissions.js";
+
 const RESOURCE_DEFS = {
   products: { table: "products", roles: ["owner", "admin", "inventory"], fields: ["sku","name","brand","category","concentration","gender","family","size_ml","presentation","purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","min_stock","location","active","barcode","description","supplier_name","wholesale_price_usd","tone","notes","images"], order: "name ASC" },
   customers: { table: "customers", roles: ["owner", "admin", "sales"], fields: ["name","contact","phone","email","notes","active","customer_type"], order: "name ASC" },
@@ -29,7 +31,8 @@ function erpError(status, code, message) {
 }
 
 function canAccess(user, roles) {
-  return Boolean(user && roles.includes(user.role));
+  // Every request is checked against the granular policy before reaching a handler.
+  return Boolean(user && (user._permissionValidated === true || roles.includes(user.role)));
 }
 
 async function auditQuery(sql, actorId, action, entity, entityId, details = {}) {
@@ -39,12 +42,7 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
   );
 }
 
-async function readBootstrap(sql, user) {
-  const isOwner = ["owner", "admin"].includes(user.role);
-  const canInventory = isOwner || user.role === "inventory";
-  const canSales = isOwner || user.role === "sales";
-  const canFinance = isOwner || user.role === "finance";
-  const canHR = isOwner || user.role === "hr";
+async function readBootstrap(sql, user, permissionContext) {
   const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
@@ -69,38 +67,49 @@ async function readBootstrap(sql, user) {
       tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`
     ]);
 
-  const result = { settings: settings.filter((setting) => setting.setting_key !== "dgi_compliance" || isOwner || canFinance) };
-  if (isOwner || canInventory) {
-    result.products = products;
-    result.inventory_movements = movements;
-    result.suppliers = suppliers;
+  const result = {};
+  if (hasPermission(permissionContext, "settings.general.view")) {
+    result.settings = settings.filter((setting) =>
+      setting.setting_key !== "dgi_compliance" || hasPermission(permissionContext, "dgi.documents.view")
+    );
+  }
+  if (hasPermission(permissionContext, "products.catalog.view")) result.products = products;
+  const canViewInbound = hasPermission(permissionContext, "inventory.receipts.view") ||
+    hasPermission(permissionContext, "purchases.receipts.view");
+  const canViewOutbound = hasPermission(permissionContext, "inventory.manual_out.view");
+  const canViewAdjustments = hasPermission(permissionContext, "inventory.adjustments.view");
+  if (canViewInbound || canViewOutbound || canViewAdjustments) {
+    result.inventory_movements = movements.filter((movement) => {
+      const delta = Number(movement.quantity_delta ?? movement.quantity ?? 0);
+      if (delta < 0) return canViewOutbound;
+      if (delta > 0) return canViewInbound;
+      return canViewAdjustments;
+    });
+  }
+  if (hasPermission(permissionContext, "suppliers.records.view")) result.suppliers = suppliers;
+  if (hasPermission(permissionContext, "purchases.receipts.view")) {
     result.purchases = purchases;
     result.purchase_items = purchaseItems;
   }
-  if (isOwner || canSales) {
-    result.customers = customers;
+  if (hasPermission(permissionContext, "customers.records.view")) result.customers = customers;
+  if (hasPermission(permissionContext, "orders.records.view")) {
     result.orders = orders;
     result.order_items = orderItems;
+  }
+  if (hasPermission(permissionContext, "billing.invoices.view")) {
     result.invoices = invoices;
     result.invoice_items = invoiceItems;
-    result.invoice_payments = invoicePayments;
   }
-  if (isOwner || canFinance) {
-    result.products = products;
-    result.orders = orders;
-    result.expenses = expenses;
+  if (hasPermission(permissionContext, "billing.payments.view")) result.invoice_payments = invoicePayments;
+  if (hasPermission(permissionContext, "expenses.records.view")) result.expenses = expenses;
+  if (hasPermission(permissionContext, "cash.entries.view")) {
     result.cash_accounts = cashAccounts;
     result.cash_entries = cashEntries;
-    result.purchases = purchases;
-    result.purchase_items = purchaseItems;
-    result.invoices = invoices;
-    result.invoice_items = invoiceItems;
-    result.invoice_payments = invoicePayments;
   }
-  if (isOwner || canHR) {
-    result.employees = employees;
-    result.hr_attendance = attendance;
-    result.hr_leave_requests = leaveRequests;
+  if (hasPermission(permissionContext, "hr.employees.view")) result.employees = employees;
+  if (hasPermission(permissionContext, "hr.attendance.view")) result.hr_attendance = attendance;
+  if (hasPermission(permissionContext, "hr.leave.view")) result.hr_leave_requests = leaveRequests;
+  if (hasPermission(permissionContext, "hr.payroll.view")) {
     result.hr_payroll_periods = payrollPeriods;
     result.hr_payroll_items = payrollItems;
   }
@@ -906,18 +915,158 @@ async function updateOrderStatus(sql, user, id, body) {
   const status = String(body.status || "");
   const allowed = ["Pendiente","En preparación","Listo para entrega","En tránsito","Completado","Cancelado"];
   if (!allowed.includes(status)) return erpError(400, "INVALID_ORDER_STATUS", "El estado del pedido no es válido.");
+
+  // Order workflow statuses never mutate stock. Stock OUT is an atomic effect
+  // of invoice creation, and reversals must use an explicit return flow.
   const rows = await sql.query(
-    "WITH target AS (SELECT o.id,o.order_number,o.status AS old_status FROM orders o WHERE o.id=$1::uuid FOR UPDATE), totals AS (SELECT product_id,SUM(quantity)::int AS quantity FROM order_items WHERE order_id=$1::uuid AND product_id IS NOT NULL GROUP BY product_id), products_before AS (SELECT p.id,p.name,p.sku,p.stock,t.quantity FROM products p JOIN totals t ON t.product_id=p.id FOR UPDATE OF p), order_stock AS (SELECT COALESCE(BOOL_AND(COALESCE(m.quantity_delta,0)=-t.quantity),FALSE) AS already_applied FROM totals t LEFT JOIN (SELECT product_id,SUM(quantity_delta)::int AS quantity_delta FROM inventory_movements WHERE reference_type='order' AND reference_id=$1::text GROUP BY product_id) m ON m.product_id=t.product_id), linked_invoice AS (SELECT EXISTS(SELECT 1 FROM invoices WHERE order_id=$1::uuid) AS is_invoiced), direction AS (SELECT CASE WHEN linked_invoice.is_invoiced THEN 0 WHEN target.old_status='Pendiente' AND $2 IN ('En preparación','Listo para entrega','En tránsito','Completado') AND NOT order_stock.already_applied THEN -1 WHEN target.old_status IN ('En preparación','Listo para entrega','En tránsito') AND $2 IN ('Pendiente','Cancelado') AND order_stock.already_applied THEN 1 ELSE 0 END AS factor FROM target CROSS JOIN order_stock CROSS JOIN linked_invoice), validation AS (SELECT COUNT(*) FILTER(WHERE products_before.stock < products_before.quantity OR products_before.id IS NULL) AS insufficient FROM totals LEFT JOIN products_before ON products_before.id=totals.product_id CROSS JOIN direction WHERE direction.factor=-1), changed_stock AS (UPDATE products p SET stock=p.stock+(direction.factor*products_before.quantity),updated_at=NOW() FROM products_before CROSS JOIN direction WHERE p.id=products_before.id AND direction.factor<>0 AND (direction.factor=1 OR products_before.stock>=products_before.quantity) AND (SELECT insufficient FROM validation)=0 RETURNING p.id,p.name,p.sku,products_before.stock AS previous_stock,products_before.quantity,p.stock AS new_stock), movements AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,CASE WHEN quantity_delta<0 THEN 'Salida' ELSE 'Reversion' END,quantity,quantity_delta,previous_stock,new_stock,'Cambio de estado del pedido '||(SELECT order_number FROM target),'order',$1::text,$3 FROM (SELECT id,quantity,previous_stock,new_stock,(new_stock-previous_stock) AS quantity_delta FROM changed_stock) s RETURNING id), changed_order AS (UPDATE orders o SET status=$2,updated_at=NOW() FROM target,linked_invoice WHERE o.id=target.id AND (SELECT insufficient FROM validation)=0 AND (target.old_status NOT IN ('Completado','Cancelado') OR target.old_status=$2) AND NOT (linked_invoice.is_invoiced AND $2 IN ('Pendiente','Cancelado')) RETURNING o.*), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $3,'status_change','order',id::text,jsonb_build_object('status',$2) FROM changed_order) SELECT * FROM changed_order",
+    "WITH target AS (SELECT o.id,o.status AS old_status FROM orders o WHERE o.id=$1::uuid FOR UPDATE), " +
+    "linked_invoice AS (SELECT EXISTS(SELECT 1 FROM invoices WHERE order_id=$1::uuid) AS is_invoiced), " +
+    "changed AS (UPDATE orders o SET status=$2,updated_at=NOW() FROM target,linked_invoice " +
+    "WHERE o.id=target.id " +
+    "AND (target.old_status NOT IN ('Completado','Cancelado') OR target.old_status=$2) " +
+    "AND NOT (linked_invoice.is_invoiced AND $2='Cancelado') RETURNING o.*), " +
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
+    "SELECT $3,'status_change','order',id::text,jsonb_build_object('old_status',(SELECT old_status FROM target),'status',$2) FROM changed) " +
+    "SELECT * FROM changed",
     [id,status,user.id]
   );
   if (!rows[0]) {
     const linkedInvoice = await sql.query("SELECT 1 FROM invoices WHERE order_id=$1::uuid LIMIT 1", [id]);
-    if (linkedInvoice[0] && ["Pendiente","Cancelado"].includes(status)) {
-      return erpError(409, "ORDER_ALREADY_INVOICED", "El pedido ya tiene una factura. Para evitar duplicar o reponer inventario, tramita cualquier devolución desde la gestión de la factura.");
+    if (linkedInvoice[0] && status === "Cancelado") {
+      return erpError(409, "ORDER_ALREADY_INVOICED", "El pedido ya tiene una factura. Para evitar alterar el inventario, gestiona cualquier devolución desde el flujo de devoluciones.");
     }
-    return erpError(409, "ORDER_STOCK_CONFLICT", "No se pudo cambiar el estado: el pedido no existe, ya está finalizado/cancelado o no hay existencias suficientes.");
+    return erpError(409, "ORDER_STATUS_CONFLICT", "No se pudo cambiar el estado: el pedido no existe o ya está finalizado/cancelado.");
   }
   return erpJson({ record: rows[0] });
+}
+
+export function resolveRoutePermission(resource, method, id, parts, body) {
+  const action = method === "GET" ? "view" :
+    method === "POST" ? "create" :
+    method === "PATCH" ? "edit" :
+    method === "DELETE" ? "delete" : null;
+  if (!action) return null;
+
+  if (resource === "users") {
+    if (method === "GET") return "users.accounts.view";
+    if (method === "POST") return "users.accounts.create";
+    if (method === "PATCH") {
+      return String(body?.account_status || "").toLowerCase() === "disabled"
+        ? "users.accounts.disable" : "users.accounts.edit";
+    }
+    return null;
+  }
+  if (resource === "roles") {
+    return method === "GET" ? "users.roles.view" :
+      method === "POST" ? "users.roles.create" :
+      method === "PATCH" ? "users.roles.edit" : null;
+  }
+  if (resource === "permissions") return method === "GET" ? "users.roles.view" : null;
+  if (resource === "audit") return method === "GET" ? "audit.history.view" : null;
+  if (resource === "settings") {
+    return method === "GET" ? "settings.general.view" : method === "PATCH" ? "settings.general.manage" : null;
+  }
+  if (resource === "orders") {
+    if (method === "POST") return "orders.records.create";
+    if (method === "PATCH" && String(body?.status || "").toLowerCase() === "cancelado") return "orders.records.cancel";
+    return method === "GET" ? "orders.records.view" : method === "PATCH" ? "orders.records.edit" : null;
+  }
+  if (resource === "products") {
+    if (id === "import" && method === "POST") return "products.catalog.create";
+    if (method === "GET") return "products.catalog.view";
+    if (method === "POST") return "products.catalog.create";
+    if (method === "PATCH") return "products.catalog.edit";
+    if (method === "DELETE") return "products.catalog.delete";
+    return null;
+  }
+  if (resource === "inventory-movements") {
+    if (method === "GET") return "inventory.stock.view";
+    if (method === "PATCH" || method === "DELETE") return "inventory.stock.view";
+    if (method !== "POST") return null;
+    const movement = String(body?.movement_type || body?.type || body?.direction || "").toLowerCase();
+    if (["salida", "out", "egreso"].includes(movement)) return "inventory.manual_out.create";
+    if (["ajuste", "adjustment", "adjust"].includes(movement)) return "inventory.adjustments.adjust";
+    if (["entrada", "in", "ingreso"].includes(movement)) return "inventory.receipts.receive";
+    // Las devoluciones y reversiones requieren su flujo específico con documento origen.
+    return null;
+  }
+  if (resource === "purchases") {
+    return method === "GET" ? "purchases.receipts.view" : method === "POST" ? "purchases.receipts.receive" : null;
+  }
+  if (resource === "payroll-periods") {
+    if (parts[4] === "status" && method === "PATCH") return "hr.payroll.approve";
+    return method === "GET" ? "hr.payroll.view" : null;
+  }
+  if (resource === "hr-payroll-items") return method === "POST" ? "hr.payroll.create" : method === "GET" ? "hr.payroll.view" : null;
+  if (resource === "hr-leave-requests") {
+    if (method === "PATCH") {
+      const status = String(body?.status || "").toLowerCase();
+      if (/(aprob|approved)/.test(status)) return "hr.leave.approve";
+      if (/(rechaz|rejected|denied)/.test(status)) return "hr.leave.reject";
+      return null;
+    }
+    return method === "GET" ? "hr.leave.view" : method === "POST" ? "hr.leave.create" : null;
+  }
+  if (resource === "cash-accounts" || resource === "cash_entries") {
+    return method === "GET" ? "cash.entries.view" : method === "POST" ? "cash.entries.create" : null;
+  }
+  if (resource === "expenses") {
+    return method === "GET" ? "expenses.records.view" : method === "POST" ? "expenses.records.create" : null;
+  }
+  if (resource === "invoices") {
+    if (method === "POST") return "billing.invoices.create";
+    return method === "GET" ? "billing.invoices.view" : null;
+  }
+  if (resource === "invoice-payments") return method === "POST" ? "billing.payments.create" : null;
+  if (resource === "purchase-payments") return method === "POST" ? "payables.payments.create" : null;
+  if (resource === "assets") {
+    return method === "GET" ? "products.catalog.view" : "products.catalog.edit";
+  }
+  if (resource === "dgi-support-documents") {
+    if (method === "GET") return "dgi.documents.view";
+    return method === "POST" ? "dgi.documents.manage" : null;
+  }
+
+  if (method === "PATCH" || method === "DELETE") {
+    const immutableReadPermissions = {
+      inventory_movements: "inventory.stock.view",
+      cash_entries: "cash.entries.view",
+      invoices: "billing.invoices.view",
+      purchases: "purchases.receipts.view",
+      expenses: "expenses.records.view",
+      cash_accounts: "cash.entries.view",
+      hr_payroll_items: "hr.payroll.view",
+      hr_payroll_periods: "hr.payroll.view"
+    };
+    const key = immutableReadPermissions[resource.replace(/-/g, "_")];
+    if (key) return key;
+  }
+
+  const resourcePolicies = {
+    products: "products.catalog",
+    customers: "customers.records",
+    suppliers: "suppliers.records",
+    orders: "orders.records",
+    invoices: "billing.invoices",
+    expenses: "expenses.records",
+    cash_accounts: "cash.entries",
+    cash_entries: "cash.entries",
+    employees: "hr.employees",
+    hr_attendance: "hr.attendance",
+    hr_leave_requests: "hr.leave",
+    hr_payroll_periods: "hr.payroll",
+    hr_payroll_items: "hr.payroll",
+    dgi_support_documents: "dgi.documents",
+    inventory_movements: "inventory.stock"
+  };
+  const normalized = resource.replace(/-/g, "_");
+  const section = resourcePolicies[normalized];
+  if (!section) return null;
+  if (method === "GET") return section + ".view";
+  if (method === "POST") return section + ".create";
+  if (method === "PATCH") return section + ".edit";
+  if (method === "DELETE") return section + ".delete";
+  return null;
 }
 
 export async function handleERPRequest(request, env, user, sql) {
@@ -925,24 +1074,297 @@ export async function handleERPRequest(request, env, user, sql) {
   const parts = url.pathname.split("/").filter(Boolean);
   const resource = parts[2] || "";
   const id = parts[3] || "";
-  if (!canAccess(user, ["owner","admin","sales","inventory","finance","hr"])) {
-    return erpError(403, "INSUFFICIENT_ROLE", "Tu cuenta no tiene un rol operativo habilitado.");
+  const protectedResource = resource.replace(/-/g, "_");
+  const immutableTransactions = new Set([
+    "inventory_movements", "cash_entries", "invoices", "purchases",
+    "expenses", "cash_accounts", "hr_payroll_items", "hr_payroll_periods"
+  ]);
+  if ((request.method === "PATCH" || request.method === "DELETE") &&
+      id && immutableTransactions.has(protectedResource)) {
+    return erpError(405, "IMMUTABLE_TRANSACTION",
+      "Este registro forma parte de un historial financiero, de inventario o de nómina. Utiliza el flujo específico de anulación, devolución o pago.");
+  }
+  const permissionContext = await loadUserPermissions(sql, user);
+  const contentType = request.headers?.get?.("content-type") ||
+    (typeof request.json === "function" ? "application/json" : "");
+  let requestBody = null;
+  if (request.method !== "GET" && contentType.includes("application/json")) {
+    try {
+      const readableRequest = typeof request.clone === "function" ? request.clone() : request;
+      requestBody = await readableRequest.json();
+    } catch { requestBody = null; }
+  }
+
+  if (resource === "inventory-movements" && request.method === "POST") {
+    const movement = String(requestBody?.movement_type || requestBody?.type || requestBody?.direction || "").toLowerCase();
+    if (["devolucion", "devolución", "return", "reversion", "reversión", "reversal"].includes(movement)) {
+      return erpError(400, "INVALID_MOVEMENT", "Las devoluciones y reversiones requieren un documento de origen y no se registran como movimientos manuales.");
+    }
+  }
+
+  const permissionKey = resolveRoutePermission(resource, request.method, id, parts, requestBody);
+  if (["users","roles","permissions","devices","audit"].includes(resource) && user.role !== "owner") {
+    return erpError(403, "OWNER_REQUIRED", "Solo el propietario puede administrar cuentas, permisos, dispositivos y auditoría.");
   }
   if (resource === "bootstrap" && request.method === "GET") {
+    if (!hasPermission(permissionContext, "dashboard.view") && !hasAnyModuleAccess(permissionContext)) {
+      return erpError(403, "FORBIDDEN", "Tu cuenta no tiene módulos habilitados.");
+    }
+  } else if (!permissionKey) {
+    return erpError(403, "PERMISSION_POLICY_MISSING", "La ruta todavía no tiene una política de acceso definida.");
+  } else if (!hasPermission(permissionContext, permissionKey)) {
+    return erpError(403, "FORBIDDEN", "No tienes permiso para realizar esta operación.");
+  }
+  user._permissionValidated = true;
+  if (resource === "bootstrap" && request.method === "GET") {
     try {
-      const data = await readBootstrap(sql, user);
+      const data = await readBootstrap(sql, user, permissionContext);
       return erpJson({ data });
     } catch (error) {
       console.error("[erp] Bootstrap failed:", error?.message || "database error");
       return erpError(503, "BOOTSTRAP_FAILED", "No se pudieron cargar los datos operativos desde Neon.");
     }
   }
+  if (resource === "users" && request.method === "GET") {
+    try {
+      const [users, pendingIdentities] = await Promise.all([
+        sql.query(
+          "SELECT u.id,u.auth_user_id,u.email,u.display_name,u.position_title,u.role,u.role_template_key," +
+          "u.account_status,u.active,u.must_change_password,u.created_at,u.updated_at,r.name AS role_template_name," +
+          "COALESCE((SELECT jsonb_agg(jsonb_build_object('permission_key',uo.permission_key,'allowed',uo.allowed) ORDER BY uo.permission_key) " +
+          "FROM user_permission_overrides uo WHERE uo.user_id=u.id),'[]'::jsonb) AS overrides " +
+          "FROM app_users u LEFT JOIN erp_roles r ON r.role_key=u.role_template_key ORDER BY u.created_at DESC LIMIT 500"
+        ),
+        sql.query(
+          'SELECT au.id AS auth_user_id,au.email,au.name AS display_name,au."emailVerified" AS email_verified,au."createdAt" AS created_at ' +
+          'FROM neon_auth."user" au LEFT JOIN app_users u ON u.auth_user_id=au.id ' +
+          'WHERE u.id IS NULL ORDER BY au."createdAt" DESC LIMIT 200'
+        )
+      ]);
+      return erpJson({ users, pendingIdentities });
+    } catch (error) {
+      console.error("[erp] User directory failed:", error?.message || "database error");
+      return erpError(503, "USER_DIRECTORY_FAILED", "No se pudo consultar el directorio de cuentas.");
+    }
+  }
+
+  if (resource === "users" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    const email = String(body.email || "").trim().toLowerCase();
+    const displayName = String(body.display_name || "").trim();
+    const positionTitle = String(body.position_title || "").trim();
+    const roleTemplateKey = String(body.role_template_key || "viewer").trim();
+    const mustChangePassword = body.must_change_password !== false;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 180 || !displayName || displayName.length > 180 || positionTitle.length > 120) {
+      return erpError(400, "INVALID_USER_PROFILE", "Indica un correo válido, nombre completo y cargo de hasta 120 caracteres.");
+    }
+    if (roleTemplateKey === "owner") {
+      return erpError(403, "OWNER_ROLE_PROTECTED", "La plantilla owner no se puede asignar desde el panel.");
+    }
+    try {
+      const roleRows = await sql.query("SELECT role_key FROM erp_roles WHERE role_key=$1 LIMIT 1", [roleTemplateKey]);
+      if (!roleRows[0]) return erpError(400, "INVALID_ROLE_TEMPLATE", "La plantilla de permisos no existe.");
+      const identityRows = await sql.query(
+        'SELECT id,email,name,"emailVerified" AS email_verified FROM neon_auth."user" WHERE LOWER(email)=LOWER($1) LIMIT 1',
+        [email]
+      );
+      const identity = identityRows[0];
+      if (!identity) return erpError(404, "AUTH_IDENTITY_NOT_FOUND", "La persona debe tener una identidad registrada en Neon Auth antes de poder autorizarla.");
+      const accountStatus = identity.email_verified === true ? "invited" : "registered";
+      const created = await sql.query(
+        "INSERT INTO app_users(auth_user_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password) " +
+        "VALUES($1,$2,$3,$4,'viewer',$5,$6,FALSE,$7) " +
+        "RETURNING id,auth_user_id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password,created_at",
+        [identity.id,email,displayName,positionTitle,roleTemplateKey,accountStatus,mustChangePassword]
+      );
+      await auditQuery(sql,user.id,"provision","app_user",created[0].id,{email,role_template_key:roleTemplateKey,account_status:accountStatus});
+      return erpJson({ user: created[0] }, 201);
+    } catch (error) {
+      if (error?.code === "23505") return erpError(409, "USER_ALREADY_PROVISIONED", "Ya existe una cuenta ERP para ese correo.");
+      console.error("[erp] User provisioning failed:", error?.message || "database error");
+      return erpError(503, "USER_PROVISION_FAILED", "No se pudo preparar la cuenta ERP.");
+    }
+  }
+
+  if (resource === "users" && request.method === "PATCH" && id) {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    const existing = await sql.query("SELECT id,role,role_template_key FROM app_users WHERE id=$1::uuid LIMIT 1", [id]);
+    if (!existing[0]) return erpError(404, "USER_NOT_FOUND", "La cuenta ERP solicitada no existe.");
+    if (existing[0].role === "owner") return erpError(403, "OWNER_ACCOUNT_PROTECTED", "La cuenta propietaria no se puede editar, desactivar ni degradar.");
+    const accountStatus = body.account_status == null ? null : String(body.account_status);
+    if (accountStatus && !["invited","registered","active","rejected","disabled"].includes(accountStatus)) {
+      return erpError(400, "INVALID_ACCOUNT_STATUS", "El estado de la cuenta no es válido.");
+    }
+    const roleTemplateKey = body.role_template_key == null ? null : String(body.role_template_key);
+    if (roleTemplateKey === "owner") return erpError(403, "OWNER_ROLE_PROTECTED", "La plantilla owner no se puede asignar desde el panel.");
+    if (roleTemplateKey) {
+      const roleRows = await sql.query("SELECT role_key FROM erp_roles WHERE role_key=$1 LIMIT 1", [roleTemplateKey]);
+      if (!roleRows[0]) return erpError(400, "INVALID_ROLE_TEMPLATE", "La plantilla de permisos no existe.");
+    }
+    const positionTitle = body.position_title == null ? null : String(body.position_title).trim();
+    if (positionTitle != null && positionTitle.length > 120) return erpError(400, "INVALID_POSITION_TITLE", "El cargo no puede superar 120 caracteres.");
+    if (body.must_change_password != null && typeof body.must_change_password !== "boolean") {
+      return erpError(400, "INVALID_PASSWORD_POLICY", "La opción de cambio de contraseña debe ser booleana.");
+    }
+    const overrides = body.overrides;
+    if (overrides != null && !Array.isArray(overrides)) return erpError(400, "INVALID_PERMISSION_OVERRIDES", "Los permisos individuales deben enviarse como una lista.");
+    if (Array.isArray(overrides)) {
+      const seen = new Set();
+      for (const item of overrides) {
+        if (!item || typeof item.permission_key !== "string" || typeof item.allowed !== "boolean" || seen.has(item.permission_key)) {
+          return erpError(400, "INVALID_PERMISSION_OVERRIDES", "Cada permiso individual debe tener una clave única y un valor booleano.");
+        }
+        seen.add(item.permission_key);
+      }
+      const keys = [...seen];
+      if (keys.length) {
+        const valid = await sql.query("SELECT permission_key FROM permission_catalog WHERE permission_key = ANY($1::text[])", [keys]);
+        if (valid.length !== keys.length) return erpError(400, "UNKNOWN_PERMISSION", "Uno o más permisos no existen en el catálogo.");
+      }
+    }
+    try {
+      const auditDetails = {
+        role_template_key:roleTemplateKey,position_title:positionTitle,account_status:accountStatus,
+        must_change_password:body.must_change_password,overrides_updated:Array.isArray(overrides)
+      };
+      const transaction = await sql.transaction((tx) => {
+        const operations = [
+          tx`UPDATE app_users SET
+              role_template_key=COALESCE(${roleTemplateKey},role_template_key),
+              position_title=COALESCE(${positionTitle},position_title),
+              account_status=COALESCE(${accountStatus},account_status),
+              active=CASE WHEN ${accountStatus} IS NULL THEN active ELSE (${accountStatus}='active') END,
+              must_change_password=COALESCE(${body.must_change_password ?? null},must_change_password),
+              updated_at=NOW()
+            WHERE id=${id}::uuid AND role <> 'owner'
+            RETURNING id,email,display_name,position_title,role,role_template_key,account_status,active,must_change_password`
+        ];
+        if (Array.isArray(overrides)) {
+          const payload = JSON.stringify(overrides);
+          operations.push(
+            tx`DELETE FROM user_permission_overrides WHERE user_id=${id}::uuid`,
+            tx`INSERT INTO user_permission_overrides(user_id,permission_key,allowed,updated_by,updated_at)
+               SELECT ${id}::uuid,x.permission_key,x.allowed,${user.id},NOW()
+               FROM jsonb_to_recordset(${payload}::jsonb) AS x(permission_key text,allowed boolean)`
+          );
+        }
+        operations.push(
+          tx`INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details)
+             VALUES(${user.id},'update','app_user',${id},${JSON.stringify(auditDetails)}::jsonb)`
+        );
+        return operations;
+      });
+      const updated = transaction[0];
+      if (!updated?.[0]) return erpError(404, "USER_NOT_FOUND", "La cuenta ERP solicitada no existe.");
+      return erpJson({ user: updated[0] });
+    } catch (error) {
+      console.error("[erp] User update failed:", error?.message || "database error");
+      return erpError(503, "USER_UPDATE_FAILED", "No se pudo actualizar la cuenta ERP.");
+    }
+  }
+
+  if (resource === "roles" && request.method === "GET") {
+    try {
+      const [roles, permissions, grants] = await Promise.all([
+        sql.query("SELECT role_key,name,description,is_system,created_at,updated_at FROM erp_roles ORDER BY is_system DESC,name ASC"),
+        sql.query("SELECT permission_key,label,module_key,parent_key,permission_type,sort_order FROM permission_catalog ORDER BY module_key,sort_order,permission_key"),
+        sql.query("SELECT role_key,permission_key,allowed FROM role_template_permissions ORDER BY role_key,permission_key")
+      ]);
+      return erpJson({ roles, permissions, grants });
+    } catch (error) {
+      console.error("[erp] Role catalog failed:", error?.message || "database error");
+      return erpError(503, "ROLE_CATALOG_FAILED", "No se pudo consultar el catálogo de roles y permisos.");
+    }
+  }
+
+  if (resource === "roles" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    const roleKey = String(body.role_key || "").trim().toLowerCase();
+    const name = String(body.name || "").trim();
+    const description = String(body.description || "").trim();
+    if (!/^[a-z][a-z0-9_-]{2,31}$/.test(roleKey) || ["owner","admin","hr","finance","inventory","sales","viewer"].includes(roleKey) ||
+        !name || name.length > 80 || description.length > 240) {
+      return erpError(400, "INVALID_ROLE", "Indica una clave nueva, nombre y descripción válidos. La plantilla owner está protegida.");
+    }
+    try {
+      const rows = await sql.query("INSERT INTO erp_roles(role_key,name,description,is_system,created_by) VALUES($1,$2,$3,FALSE,$4) RETURNING role_key,name,description,is_system,created_at", [roleKey,name,description,user.id]);
+      await auditQuery(sql,user.id,"create","erp_role",roleKey,{name,description});
+      return erpJson({ role: rows[0] }, 201);
+    } catch (error) {
+      if (error?.code === "23505") return erpError(409, "ROLE_EXISTS", "Ya existe una plantilla con esa clave.");
+      console.error("[erp] Role creation failed:", error?.message || "database error");
+      return erpError(503, "ROLE_CREATE_FAILED", "No se pudo crear la plantilla.");
+    }
+  }
+
+  if (resource === "roles" && request.method === "PATCH" && id) {
+    let body;
+    try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    if (id === "owner") return erpError(403, "OWNER_ROLE_PROTECTED", "La plantilla owner está protegida y no se puede modificar.");
+    const name = body.name == null ? null : String(body.name).trim();
+    const description = body.description == null ? null : String(body.description).trim();
+    if ((name != null && (!name || name.length > 80)) || (description != null && description.length > 240)) {
+      return erpError(400, "INVALID_ROLE", "El nombre o la descripción de la plantilla no son válidos.");
+    }
+    if (body.permissions != null && !Array.isArray(body.permissions)) return erpError(400, "INVALID_ROLE_PERMISSIONS", "Los permisos de la plantilla deben enviarse como una lista.");
+    const roleRows = await sql.query("SELECT role_key FROM erp_roles WHERE role_key=$1 LIMIT 1", [id]);
+    if (!roleRows[0]) return erpError(404, "ROLE_NOT_FOUND", "La plantilla solicitada no existe.");
+    if (Array.isArray(body.permissions)) {
+      const seen = new Set();
+      for (const item of body.permissions) {
+        if (!item || typeof item.permission_key !== "string" || typeof item.allowed !== "boolean" || seen.has(item.permission_key)) {
+          return erpError(400, "INVALID_ROLE_PERMISSIONS", "Cada permiso debe tener una clave única y un valor booleano.");
+        }
+        seen.add(item.permission_key);
+      }
+      const keys = [...seen];
+      if (keys.length) {
+        const valid = await sql.query("SELECT permission_key FROM permission_catalog WHERE permission_key=ANY($1::text[])", [keys]);
+        if (valid.length !== keys.length) return erpError(400, "UNKNOWN_PERMISSION", "Uno o más permisos no existen en el catálogo.");
+      }
+    }
+    try {
+      const updated = await sql.query(
+        "UPDATE erp_roles SET name=COALESCE($2,name),description=COALESCE($3,description),updated_at=NOW() WHERE role_key=$1 RETURNING role_key,name,description,is_system",
+        [id,name,description]
+      );
+      if (Array.isArray(body.permissions)) {
+        await sql.transaction((tx) => [
+          tx`DELETE FROM role_template_permissions WHERE role_key=${id}`,
+          tx`INSERT INTO role_template_permissions(role_key,permission_key,allowed)
+             SELECT ${id},x.permission_key,x.allowed
+             FROM jsonb_to_recordset(${JSON.stringify(body.permissions)}::jsonb) AS x(permission_key text,allowed boolean)`
+        ]);
+      }
+      await auditQuery(sql,user.id,"update","erp_role",id,{name,description,permissions_updated:Array.isArray(body.permissions)});
+      return erpJson({ role: updated[0] });
+    } catch (error) {
+      console.error("[erp] Role update failed:", error?.message || "database error");
+      return erpError(503, "ROLE_UPDATE_FAILED", "No se pudo actualizar la plantilla.");
+    }
+  }
+
+  if (resource === "audit" && request.method === "GET") {
+    try {
+      const rows = await sql.query(
+        "SELECT a.id,a.actor_user_id,u.display_name AS actor_name,a.action,a.entity_type,a.entity_id,a.details,a.created_at " +
+        "FROM audit_log a LEFT JOIN app_users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT 500"
+      );
+      return erpJson({ records: rows });
+    } catch (error) {
+      console.error("[erp] Audit history failed:", error?.message || "database error");
+      return erpError(503, "AUDIT_READ_FAILED", "No se pudo consultar el historial de auditoría.");
+    }
+  }
+
   if (resource === "settings" && request.method === "GET") {
     const rows = await sql.query("SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key");
     return erpJson({ records: rows });
   }
   if (resource === "settings" && request.method === "PATCH") {
-    if (!["owner","admin"].includes(user.role)) return erpError(403, "FORBIDDEN", "Solo propietario o administración puede cambiar la configuración.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     const key = String(body.setting_key || "");
     if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
@@ -1016,11 +1438,14 @@ export async function handleERPRequest(request, env, user, sql) {
     return createInventoryMovement(sql, user, body);
   }
   if (resource === "purchases" && request.method === "POST") {
-    if (!canAccess(user, RESOURCE_DEFS.purchases.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar compras.");
+    if (!hasPermission(permissionContext, "purchases.receipts.receive") ||
+        !hasPermission(permissionContext, "inventory.receipts.receive")) {
+      return erpError(403, "FORBIDDEN", "Registrar una compra recibida requiere permiso de recepción de compras y de inventario.");
+    }
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createPurchase(sql,user,body);
   }
-  if (resource === "payroll-periods" && parts[4] === "status" && request.method === "PATCH") {
+    if (resource === "payroll-periods" && parts[4] === "status" && request.method === "PATCH") {
     if (!canAccess(user, RESOURCE_DEFS.hr_payroll_periods.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return changePayrollPeriodStatus(sql,user,id,body);
@@ -1092,10 +1517,6 @@ export async function handleERPRequest(request, env, user, sql) {
     return createGeneric(sql, user, normalizedResource, def, body);
   }
   if (request.method === "PATCH" && id) {
-    const transactionalResources = new Set(["inventory_movements","cash_entries","invoices","purchases","expenses","cash_accounts","hr_payroll_items","hr_payroll_periods"]);
-    if (transactionalResources.has(normalizedResource)) {
-      return erpError(405, "IMMUTABLE_TRANSACTION", "Este registro forma parte de un historial financiero, de inventario o de nómina. Utiliza el flujo específico de anulación, devolución o pago.");
-    }
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     if (normalizedResource === "orders" && Object.prototype.hasOwnProperty.call(body,"status")) {
       if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para cambiar pedidos.");

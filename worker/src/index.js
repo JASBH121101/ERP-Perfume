@@ -2,9 +2,9 @@
 import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { handleERPRequest } from "./erp.js";
+import { loadUserPermissions, hasPermission } from "./permissions.js";
 
 const jwksCache = new Map();
-const HR_ROLES = ["owner", "admin", "hr"];
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -58,11 +58,9 @@ function getJwks(url) {
   return jwksCache.get(url);
 }
 
-async function requireUser(request, env, allowedRoles = []) {
+async function requireUser(request, env) {
   if (!env?.NEON_AUTH_JWKS_URL || !env?.NEON_AUTH_BASE_URL || !env?.DATABASE_URL) {
-    return {
-      response: errorResponse(503, "AUTH_NOT_CONFIGURED", "Authentication is not configured.")
-    };
+    return { response: errorResponse(503, "AUTH_NOT_CONFIGURED", "Authentication is not configured.") };
   }
 
   const authorization = request.headers.get("authorization") || "";
@@ -83,63 +81,53 @@ async function requireUser(request, env, allowedRoles = []) {
     );
     identity = verified.payload;
   } catch {
-    return {
-      response: errorResponse(401, "INVALID_SESSION", "Your session is invalid or expired. Sign in again.")
-    };
+    return { response: errorResponse(401, "INVALID_SESSION", "Your session is invalid or expired. Sign in again.") };
   }
 
   const authUserId = typeof identity.sub === "string" ? identity.sub : "";
   if (!authUserId) {
-    return {
-      response: errorResponse(401, "INVALID_SESSION", "The session does not contain a user identity.")
-    };
+    return { response: errorResponse(401, "INVALID_SESSION", "The session does not contain a user identity.") };
   }
 
   try {
     const sql = getDatabase(env);
     const authRows = await sql.query(
-      'SELECT id, email, name, "emailVerified" AS email_verified FROM neon_auth."user" WHERE id = $1 LIMIT 1',
+      'SELECT id, email, "emailVerified" AS email_verified FROM neon_auth."user" WHERE id = $1 LIMIT 1',
       [authUserId]
     );
     const authRecord = authRows[0];
 
     if (!authRecord || typeof authRecord.email !== "string" || !authRecord.email.trim()) {
-      return {
-        response: errorResponse(401, "AUTH_USER_NOT_FOUND", "The signed-in account could not be found.")
-      };
+      return { response: errorResponse(401, "AUTH_USER_NOT_FOUND", "The signed-in account could not be found.") };
     }
     if (authRecord.email_verified !== true) {
-      return {
-        response: errorResponse(403, "VERIFIED_EMAIL_REQUIRED", "Verify your email address before accessing ERP data.")
-      };
+      return { response: errorResponse(403, "VERIFIED_EMAIL_REQUIRED", "Verify your email address before accessing ERP data.") };
     }
 
-    const email = authRecord.email.trim().toLowerCase();
-    const displayName = typeof authRecord.name === "string" ? authRecord.name.trim() : "";
+    // A Neon Auth identity is not automatically an ERP account.
+    // Only a separately provisioned app_users row grants entry.
     const rows = await sql.query(
-      "INSERT INTO app_users (auth_user_id, email, display_name, role) " +
-      "VALUES ($1, $2, $3, CASE WHEN LOWER($4) = LOWER($2) THEN 'owner' ELSE 'viewer' END) " +
-      "ON CONFLICT (auth_user_id) DO UPDATE SET email = EXCLUDED.email, " +
-      "display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name ELSE app_users.display_name END, " +
-      "updated_at = NOW() RETURNING id, auth_user_id, email, display_name, role, active",
-      [authUserId, email, displayName, env.BOOTSTRAP_OWNER_EMAIL || ""]
+      "SELECT id, auth_user_id, email, display_name, role, role_template_key, position_title, " +
+      "account_status, must_change_password, active " +
+      "FROM app_users WHERE auth_user_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1",
+      [authUserId, authRecord.email.trim()]
     );
 
     const user = rows[0];
-    if (!user || user.active !== true) {
-      return { response: errorResponse(403, "ACCOUNT_DISABLED", "This ERP account is disabled.") };
+    if (!user) {
+      return { response: errorResponse(403, "ACCOUNT_NOT_PROVISIONED", "Esta cuenta todavía no fue autorizada por el propietario del ERP.") };
     }
-    if (allowedRoles.length && !allowedRoles.includes(user.role)) {
-      return {
-        response: errorResponse(403, "INSUFFICIENT_ROLE", "Your account does not have permission for this section.")
-      };
+    if (user.active !== true || user.account_status === "disabled") {
+      return { response: errorResponse(403, "ACCOUNT_DISABLED", "Esta cuenta del ERP está deshabilitada.") };
     }
+    if (user.account_status !== "active") {
+      return { response: errorResponse(403, "ACCOUNT_NOT_ACTIVE", "La cuenta todavía no está habilitada para entrar al ERP.") };
+    }
+
     return { user, sql };
   } catch (error) {
     console.error("[auth] Unable to resolve ERP user:", error?.message || "database error");
-    return {
-      response: errorResponse(503, "IDENTITY_UNAVAILABLE", "The ERP identity service is temporarily unavailable.")
-    };
+    return { response: errorResponse(503, "IDENTITY_UNAVAILABLE", "The ERP identity service is temporarily unavailable.") };
   }
 }
 
@@ -177,19 +165,39 @@ async function getHealth(env) {
 async function getProfile(request, env) {
   const auth = await requireUser(request, env);
   if (auth.response) return auth.response;
-  return json({
-    user: {
-      id: auth.user.id,
-      email: auth.user.email,
-      name: auth.user.display_name,
-      role: auth.user.role
-    }
-  });
+  try {
+    const permissionContext = await loadUserPermissions(auth.sql, auth.user);
+    const permissions = permissionContext.owner
+      ? ["*"]
+      : permissionContext.permissions
+          .filter((item) => hasPermission(permissionContext, item.key))
+          .map((item) => item.key);
+    return json({
+      user: {
+        id: auth.user.id,
+        email: auth.user.email,
+        name: auth.user.display_name,
+        role: auth.user.role,
+        roleTemplate: auth.user.role_template_key,
+        positionTitle: auth.user.position_title,
+        accountStatus: auth.user.account_status,
+        mustChangePassword: auth.user.must_change_password === true,
+        permissions
+      }
+    });
+  } catch (error) {
+    console.error("[auth] Permission profile failed:", error?.message || "database error");
+    return errorResponse(503, "PERMISSIONS_UNAVAILABLE", "No se pudieron cargar los permisos de la cuenta.");
+  }
 }
 
 async function getEmployees(request, env) {
-  const auth = await requireUser(request, env, HR_ROLES);
+  const auth = await requireUser(request, env);
   if (auth.response) return auth.response;
+  const permissionContext = await loadUserPermissions(auth.sql, auth.user);
+  if (!hasPermission(permissionContext, "hr.employees.view")) {
+    return errorResponse(403, "FORBIDDEN", "No tienes permiso para consultar empleados.");
+  }
   try {
     const employees = await auth.sql.query(
       "SELECT id, employee_code, name, position, department, salary_nio::text AS salary_nio, " +
@@ -203,8 +211,12 @@ async function getEmployees(request, env) {
 }
 
 async function createEmployee(request, env) {
-  const auth = await requireUser(request, env, HR_ROLES);
+  const auth = await requireUser(request, env);
   if (auth.response) return auth.response;
+  const permissionContext = await loadUserPermissions(auth.sql, auth.user);
+  if (!hasPermission(permissionContext, "hr.employees.create")) {
+    return errorResponse(403, "FORBIDDEN", "No tienes permiso para crear empleados.");
+  }
 
   let body;
   try {
