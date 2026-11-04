@@ -915,16 +915,27 @@ async function updateOrderStatus(sql, user, id, body) {
   const status = String(body.status || "");
   const allowed = ["Pendiente","En preparación","Listo para entrega","En tránsito","Completado","Cancelado"];
   if (!allowed.includes(status)) return erpError(400, "INVALID_ORDER_STATUS", "El estado del pedido no es válido.");
+
+  // Order workflow statuses never mutate stock. Stock OUT is an atomic effect
+  // of invoice creation, and reversals must use an explicit return flow.
   const rows = await sql.query(
-    "WITH target AS (SELECT o.id,o.order_number,o.status AS old_status FROM orders o WHERE o.id=$1::uuid FOR UPDATE), totals AS (SELECT product_id,SUM(quantity)::int AS quantity FROM order_items WHERE order_id=$1::uuid AND product_id IS NOT NULL GROUP BY product_id), products_before AS (SELECT p.id,p.name,p.sku,p.stock,t.quantity FROM products p JOIN totals t ON t.product_id=p.id FOR UPDATE OF p), order_stock AS (SELECT COALESCE(BOOL_AND(COALESCE(m.quantity_delta,0)=-t.quantity),FALSE) AS already_applied FROM totals t LEFT JOIN (SELECT product_id,SUM(quantity_delta)::int AS quantity_delta FROM inventory_movements WHERE reference_type='order' AND reference_id=$1::text GROUP BY product_id) m ON m.product_id=t.product_id), linked_invoice AS (SELECT EXISTS(SELECT 1 FROM invoices WHERE order_id=$1::uuid) AS is_invoiced), direction AS (SELECT CASE WHEN linked_invoice.is_invoiced THEN 0 WHEN target.old_status='Pendiente' AND $2 IN ('En preparación','Listo para entrega','En tránsito','Completado') AND NOT order_stock.already_applied THEN -1 WHEN target.old_status IN ('En preparación','Listo para entrega','En tránsito') AND $2 IN ('Pendiente','Cancelado') AND order_stock.already_applied THEN 1 ELSE 0 END AS factor FROM target CROSS JOIN order_stock CROSS JOIN linked_invoice), validation AS (SELECT COUNT(*) FILTER(WHERE products_before.stock < products_before.quantity OR products_before.id IS NULL) AS insufficient FROM totals LEFT JOIN products_before ON products_before.id=totals.product_id CROSS JOIN direction WHERE direction.factor=-1), changed_stock AS (UPDATE products p SET stock=p.stock+(direction.factor*products_before.quantity),updated_at=NOW() FROM products_before CROSS JOIN direction WHERE p.id=products_before.id AND direction.factor<>0 AND (direction.factor=1 OR products_before.stock>=products_before.quantity) AND (SELECT insufficient FROM validation)=0 RETURNING p.id,p.name,p.sku,products_before.stock AS previous_stock,products_before.quantity,p.stock AS new_stock), movements AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,CASE WHEN quantity_delta<0 THEN 'Salida' ELSE 'Reversion' END,quantity,quantity_delta,previous_stock,new_stock,'Cambio de estado del pedido '||(SELECT order_number FROM target),'order',$1::text,$3 FROM (SELECT id,quantity,previous_stock,new_stock,(new_stock-previous_stock) AS quantity_delta FROM changed_stock) s RETURNING id), changed_order AS (UPDATE orders o SET status=$2,updated_at=NOW() FROM target,linked_invoice WHERE o.id=target.id AND (SELECT insufficient FROM validation)=0 AND (target.old_status NOT IN ('Completado','Cancelado') OR target.old_status=$2) AND NOT (linked_invoice.is_invoiced AND $2 IN ('Pendiente','Cancelado')) RETURNING o.*), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $3,'status_change','order',id::text,jsonb_build_object('status',$2) FROM changed_order) SELECT * FROM changed_order",
+    "WITH target AS (SELECT o.id,o.status AS old_status FROM orders o WHERE o.id=$1::uuid FOR UPDATE), " +
+    "linked_invoice AS (SELECT EXISTS(SELECT 1 FROM invoices WHERE order_id=$1::uuid) AS is_invoiced), " +
+    "changed AS (UPDATE orders o SET status=$2,updated_at=NOW() FROM target,linked_invoice " +
+    "WHERE o.id=target.id " +
+    "AND (target.old_status NOT IN ('Completado','Cancelado') OR target.old_status=$2) " +
+    "AND NOT (linked_invoice.is_invoiced AND $2='Cancelado') RETURNING o.*), " +
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
+    "SELECT $3,'status_change','order',id::text,jsonb_build_object('old_status',(SELECT old_status FROM target),'status',$2) FROM changed) " +
+    "SELECT * FROM changed",
     [id,status,user.id]
   );
   if (!rows[0]) {
     const linkedInvoice = await sql.query("SELECT 1 FROM invoices WHERE order_id=$1::uuid LIMIT 1", [id]);
-    if (linkedInvoice[0] && ["Pendiente","Cancelado"].includes(status)) {
-      return erpError(409, "ORDER_ALREADY_INVOICED", "El pedido ya tiene una factura. Para evitar duplicar o reponer inventario, tramita cualquier devolución desde la gestión de la factura.");
+    if (linkedInvoice[0] && status === "Cancelado") {
+      return erpError(409, "ORDER_ALREADY_INVOICED", "El pedido ya tiene una factura. Para evitar alterar el inventario, gestiona cualquier devolución desde el flujo de devoluciones.");
     }
-    return erpError(409, "ORDER_STOCK_CONFLICT", "No se pudo cambiar el estado: el pedido no existe, ya está finalizado/cancelado o no hay existencias suficientes.");
+    return erpError(409, "ORDER_STATUS_CONFLICT", "No se pudo cambiar el estado: el pedido no existe o ya está finalizado/cancelado.");
   }
   return erpJson({ record: rows[0] });
 }
@@ -956,9 +967,10 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     if (method === "GET") return "inventory.stock.view";
     if (method !== "POST") return null;
     const movement = String(body?.movement_type || body?.type || body?.direction || "").toLowerCase();
-    if (/(salida|out|egreso)/.test(movement)) return "inventory.manual_out.create";
-    if (/(ajuste|adjust)/.test(movement)) return "inventory.adjustments.adjust";
-    return "inventory.receipts.receive";
+    if (["salida", "out", "egreso"].includes(movement)) return "inventory.manual_out.create";
+    if (["ajuste", "adjustment", "adjust"].includes(movement)) return "inventory.adjustments.adjust";
+    if (["entrada", "in", "ingreso"].includes(movement)) return "inventory.receipts.receive";
+    return null;
   }
   if (resource === "purchases") {
     return method === "GET" ? "purchases.receipts.view" : method === "POST" ? "purchases.receipts.receive" : null;
