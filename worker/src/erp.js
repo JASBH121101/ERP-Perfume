@@ -865,6 +865,17 @@ export async function handleERPRequest(request, env, user, sql) {
           return erpError(400, "INVALID_DGI_FIELD", "Uno de los datos de identificación tributaria no es válido.");
         }
       }
+      const confirmationDate = String(value.dgi_confirmation_date || "").trim();
+      const ruc = String(value.ruc || "").trim();
+      if (confirmationDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(confirmationDate)) {
+        return erpError(400, "INVALID_DGI_CONFIRMATION_DATE", "La fecha de confirmación DGI debe tener formato AAAA-MM-DD.");
+      }
+      if (value.regime_status !== "not_confirmed" && (!ruc || !confirmationDate)) {
+        return erpError(400, "DGI_REGIME_CONFIRMATION_REQUIRED", "Antes de marcar un régimen como confirmado, registra el RUC y la fecha de confirmación de la DGI.");
+      }
+      if (["authorized","not_applicable_confirmed"].includes(value.computerized_invoicing_status) && (!ruc || !confirmationDate)) {
+        return erpError(400, "DGI_INVOICING_CONFIRMATION_REQUIRED", "Registra el RUC y la fecha de confirmación antes de marcar la facturación computarizada como autorizada o no aplicable.");
+      }
     }
     const rows = await sql.query("INSERT INTO app_settings(setting_key,setting_value,updated_by,updated_at) VALUES($1,$2::jsonb,$3,NOW()) ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_by=EXCLUDED.updated_by,updated_at=NOW() RETURNING setting_key,setting_value", [key,JSON.stringify(value),user.id]);
     await auditQuery(sql,user.id,"update","app_setting",key,value);
