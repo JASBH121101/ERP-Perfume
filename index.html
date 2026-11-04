@@ -167,8 +167,10 @@
       <section class="product-form-section">
         <div class="form-section-heading"><span class="form-section-icon" data-icon="spark"></span><div><strong>Fotografías del producto</strong><small>Archivos privados en Cloudflare R2 · JPG, PNG, WebP o AVIF · Máximo 2 MB por imagen · hasta 3 fotos por producto</small></div></div>
         <div class="form-grid">
-          <label class="form-field full-field"><span>Seleccionar imágenes</span><input name="productImages" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple></label>
+          <label class="form-field full-field"><span>Seleccionar imágenes</span><input name="productImages" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple><small>Hasta 3 fotos por producto. Se optimizan a WebP (máximo 1,600 px, calidad 82 %) y se suben en paralelo. Archivo original: hasta 8 MB; resultado para R2: máximo 2 MB.</small></label>
           <div id="product-image-gallery" class="product-image-gallery full-field" aria-live="polite"><span class="table-secondary">Las imágenes que agregues se guardarán en el almacenamiento privado.</span></div>
+          <div id="product-image-pending-gallery" class="product-image-pending-gallery full-field" aria-live="polite"></div>
+          <p id="product-image-upload-status" class="form-status full-field" role="status" aria-live="polite"></p>
         </div>
       </section>
 
