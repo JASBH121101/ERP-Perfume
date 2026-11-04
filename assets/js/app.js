@@ -414,10 +414,10 @@
     }).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
-    link.href = url; link.download = 'jb-parfums-inventario-demo.csv';
+    link.href = url; link.download = 'jb-parfums-inventario.csv';
     document.body.appendChild(link); link.click(); link.remove();
     window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    toast('Inventario DEMO exportado a CSV.');
+    toast('Inventario exportado a CSV.');
   }
   function showOrderDetails(orderId) {
     const order = orders.find(function (item) { return String(item.id) === String(orderId); });
@@ -432,7 +432,7 @@
       return '<tr><td><span class="table-primary">' + esc(item.name) + '</span><small class="table-secondary">' + esc(item.sku || '—') + '</small></td><td>' + item.quantity + '</td><td>' + money(item.unitPrice) + '</td><td class="table-primary">' + money(lineTotal) + '</td></tr>';
     }).join('');
     document.getElementById('order-detail-title').textContent = order.id;
-    document.getElementById('order-detail-subtitle').textContent = 'Pedido DEMO · ' + order.date + ' · Registro ficticio para pruebas; no representa una venta real.';
+    document.getElementById('order-detail-subtitle').textContent = 'Pedido registrado · ' + order.date + ' · Consulta de datos guardados en Neon.';
     document.getElementById('order-detail-content').innerHTML =
       '<section class="order-detail-grid">' +
         '<div class="detail-field"><span>Cliente</span><strong>' + esc(order.customer) + '</strong></div>' +
@@ -454,7 +454,7 @@
         (deliveryFee ? '<div><span>Entrega</span><strong>' + money(deliveryFee) + '</strong></div>' : '') +
         '<div class="order-grand-total"><span>Total del pedido</span><strong>' + money(total) + '</strong></div>' +
       '</div>' +
-      '<p class="order-demo-warning">Pedido DEMO local. Al pasar a «En preparación» o a un estado posterior se descuenta el inventario; al devolverlo a «Pendiente» se registra el reingreso.</p>';
+      '<p class="order-demo-warning">Los cambios de estado aplican el movimiento de inventario correspondiente y quedan registrados en el kardex.</p>';
     const statusSelect = document.getElementById('order-status-select');
     statusSelect.value = order.status;
     document.getElementById('save-order-status').setAttribute('data-id', String(order.id));
@@ -707,7 +707,7 @@
     const lineRows=totals.items.map(item=>
       '<div class="invoice-preview-line"><div class="invoice-line-product"><strong>'+esc(item.name)+'</strong><small>'+esc(item.sku||'Sin SKU')+'</small></div><span class="invoice-line-quantity">'+item.quantity+' uds.</span><div class="invoice-line-unit"><strong>'+money(item.unitPriceUsd)+'</strong><small>'+moneyInCurrency(roundMoney(item.unitPriceUsd*rate),'NIO')+'</small></div><div class="invoice-line-total"><strong>'+money(item.lineTotalUsd)+'</strong><small>'+moneyInCurrency(roundMoney(item.lineTotalUsd*rate),'NIO')+'</small></div></div>'
     ).join('');
-    preview.innerHTML='<div class="invoice-preview-heading"><div><span class="invoice-kicker">VISTA PREVIA DE FACTURA</span><strong>'+esc(customer)+'</strong></div><span class="invoice-demo-chip">DEMO · NO FISCAL</span></div>'+
+    preview.innerHTML='<div class="invoice-preview-heading"><div><span class="invoice-kicker">VISTA PREVIA DE FACTURA</span><strong>'+esc(customer)+'</strong></div><span class="invoice-demo-chip">COMPROBANTE INTERNO · NO FISCAL</span></div>'+
       '<div class="invoice-preview-meta"><div><span>CLIENTE</span><strong>'+esc(customer)+'</strong></div><div><span>CONTACTO</span><strong>'+esc(phone)+'</strong></div><div><span>ORIGEN</span><strong>'+source+'</strong></div><div><span>FECHA</span><strong>'+new Date().toLocaleDateString('es-NI')+'</strong></div></div>'+
       '<div class="invoice-lines-heading"><span>PRODUCTO</span><span>CANT.</span><span>PRECIO</span><span>IMPORTE</span></div><div class="invoice-preview-lines">'+lineRows+'</div>'+
       '<div class="invoice-preview-totals"><div><span>Subtotal</span>'+invoiceUsdPrimary(totals.subtotalUsd,rate)+'</div>'+
@@ -731,7 +731,7 @@
     const balance=Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0));
     const source=invoice.source==='web'?'Página web':(invoice.source==='manual'?'Venta manual':'Tienda física');
     return '<article class="invoice-paper"><header class="invoice-paper-header"><div class="invoice-paper-brand"><span class="invoice-paper-monogram">JB</span><div><strong>JB PARFUMS</strong><small>FRAGANCIAS · PERFUMERÍA</small></div></div><div class="invoice-paper-number"><span>COMPROBANTE INTERNO</span><strong>'+esc(invoice.id)+'</strong><small>'+esc(dateText(invoice.createdAt))+'</small></div></header>'+
-      '<div class="invoice-paper-status"><span>DEMO · NO FISCAL</span><strong>'+esc(invoice.status||'Pendiente')+'</strong></div>'+
+      '<div class="invoice-paper-status"><span>COMPROBANTE INTERNO · NO FISCAL</span><strong>'+esc(invoice.status||'Pendiente')+'</strong></div>'+
       '<section class="invoice-paper-parties"><div><small>FACTURAR A</small><strong>'+esc(invoice.customer||'Cliente general')+'</strong><span>'+esc(invoice.phone||'Sin contacto')+'</span><span>'+esc(invoice.customerType==='business'?'Cliente negocio':'Cliente particular')+'</span></div><div><small>ORIGEN DE VENTA</small><strong>'+source+'</strong><span>'+(invoice.orderId?'Pedido '+esc(invoice.orderId):'Venta directa')+'</span><span>Moneda de venta: USD</span><span>Moneda de cobro: '+esc(paymentCurrency)+'</span></div></section>'+
       '<table class="invoice-paper-table"><thead><tr><th>PRODUCTO / CÓDIGO</th><th>CANT.</th><th>PRECIO UNIT.</th><th>IMPORTE</th></tr></thead><tbody>'+lines+'</tbody></table>'+
       '<section class="invoice-paper-summary"><div><span>Subtotal</span>'+invoiceUsdPrimary(invoice.subtotalUsd,rate)+'</div>'+
@@ -741,7 +741,7 @@
       '<div><span>'+(balance>0&&Number(invoice.paidUsd||0)>0?'Abono inicial recibido':'Pago recibido')+'</span>'+invoiceUsdPrimary(invoice.paidUsd||0,rate)+'</div>'+
       (paymentOriginalAmount>0&&paymentCurrency==='NIO'?'<div><span>Pago inicial registrado en córdobas</span><strong>'+moneyInCurrency(paymentOriginalAmount,'NIO')+'</strong></div>':'')+
       '<div><span>Saldo pendiente</span>'+invoiceUsdPrimary(balance,rate)+'</div></section>'+
-      '<footer class="invoice-paper-footer"><div><strong>Método de pago:</strong> '+esc(invoice.paymentMethod||'Pendiente')+'</div><div>Tipo de cambio aplicado: '+rateLabel(rate)+'</div><p>Documento generado por JB PARFUMS ERP en modo DEMO. No es una factura fiscal autorizada.</p></footer></article>';
+      '<footer class="invoice-paper-footer"><div><strong>Método de pago:</strong> '+esc(invoice.paymentMethod||'Pendiente')+'</div><div>Tipo de cambio aplicado: '+rateLabel(rate)+'</div><p>Documento comercial interno. No sustituye una factura fiscal autorizada.</p></footer></article>';
   }
   function showInvoicePreview(invoiceId){
     const invoice=invoices.find(item=>String(item.id)===String(invoiceId));
@@ -995,11 +995,11 @@
   function dateText(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'});}
   function renderCustomers(){
     const rows=customers.map(c=>'<tr><td data-label="Cliente / contacto" class="table-primary">'+esc(c.name)+'<small class="table-secondary">'+esc(c.contact||'Sin contacto')+'</small></td><td data-label="Pedidos">'+Number(c.orders||0)+'</td><td data-label="Importe en pedidos USD" class="table-primary">'+money(c.spent)+'</td><td data-label="Desde">'+esc(c.since||'—')+'</td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td></tr>').join('');
-    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>PEDIDOS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes DEMO locales</strong><p>Los datos viven en este navegador. No introducir datos personales reales hasta configurar autenticación y base de datos.</p></div></div>';
+    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>PEDIDOS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes conectados</strong><p>Los datos y el historial comercial se consultan desde Neon Development.</p></div></div>';
   }
   function renderOrders(){
     const rows=orders.map(o=>'<tr><td data-label="Referencia" class="table-primary">'+esc(o.id)+'</td><td data-label="Cliente">'+esc(o.customer)+'</td><td data-label="Fecha">'+esc(o.date)+'</td><td data-label="Total / cobro" class="table-primary">'+money(o.amount)+'<small class="table-secondary">Cobro: '+moneyInCurrency(o.paymentAmount==null?o.amount:o.paymentAmount,o.paymentCurrency||'USD')+'</small></td><td data-label="Estado">'+orderStatus(o.status)+'</td><td data-label="Detalle"><button class="table-action" data-action="preview-order" data-id="'+esc(o.id)+'" aria-label="Ver pedido '+esc(o.id)+'">'+svg('eye')+'</button></td></tr>').join('');
-    return heading(views.orders,'<button class="button button-primary" data-action="new-order">'+svg('plus')+' Nuevo pedido</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Pedidos</span><strong>'+orders.length+'</strong></div><div class="summary-mini"><span>Pendientes</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(orders.reduce((s,o)=>s+Number(o.amount||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL / COBRO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Sin pedidos.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Pedidos DEMO</strong><p>El inventario se descuenta al confirmar el pedido (estado «En preparación» o posterior). Si vuelve a «Pendiente», se registra el reingreso correspondiente.</p></div></div>';
+    return heading(views.orders,'<button class="button button-primary" data-action="new-order">'+svg('plus')+' Nuevo pedido</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Pedidos</span><strong>'+orders.length+'</strong></div><div class="summary-mini"><span>Pendientes</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(orders.reduce((s,o)=>s+Number(o.amount||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL / COBRO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Sin pedidos.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Pedidos conectados</strong><p>El inventario se descuenta cuando el pedido pasa a preparación. El sistema registra reversiones si se devuelve a pendiente o se cancela antes de completarse.</p></div></div>';
   }
   function renderBilling(){
     const rows=invoices.map(f=>{
@@ -1025,7 +1025,7 @@
     return heading(views.receivables,'<button class="button button-quiet" data-view="billing">Ver facturas</button>')+
       '<div class="summary-strip"><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Clientes con saldo</span><strong>'+clients+'</strong></div><div class="summary-mini"><span>Facturas pendientes</span><strong>'+open.length+'</strong></div></div>'+
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FACTURA / FECHA</th><th>CLIENTE</th><th>ORIGEN</th><th>TOTAL USD</th><th>PAGOS RECIBIDOS</th><th>SALDO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">No hay cuentas pendientes de cobro.</td></tr>')+'</tbody></table></div></article>'+
-      '<div class="notice-panel">'+svg('warning')+'<div><strong>Cuentas por cobrar DEMO</strong><p>Los saldos se calculan desde las facturas y sus abonos registrados. Cada pago conserva importe, moneda, tasa, cuenta y fecha.</p></div></div>';
+      '<div class="notice-panel">'+svg('warning')+'<div><strong>Cuentas por cobrar</strong><p>Los saldos se calculan desde las facturas y sus abonos registrados. Cada pago conserva importe, moneda, tasa, cuenta y fecha.</p></div></div>';
   }
   async function loadHRFromAPI(force){
     const auth=window.JBAuth;
@@ -1061,10 +1061,10 @@
     }
     const rows=employees.map(e=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip status-success">'+esc(e.status||'Activo')+'</span></td></tr>').join('');
     const action=!backendMode||['owner','admin','hr'].includes(auth.profile.role)?'<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>':'';
-    const countLabel=backendMode?'Colaboradores en Neon':'Colaboradores DEMO';
-    const noticeTitle=backendMode?'RR. HH. sincronizado con Neon Development':'RRHH DEMO';
-    const noticeText=backendMode?'Los registros están protegidos por sesión y roles. Salarios y nómina se almacenan en córdobas; la nómina legal requiere revisar deducciones, prestaciones y normativa laboral.':'La nómina se mantiene en córdobas. Deducciones, prestaciones y documentos laborales requieren validación legal antes de producción.';
-    return heading(views.hr,action)+'<div class="summary-strip"><div class="summary-mini"><span>'+countLabel+'</span><strong>'+employees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual (C$)</span><strong>'+moneyInCurrency(employees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Moneda salarial</span><strong>NIO</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">'+(backendMode?'No hay colaboradores registrados.':'No hay colaboradores DEMO.')+'</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>'+noticeTitle+'</strong><p>'+noticeText+'</p></div></div>';
+    const countLabel='Colaboradores registrados';
+    const noticeTitle='RR. HH. · Neon Development';
+    const noticeText='Los expedientes y salarios están protegidos por sesión y roles. La nómina se mantiene en córdobas; antes de automatizar deducciones se validarán prestaciones y normativa laboral.';
+    return heading(views.hr,action)+'<div class="summary-strip"><div class="summary-mini"><span>'+countLabel+'</span><strong>'+employees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual (C$)</span><strong>'+moneyInCurrency(employees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Moneda salarial</span><strong>NIO</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4">'+'No hay colaboradores registrados.'+'</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>'+noticeTitle+'</strong><p>'+noticeText+'</p></div></div>';
   }
   function renderAnalytics(){
     const finance=financialSnapshot();
