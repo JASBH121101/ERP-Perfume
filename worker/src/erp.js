@@ -373,6 +373,26 @@ export async function handleERPRequest(request, env, user, sql) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createInventoryMovement(sql, user, body);
   }
+  if (resource === "purchases" && request.method === "POST") {
+    if (!canAccess(user, RESOURCE_DEFS.purchases.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar compras.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return createPurchase(sql,user,body);
+  }
+  if (resource === "invoices" && request.method === "POST") {
+    if (!canAccess(user, RESOURCE_DEFS.invoices.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para facturar.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return createInvoice(sql,user,body);
+  }
+  if (resource === "invoice-payments" && request.method === "POST") {
+    if (!canAccess(user, ["owner","admin","finance","sales"])) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar cobros.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return addInvoicePayment(sql,user,body);
+  }
+  if (resource === "purchase-payments" && request.method === "POST") {
+    if (!canAccess(user, ["owner","admin","finance","inventory"])) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar pagos a proveedores.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return addPurchasePayment(sql,user,body);
+  }
   const normalizedResource = resource.replace(/-/g, "_");
   const def = RESOURCE_DEFS[normalizedResource];
   if (!def) return erpError(404, "RESOURCE_NOT_FOUND", "El módulo solicitado no existe.");
@@ -393,6 +413,10 @@ export async function handleERPRequest(request, env, user, sql) {
   }
   if (request.method === "PATCH" && id) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    if (normalizedResource === "orders" && Object.prototype.hasOwnProperty.call(body,"status")) {
+      if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para cambiar pedidos.");
+      return updateOrderStatus(sql,user,id,body);
+    }
     return updateGeneric(sql, user, normalizedResource, def, id, body);
   }
   if (request.method === "DELETE" && id) return softDelete(sql, user, normalizedResource, def, id);
