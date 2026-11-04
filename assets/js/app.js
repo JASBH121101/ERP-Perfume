@@ -1722,9 +1722,9 @@
     if(!name||price<=0||!Number.isInteger(minStock)||invalid||(!existing&&(!Number.isInteger(stock)||stock<0))){
       toast('Revisa nombre, precio, costos y existencias iniciales.');if(button)button.disabled=false;return;
     }
-    if(files.length+Number(existing?.images?.length||0)>5){toast('Cada producto puede conservar hasta cinco fotografías. Elimina una antes de agregar otra.');if(button)button.disabled=false;return;}
-    if(files.some(file=>file.size>8*1024*1024||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
-      toast('Cada imagen debe ser JPG, PNG, WebP o AVIF y pesar máximo 8 MB.');if(button)button.disabled=false;return;
+    if(files.length+Number(existing?.images?.length||0)>3){toast('Cada producto puede conservar hasta tres fotografías. Elimina una antes de agregar otra.');if(button)button.disabled=false;return;}
+    if(files.some(file=>file.size>2*1024*1024||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
+      toast('Cada imagen debe ser JPG, PNG, WebP o AVIF y pesar máximo 2 MB.');if(button)button.disabled=false;return;
     }
     if(products.some(p=>String(p.sku).toLowerCase()===sku.toLowerCase()&&(!existing||String(p.id)!==String(existing.id)))){
       toast('Ese SKU ya existe. Utiliza un código diferente.');form.elements.sku.focus();if(button)button.disabled=false;return;
