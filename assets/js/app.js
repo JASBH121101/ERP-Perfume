@@ -503,7 +503,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     "download-dgi-document": ["dgi.documents.view"], "reload-dgi-documents": ["dgi.documents.view"],
     "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
     "clear-inventory-filters": ["inventory.stock.view"], "clear-inventory-product-filters": ["inventory.stock.view"],
-    "inventory-page": ["inventory.stock.view"]
+    "inventory-page": ["inventory.stock.view"], "refresh-access-manager": ["users.accounts.view"],
+    "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"]
   };
   function applyPermissionActions() {
     root.querySelectorAll("button[data-action]").forEach((button) => {
@@ -2785,6 +2786,101 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       openBusinessDialog('invoice');
     }else if(name==='print-invoice')window.print();
     else if(name==='close-invoice-preview')document.getElementById('invoice-preview-dialog').close();
+  });
+  document.addEventListener("change",function(event){
+    if(event.target?.id==="access-role-select"){
+      accessSelectedRole=event.target.value;
+      renderView();
+    }
+  });
+  document.addEventListener("click",async function(event){
+    const button=event.target.closest("[data-action]");
+    if(!button)return;
+    const action=button.getAttribute("data-action");
+    if(action==="refresh-access-manager"){
+      button.disabled=true;
+      await loadAccessManager(true);
+      if(accessManager.loaded)toast("Administración de accesos actualizada.");
+      else toast(accessManager.error||"No se pudo actualizar.");
+      button.disabled=false;
+      return;
+    }
+    if(action==="provision-user-account"){
+      const row=button.closest("tr");
+      if(!row)return;
+      const email=row.getAttribute("data-pending-email");
+      const payload={
+        email,
+        display_name:row.querySelector("[data-pending-name]")?.value.trim()||"",
+        position_title:row.querySelector("[data-pending-position]")?.value.trim()||"",
+        role_template_key:row.querySelector("[data-pending-role]")?.value||"viewer",
+        must_change_password:true
+      };
+      if(!payload.display_name){toast("Escribe el nombre completo antes de preparar la cuenta.");return;}
+      button.disabled=true;
+      try{
+        await erpApi("users",{method:"POST",body:JSON.stringify(payload)});
+        await loadAccessManager(true);
+        toast("Perfil ERP creado y bloqueado. Actívalo solo después de completar la autorización.");
+      }catch(error){toast(error?.message||"No se pudo preparar la cuenta.");}
+      finally{button.disabled=false;}
+      return;
+    }
+    if(action==="save-user-access"){
+      const row=button.closest("tr"), id=row?.getAttribute("data-user-id");
+      if(!id)return;
+      const payload={
+        position_title:row.querySelector("[data-user-position]")?.value.trim()||"",
+        role_template_key:row.querySelector("[data-user-role]")?.value||"viewer",
+        account_status:row.querySelector("[data-user-status]")?.value||"registered",
+        must_change_password:row.querySelector("[data-user-password]")?.checked===true
+      };
+      button.disabled=true;
+      try{
+        await erpApi("users/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});
+        await loadAccessManager(true);
+        toast("Cuenta ERP actualizada.");
+      }catch(error){toast(error?.message||"No se pudo actualizar la cuenta.");}
+      finally{button.disabled=false;}
+    }
+  });
+  document.addEventListener("submit",async function(event){
+    const form=event.target;
+    if(form?.id==="role-permissions-form"){
+      event.preventDefault();
+      if(window.JBAuth?.profile?.role!=="owner")return;
+      const roleKey=form.getAttribute("data-role-key");
+      const enabled=new Set(new FormData(form).getAll("permission").map(String));
+      const permissions=accessManager.permissions.map(permission=>({
+        permission_key:permission.permission_key,
+        allowed:enabled.has(permission.permission_key)
+      }));
+      const submit=form.querySelector('[type="submit"]');
+      if(submit){submit.disabled=true;submit.textContent="Guardando…";}
+      try{
+        await erpApi("roles/"+encodeURIComponent(roleKey),{method:"PATCH",body:JSON.stringify({permissions})});
+        await loadAccessManager(true);
+        toast("Permisos de la plantilla actualizados.");
+      }catch(error){toast(error?.message||"No se pudo guardar la plantilla.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Guardar permisos de plantilla";}}
+      return;
+    }
+    if(form?.id==="role-create-form"){
+      event.preventDefault();
+      if(window.JBAuth?.profile?.role!=="owner")return;
+      const data=new FormData(form);
+      const payload={role_key:String(data.get("role_key")||"").trim(),name:String(data.get("name")||"").trim(),description:String(data.get("description")||"").trim()};
+      const submit=form.querySelector('[type="submit"]');
+      if(submit){submit.disabled=true;submit.textContent="Creando…";}
+      try{
+        const result=await erpApi("roles",{method:"POST",body:JSON.stringify(payload)});
+        accessSelectedRole=result.role?.role_key||accessSelectedRole;
+        form.reset();
+        await loadAccessManager(true);
+        toast("Plantilla vacía creada. Asigna cada módulo, sección y acción antes de utilizarla.");
+      }catch(error){toast(error?.message||"No se pudo crear la plantilla.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Crear plantilla vacía";}}
+    }
   });
   document.addEventListener('submit',function(event){
     if(event.target?.id==='dgi-settings-form'){event.preventDefault();saveDgiSettings(event);}
