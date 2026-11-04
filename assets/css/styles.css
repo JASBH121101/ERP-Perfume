@@ -829,3 +829,11 @@ body.auth-locked .app-shell {
   .hr-view .hr-tabs .toolbar-left{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
   .hr-view .hr-tab-button{min-height:37px;padding:0 7px;font-size:10px}
 }
+
+
+.product-image-pending-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-top:10px}
+.product-image-pending-card{display:flex;flex-direction:column;gap:8px;min-width:0;padding:10px;border:1px solid var(--line,#e7e2d9);border-radius:12px;background:var(--surface,#fff)}
+.product-image-pending-card img{width:100%;aspect-ratio:1/1;object-fit:contain;border-radius:8px;background:#f7f5f1}
+.product-image-pending-card strong{display:block;overflow-wrap:anywhere;font-size:12px}
+.product-image-pending-card small{display:block;min-height:2.4em;margin-top:4px;color:var(--muted,#777);font-size:11px}
+.product-image-pending-card progress{width:100%;height:6px;accent-color:var(--accent,#a9874f)}
