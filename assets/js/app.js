@@ -1241,7 +1241,7 @@
       }
     }
   }
-  document.addEventListener('click', function (event) {
+  document.addEventListener('click', async function (event) {
     const viewButton = event.target.closest('[data-view], [data-view-link]');
     if (viewButton) {
       goToView(viewButton.getAttribute('data-view') || viewButton.getAttribute('data-view-link'));
@@ -1255,29 +1255,31 @@
       else if (name === 'preview-product') showProductDetails(action.getAttribute('data-id'));
       else if (name === 'edit-from-detail') { const productId = action.getAttribute('data-id'); detailDialog.close(); openProductModal(productId); }
       else if (name === 'toggle-product') {
-        const product = products.find(function (item) { return String(item.id) === action.getAttribute('data-id'); });
-        if (!product) return;
-        if (product.active !== false && !window.confirm('¿Desactivar ' + product.name + '? Dejará de aparecer en el inventario activo.')) return;
-        const snapshot=captureDemoState();
-        product.active = product.active === false;
-        if(!persistDemoData()){restoreDemoState(snapshot);renderView();return;}
-        renderView();
-        toast(product.active ? 'Producto reactivado en el catálogo DEMO.' : 'Producto desactivado. Su historial se conserva.');
+        const product=products.find(item=>String(item.id)===action.getAttribute('data-id'));
+        if(!product)return;
+        const active=product.active===false;
+        if(!active&&!window.confirm('¿Desactivar '+product.name+'? Se conservarán sus ventas y movimientos históricos.'))return;
+        action.disabled=true;
+        try{
+          await erpApi('products/'+encodeURIComponent(product.id),{method:'PATCH',body:JSON.stringify({active})});
+          await loadERPFromNeon(true);
+          renderView();
+          toast(active?'Producto reactivado.':'Producto desactivado; su historial se conserva.');
+        }catch(error){toast(error?.message||'No se pudo actualizar el producto.');}
+        finally{action.disabled=false;}
       }
       else if (name === 'delete-product') {
-        const product = products.find(function (item) { return String(item.id) === action.getAttribute('data-id'); });
-        if (!product) return;
-        const hasStockHistory=inventoryMovements.some(function (movement) { return String(movement.productId) === String(product.id); });
-        const hasOrderHistory=orders.some(function(order){return Array.isArray(order.items)&&order.items.some(function(item){return (item.productId!=null&&String(item.productId)===String(product.id))||(item.sku&&String(item.sku).toLowerCase()===String(product.sku).toLowerCase())||(item.name&&String(item.name).toLowerCase()===String(product.name).toLowerCase());});});
-        const hasPurchaseHistory=purchases.some(function(purchase){return String(purchase.productId)===String(product.id);});
-        if (hasStockHistory||hasOrderHistory||hasPurchaseHistory) {
-          toast('No se puede eliminar: el producto tiene historial de inventario, pedidos o compras. Puedes desactivarlo y conservar su trazabilidad.'); return;
-        }
-        if (!window.confirm('¿Eliminar definitivamente este producto DEMO?')) return;
-        const snapshot=captureDemoState();
-        products = products.filter(function (item) { return String(item.id) !== String(product.id); });
-        if(!persistDemoData()){restoreDemoState(snapshot);renderView();return;}
-        renderView(); toast('Producto DEMO eliminado.');
+        const product=products.find(item=>String(item.id)===action.getAttribute('data-id'));
+        if(!product)return;
+        if(!window.confirm('¿Desactivar '+product.name+'? Los registros históricos se conservarán.'))return;
+        action.disabled=true;
+        try{
+          await erpApi('products/'+encodeURIComponent(product.id),{method:'DELETE'});
+          await loadERPFromNeon(true);
+          renderView();
+          toast('Producto desactivado y conservado en el historial.');
+        }catch(error){toast(error?.message||'No se pudo desactivar el producto.');}
+        finally{action.disabled=false;}
       }
       else if (name === 'stock-new') openStockModal();
       else if (name === 'stock-product') openStockModal(action.getAttribute('data-id'));
@@ -1345,31 +1347,51 @@
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') closeMobileMenu();
   });
-  form.addEventListener('submit', function (event) {
-    event.preventDefault(); if (!form.reportValidity()) return;
-    const data = new FormData(form), value = function (key) { return String(data.get(key) || '').trim(); }, number = function (key) { return Number(data.get(key) || 0); };
-    const editingId = form.dataset.editingId, existing = editingId ? products.find(function (product) { return String(product.id) === editingId; }) : null;
-    const name = value('name'), price = number('price'), stock = number('stock'), minStock = number('minStock');
-    const purchaseCost = number('purchaseCost'), additionalCost = number('additionalCost'), sku = value('sku') || (existing ? existing.sku : makeSku());
-    const unitCost = purchaseCost + additionalCost, profit = price - unitCost, margin = price > 0 ? (profit / price) * 100 : 0;
-    const invalidNumbers = [price,minStock,purchaseCost,additionalCost].some(function (n) { return !Number.isFinite(n) || n < 0; });
-    if (!name || !Number.isFinite(price) || price <= 0 || !Number.isInteger(minStock) || invalidNumbers || (!existing && (!Number.isInteger(stock) || stock < 0))) {
-      toast('Revisa el nombre, el precio, los costos y el stock mínimo.'); return;
-    }
-    if (products.some(function (product) { return String(product.sku).toLowerCase() === sku.toLowerCase() && (!existing || String(product.id) !== String(existing.id)); })) {
-      toast('Ese SKU ya existe. Utiliza un código diferente.'); form.elements.sku.focus(); return;
-    }
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if(!form.reportValidity())return;
+    const button=document.getElementById('save-product');
+    if(button){button.disabled=true;button.textContent='Guardando…';}
+    const data=new FormData(form),value=key=>String(data.get(key)||'').trim(),number=key=>Number(data.get(key)||0);
+    const editingId=form.dataset.editingId;
+    const existing=editingId?products.find(product=>String(product.id)===editingId):null;
+    const name=value('name'),price=number('price'),stock=number('stock'),minStock=number('minStock');
+    const purchaseCost=number('purchaseCost'),additionalCost=number('additionalCost');
+    const sku=value('sku')||(existing?existing.sku:makeSku());
     const wholesalePrice=number('wholesalePrice');
-    if(!Number.isFinite(wholesalePrice)||wholesalePrice<0){toast('El precio mayorista debe ser cero o mayor.');return;}
-    const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,wholesalePrice:wholesalePrice||null,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
-    const snapshot=captureDemoState();
-    if (existing) {
-      Object.assign(existing,fields); if(!persistDemoData()){restoreDemoState(snapshot);return;} form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false;
-      updateProductCostPreview(); dialog.close(); renderView(); toast('Ficha de producto actualizada y guardada localmente en modo DEMO.');
-    } else {
-      products.unshift(Object.assign({id:Date.now(),stock:stock,active:true,tone:'art-violet'},fields)); if(!persistDemoData()){restoreDemoState(snapshot);return;}
-      form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false; updateProductCostPreview();
-      dialog.close(); goToView('products'); toast('Producto guardado en DEMO local; no se ha guardado en Neon.');
+    const invalid=[price,minStock,purchaseCost,additionalCost,wholesalePrice].some(n=>!Number.isFinite(n)||n<0);
+    if(!name||price<=0||!Number.isInteger(minStock)||invalid||(!existing&&(!Number.isInteger(stock)||stock<0))){
+      toast('Revisa nombre, precio, costos y existencias iniciales.');if(button)button.disabled=false;return;
+    }
+    if(products.some(p=>String(p.sku).toLowerCase()===sku.toLowerCase()&&(!existing||String(p.id)!==String(existing.id)))){
+      toast('Ese SKU ya existe. Utiliza un código diferente.');form.elements.sku.focus();if(button)button.disabled=false;return;
+    }
+    const unitCost=roundMoney(purchaseCost+additionalCost);
+    const payload={
+      name,sku,brand:value('brand')||null,category:value('category')||'Perfumería',
+      concentration:value('concentration')||null,gender:value('gender')||null,family:value('family')||null,
+      size_ml:number('sizeMl')||null,presentation:value('presentation')||null,
+      purchase_cost_usd:purchaseCost,additional_cost_usd:additionalCost,unit_cost_usd:unitCost,
+      price_usd:price,min_stock:minStock,location:value('location')||null,active:existing?existing.active!==false:true,
+      barcode:value('barcode')||null,supplier_name:value('supplier')||null,
+      wholesale_price_usd:wholesalePrice||null,tone:existing?.tone||'art-violet',notes:value('notes')||null
+    };
+    try{
+      if(existing){
+        await erpApi('products/'+encodeURIComponent(existing.id),{method:'PATCH',body:JSON.stringify(payload)});
+      }else{
+        payload.stock=stock;
+        await erpApi('products',{method:'POST',body:JSON.stringify(payload)});
+      }
+      await loadERPFromNeon(true);
+      form.reset();form.dataset.editingId='';form.elements.stock.readOnly=false;
+      updateProductCostPreview();dialog.close();
+      if(existing){renderView();toast('Producto actualizado en Neon.');}
+      else{goToView('products');toast('Producto registrado en Neon; existencias iniciales asentadas en el kardex.');}
+    }catch(error){
+      toast(error?.message||'No se pudo guardar el producto.');
+    }finally{
+      if(button){button.disabled=false;button.textContent=existing?'Guardar cambios':'Guardar en Neon';}
     }
   });
   function makeSku() {
@@ -1377,24 +1399,29 @@
     while (products.some(function (product) { return String(product.sku).toLowerCase() === ('jbp-' + String(index).padStart(3,'0')).toLowerCase(); })) index+=1;
     return 'JBP-' + String(index).padStart(3,'0');
   }
-  stockForm.addEventListener('submit', function (event) {
-    event.preventDefault(); if (!stockForm.reportValidity()) return;
-    const data=new FormData(stockForm), product=products.find(function (item) { return String(item.id)===String(data.get('productId')); });
-    const type=String(data.get('type')||''), quantity=Number(data.get('quantity')), note=String(data.get('note')||'').trim();
-    if (!product || product.active===false || !Number.isInteger(quantity) || quantity<0 || (type!=='adjustment' && quantity===0)) {
-      toast('Selecciona un producto activo y una cantidad válida.'); return;
+  stockForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if(!stockForm.reportValidity())return;
+    const data=new FormData(stockForm);
+    const product=products.find(item=>String(item.id)===String(data.get('productId')));
+    const type=String(data.get('type')||''),quantity=Number(data.get('quantity')),note=String(data.get('note')||'').trim();
+    if(!product||product.active===false||!Number.isInteger(quantity)||quantity<0||(type!=='adjustment'&&quantity===0)){
+      toast('Selecciona un producto activo y una cantidad válida.');return;
     }
-    const previousStock=product.stock; let delta=0,label='';
-    if(type==='entry'){delta=quantity;label='Entrada';} else if(type==='exit'){delta=-quantity;label='Salida';} else if(type==='adjustment'){delta=quantity-previousStock;label='Ajuste';} else {toast('Tipo de movimiento no reconocido.');return;}
-    const newStock=previousStock+delta;
-    if(newStock<0){toast('Stock insuficiente. La salida no puede dejar existencias negativas.');return;}
-    if(delta===0){toast('El ajuste coincide con el stock actual; no se registró ningún movimiento.');return;}
-    const snapshot=captureDemoState();
-    product.stock=newStock;
-    inventoryMovements.unshift({id:Date.now(),productId:product.id,productName:product.name,sku:product.sku,type:label,quantity:Math.abs(delta),delta:delta,previousStock:previousStock,newStock:newStock,note:note,createdAt:new Date().toISOString()});
-    if(!persistDemoData()){restoreDemoState(snapshot);return;}
-    stockForm.reset(); stockDialog.close(); renderView();
-    toast(label+' registrada: '+product.name+' · '+(delta>0?'+':'')+delta+' unidades.');
+    const movementType=type==='entry'?'Entrada':(type==='exit'?'Salida':'Ajuste');
+    if(type==='exit'&&quantity>Number(product.stock||0)){toast('Stock insuficiente. La salida supera las existencias actuales.');return;}
+    if(type==='adjustment'&&quantity===Number(product.stock||0)){toast('El ajuste coincide con el stock actual; no se registró movimiento.');return;}
+    const button=stockForm.querySelector('[type="submit"]');
+    if(button){button.disabled=true;button.textContent='Registrando…';}
+    try{
+      await erpApi('inventory-movements',{method:'POST',body:JSON.stringify({
+        product_id:product.id,movement_type:movementType,quantity,note,reference_type:'manual',reference_id:null
+      })});
+      await loadERPFromNeon(true);
+      stockForm.reset();stockDialog.close();renderView();
+      toast(movementType+' registrado en Neon: '+product.name+'.');
+    }catch(error){toast(error?.message||'No se pudo registrar el movimiento.');}
+    finally{if(button){button.disabled=false;button.textContent='Registrar movimiento';}}
   });
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);
   businessForm.addEventListener('change',function(event){
@@ -1467,11 +1494,21 @@
     }else if(name==='print-invoice')window.print();
     else if(name==='close-invoice-preview')document.getElementById('invoice-preview-dialog').close();
   });
-  document.addEventListener('submit',function(event){
+  document.addEventListener('submit',async function(event){
     if(!event.target||event.target.id!=='exchange-rate-form')return;
-    event.preventDefault();const next=Number(new FormData(event.target).get('exchangeRate'));
+    event.preventDefault();
+    const next=Number(new FormData(event.target).get('exchangeRate'));
     if(!Number.isFinite(next)||next<=0||next>100000){toast('Introduce un tipo de cambio válido.');return;}
-    const previousRate=exchangeRate;exchangeRate=Number(next.toFixed(4));if(!persistDemoData()){exchangeRate=previousRate;return;}renderView();toast('Tipo de cambio actualizado. Las operaciones anteriores conservan su tasa.');
+    const button=event.target.querySelector('[type="submit"]');
+    if(button){button.disabled=true;button.textContent='Guardando…';}
+    try{
+      await erpApi('settings',{method:'PATCH',body:JSON.stringify({setting_key:'default_exchange_rate',setting_value:{value:Number(next.toFixed(4))}})});
+      exchangeRate=Number(next.toFixed(4));
+      await loadERPFromNeon(true);
+      renderView();
+      toast('Tipo de cambio actualizado. Las operaciones anteriores conservan su tasa.');
+    }catch(error){toast(error?.message||'No se pudo guardar el tipo de cambio.');}
+    finally{if(button){button.disabled=false;button.textContent='Guardar tipo de cambio';}}
   });
   setDate();
   let initiallyCollapsed = false;
