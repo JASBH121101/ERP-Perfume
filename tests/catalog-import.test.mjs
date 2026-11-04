@@ -199,3 +199,122 @@ test("completed or cancelled orders cannot be reopened through status updates", 
   assert.match(body.error.message, /finalizado\/cancelado/);
   assert.match(executedSql, /old_status NOT IN \('Completado','Cancelado'\)/);
 });
+
+
+function requestFor(path, method, body) {
+  return {
+    url: "https://erp.test/api/erp/" + path,
+    method,
+    json: async () => body
+  };
+}
+
+test("invoice backend rejects totals that do not reconcile with item lines", async () => {
+  let queryCount = 0;
+  const sql = { query: async () => { queryCount += 1; return []; } };
+  const response = await handleERPRequest(requestFor("invoices", "POST", {
+    invoice_number: "JBI-QA-001",
+    source: "manual",
+    customer_name: "Cliente QA",
+    currency: "USD",
+    exchange_rate: 36.6,
+    subtotal_usd: 18,
+    discount_usd: 0,
+    delivery_fee_usd: 0,
+    total_usd: 18,
+    paid_usd: 0,
+    items: [{
+      product_id: "00000000-0000-0000-0000-000000000101",
+      product_name: "Perfume QA",
+      quantity: 1,
+      unit_price_usd: 20
+    }]
+  }), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, "INVOICE_TOTAL_MISMATCH");
+  assert.equal(queryCount, 0);
+});
+
+test("web invoice rejects items or prices that differ from the original order", async () => {
+  let writeAttempted = false;
+  const sql = {
+    query: async (query) => {
+      if (query.startsWith("SELECT o.order_number")) {
+        return [{
+          order_number: "JP-1001",
+          customer_name: "Cliente QA",
+          product_id: "00000000-0000-0000-0000-000000000101",
+          quantity: 2,
+          unit_price_usd: "25.00"
+        }];
+      }
+      writeAttempted = true;
+      return [];
+    }
+  };
+  const response = await handleERPRequest(requestFor("invoices", "POST", {
+    invoice_number: "JBI-QA-002",
+    source: "web",
+    order_id: "00000000-0000-0000-0000-000000000201",
+    order_number_snapshot: "JP-1001",
+    customer_name: "Cliente QA",
+    currency: "USD",
+    exchange_rate: 36.6,
+    subtotal_usd: 25,
+    discount_usd: 0,
+    delivery_fee_usd: 0,
+    total_usd: 25,
+    paid_usd: 0,
+    items: [{
+      product_id: "00000000-0000-0000-0000-000000000101",
+      product_name: "Perfume QA",
+      quantity: 1,
+      unit_price_usd: 25
+    }]
+  }), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, "WEB_ORDER_ITEMS_MISMATCH");
+  assert.equal(writeAttempted, false);
+});
+
+test("an invoiced web order cannot be cancelled and return stock automatically", async () => {
+  const statements = [];
+  const sql = {
+    query: async (query) => {
+      statements.push(query);
+      if (query.startsWith("SELECT 1 FROM invoices")) return [{ "?column?": 1 }];
+      return [];
+    }
+  };
+  const response = await handleERPRequest(requestFor(
+    "orders/00000000-0000-0000-0000-000000000201",
+    "PATCH",
+    { status: "Cancelado" }
+  ), {}, owner, sql);
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, "ORDER_ALREADY_INVOICED");
+  assert.match(statements[0], /linked_invoice/);
+  assert.match(statements[0], /SUM\(quantity_delta\)/);
+});
+
+test("order status calculation uses net stock movements rather than historical negative rows", async () => {
+  let executedSql = "";
+  const sql = {
+    query: async (query) => {
+      executedSql = query;
+      return [{ id: "00000000-0000-0000-0000-000000000201", status: "En preparación" }];
+    }
+  };
+  const response = await handleERPRequest(requestFor(
+    "orders/00000000-0000-0000-0000-000000000201",
+    "PATCH",
+    { status: "En preparación" }
+  ), {}, owner, sql);
+  assert.equal(response.status, 200);
+  assert.match(executedSql, /BOOL_AND/);
+  assert.match(executedSql, /SUM\(quantity_delta\)/);
+  assert.match(executedSql, /linked_invoice\.is_invoiced/);
+});
