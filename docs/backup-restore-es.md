@@ -40,7 +40,7 @@ Cuando estén configurados, cambiar la variable a `true` y ejecutar manualmente 
 
 Nunca restaurar directamente sobre la base de datos de producción como primera prueba.
 
-1. Descarga el archivo cifrado desde el prefijo privado `database-backups/erp_perfume/`.
+1. Descarga el archivo cifrado desde el prefijo privado `database-backups/erp_perfume/`. Para restaurar una base Neon PostgreSQL 18, utiliza también el cliente `pg_restore` 18 (o una versión compatible más reciente).
 2. Descifra en un equipo controlado, sin publicar la frase de cifrado:
 
 ```bash
