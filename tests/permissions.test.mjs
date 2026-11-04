@@ -75,6 +75,10 @@ test("API route permissions separate manual stock out from receipts", () => {
     "inventory.manual_out.create");
   assert.equal(resolveRoutePermission("inventory-movements", "POST", "", [], { movement_type: "Entrada" }),
     "inventory.receipts.receive");
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", "", [], { movement_type: "Ajuste" }),
+    "inventory.adjustments.adjust");
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", "", [], { movement_type: "Reversion" }), null);
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", "", [], {}), null);
 });
 
 test("dedicated business routes map to their own permissions", () => {
