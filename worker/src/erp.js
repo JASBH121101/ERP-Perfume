@@ -324,7 +324,7 @@ async function handleProductAsset(request,env,user,sql) {
     const allowed=new Map([["image/jpeg","jpg"],["image/png","png"],["image/webp","webp"],["image/avif","avif"]]);
     const extension=allowed.get(String(file.type||"").toLowerCase());
     if(!extension)return erpError(415,"UNSUPPORTED_IMAGE_TYPE","Solo se permiten imágenes JPG, PNG, WebP o AVIF.");
-    if(file.size<1||file.size>8*1024*1024)return erpError(413,"IMAGE_TOO_LARGE","La imagen debe pesar como máximo 8 MB.");
+    if(file.size<1||file.size>2*1024*1024)return erpError(413,"IMAGE_TOO_LARGE","La imagen debe pesar como máximo 2 MB.");
     const product=await sql.query("SELECT id,name,images FROM products WHERE id=$1::uuid LIMIT 1",[productId]);
     if(!product[0])return erpError(404,"PRODUCT_NOT_FOUND","No se encontró el producto.");
     const key="products/"+productId+"/"+crypto.randomUUID()+"."+extension;
