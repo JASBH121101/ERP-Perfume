@@ -1052,8 +1052,40 @@
           name:get('name'),position:get('position'),department:get('department')||null,salary_nio:salary,status:'Activo'
         })});
         hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
+      } else if(type==='attendance'){
+        const employeeId=get('employeeId'),workDate=get('workDate'),status=get('status'),breakMinutes=num('breakMinutes');
+        if(!employeeId||!workDate||!['Presente','Tardanza','Ausente','Permiso','Vacaciones'].includes(status)||!Number.isInteger(breakMinutes)||breakMinutes<0)throw new Error('Revisa colaborador, fecha, estado y minutos de descanso.');
+        const checkIn=get('checkIn')?new Date(get('checkIn')).toISOString():null;
+        const checkOut=get('checkOut')?new Date(get('checkOut')).toISOString():null;
+        if(checkIn&&checkOut&&new Date(checkOut)<=new Date(checkIn))throw new Error('La hora de salida debe ser posterior a la entrada.');
+        await erpApi('hr_attendance',{method:'POST',body:JSON.stringify({
+          employee_id:employeeId,work_date:workDate,check_in:checkIn,check_out:checkOut,
+          break_minutes:breakMinutes,status,notes:get('notes')||null
+        })});
+      } else if(type==='leave'){
+        const employeeId=get('employeeId'),startDate=get('startDate'),endDate=get('endDate'),days=num('days');
+        if(!employeeId||!startDate||!endDate||endDate<startDate||!['Vacaciones','Permiso','Incapacidad','Otro'].includes(get('leaveType'))||!Number.isFinite(days)||days<=0)throw new Error('Revisa colaborador, tipo, fechas y cantidad de días.');
+        await erpApi('hr_leave_requests',{method:'POST',body:JSON.stringify({
+          employee_id:employeeId,leave_type:get('leaveType'),start_date:startDate,end_date:endDate,
+          days,reason:get('reason')||null,status:'Pendiente'
+        })});
+      } else if(type==='payroll-period'){
+        const startDate=get('periodStart'),endDate=get('periodEnd'),paymentDate=get('paymentDate');
+        if(!startDate||!endDate||endDate<startDate)throw new Error('El período requiere fechas válidas y el fin no puede ser anterior al inicio.');
+        await erpApi('hr_payroll_periods',{method:'POST',body:JSON.stringify({
+          period_start:startDate,period_end:endDate,payment_date:paymentDate||null,status:'Borrador',notes:get('notes')||null
+        })});
+      } else if(type==='payroll-item'){
+        const periodId=get('payrollPeriodId'),employeeId=get('employeeId');
+        const base=num('baseSalaryNio'),bonus=num('bonusesNio'),deductions=num('deductionsNio');
+        if(!periodId||!employeeId||![base,bonus,deductions].every(Number.isFinite)||base<0||bonus<0||deductions<0||deductions>base+bonus)throw new Error('Revisa período, colaborador, salario, bonos y deducciones.');
+        await erpApi('hr-payroll-items',{method:'POST',body:JSON.stringify({
+          payroll_period_id:periodId,employee_id:employeeId,base_salary_nio:base,
+          bonuses_nio:bonus,deductions_nio:deductions,notes:get('notes')||null
+        })});
       } else {
         throw new Error('Este tipo de operación todavía no está conectado.');
+      }
       }
       await loadERPFromNeon(true);
       businessDialog.close();
@@ -1068,7 +1100,11 @@
           purchase:'Compra registrada: inventario, costo y cuenta por pagar actualizados.',
           expense:'Gasto registrado en Neon y reflejado en caja y resultados.',cash:'Movimiento registrado en Caja y bancos.',
           payment:'Abono de cliente registrado.', 'purchase-payment':'Abono a proveedor registrado.',
-          employee:'Colaborador registrado en Neon Development.'
+          employee:'Colaborador registrado en Neon Development.',
+          attendance:'Asistencia registrada en Neon.',
+          leave:'Solicitud de permiso o vacaciones registrada.',
+          'payroll-period':'Período de nómina creado en estado Borrador.',
+          'payroll-item':'Partida de nómina calculada y registrada en NIO.'
         };
         toast(messages[type]||'Operación guardada en Neon.');
       }
