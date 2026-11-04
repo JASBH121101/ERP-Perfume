@@ -1676,7 +1676,7 @@
     if (!mapping.includes('name')) throw new Error('No pude identificar la columna del producto. Usa un encabezado como Producto, Nombre o Perfume.');
     const parsed = [];
     rows.slice(1,201).forEach((cells,index)=>{
-      const record={sku:'',name:'',brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock:0,min_stock:3,active:true,images:[]};
+      const record={sku:'',name:'',brand:'',category:'Perfumería',purchase_cost_usd:null,additional_cost_usd:null,unit_cost_usd:null,price_usd:0,stock:0,min_stock:3,active:true,images:[]};
       cells.forEach((value,col)=>{
         const field=mapping[col];
         if (!field) return;
