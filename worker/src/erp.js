@@ -509,9 +509,13 @@ async function handleProductAsset(request,env,user,sql) {
       });
       const imageRecord={key,name:String(file.name||("product-image."+extension)).slice(0,180),contentType:file.type,size:file.size,uploadedAt:new Date().toISOString()};
       const rows=await sql.query(
-        "UPDATE products SET images=COALESCE(images,'[]'::jsonb)||$2::jsonb,updated_at=NOW() WHERE id=$1::uuid RETURNING id,images",
+        "UPDATE products SET images=COALESCE(images,'[]'::jsonb)||$2::jsonb,updated_at=NOW() WHERE id=$1::uuid AND jsonb_array_length(COALESCE(images,'[]'::jsonb))<3 RETURNING id,images",
         [productId,JSON.stringify([imageRecord])]
       );
+      if(!rows[0]){
+        await env.ERP_ASSETS.delete(key);
+        return erpError(409,"PRODUCT_IMAGE_LIMIT_REACHED","Cada producto puede conservar un máximo de tres fotografías. Elimina una antes de agregar otra.");
+      }
       await auditQuery(sql,user.id,"upload","product_asset",key,{productId,fileName:imageRecord.name,contentType:file.type,size:file.size});
       return erpJson({asset:imageRecord,productId:rows[0].id},201);
     }catch(error){
