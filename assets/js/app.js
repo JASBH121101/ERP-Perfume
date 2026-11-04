@@ -239,7 +239,8 @@
     document.getElementById('page-date').textContent = today.toLocaleDateString('es-NI', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
   function heading(meta, actions) {
-    return '<div class="page-heading"><div><h1>' + meta.heading + (state.view === 'dashboard' ? ', administrador' : '') + '</h1><p>' + meta.subtitle + '</p></div><div class="heading-actions">' + (actions || '') + '</div></div>';
+    const dashboardClass = state.view === 'dashboard' ? ' page-heading-dashboard' : '';
+    return '<div class="page-heading' + dashboardClass + '"><div><h1>' + meta.heading + '</h1><p>' + meta.subtitle + '</p></div><div class="heading-actions">' + (actions || '') + '</div></div>';
   }
   function metric(label, value, symbol, change, note, gold) {
     return '<article class="metric-card"><div class="metric-top"><span class="metric-label">' + label + '</span><span class="metric-symbol">' + svg(symbol) + '</span></div><div class="metric-value">' + value + '</div><div class="metric-foot"><span class="metric-change' + (gold ? ' gold' : '') + '">' + change + '</span><span class="metric-caption">' + note + '</span></div></article>';
@@ -254,7 +255,7 @@
       return '<div class="top-product">' + art(product.tone) + '<div class="top-product-info"><strong>' + esc(product.name) + '</strong><small>' + esc(product.category) + ' · ' + product.stock + ' unidades</small></div><span class="top-product-value">' + money(product.price) + '</span></div>';
     }).join('');
     const low = activeProducts.filter(needsRestock).length;
-    return heading(views.dashboard, '<select class="period-select" aria-label="Periodo"><option>Últimos 7 días</option><option>Últimos 30 días</option><option>Este año</option></select><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button>') +
+    return heading(views.dashboard, '') +
       '<section class="metric-grid">' +
       metric('Importe de pedidos', money(orders.reduce(function(sum,order){return sum+Number(order.amount||0);},0)), 'chart', 'Pedidos DEMO', 'importe registrado localmente', false) +
       metric('Pedidos de muestra', String(orders.length), 'bag', 'Registros', 'pedidos guardados localmente', false) +
