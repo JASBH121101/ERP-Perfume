@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/erp-operational-modules
+      - feature/granular-permissions
     paths:
       - "index.html"
       - "README.md"
@@ -77,6 +78,7 @@ jobs:
         run: |
           node --input-type=module --check < worker/src/index.js
           node --input-type=module --check < worker/src/erp.js
+          node --input-type=module --check < worker/src/permissions.js
 
       - name: Run build, static checks, unit tests and E2E
         run: bash scripts/run-validation.sh
