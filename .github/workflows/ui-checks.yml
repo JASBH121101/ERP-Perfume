@@ -3,6 +3,7 @@ name: ERP quality gate
 on:
   push:
     branches:
+      - main
       - feat/erp-operational-modules
     paths:
       - "index.html"
