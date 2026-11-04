@@ -2237,7 +2237,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     };
     let savedProductId=existing?.id||null;
     let saved=false;
-    const imageErrors=[];\n    const failedImageFiles=[];
+    const imageErrors=[];
+    const failedImageFiles=[];
     try{
       if(existing){
         const result=await erpApi('products/'+encodeURIComponent(existing.id),{method:'PATCH',body:JSON.stringify(payload)});
@@ -2258,7 +2259,8 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
             const asset=await uploadProductAsset(savedProductId,file,percent=>updatePendingProductImageProgress(index,'Subiendo · '+percent+'%',percent));
             updatePendingProductImageProgress(index,'Subida completada · '+Math.round(Number(asset?.size||file.size)/1024)+' KB',100);
           }catch(error){
-            imageErrors.push(file.name+': '+(error?.message||'falló la carga'));\n            failedImageFiles.push(file);
+            imageErrors.push(file.name+': '+(error?.message||'falló la carga'));
+            failedImageFiles.push(file);
             updatePendingProductImageProgress(index,'Error · '+(error?.message||'falló la carga'),0);
           }
         });
