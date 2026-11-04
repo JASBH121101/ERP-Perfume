@@ -1404,9 +1404,9 @@
     form.elements.stock.value = product ? String(product.stock) : '0';
     document.getElementById('modal-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
     document.getElementById('save-product').textContent = product ? 'Guardar cambios' : 'Agregar a demo';
-    document.querySelector('#product-dialog .modal-note').textContent = product
-      ? 'Edición de ficha DEMO. Las existencias no se cambian aquí: registra entradas, salidas o ajustes desde Existencias.'
-      : 'Ficha DEMO. Los datos se guardan localmente en este navegador y todavía no se sincronizan con Neon.';
+    document.querySelector('#product-dialog .modal-note').textContent = BACKEND_MODE
+      ? (product?'Ficha de producto en Neon Development. El stock se modifica únicamente desde Existencias.':'Nuevo producto en Neon Development. El stock inicial siempre será cero; registra las existencias desde Inventario.')
+      : (product?'Edición de ficha DEMO. Las existencias no se cambian aquí: registra movimientos desde Existencias.':'Ficha DEMO. Los datos se guardan localmente en este navegador y todavía no se sincronizan con Neon.');
     updateProductCostPreview();
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else toast('El formulario emergente no es compatible con este navegador.');
@@ -1481,7 +1481,7 @@
       }
     }
   }
-  document.addEventListener('click', function (event) {
+  document.addEventListener('click', async function (event) {
     const viewButton = event.target.closest('[data-view], [data-view-link]');
     if (viewButton) {
       goToView(viewButton.getAttribute('data-view') || viewButton.getAttribute('data-view-link'));
@@ -1498,6 +1498,14 @@
         const product = products.find(function (item) { return String(item.id) === action.getAttribute('data-id'); });
         if (!product) return;
         if (product.active !== false && !window.confirm('¿Desactivar ' + product.name + '? Dejará de aparecer en el inventario activo.')) return;
+        if(BACKEND_MODE){
+          try{
+            const result=await apiRequest('/api/catalog/products/'+encodeURIComponent(product.id),'PATCH',{active:product.active===false});
+            const saved=mapDbProduct(result.product),index=products.findIndex(p=>String(p.id)===String(product.id));
+            if(index>=0)products[index]=saved;renderView();toast(saved.active?'Producto reactivado en Neon.':'Producto desactivado en Neon; su historial se conserva.');
+          }catch(error){toast(error?.message||'No se pudo cambiar el estado del producto.');}
+          return;
+        }
         const snapshot=captureDemoState();
         product.active = product.active === false;
         if(!persistDemoData()){restoreDemoState(snapshot);renderView();return;}
@@ -1512,6 +1520,14 @@
         const hasPurchaseHistory=purchases.some(function(purchase){return String(purchase.productId)===String(product.id);});
         if (hasStockHistory||hasOrderHistory||hasPurchaseHistory) {
           toast('No se puede eliminar: el producto tiene historial de inventario, pedidos o compras. Puedes desactivarlo y conservar su trazabilidad.'); return;
+        }
+        if(BACKEND_MODE){
+          if(!window.confirm('¿Eliminar definitivamente este producto? Solo se permite si no tiene movimientos ni documentos vinculados.'))return;
+          try{
+            await apiRequest('/api/catalog/products/'+encodeURIComponent(product.id),'DELETE');
+            products=products.filter(item=>String(item.id)!==String(product.id));renderView();toast('Producto eliminado de Neon Development.');
+          }catch(error){toast(error?.message||'No se pudo eliminar el producto.');}
+          return;
         }
         if (!window.confirm('¿Eliminar definitivamente este producto DEMO?')) return;
         const snapshot=captureDemoState();
