@@ -987,7 +987,7 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     if (["salida", "out", "egreso"].includes(movement)) return "inventory.manual_out.create";
     if (["ajuste", "adjustment", "adjust"].includes(movement)) return "inventory.adjustments.adjust";
     if (["entrada", "in", "ingreso"].includes(movement)) return "inventory.receipts.receive";
-    if (["devolucion", "devolución", "return", "reversion", "reversión", "reversal"].includes(movement)) return "inventory.manual_out.create";
+    // Las devoluciones y reversiones requieren su flujo específico con documento origen.
     return null;
   }
   if (resource === "purchases") {
@@ -1074,6 +1074,16 @@ export async function handleERPRequest(request, env, user, sql) {
   const parts = url.pathname.split("/").filter(Boolean);
   const resource = parts[2] || "";
   const id = parts[3] || "";
+  const protectedResource = resource.replace(/-/g, "_");
+  const immutableTransactions = new Set([
+    "inventory_movements", "cash_entries", "invoices", "purchases",
+    "expenses", "cash_accounts", "hr_payroll_items", "hr_payroll_periods"
+  ]);
+  if ((request.method === "PATCH" || request.method === "DELETE") &&
+      id && immutableTransactions.has(protectedResource)) {
+    return erpError(405, "IMMUTABLE_TRANSACTION",
+      "Este registro forma parte de un historial financiero, de inventario o de nómina. Utiliza el flujo específico de anulación, devolución o pago.");
+  }
   const permissionContext = await loadUserPermissions(sql, user);
   const contentType = request.headers?.get?.("content-type") ||
     (typeof request.json === "function" ? "application/json" : "");
@@ -1500,10 +1510,6 @@ export async function handleERPRequest(request, env, user, sql) {
     return createGeneric(sql, user, normalizedResource, def, body);
   }
   if (request.method === "PATCH" && id) {
-    const transactionalResources = new Set(["inventory_movements","cash_entries","invoices","purchases","expenses","cash_accounts","hr_payroll_items","hr_payroll_periods"]);
-    if (transactionalResources.has(normalizedResource)) {
-      return erpError(405, "IMMUTABLE_TRANSACTION", "Este registro forma parte de un historial financiero, de inventario o de nómina. Utiliza el flujo específico de anulación, devolución o pago.");
-    }
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     if (normalizedResource === "orders" && Object.prototype.hasOwnProperty.call(body,"status")) {
       if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para cambiar pedidos.");
