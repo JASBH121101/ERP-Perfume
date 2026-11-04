@@ -158,6 +158,7 @@ test("backend rejects malformed stock and caps each import at 200 records", asyn
 
 const operationalWorkerSource = workerSource.replace(/\bexport\s+(?=async function|function)/g, "");
 const handleERPRequest = new Function(operationalWorkerSource + "\nreturn handleERPRequest;")();
+const createInvoice = new Function(operationalWorkerSource + "\nreturn createInvoice;")();
 
 test("HR leave approval route records reviewer and review timestamp", async () => {
   const statements = [];
