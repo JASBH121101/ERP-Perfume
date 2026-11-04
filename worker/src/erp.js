@@ -1394,11 +1394,14 @@ export async function handleERPRequest(request, env, user, sql) {
     return createInventoryMovement(sql, user, body);
   }
   if (resource === "purchases" && request.method === "POST") {
-    if (!canAccess(user, RESOURCE_DEFS.purchases.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar compras.");
+    if (!hasPermission(permissionContext, "purchases.receipts.receive") ||
+        !hasPermission(permissionContext, "inventory.receipts.receive")) {
+      return erpError(403, "FORBIDDEN", "Registrar una compra recibida requiere permiso de recepción de compras y de inventario.");
+    }
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createPurchase(sql,user,body);
   }
-  if (resource === "payroll-periods" && parts[4] === "status" && request.method === "PATCH") {
+    if (resource === "payroll-periods" && parts[4] === "status" && request.method === "PATCH") {
     if (!canAccess(user, RESOURCE_DEFS.hr_payroll_periods.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return changePayrollPeriodStatus(sql,user,id,body);
