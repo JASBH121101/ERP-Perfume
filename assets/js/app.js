@@ -423,12 +423,15 @@
     else toast('El detalle de pedidos no es compatible con este navegador.');
   }
   function captureDemoState() {
-    return JSON.stringify({products,inventoryMovements,orders,customers,suppliers,purchases,expenses,cashEntries,invoices,employees,exchangeRate});
+    return JSON.stringify({products,inventoryMovements,orders,customers,suppliers,purchases,purchaseOrders,purchaseReceipts,expenses,cashEntries,invoices,employees,exchangeRate});
   }
   function restoreDemoState(snapshot) {
     const saved=JSON.parse(snapshot);
     products=saved.products;inventoryMovements=saved.inventoryMovements;orders=saved.orders;customers=saved.customers;
-    suppliers=saved.suppliers;purchases=saved.purchases;expenses=saved.expenses;cashEntries=saved.cashEntries;
+    suppliers=saved.suppliers;purchases=saved.purchases;
+    purchaseOrders=Array.isArray(saved.purchaseOrders)?saved.purchaseOrders:[];
+    purchaseReceipts=Array.isArray(saved.purchaseReceipts)?saved.purchaseReceipts:[];
+    expenses=saved.expenses;cashEntries=saved.cashEntries;
     invoices=saved.invoices;employees=saved.employees;exchangeRate=Number(saved.exchangeRate)||36.6;
   }
   function resolveOrderProduct(item) {
@@ -777,7 +780,7 @@
       if(balance<=0.001){toast('Esta compra ya está pagada.');return;}
       body='<div class="form-grid"><div class="detail-field full-field"><span>Proveedor · '+esc(purchase.supplier)+'</span><strong>Saldo pendiente: '+money(balance)+'</strong><small>'+esc(purchase.product)+' · '+purchase.quantity+' unidades</small></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div><p class="form-helper">El abono se convierte con el tipo de cambio vigente y se registra en Caja y bancos sin modificar inventario.</p>';
     }
-    if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+'</div>';
+    if(type==='expense')body='<div class="form-grid">'+selectField('Categoría','category','<option>Transporte</option><option>Alquiler</option><option>Servicios</option><option>Marketing</option><option>Comisiones</option><option>Empaque</option><option>Otros</option>',true)+formField('Descripción','description','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta de pago','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+'</div><p class="form-helper">Un gasto pagado se registra una sola vez en gastos y en el flujo de efectivo. La cuenta debe usar la misma moneda del gasto.</p>';
     if(type==='cash')body='<div class="form-grid">'+selectField('Tipo de movimiento','direction','<option value="income">Entrada / Recibo</option><option value="expense">Salida / Pago</option>',true)+formField('Concepto','concept','text',true,'maxlength="120"')+formField('Importe','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account','<option>Caja USD</option><option>Banco USD</option><option>Caja NIO</option><option>Banco NIO</option>',true)+selectField('Proveedor relacionado','supplierIndex','<option value="">Ninguno</option>'+supplierOptions(),false)+'</div>';
     if(type==='invoice'){
       invoiceDraftItems=[];
@@ -909,9 +912,13 @@
       purchases.unshift(purchase);
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Factura de proveedor registrada. El saldo se refleja en Cuentas por pagar; el inventario no cambia.');
     }else if(type==='expense'){
-      const amount=num('amount');if(!get('description')||!Number.isFinite(amount)||amount<=0){toast('Revisa descripción e importe.');return;}
-      expenses.unshift({id,category:get('category'),description:get('description'),currency,originalAmount:amount,exchangeRate:rate,amountUsd:toUsd(amount,currency),createdAt:new Date().toISOString()});
-      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Gasto guardado con moneda y tasa de conversión.');
+      const amount=num('amount'),account=get('account')||'Caja USD',accountCurrency=/NIO$/.test(account)?'NIO':'USD';
+      if(!get('description')||!Number.isFinite(amount)||amount<=0){toast('Revisa descripción e importe.');return;}
+      if(accountCurrency!==currency){toast('La moneda del gasto debe coincidir con la moneda de la cuenta de pago.');return;}
+      const amountUsd=toUsd(amount,currency),createdAt=new Date().toISOString();
+      expenses.unshift({id,category:get('category'),description:get('description'),currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,paidAt:createdAt,createdAt});
+      cashEntries.unshift({id:id+1,direction:'expense',concept:get('description'),currency,originalAmount:amount,exchangeRate:rate,amountUsd,account,sourceType:'expense',sourceId:String(id),createdAt});
+      if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Gasto pagado guardado en gastos y reflejado una sola vez en el flujo de efectivo.');
     }else if(type==='cash'||type==='payment'||type==='purchase-payment'){
       const amount=num('amount'),account=get('account'),accountCurrency=/NIO$/.test(account)?'NIO':'USD';
       if(type==='cash'&&!get('concept')){toast('Escribe un concepto para el movimiento.');return;}
@@ -1156,15 +1163,25 @@
   function renderProfitability(){
     const recognized=invoices.filter(i=>!['Anulada','Cancelada'].includes(i.status));
     let revenue=0,cogs=0,unknownCostLines=0;const byProduct={};
-    recognized.forEach(invoice=>(invoice.items||[]).forEach(line=>{
-      const qty=Number(line.quantity||0),lineSales=Number(line.lineTotalUsd??(qty*Number(line.unitPriceUsd||0)));
-      const product=products.find(p=>String(p.id)===String(line.productId));
-      const unitCost=line.unitCostUsd!=null?Number(line.unitCostUsd):Number(product?.unitCost||0),lineCost=qty*unitCost;
-      revenue+=lineSales;cogs+=lineCost;if(!(unitCost>0))unknownCostLines+=1;
-      const key=String(line.productId||line.sku||line.name);
-      if(!byProduct[key])byProduct[key]={name:line.name||product?.name||'Producto',sku:line.sku||product?.sku||'',units:0,sales:0,cost:0};
-      byProduct[key].units+=qty;byProduct[key].sales+=lineSales;byProduct[key].cost+=lineCost;
-    }));
+    recognized.forEach(invoice=>{
+      const lines=Array.isArray(invoice.items)?invoice.items:[];
+      const lineSubtotal=lines.reduce((sum,line)=>sum+Number(line.lineTotalUsd??(Number(line.quantity||0)*Number(line.unitPriceUsd||0))),0);
+      const subtotal=Number(invoice.subtotalUsd??lineSubtotal);
+      const discount=Math.max(0,Number(invoice.discountUsd||0));
+      const delivery=Math.max(0,Number(invoice.deliveryFeeUsd||0));
+      revenue+=Number(invoice.totalUsd??Math.max(0,subtotal-discount+delivery));
+      lines.forEach(line=>{
+        const qty=Number(line.quantity||0),grossLine=Number(line.lineTotalUsd??(qty*Number(line.unitPriceUsd||0)));
+        const discountShare=subtotal>0?discount*grossLine/subtotal:0;
+        const lineSales=Math.max(0,grossLine-discountShare);
+        const product=products.find(p=>String(p.id)===String(line.productId));
+        const unitCost=line.unitCostUsd!=null?Number(line.unitCostUsd):Number(product?.unitCost||0),lineCost=qty*unitCost;
+        cogs+=lineCost;if(!(unitCost>0))unknownCostLines+=1;
+        const key=String(line.productId||line.sku||line.name);
+        if(!byProduct[key])byProduct[key]={name:line.name||product?.name||'Producto',sku:line.sku||product?.sku||'',units:0,sales:0,cost:0};
+        byProduct[key].units+=qty;byProduct[key].sales+=lineSales;byProduct[key].cost+=lineCost;
+      });
+    });
     revenue=roundMoney(revenue);cogs=roundMoney(cogs);
     const gross=roundMoney(revenue-cogs),operating=roundMoney(expenses.reduce((sum,item)=>sum+Number(item.amountUsd||0),0)),net=roundMoney(gross-operating);
     const rows=Object.values(byProduct).sort((x,y)=>(y.sales-y.cost)-(x.sales-x.cost)).map(item=>{
@@ -1173,7 +1190,7 @@
     }).join('');
     return heading(views.profitability,'<button class="button button-quiet" data-view="capital">Ver capital y efectivo '+svg('arrow')+'</button>')+
       '<div class="metric-grid">'+metric('Ventas facturadas',money(revenue),'chart',recognized.length+' facturas','ingreso reconocido · DEMO',false)+metric('Costo de venta',money(cogs),'boxes','COGS','costo guardado por unidad',false)+metric('Utilidad bruta',money(gross),'spark','Ventas − COGS','antes de gastos operativos',true)+metric('Utilidad neta estimada',money(net),'chart','Después de gastos',money(operating)+' en gastos operativos',true)+'</div>'+
-      '<article class="list-panel"><div class="panel-heading"><div><h2>Rentabilidad por producto</h2><p>Las nuevas facturas guardan costo histórico; documentos antiguos sin costo usan el costo actual como aproximación</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PRODUCTO</th><th>UNIDADES</th><th>VENTAS</th><th>COSTO</th><th>UTILIDAD</th><th>MARGEN</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Todavía no hay facturas registradas.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="list-panel"><div class="panel-heading"><div><h2>Rentabilidad por producto</h2><p>El descuento se distribuye proporcionalmente entre productos. La entrega se incluye en ventas totales, pero no se asigna a un SKU; documentos antiguos sin costo usan el costo actual como aproximación</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PRODUCTO</th><th>UNIDADES</th><th>VENTAS</th><th>COSTO</th><th>UTILIDAD</th><th>MARGEN</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Todavía no hay facturas registradas.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Rentabilidad DEMO, no contabilidad oficial</strong><p>Se reconoce el ingreso al generar la factura, aunque exista saldo por cobrar. La utilidad neta resta gastos operativos, no órdenes de compra ni reposición de inventario. '+(unknownCostLines?unknownCostLines+' línea(s) no tienen costo histórico; su rentabilidad está incompleta.':'Los costos históricos están disponibles en las nuevas facturas.')+'</p></div></div>';
   }
   function renderCapital(){
@@ -1317,8 +1334,8 @@
     form.reset(); form.dataset.editingId = product ? String(product.id) : '';
     const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','description','supplier','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
     if (product) fields.forEach(function (field) { if (form.elements[field]) form.elements[field].value = product[field] == null ? '' : String(product[field]); });
-    form.elements.stock.readOnly = Boolean(product);
-    form.elements.stock.value = product ? String(product.stock) : (form.elements.stock.value || '');
+    form.elements.stock.readOnly = true;
+    form.elements.stock.value = product ? String(product.stock) : '0';
     document.getElementById('modal-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
     document.getElementById('save-product').textContent = product ? 'Guardar cambios' : 'Agregar a demo';
     document.querySelector('#product-dialog .modal-note').textContent = product
@@ -1467,7 +1484,7 @@
       document.getElementById('menu-toggle').setAttribute('aria-expanded', String(open));
     }
     if (event.target.closest('#mobile-scrim')) closeMobileMenu();
-    if (event.target.closest('#modal-close') || event.target.closest('#cancel-product')) { dialog.close(); form.dataset.editingId = ''; form.elements.stock.readOnly = false; }
+    if (event.target.closest('#modal-close') || event.target.closest('#cancel-product')) { dialog.close(); form.dataset.editingId = ''; form.elements.stock.readOnly = true; }
     if (event.target.closest('#stock-modal-close') || event.target.closest('#stock-cancel')) stockDialog.close();
     if (event.target.closest('#detail-close') || event.target.closest('#detail-cancel')) detailDialog.close();
     if (event.target.closest('#order-detail-close') || event.target.closest('#order-detail-cancel')) orderDialog.close();
@@ -1521,7 +1538,7 @@
     const fields = {name:name,brand:value('brand'),sku:sku,category:value('category') || 'Perfumería',concentration:value('concentration'),gender:value('gender'),family:value('family'),sizeMl:number('sizeMl') || null,presentation:value('presentation'),barcode:value('barcode'),description:value('description'),supplier:value('supplier'),purchaseCost:purchaseCost,additionalCost:additionalCost,unitCost:unitCost,price:price,wholesalePrice:wholesalePrice||null,profit:profit,margin:margin,minStock:minStock,location:value('location'),notes:value('notes')};
     const snapshot=captureDemoState();
     if (existing) {
-      Object.assign(existing,fields); if(!persistDemoData()){restoreDemoState(snapshot);return;} form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=false;
+      Object.assign(existing,fields); if(!persistDemoData()){restoreDemoState(snapshot);return;} form.reset(); form.dataset.editingId=''; form.elements.stock.readOnly=true;
       updateProductCostPreview(); dialog.close(); renderView(); toast('Ficha de producto actualizada y guardada localmente en modo DEMO.');
     } else {
       products.unshift(Object.assign({id:Date.now(),stock:stock,active:true,tone:'art-violet'},fields)); if(!persistDemoData()){restoreDemoState(snapshot);return;}
