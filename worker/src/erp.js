@@ -1,3 +1,5 @@
+import { loadUserPermissions, hasPermission, hasAnyModuleAccess } from "./permissions.js";
+
 const RESOURCE_DEFS = {
   products: { table: "products", roles: ["owner", "admin", "inventory"], fields: ["sku","name","brand","category","concentration","gender","family","size_ml","presentation","purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","min_stock","location","active","barcode","description","supplier_name","wholesale_price_usd","tone","notes","images"], order: "name ASC" },
   customers: { table: "customers", roles: ["owner", "admin", "sales"], fields: ["name","contact","phone","email","notes","active","customer_type"], order: "name ASC" },
@@ -923,7 +925,7 @@ async function updateOrderStatus(sql, user, id, body) {
   return erpJson({ record: rows[0] });
 }
 
-function resolveRoutePermission(resource, method, id, parts, body) {
+export function resolveRoutePermission(resource, method, id, parts, body) {
   const action = method === "GET" ? "view" :
     method === "POST" ? "create" :
     method === "PATCH" ? "edit" :
