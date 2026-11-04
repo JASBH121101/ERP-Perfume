@@ -1204,7 +1204,6 @@
       } else {
         throw new Error('Este tipo de operación todavía no está conectado.');
       }
-      }
       await loadERPFromNeon(true);
       businessDialog.close();
       renderView();
