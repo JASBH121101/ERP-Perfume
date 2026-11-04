@@ -16,6 +16,7 @@ on:
       - "tests/**"
       - "package.json"
       - "jb-expert-qa.config.json"
+      - "wrangler.toml"
       - ".github/workflows/**"
   workflow_dispatch:
   pull_request:
@@ -37,6 +38,7 @@ on:
       - "tests/**"
       - "package.json"
       - "jb-expert-qa.config.json"
+      - "wrangler.toml"
       - ".github/workflows/**"
 
 concurrency:
@@ -185,6 +187,65 @@ jobs:
           - Full static and browser test suite passed again after the patch.
 
           Human review is required. This PR is not merged automatically."
+
+  deploy-development-worker:
+    name: Deploy ERP Worker — Development only
+    needs:
+      - validate-ui
+      - jb-expert-qa
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev-worker]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact validated revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned application dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Check Cloudflare deployment credential
+        id: cloudflare-token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CLOUDFLARE_API_TOKEN is not configured. Development Worker deployment was skipped."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate Development Worker bundle without deploying
+        if: steps.cloudflare-token.outputs.configured == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4 deploy --config wrangler.toml --keep-vars --dry-run
+
+      - name: Deploy current code to isolated Neon Development Worker
+        if: steps.cloudflare-token.outputs.configured == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4 deploy --config wrangler.toml --keep-vars
+
+      - name: Record skipped deployment
+        if: steps.cloudflare-token.outputs.configured != 'true'
+        run: |
+          {
+            echo "### Development Worker deployment"
+            echo
+            echo "Skipped: GitHub Actions secret CLOUDFLARE_API_TOKEN is not configured."
+            echo "No Worker, Neon database, or R2 resource was changed by this job."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   jb-expert-qa:
     name: JB Expert QA — deterministic source audit
