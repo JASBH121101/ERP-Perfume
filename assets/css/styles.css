@@ -901,3 +901,5 @@ body.auth-locked .app-shell {
 .permission-override-add{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;gap:8px;margin:10px 0 6px}
 .permission-override-add .filter-select{min-width:0;width:100%;max-width:none}
 @media(max-width:620px){.permission-override-row,.permission-override-add{grid-template-columns:minmax(0,1fr) minmax(88px,100px)}.permission-override-row button,.permission-override-add button{grid-column:1/-1;justify-self:start}}
+/* Permission navigation: author display rules must not override the HTML hidden state. */
+.sidebar [hidden] { display: none !important; }
