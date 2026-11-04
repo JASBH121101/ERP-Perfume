@@ -40,7 +40,7 @@ El texto de la Ley 822 consultado en La Gaceta del 17 de diciembre de 2012 conti
 - **Artículo 251:** ingresos por ventas mensuales iguales o menores a C$100,000 **y** costo de inventario no mayor a C$500,000. El texto legal consultado usa ambos requisitos conjuntamente.
 - **Artículo 256:** cuando durante seis meses, en promedio, los ingresos mensuales percibidos superen C$100,000, el contribuyente debe informarlo a la Administración Tributaria dentro de los 30 días calendario posteriores a la ocurrencia para el traslado al régimen general.
 
-**Advertencia de interpretación:** una FAQ antigua alojada por la DGI resume la elegibilidad con un “o” entre ingresos e inventario, mientras que el texto del artículo 251 de la Ley 822 consultado utiliza “y”. No se debe basar la inscripción en esa FAQ desactualizada o inconsistente. La Administración de Rentas debe aclarar por escrito el criterio vigente que aplicará al caso de JB PARFUMS. Hasta recibir esa confirmación, el ERP mantiene el régimen como pendiente.
+**Advertencia de interpretación:** hay una inconsistencia documental que debemos resolver con la DGI. Una FAQ antigua de su sitio resume la elegibilidad con un “o” entre ingresos e inventario; en cambio, el texto del artículo 251 de la Ley 822 usa “y” y un aviso oficial de la propia DGI del 7 de agosto de 2024 también exige ingresos mensuales iguales o menores a C$100,000 **y** costo de inventario no mayor a C$500,000. Para este expediente se toma como referencia primaria la ley y el aviso DGI de 2024; no se debe basar la inscripción en la FAQ antigua. Aun así, la Administración de Rentas debe confirmar por escrito el criterio vigente y su aplicación al caso de JB PARFUMS. Hasta recibir esa confirmación, el ERP mantiene el régimen como pendiente.
 - **Artículo 258:** inscripción en RUC y Cuota Fija; factura simplificada a solicitud del comprador; registros simplificados de ingresos y gastos; inventario respaldado con facturas formales de proveedores inscritos; certificado de inscripción exhibido o disponible; conservación cronológica de facturas originales de compras/servicios, soportes de alquiler e impuestos municipales y comprobantes de pagos tributarios.
 - **Artículo 259:** el texto consultado indica que el contribuyente de Cuota Fija no traslada IVA y no presenta las declaraciones ordinarias allí enumeradas, sin perjuicio de pagar su cuota.
 
@@ -65,6 +65,7 @@ Antes de cerrar el diseño fiscal, solicitar respuesta escrita o constancia con 
 4. ¿Qué documentación exige para confirmar elegibilidad de una persona natural que revende perfumes comprados a proveedores nacionales desde un establecimiento en una vivienda?
 5. ¿Qué procedimiento, formulario, canal y documentos vigentes se requieren para pedir autorización si en el futuro se decide emitir facturas computarizadas desde el ERP?
 6. ¿Qué cambios de versión, módulos, numeración, formatos o infraestructura deben notificarse antes de aplicar una modificación autorizada?
+7. ¿Puede confirmar por escrito que, para el artículo 251, se deben cumplir ambos requisitos simultáneamente (ingresos y costo de inventario), conforme al texto legal y al aviso DGI de agosto de 2024?
 
 **No registrar el estado como “Cuota Fija confirmada”, “facturación autorizada” o “no aplica” sin la referencia de la constancia o respuesta oficial.**
 
@@ -122,6 +123,8 @@ Este registro es una protección de propiedad intelectual, no sustituye la autor
 
 - DGI, Disposición Técnica 09-2007: https://nicaragua.justia.com/nacionales/normas-tecnicas/requisitos-para-uso-de-sistemas-de-facturacion-computarizadas-jul-16-2007/gdoc/
 - DGI, preguntas frecuentes sobre sistemas de facturación computarizados (página antigua; confirmar vigencia): https://www.dgi.gob.ni/FAQ/otros_tramites.htm
+- DGI, aviso oficial de inscripción en Cuota Fija (7 de agosto de 2024; utiliza “y” para ingresos e inventario): https://www.dgi.gob.ni/pdfNoticia/4308
+- DGI, FAQ antigua de requisitos (utiliza “o”; conservar como referencia de la discrepancia, no como criterio concluyente): https://www.dgi.gob.ni/FAQ/requisitos_de_inscripcion.htm
 - Ley 822, publicación en La Gaceta No. 241, 17-12-2012 (texto oficial alojado por INE): https://www.ine.gob.ni/DGE/digesto/leyes/Ley822.pdf
 - Ley 1279, publicada en La Gaceta No. 61, 09-04-2026 (reforma de otros artículos de la Ley 822): https://ni.vlex.com/vid/ley-n-1279-ley-1116239578
 - DGI, aviso sobre guía del Régimen de Cuota Fija y SACFI: https://www.dgi.gob.ni/ (localizar la guía vigente antes de operar)
