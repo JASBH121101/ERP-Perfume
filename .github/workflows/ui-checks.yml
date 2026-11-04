@@ -19,7 +19,6 @@ on:
       - "jb-expert-qa.config.json"
       - "wrangler.toml"
       - ".github/workflows/**"
-  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -40,186 +39,27 @@ on:
       - "tests/**"
       - "package.json"
       - "jb-expert-qa.config.json"
+      - "wrangler.toml"
       - ".github/workflows/**"
+  workflow_dispatch:
 
 concurrency:
-  group: erp-quality-pr-${{ github.event.pull_request.number || github.ref }}
+  group: erp-quality-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  validate-ui:
-    name: Static and browser tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    steps:
-      - name: Checkout pull request code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install pinned browser-test dependency
-        run: npm install --no-audit --no-fund
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Validate Worker module syntax
-        run: |
-          node --input-type=module --check < worker/src/index.js
-          node --input-type=module --check < worker/src/erp.js
-
-      - name: Run all deterministic checks
-        run: bash scripts/run-validation.sh
-
-      - name: Upload text-only validation log for optional AI diagnosis
-        if: always() && hashFiles('.ai-output/validation.log') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-validation-log
-          path: .ai-output/validation.log
-          retention-days: 1
-          if-no-files-found: ignore
-
-
-  ai-repair:
-    name: Supervised AI repair (optional)
-    needs:
-      - validate-ui
-    if: >-
-      ${{ failure() && needs.validate-ui.result == 'failure' &&
-          vars.AI_REPAIR_ENABLED == 'true' &&
-          github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Checkout the exact failed pull request revision
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Download text-only validation log
-        uses: actions/download-artifact@v4
-        with:
-          name: qa-validation-log
-          path: .ai-output
-
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install pinned browser-test dependency
-        run: npm install --no-audit --no-fund
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Ask the text-only QA agent for one low-risk repair
-        id: ai
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-        run: node scripts/ai-repair.mjs
-
-      - name: Validate AI patch allowlist
-        if: steps.ai.outputs.patch_created == 'true'
-        run: node scripts/validate-ai-patch.mjs .ai-output/repair.patch
-
-      - name: Apply AI patch
-        if: steps.ai.outputs.patch_created == 'true'
-        run: |
-          git apply --check --whitespace=error .ai-output/repair.patch
-          git apply --whitespace=error .ai-output/repair.patch
-
-      - name: Re-run the entire test suite after the proposed repair
-        if: steps.ai.outputs.patch_created == 'true'
-        run: bash scripts/run-validation.sh
-
-      - name: Create a separate draft pull request only if every test passes
-        if: steps.ai.outputs.patch_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          BASE_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          git diff --check
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "No code changes remain after validation."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          AI_BRANCH="ai-fix/pr-${PR_NUMBER}-run-${RUN_ID}"
-          git checkout -b "$AI_BRANCH"
-          git add -- index.html assets/css/styles.css assets/js/app.js
-          git commit -m "fix(ai): low-risk UI repair for PR #${PR_NUMBER}"
-          gh auth setup-git --hostname github.com
-          git push origin "$AI_BRANCH"
-
-          gh pr create \
-            --repo "$GH_REPO" \
-            --base "$BASE_BRANCH" \
-            --head "$AI_BRANCH" \
-            --draft \
-            --title "fix(ai): validated UI repair for PR #${PR_NUMBER}" \
-            --body "Automated low-risk UI repair proposal.
-
-          - Restricted to HTML, CSS and browser-side JavaScript.
-          - No images, databases, storage, credentials or production systems accessed.
-          - Patch passed the allowlist validator.
-          - Full static and browser test suite passed again after the patch.
-
-          Human review is required. This PR is not merged automatically."
-
-  jb-expert-qa:
-    name: JB Expert QA — deterministic source audit
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+  validate:
+    name: Static, unit and browser tests
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    permissions:
-      contents: read
     steps:
-      - name: Checkout exact ERP pull request revision
+      - name: Checkout exact revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-
-      - name: Verify private QA repository token is configured
-        env:
-          JBQA_REPO_READ_TOKEN: ${{ secrets.JBQA_REPO_READ_TOKEN }}
-        run: |
-          if [ -z "$JBQA_REPO_READ_TOKEN" ]; then
-            echo "::error::Missing JBQA_REPO_READ_TOKEN. Add the fine-grained read-only token to ERP-Perfume Actions secrets."
-            exit 1
-          fi
-
-      - name: Checkout pinned JB Expert QA engine
-        uses: actions/checkout@v4
-        with:
-          repository: JASBH121101/JB-Expert-QA
-          ref: 92f23fafd679c31dcbe496a4e1b3801d3f14fb7f
-          token: ${{ secrets.JBQA_REPO_READ_TOKEN }}
-          path: .jb-expert-qa
-          fetch-depth: 1
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js 22
@@ -227,164 +67,25 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install ERP build dependencies and resolve lockfile
+      - name: Install pinned ERP dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Install JB Expert QA browser dependencies without lifecycle scripts
-        run: npm --prefix .jb-expert-qa install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
 
-      - name: Install Chromium for JB Expert QA
-        run: .jb-expert-qa/node_modules/.bin/playwright install --with-deps chromium
-
-      - name: Create clean ERP source snapshot
+      - name: Validate Worker module syntax
         run: |
-          mkdir -p "$RUNNER_TEMP/erp-project"
-          git archive HEAD | tar -x -C "$RUNNER_TEMP/erp-project"
-          cp package-lock.json "$RUNNER_TEMP/erp-project/package-lock.json"
+          node --input-type=module --check < worker/src/index.js
+          node --input-type=module --check < worker/src/erp.js
 
-      - name: Run JB Expert QA local static audit
-        id: jbqa-audit
-        run: |
-          mkdir -p "$RUNNER_TEMP/jb-expert-qa-report"
-          set +e
-          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
-            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
-            --format=json \
-            --output="$RUNNER_TEMP/jb-expert-qa-report/report.json"
-          json_status=$?
-          node .jb-expert-qa/src/project-cli.js "$RUNNER_TEMP/erp-project" \
-            --config="$RUNNER_TEMP/erp-project/jb-expert-qa.config.json" \
-            --format=markdown \
-            --output="$RUNNER_TEMP/jb-expert-qa-report/report.md"
-          markdown_status=$?
-          set -e
-          if [ ! -s "$RUNNER_TEMP/jb-expert-qa-report/report.json" ] || [ ! -s "$RUNNER_TEMP/jb-expert-qa-report/report.md" ]; then
-            echo "::error::JB Expert QA failed to generate both report formats."
-            exit 1
-          fi
-          echo "Report generation completed (JSON exit: $json_status; Markdown exit: $markdown_status). The gate below decides whether findings block CI."
+      - name: Run build, static checks, unit tests and E2E
+        run: bash scripts/run-validation.sh
 
-      - name: Upload resolved ERP package lockfile for commit
-        if: always() && hashFiles("package-lock.json") != ''
+      - name: Upload deterministic test log
+        if: always() && hashFiles('.ai-output/validation.log') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: erp-package-lock
-          path: package-lock.json
-          retention-days: 1
-          if-no-files-found: ignore
-
-      - name: Run JB Expert QA visual audit on isolated local ERP preview
-        run: node scripts/jb-expert-qa-visual.mjs
-
-      - name: Upload JB Expert QA visual report and screenshots
-        if: always() && hashFiles('.ai-output/jb-expert-qa-visual/report.json') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: jb-expert-qa-visual-report
-          path: .ai-output/jb-expert-qa-visual/
+          name: erp-validation-log
+          path: .ai-output/validation.log
           retention-days: 7
           if-no-files-found: ignore
-
-      - name: Upload JB Expert QA report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jb-expert-qa-report
-          path: ${{ runner.temp }}/jb-expert-qa-report/
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Enforce critical findings and scan completeness
-        if: always()
-        env:
-          REPORT_PATH: ${{ runner.temp }}/jb-expert-qa-report/report.json
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from "node:fs";
-
-          let report;
-          try {
-            report = JSON.parse(readFileSync(process.env.REPORT_PATH, "utf8"));
-          } catch {
-            console.error("JB Expert QA did not produce a readable JSON report.");
-            process.exit(1);
-          }
-
-          const critical = (report.diagnostics ?? []).filter((item) => item.severity === "critical");
-          const ruleErrors = (report.execution ?? []).filter((item) => item.status !== "passed");
-          const complete = report.analysisScope?.complete === true;
-          const score = report.scoring?.score;
-          const minimum = report.scoring?.minimumScore;
-          const expectedProfile = "jb-parfums-erp";
-          const profileMatches = report.profile === expectedProfile;
-          const advisoryScan = report.dependencyAdvisories ?? {};
-          const advisoryBlockers = (report.diagnostics ?? []).filter((item) =>
-            item.metadata?.advisoryId && ["critical", "high"].includes(item.severity));
-          const thresholdConfigured = Number.isFinite(minimum) && minimum >= 90;
-          const scorePassed = Number.isFinite(score) && thresholdConfigured && score >= minimum &&
-            report.scoring?.passed === true;
-
-          console.log("JB Expert QA version:", report.version ?? "unknown");
-          console.log("Profile:", report.profile ?? "unknown");
-          console.log("Files analyzed:", report.analysisScope?.filesAnalyzed ?? 0);
-          console.log("Findings:", report.summary?.findings ?? 0);
-          console.log("Score:", score ?? "not calculated", "/", minimum ?? "n/a");
-          console.log("Critical findings:", critical.length);
-          console.log("Rule execution errors:", ruleErrors.length);
-          console.log("Scan complete:", complete);
-          console.log("OSV advisory status:", advisoryScan.status ?? "not reported");
-          console.log("Dependency package versions queried:", advisoryScan.packagesQueried ?? 0);
-          console.log("Known OSV advisories:", advisoryScan.vulnerabilitiesFound ?? 0);
-          console.log("OSV network requests:", advisoryScan.networkRequests ?? 0);
-          console.log("High/critical dependency advisories:", advisoryBlockers.length);
-
-          await import("node:fs").then(({ appendFileSync }) => {
-            const lines = [
-              "### JB Expert QA",
-              "",
-              `- Engine: ${report.version ?? "unknown"}`,
-              `- Files analyzed: ${report.analysisScope?.filesAnalyzed ?? 0}`,
-              `- Findings: ${report.summary?.findings ?? 0}`,
-              `- Score: ${score ?? "n/a"}/100 (minimum: ${minimum ?? "n/a"})`,
-              `- Critical findings: ${critical.length}`,
-              `- Scan complete: ${complete ? "yes" : "no"}`,
-              `- OSV advisory lookup: ${advisoryScan.status ?? "not reported"}`,
-              `- Dependency package versions queried: ${advisoryScan.packagesQueried ?? 0}`,
-              `- Known OSV advisories: ${advisoryScan.vulnerabilitiesFound ?? 0}`,
-              `- High/critical dependency advisories: ${advisoryBlockers.length}`,
-              ""
-            ].join("\n");
-            appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines);
-          });
-
-          if (!profileMatches) {
-            console.error("JB Expert QA blocked this check: expected profile " + expectedProfile + ", received " + (report.profile ?? "unknown") + ".");
-            process.exit(1);
-          }
-
-          if (!complete || critical.length > 0 || ruleErrors.length > 0) {
-            console.error("JB Expert QA blocked this check: incomplete scan, critical finding, or rule execution error.");
-            process.exit(1);
-          }
-
-          if (advisoryScan.required === true && advisoryScan.complete !== true) {
-            console.error("JB Expert QA blocked this check: required OSV dependency coverage is incomplete.");
-            process.exit(1);
-          }
-
-          if (advisoryBlockers.length > 0) {
-            console.error("JB Expert QA blocked this check: OSV reported high or critical dependency vulnerabilities.");
-            process.exit(1);
-          }
-
-          if (advisoryScan.enabled === true && advisoryScan.status !== "complete") {
-            console.warn("OSV dependency coverage is partial or unavailable. Review the advisory status and lockfile coverage; this profile does not block on provider availability.");
-          }
-
-          if (!scorePassed) {
-            console.error("JB Expert QA blocked this check: score is below the configured minimum, the minimum is less than 90, or scoring did not pass.");
-            process.exit(1);
-          }
-
-          console.log("JB Expert QA gate passed.");
-          NODE
