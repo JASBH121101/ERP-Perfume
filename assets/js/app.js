@@ -404,6 +404,49 @@
     document.getElementById('edit-detail-product').setAttribute('data-id', String(product.id));
     if (typeof detailDialog.showModal === 'function') detailDialog.showModal();
   }
+  function exportCsvFile(filename,rows){
+    const csv='\\uFEFF'+rows.map(row=>row.map(cell=>'"'+String(cell==null?'':cell).replace(/"/g,'""')+'"').join(',')).join('\\r\\n');
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    const link=document.createElement('a');link.href=url;link.download=filename;
+    document.body.appendChild(link);link.click();link.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  function exportCurrentView(){
+    let rows=[],filename='jb-parfums-registro.csv';
+    if(state.view==='products'){
+      filename='jb-parfums-productos.csv';
+      rows=[['SKU','Producto','Marca','Categoría','Precio USD','Costo USD','Stock','Stock mínimo','Estado'],
+        ...products.map(p=>[p.sku,p.name,p.brand,p.category,p.price,p.unitCost,p.stock,p.minStock,p.active===false?'Inactivo':'Activo'])];
+    }else if(state.view==='orders'){
+      filename='jb-parfums-pedidos.csv';
+      rows=[['Pedido','Cliente','Fecha','Total USD','Estado','Pago'],
+        ...orders.map(o=>[o.id,o.customer,o.date,o.amount,o.status,o.paymentStatus])];
+    }else if(state.view==='customers'){
+      filename='jb-parfums-clientes.csv';
+      rows=[['Cliente','Contacto','Pedidos','Total USD'],...customers.map(x=>[x.name,x.contact,x.orders,x.spent])];
+    }else if(state.view==='suppliers'){
+      filename='jb-parfums-proveedores.csv';
+      rows=[['Proveedor','Contacto','Teléfono','Correo','Moneda'],...suppliers.map(x=>[x.name,x.contact,x.phone,x.email,x.currency])];
+    }else if(state.view==='purchases'){
+      filename='jb-parfums-compras.csv';
+      rows=[['Compra','Proveedor','Fecha','Total USD','Pagado USD','Estado'],...purchases.map(x=>[x.purchaseNumber,x.supplier,dateText(x.createdAt),x.totalUsd,x.paidUsd,x.status])];
+    }else if(state.view==='billing'||state.view==='receivables'){
+      filename='jb-parfums-facturas.csv';
+      rows=[['Factura','Cliente','Fecha','Total USD','Pagado USD','Saldo USD','Estado'],...invoices.map(x=>[x.id,x.customer,dateText(x.createdAt),x.totalUsd,x.paidUsd,Math.max(0,x.totalUsd-x.paidUsd),x.status])];
+    }else if(state.view==='expenses'){
+      filename='jb-parfums-gastos.csv';
+      rows=[['Fecha','Categoría','Descripción','Moneda','Importe','Equivalente USD'],...expenses.map(x=>[dateText(x.createdAt),x.category,x.description,x.currency,x.originalAmount,x.amountUsd])];
+    }else if(state.view==='cash'){
+      filename='jb-parfums-caja-bancos.csv';
+      rows=[['Fecha','Dirección','Concepto','Cuenta','Moneda','Importe','USD'],...cashEntries.map(x=>[dateText(x.createdAt),x.direction,x.concept,x.account,x.currency,x.originalAmount,x.amountUsd])];
+    }else if(state.view==='analytics'){
+      const f=financialSnapshot();filename='jb-parfums-resultados.csv';
+      rows=[['Indicador','USD'],['Ventas facturadas',f.revenue],['Costo de ventas',f.costOfSales],['Utilidad bruta',f.grossProfit],['Gastos operativos',f.operatingExpenses],['Resultado después de gastos',f.netProfit]];
+    }
+    if(!rows.length){toast('No hay datos disponibles para exportar en esta sección.');return;}
+    exportCsvFile(filename,rows);
+    toast('Exportación CSV generada desde los datos de Neon.');
+  }
   function renderInventoryCsv() {
     const rows = [['SKU', 'Producto', 'Categoría', 'Stock', 'Stock mínimo', 'Estado', 'Ubicación']];
     products.filter(function (product) { return product.active !== false; }).forEach(function (product) {
@@ -1340,11 +1383,12 @@
       else if (name === 'stock-new') openStockModal();
       else if (name === 'stock-product') openStockModal(action.getAttribute('data-id'));
       else if (name === 'export-inventory') renderInventoryCsv();
-      else if (name === 'export') toast('La exportación estará disponible al conectar los datos reales.');
-      else if (name === 'billing-preview') toast('El formulario de factura se diseñará después de validar los requisitos fiscales de Nicaragua.');
-      else if (name === 'hr-preview') toast('El alta de personal se habilitará después de definir roles y protección de expedientes.');
+      else if (name === 'export') exportCurrentView();
+      else if (name === 'billing-preview') openBusinessDialog('invoice');
+      else if (name === 'hr-preview') { goToView('hr'); loadHRFromAPI(true); openBusinessDialog('employee'); }
       else if (name === 'preview-order') showOrderDetails(action.getAttribute('data-id'));
       else if (name === 'save-order-status') saveOrderStatus();
+      else if (name === 'reload-hr') loadHRFromAPI(true);
       return;
     }
     if (event.target.closest('#font-decrease')) {
@@ -1372,7 +1416,16 @@
     if (event.target.closest('#stock-modal-close') || event.target.closest('#stock-cancel')) stockDialog.close();
     if (event.target.closest('#detail-close') || event.target.closest('#detail-cancel')) detailDialog.close();
     if (event.target.closest('#order-detail-close') || event.target.closest('#order-detail-cancel')) orderDialog.close();
-    if (event.target.closest('.notification-button')) toast('No hay notificaciones reales: el sistema aún está en modo demo.');
+    if (event.target.closest('.notification-button')) {
+      const alerts=[];
+      const lowStock=products.filter(p=>p.active!==false&&needsRestock(p)).length;
+      const receivable=invoices.filter(i=>Number(i.totalUsd||0)-Number(i.paidUsd||0)>0.001).length;
+      const payable=purchases.filter(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001).length;
+      if(lowStock)alerts.push(lowStock+' productos requieren reposición');
+      if(receivable)alerts.push(receivable+' facturas tienen saldo pendiente');
+      if(payable)alerts.push(payable+' compras tienen saldo con proveedor');
+      toast(alerts.length?alerts.join(' · '):'No hay alertas operativas pendientes.');
+    }
   });
   document.addEventListener('input', function (event) {
     if (event.target && event.target.id === 'view-search') {
