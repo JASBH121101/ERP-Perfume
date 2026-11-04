@@ -1,23 +1,6 @@
 name: ERP quality gate
 
 on:
-  push:
-    branches:
-      - feat/erp-operational-modules
-    paths:
-      - "index.html"
-      - "README.md"
-      - "docs/**"
-      - "assets/**"
-      - "functions/**"
-      - "worker/**"
-      - "db/**"
-      - "scripts/**"
-      - "tests/**"
-      - "package.json"
-      - "jb-expert-qa.config.json"
-      - "wrangler.toml"
-      - ".github/workflows/**"
   workflow_dispatch:
   pull_request:
     branches:
@@ -33,16 +16,16 @@ on:
       - "docs/**"
       - "assets/**"
       - "functions/**"
+      - "worker/**"
       - "db/**"
       - "scripts/**"
       - "tests/**"
       - "package.json"
       - "jb-expert-qa.config.json"
-      - "wrangler.toml"
       - ".github/workflows/**"
 
 concurrency:
-  group: erp-quality-${{ github.event.pull_request.number || github.ref }}
+  group: erp-quality-pr-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -52,7 +35,7 @@ jobs:
   validate-ui:
     name: Static and browser tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
     steps:
       - name: Checkout pull request code
         uses: actions/checkout@v4
@@ -105,7 +88,7 @@ jobs:
       - name: Checkout the exact failed pull request revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -190,7 +173,7 @@ jobs:
 
   jb-expert-qa:
     name: JB Expert QA — deterministic source audit
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -199,7 +182,7 @@ jobs:
       - name: Checkout exact ERP pull request revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Verify private QA repository token is configured
@@ -264,7 +247,7 @@ jobs:
           echo "Report generation completed (JSON exit: $json_status; Markdown exit: $markdown_status). The gate below decides whether findings block CI."
 
       - name: Upload resolved ERP package lockfile for commit
-        if: always() && hashFiles('package-lock.json') != ''
+        if: always() && hashFiles("package-lock.json") != ''
         uses: actions/upload-artifact@v4
         with:
           name: erp-package-lock
