@@ -65,6 +65,24 @@ INSERT INTO permission_catalog(permission_key,label,module_key,parent_key,permis
 SELECT module_key||'.view',label,module_key,NULL,'module',sort_order FROM modules
 ON CONFLICT(permission_key) DO NOTHING;
 
+WITH modules(module_key,label,sort_order) AS (VALUES
+ ('dashboard','Resumen',10),('orders','Pedidos',20),('billing','Facturación',30),
+ ('receivables','Cuentas por cobrar',40),('customers','Clientes',50),('products','Productos',60),
+ ('inventory','Existencias',70),('purchases','Compras',80),('suppliers','Proveedores',90),
+ ('expenses','Gastos',100),('cash','Caja y bancos',110),('payables','Cuentas por pagar',120),
+ ('hr','Recursos Humanos',130),('dgi','Obligaciones DGI',140),('analytics','Informes',150),
+ ('settings','Configuración',160),('users','Usuarios y accesos',170),('audit','Auditoría',180)
+), actions(action_key,label,sort_order) AS (VALUES
+ ('create','Crear',10),('edit','Editar',20),('delete','Eliminar',30),('approve','Aprobar',40),
+ ('reject','Rechazar',50),('submit','Enviar',60),('export','Exportar',70),('share','Compartir',80),
+ ('manage','Administrar',90)
+)
+INSERT INTO permission_catalog(permission_key,label,module_key,parent_key,permission_type,sort_order)
+SELECT m.module_key||'.'||a.action_key,a.label||' · '||m.label,m.module_key,
+       m.module_key||'.view','action',a.sort_order
+FROM modules m CROSS JOIN actions a
+ON CONFLICT(permission_key) DO NOTHING;
+
 WITH sections(module_key,section_key,label,sort_order) AS (VALUES
  ('hr','employees','Empleados',10),('hr','attendance','Asistencia',20),('hr','payroll','Nómina',30),
  ('hr','leave','Vacaciones y permisos',40),('hr','contracts','Contratos',50),
