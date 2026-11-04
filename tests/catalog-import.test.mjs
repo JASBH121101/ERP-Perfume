@@ -264,6 +264,7 @@ test("web invoice rejects items or prices that differ from the original order", 
       if (query.startsWith("SELECT o.order_number")) {
         return [{
           order_number: "JP-1001",
+          customer_id: "00000000-0000-0000-0000-000000000501",
           customer_name: "Cliente QA",
           discount_usd: "0.00",
           delivery_fee_usd: "0.00",
@@ -284,6 +285,7 @@ test("web invoice rejects items or prices that differ from the original order", 
     source: "web",
     order_id: "00000000-0000-0000-0000-000000000201",
     order_number_snapshot: "JP-1001",
+    customer_id: "00000000-0000-0000-0000-000000000501",
     customer_name: "Cliente QA",
     currency: "USD",
     exchange_rate: 36.6,
@@ -443,6 +445,7 @@ const validWebInvoiceBody = {
   source: "web",
   order_id: "00000000-0000-0000-0000-000000000201",
   order_number_snapshot: "JP-1001",
+  customer_id: "00000000-0000-0000-0000-000000000501",
   customer_name: "Cliente QA",
   currency: "USD",
   exchange_rate: 36.6,
@@ -463,6 +466,7 @@ const validWebInvoiceBody = {
 
 const webOrderSnapshot = [{
   order_number: "JP-1001",
+  customer_id: "00000000-0000-0000-0000-000000000501",
   customer_name: "Cliente QA",
   discount_usd: "0.00",
   delivery_fee_usd: "0.00",
@@ -665,4 +669,26 @@ test("generic PATCH cannot rewrite commercial order snapshots", async () => {
   assert.equal(response.status, 405);
   assert.equal(body.error.code, "ORDER_FIELDS_LOCKED");
   assert.equal(queryCount, 0);
+});
+
+
+test("web invoice rejects a different linked customer even when the displayed name matches", async () => {
+  let writeAttempted = false;
+  const sql = {
+    query: async (query) => {
+      if (query.startsWith("SELECT o.order_number")) return webOrderSnapshot;
+      writeAttempted = true;
+      return [];
+    }
+  };
+  const body = {
+    ...validWebInvoiceBody,
+    invoice_number: "JBI-QA-WEB-CUSTOMER",
+    customer_id: "00000000-0000-0000-0000-000000000502"
+  };
+  const response = await createInvoice(sql, owner, body);
+  const result = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(result.error.code, "WEB_ORDER_ITEMS_MISMATCH");
+  assert.equal(writeAttempted, false);
 });
