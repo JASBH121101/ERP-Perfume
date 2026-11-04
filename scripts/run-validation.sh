@@ -13,8 +13,8 @@ echo
 echo "=== JavaScript syntax ==="
 node --check assets/js/app.js
 node --check assets/js/bootstrap.mjs
-node --check worker/src/index.js
-node --check worker/src/catalog.js
+node --input-type=module --check < worker/src/index.js
+node --input-type=module --check < worker/src/catalog.js
 node --check playwright.config.mjs
 node --check scripts/ai-repair.mjs
 node --check scripts/validate-ai-patch.mjs
