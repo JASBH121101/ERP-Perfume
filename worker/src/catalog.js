@@ -265,11 +265,12 @@ async function createSupplier(request, env, context) {
   if (!name) return context.errorResponse(400, "INVALID_SUPPLIER", "Supplier name is required.");
   try {
     const rows = await auth.sql.query(
-      "INSERT INTO suppliers (name, contact, phone, email, currency, notes) VALUES ($1,$2,$3,$4,$5,$6) " +
-      "RETURNING id, name, contact, phone, email, currency, notes, active, created_at",
-      [name,contact,phone,email,currency,notes]
+      "WITH saved AS (INSERT INTO suppliers (name, contact, phone, email, currency, notes) VALUES ($1,$2,$3,$4,$5,$6) " +
+      "RETURNING id, name, contact, phone, email, currency, notes, active, created_at), " +
+      "audit AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT $7,'create','supplier',id::text,jsonb_build_object('name',name) FROM saved) SELECT * FROM saved",
+      [name,contact,phone,email,currency,notes,auth.user.id]
     );
-    await audit(auth.sql, auth.user.id, "create", "supplier", rows[0].id, { name });
     return context.json({ supplier: rows[0] }, 201);
   } catch (error) {
     console.error("[catalog] Supplier insert failed:", error?.message || "database error");
@@ -308,11 +309,12 @@ async function createCustomer(request, env, context) {
   if (!name) return context.errorResponse(400, "INVALID_CUSTOMER", "Customer name is required.");
   try {
     const rows = await auth.sql.query(
-      "INSERT INTO customers (name, contact, phone, email, customer_type) VALUES ($1,$2,$3,$4,$5) " +
-      "RETURNING id, name, contact, phone, email, customer_type, active, created_at",
-      [name,contact,phone,email,customerType]
+      "WITH saved AS (INSERT INTO customers (name, contact, phone, email, customer_type) VALUES ($1,$2,$3,$4,$5) " +
+      "RETURNING id, name, contact, phone, email, customer_type, active, created_at), " +
+      "audit AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT $6,'create','customer',id::text,jsonb_build_object('name',name,'customer_type',customer_type) FROM saved) SELECT * FROM saved",
+      [name,contact,phone,email,customerType,auth.user.id]
     );
-    await audit(auth.sql, auth.user.id, "create", "customer", rows[0].id, { name, customerType });
     return context.json({ customer: { ...rows[0], orders: 0, spent_usd: "0" } }, 201);
   } catch (error) {
     console.error("[catalog] Customer insert failed:", error?.message || "database error");
