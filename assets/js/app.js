@@ -1617,7 +1617,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
       periodNotice+
       settingsForm+
       docForm+
-      (dgiDocumentsError?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Archivo DGI no disponible</strong><p>'+esc(dgiDocumentsError)+'. Aplica la migración 0006 en Neon Development y vuelve a cargar esta sección.</p></div></div>':'')+'<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
+      (dgiDocumentsError?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Archivo DGI no disponible</strong><p>'+esc(dgiDocumentsError)+'</p><button type="button" class="button button-quiet button-small" data-action="reload-dgi-documents">Reintentar consulta</button></div></div>':'')+'<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar</strong><p>Los indicadores se calculan con ventas y operaciones registradas en el ERP. No son una declaración tributaria ni certifican la elegibilidad al régimen. Este módulo no presenta declaraciones ni sustituye la validación de un contador o la respuesta formal de la DGI.</p></div></div>';
   }
   function renderSettings(){
@@ -2219,6 +2219,7 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
     } else if(types[name])openBusinessDialog(types[name]);
     else if(name==='go-hr-employees'){state.hrTab='employees';renderView();}
     else if(name==='export-dgi-book')exportDgiBook();
+    else if(name==='reload-dgi-documents'){dgiDocumentsLoadAttempted=false;dgiDocumentsLoaded=false;loadDgiSupportDocuments(true);}
     else if(name==='download-dgi-document')downloadDgiDocument(action.getAttribute('data-id'),action);
     else if(name==='pay-payroll')openBusinessDialog('payroll-payment',action.getAttribute('data-id'));
     else if(name==='remove-product-image'){
