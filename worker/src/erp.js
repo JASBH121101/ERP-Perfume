@@ -1197,14 +1197,12 @@ export async function handleERPRequest(request, env, user, sql) {
       if (!updated[0]) return erpError(404, "USER_NOT_FOUND", "La cuenta ERP solicitada no existe.");
       if (Array.isArray(overrides)) {
         const payload = JSON.stringify(overrides);
-        await sql.query(
-          "WITH cleared AS (DELETE FROM user_permission_overrides WHERE user_id=$1::uuid RETURNING 1), " +
-          "saved AS (INSERT INTO user_permission_overrides(user_id,permission_key,allowed,updated_by,updated_at) " +
-          "SELECT $1::uuid,x.permission_key,x.allowed,$3,NOW() FROM jsonb_to_recordset($2::jsonb) AS x(permission_key text,allowed boolean) " +
-          "ON CONFLICT(user_id,permission_key) DO UPDATE SET allowed=EXCLUDED.allowed,updated_by=EXCLUDED.updated_by,updated_at=NOW() RETURNING 1) " +
-          "SELECT (SELECT COUNT(*)::int FROM cleared) AS cleared_count,(SELECT COUNT(*)::int FROM saved) AS saved_count",
-          [id,payload,user.id]
-        );
+        await sql.transaction((tx) => [
+          tx`DELETE FROM user_permission_overrides WHERE user_id=${id}::uuid`,
+          tx`INSERT INTO user_permission_overrides(user_id,permission_key,allowed,updated_by,updated_at)
+             SELECT ${id}::uuid,x.permission_key,x.allowed,${user.id},NOW()
+             FROM jsonb_to_recordset(${payload}::jsonb) AS x(permission_key text,allowed boolean)`
+        ]);
       }
       await auditQuery(sql,user.id,"update","app_user",id,{
         role_template_key:roleTemplateKey,position_title:positionTitle,account_status:accountStatus,
@@ -1284,14 +1282,12 @@ export async function handleERPRequest(request, env, user, sql) {
         [id,name,description]
       );
       if (Array.isArray(body.permissions)) {
-        await sql.query(
-          "WITH cleared AS (DELETE FROM role_template_permissions WHERE role_key=$1 RETURNING 1), " +
-          "saved AS (INSERT INTO role_template_permissions(role_key,permission_key,allowed) " +
-          "SELECT $1,x.permission_key,x.allowed FROM jsonb_to_recordset($2::jsonb) AS x(permission_key text,allowed boolean) " +
-          "ON CONFLICT(role_key,permission_key) DO UPDATE SET allowed=EXCLUDED.allowed RETURNING 1) " +
-          "SELECT (SELECT COUNT(*)::int FROM cleared) AS cleared_count,(SELECT COUNT(*)::int FROM saved) AS saved_count",
-          [id,JSON.stringify(body.permissions)]
-        );
+        await sql.transaction((tx) => [
+          tx`DELETE FROM role_template_permissions WHERE role_key=${id}`,
+          tx`INSERT INTO role_template_permissions(role_key,permission_key,allowed)
+             SELECT ${id},x.permission_key,x.allowed
+             FROM jsonb_to_recordset(${JSON.stringify(body.permissions)}::jsonb) AS x(permission_key text,allowed boolean)`
+        ]);
       }
       await auditQuery(sql,user.id,"update","erp_role",id,{name,description,permissions_updated:Array.isArray(body.permissions)});
       return erpJson({ role: updated[0] });
