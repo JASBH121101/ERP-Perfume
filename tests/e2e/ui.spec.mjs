@@ -866,7 +866,7 @@ test('supplier purchases support initial payments, partial balances and final se
   await dialog.getByRole('button', { name: 'Guardar en demo' }).click();
 
   await navigateToView(page, 'purchases');
-  await page.getByRole('button', { name: /Registrar compra/ }).click();
+  await page.getByRole('button', { name: /Registrar factura de proveedor/ }).click();
   await dialog.locator('[data-lookup="supplier"]').fill('Proveedor CXP');
   await dialog.getByRole('option', { name: /Proveedor CXP QA/ }).click();
   await dialog.locator('[data-lookup="product"]').fill('JBP-002');
