@@ -517,6 +517,10 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
         if (tabPermission) button.hidden = !permissionGranted(tabPermission);
         return;
       }
+      if (action === "new-purchase") {
+        button.hidden = !(permissionGranted("purchases.receipts.receive") && permissionGranted("inventory.receipts.receive"));
+        return;
+      }
       const keys = actionPermissions[action];
       if (keys) button.hidden = !keys.some(permissionGranted);
     });
