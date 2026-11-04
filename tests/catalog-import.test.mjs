@@ -29,6 +29,16 @@ test("CSV imports Spanish headers, semicolon delimiter and decimal comma", () =>
   );
 });
 
+test("CSV blank purchase-cost breakdown preserves an explicit unit-cost column", () => {
+  const rows = parsers.parseCatalogCSV(
+    "SKU,Producto,Costo de compra,Costos adicionales,Costo unitario,Precio,Stock\n" +
+    "UNIT-02,Perfume unitario,, ,15,30,1"
+  );
+  assert.equal(rows[0].purchase_cost_usd, null);
+  assert.equal(rows[0].additional_cost_usd, null);
+  assert.equal(rows[0].unit_cost_usd, 15);
+});
+
 test("CSV unit-cost-only catalogs retain unit cost when purchase-cost breakdown is absent", () => {
   const rows = parsers.parseCatalogCSV(
     "SKU,Producto,Costo unitario,Precio,Stock\n" +
