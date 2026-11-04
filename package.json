@@ -8,8 +8,9 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test",
-    "test:unit": "node --test"
+    "test": "playwright test",
+    "test:unit": "node --test",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@neondatabase/auth": "0.7.0-beta",
