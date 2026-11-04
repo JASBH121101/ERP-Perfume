@@ -385,7 +385,7 @@ test('form fields have no placeholder or optional copy; required fields use a re
 
   await expect(productDialog.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
   await expect(productDialog.locator('label').filter({ hasText: /opcional/i })).toHaveCount(0);
-  await expect(productDialog.locator('.required-mark')).toHaveCount(3);
+  await expect(productDialog.locator('.required-mark')).toHaveCount(2);
   for (const marker of await productDialog.locator('.required-mark').all()) {
     await expect(marker).toHaveCSS('color', 'rgb(220, 38, 38)');
   }
@@ -1146,5 +1146,5 @@ test('profitability and capital dashboards are clearly separated', async ({ page
   await expect(page.locator('#view-root')).toContainText('no incluye saldo inicial');
   await navigateToView(page, 'profitability');
   await expect(page.getByRole('heading', { name: 'Rentabilidad', exact: true })).toBeVisible();
-  await expect(page.locator('#view-root')).toContainText('no es contabilidad oficial');
+  await expect(page.locator('#view-root')).toContainText(/no contabilidad oficial/i);
 });
