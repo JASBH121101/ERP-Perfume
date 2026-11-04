@@ -1712,10 +1712,22 @@
         if(nums.length>1&&lastNum.index>(firstNum?.index??-1)&&Number.isInteger(lastNum.amount)&&lastNum.amount<100000)stock=lastNum.amount;
       }
       if(!name){
-        const matches=[...line.matchAll(/(?:US\$|USD|C\$|NIO|\$)?\s*[-+]?\d[\d.,]*/gi)];
-        name=line;
-        if(matches.length){const last=matches[matches.length-1];const n=catalogNumber(last[0]);if(n>0&&n<1000000){amount=amount==null?n:amount;name=line.slice(0,last.index).replace(/[\s|,;:–-]+$/,'').trim();}}
-        name=name.replace(/^\d{1,4}[\s.)-]+/,'').replace(/\s{2,}/g,' ').trim();
+        const skuPrefix=line.match(/^([A-Z0-9][A-Z0-9._\/-]{2,})\s+(.+)$/i);
+        const codeLike=Boolean(skuPrefix&&(/[0-9_-]/.test(skuPrefix[1])||skuPrefix[1]===skuPrefix[1].toUpperCase()));
+        const candidate=codeLike?skuPrefix[2]:line;
+        const explicitStock=candidate.match(/\b(?:stock|existencias|qty|cantidad|unidades)\s*:?\s*(\d+)\b/i);
+        if(explicitStock)stock=Math.max(0,Number(explicitStock[1])||0);
+        const matches=[...candidate.matchAll(/(?:US\$|USD|C\$|NIO|\$)\s*[-+]?\d[\d.,]*|[-+]?\d[\d,]*[.,]\d{1,2}(?!\d)/gi)];
+        name=candidate;
+        if(matches.length){
+          const selected=matches[matches.length-1];
+          const value=catalogNumber(selected[0]);
+          if(value>0&&value<1000000){
+            amount=amount==null?value:amount;
+            name=candidate.slice(0,selected.index).replace(/(?:\b(?:precio|price)\s*:?\s*)?[\s|,;:–-]+$/i,'').trim();
+          }
+        }
+        name=name.replace(/\s+\b(?:stock|existencias|qty|cantidad|unidades)\s*:?\s*\d+\b.*$/i,'').replace(/^\d{1,4}[\s.)-]+/,'').replace(/\s{2,}/g,' ').trim();
       }
       if(name.length<3||!/[a-záéíóúñ]{3}/i.test(name)||/^(pagina|page|total|subtotal|iva|impuesto|descuento|direccion|telefono|fecha|cliente|proveedor)\b/i.test(name))continue;
       rows.push({sku:catalogSku(rows.length),name:name.slice(0,120),brand:'',category:'Perfumería',purchase_cost_usd:0,additional_cost_usd:0,unit_cost_usd:0,price_usd:0,stock,min_stock:3,active:true,images:[],_detected_amount:amount});
