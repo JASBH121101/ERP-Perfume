@@ -13,6 +13,7 @@ const RESOURCE_DEFS = {
   hr_leave_requests: { table: "hr_leave_requests", roles: ["owner", "admin", "hr"], fields: ["employee_id","leave_type","start_date","end_date","days","reason","status"], order: "created_at DESC" },
   hr_payroll_periods: { table: "hr_payroll_periods", roles: ["owner", "admin", "hr", "finance"], fields: ["period_start","period_end","payment_date","status","notes"], order: "period_start DESC" },
   hr_payroll_items: { table: "hr_payroll_items", roles: ["owner", "admin", "hr", "finance"], fields: ["payroll_period_id","employee_id","base_salary_nio","bonuses_nio","deductions_nio","net_salary_nio","notes"], order: "created_at DESC" },
+  dgi_support_documents: { table: "dgi_support_documents", roles: ["owner", "admin", "finance"], fields: ["document_date","document_type","issuer","reference_number","description","fiscal_period","currency","original_amount","amount_nio","formal_invoice","file_key","file_name","file_type","file_size","notes"], order: "document_date DESC, created_at DESC" },
   inventory_movements: { table: "inventory_movements", roles: ["owner", "admin", "inventory"], fields: ["product_id","movement_type","quantity","quantity_delta","previous_stock","new_stock","note","reference_type","reference_id"], order: "created_at DESC" }
 };
 
@@ -44,7 +45,7 @@ async function readBootstrap(sql, user) {
   const canSales = isOwner || user.role === "sales";
   const canFinance = isOwner || user.role === "finance";
   const canHR = isOwner || user.role === "hr";
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
+  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings, dgiDocuments] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
@@ -65,7 +66,8 @@ async function readBootstrap(sql, user) {
       tx`SELECT * FROM hr_leave_requests ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`,
       tx`SELECT * FROM hr_payroll_items ORDER BY created_at DESC LIMIT 5000`,
-      tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`
+      tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`,
+      tx`SELECT * FROM dgi_support_documents ORDER BY document_date DESC, created_at DESC LIMIT 2000`
     ]);
 
   const result = { settings };
@@ -85,6 +87,7 @@ async function readBootstrap(sql, user) {
     result.invoice_payments = invoicePayments;
   }
   if (isOwner || canFinance) {
+    result.dgi_support_documents = dgiDocuments;
     result.expenses = expenses;
     result.cash_accounts = cashAccounts;
     result.cash_entries = cashEntries;
@@ -118,7 +121,7 @@ async function createGeneric(sql, user, resource, def, body) {
     keys.push("created_by");
     values.push(user.id);
   }
-  if (["employees","hr_attendance","hr_leave_requests","hr_payroll_periods","inventory_movements","orders","purchases","invoices","expenses","cash_entries"].includes(def.table)) {
+  if (["employees","hr_attendance","hr_leave_requests","hr_payroll_periods","dgi_support_documents","inventory_movements","orders","purchases","invoices","expenses","cash_entries"].includes(def.table)) {
     keys.push("created_by");
     values.push(user.id);
   }
@@ -196,8 +199,20 @@ async function softDelete(sql, user, resource, def, id) {
 
 async function createOrder(sql, user, body) {
   const items = Array.isArray(body.items) ? body.items : [];
-  const customerName = String(body.customer_name || "").trim();
-  if (!customerName || customerName.length > 160 || !items.length) return erpError(400, "INVALID_ORDER", "El pedido requiere un cliente válido y al menos un producto.");
+  const customerId = String(body.customer_id || "").trim();
+  const newCustomer = body.new_customer && typeof body.new_customer === "object" ? body.new_customer : null;
+  const newCustomerName = String(newCustomer?.name || "").trim();
+  const customerName = customerId ? String(body.customer_name || "").trim() : newCustomerName;
+  if ((customerId && !/^[0-9a-f-]{36}$/i.test(customerId)) ||
+      (customerId && newCustomerName) || (!customerId && !newCustomerName) ||
+      !customerName || customerName.length > 160 || !items.length) {
+    return erpError(400, "INVALID_ORDER", "El pedido requiere seleccionar un cliente existente o registrar uno nuevo, además de al menos un producto.");
+  }
+  if (newCustomer && (!newCustomerName || newCustomerName.length > 160 ||
+      String(newCustomer.phone || "").length > 40 ||
+      String(newCustomer.email || "").length > 120)) {
+    return erpError(400, "INVALID_NEW_CUSTOMER", "Revisa el nombre, teléfono y correo del nuevo cliente.");
+  }
   if (items.some((item) => !item.product_id || !/^[0-9a-f-]{36}$/i.test(String(item.product_id)) || !item.product_name || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1 || !Number.isFinite(Number(item.unit_price_usd)) || Number(item.unit_price_usd) < 0)) {
     return erpError(400, "INVALID_ORDER_ITEMS", "Cada renglón requiere un producto activo, cantidad y precio válidos.");
   }
@@ -222,24 +237,26 @@ async function createOrder(sql, user, body) {
   const orderNumber = String(body.order_number || "").trim();
   if (!orderNumber) return erpError(400, "ORDER_NUMBER_REQUIRED", "El número de pedido es obligatorio.");
   const payload = {
-    order_number: orderNumber, customer_id: body.customer_id || null, customer_name: customerName,
-    phone: body.phone || null, status: "Pendiente", payment_status: "Pendiente",
+    order_number: orderNumber, customer_id: customerId || null, customer_name: customerName,
+    phone: customerId ? (body.phone || null) : (newCustomer?.phone || null),
+    status: "Pendiente", payment_status: "Pendiente",
     payment_method: body.payment_method || null, delivery_mode: body.delivery_mode || null,
-    currency, original_amount: originalAmount,
-    exchange_rate: rate, total_usd: totalUsd,
+    currency, original_amount: originalAmount, exchange_rate: rate, total_usd: totalUsd,
     discount_usd: discountUsd, delivery_fee_usd: deliveryFeeUsd, notes: body.notes || null
   };
   try {
     const rows = await sql.query(
-      "WITH created AS (INSERT INTO orders (order_number,customer_id,customer_name,phone,status,payment_status,payment_method,delivery_mode,currency,original_amount,exchange_rate,total_usd,discount_usd,delivery_fee_usd,notes,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *), item_rows AS (INSERT INTO order_items (order_id,product_id,product_name,sku_snapshot,quantity,unit_price_usd,line_total_usd) SELECT created.id, i.product_id, i.product_name, i.sku_snapshot, i.quantity, i.unit_price_usd, i.quantity * i.unit_price_usd FROM created CROSS JOIN LATERAL jsonb_to_recordset($17::jsonb) AS i(product_id uuid, product_name text, sku_snapshot text, quantity integer, unit_price_usd numeric) RETURNING id), logged AS (INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,details) SELECT $16,'create','order',created.id::text,to_jsonb(created) FROM created) SELECT * FROM created",
-      [payload.order_number,payload.customer_id,payload.customer_name,payload.phone,payload.status,payload.payment_status,payload.payment_method,payload.delivery_mode,payload.currency,payload.original_amount,payload.exchange_rate,payload.total_usd,payload.discount_usd,payload.delivery_fee_usd,payload.notes,user.id,JSON.stringify(items)]
+      "WITH new_customer AS (INSERT INTO customers(name,contact,phone,email,customer_type,active) SELECT $18,$19,$20,$21,$22,TRUE WHERE $2::uuid IS NULL RETURNING *), resolved_customer AS (SELECT id,name,phone FROM customers WHERE id=$2::uuid UNION ALL SELECT id,name,phone FROM new_customer), created AS (INSERT INTO orders (order_number,customer_id,customer_name,phone,status,payment_status,payment_method,delivery_mode,currency,original_amount,exchange_rate,total_usd,discount_usd,delivery_fee_usd,notes,created_by) SELECT $1,resolved_customer.id,resolved_customer.name,COALESCE(NULLIF($4,''),resolved_customer.phone),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16 FROM resolved_customer RETURNING *), item_rows AS (INSERT INTO order_items (order_id,product_id,product_name,sku_snapshot,quantity,unit_price_usd,line_total_usd) SELECT created.id, i.product_id, i.product_name, i.sku_snapshot, i.quantity, i.unit_price_usd, i.quantity * i.unit_price_usd FROM created CROSS JOIN LATERAL jsonb_to_recordset($17::jsonb) AS i(product_id uuid, product_name text, sku_snapshot text, quantity integer, unit_price_usd numeric) RETURNING id), customer_logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $16,'create','customer',id::text,to_jsonb(new_customer) FROM new_customer), logged AS (INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, details) SELECT $16,'create','order',created.id::text,to_jsonb(created) FROM created) SELECT * FROM created",
+      [payload.order_number,payload.customer_id,payload.customer_name,payload.phone,payload.status,payload.payment_status,payload.payment_method,payload.delivery_mode,payload.currency,payload.original_amount,payload.exchange_rate,payload.total_usd,payload.discount_usd,payload.delivery_fee_usd,payload.notes,user.id,JSON.stringify(items),
+       newCustomerName || null,newCustomer?.contact || null,newCustomer?.phone || null,newCustomer?.email || null,newCustomer?.customer_type || "particular"]
     );
-    return erpJson({ record: rows[0] }, 201);
+    if (!rows[0]) return erpError(404, "CUSTOMER_NOT_FOUND", "No se encontró el cliente seleccionado. Actualiza la cartera e inténtalo de nuevo.");
+    return erpJson({ record: rows[0], customer_created: !customerId }, 201);
   } catch (error) {
-    if (error?.code === "23505") return erpError(409, "DUPLICATE_ORDER", "El número de pedido ya existe.");
-    if (error?.code === "23503") return erpError(400, "PRODUCT_NOT_FOUND", "Uno de los productos del pedido no existe.");
+    if (error?.code === "23505") return erpError(409, "DUPLICATE_ORDER", "El número de pedido o la identificación del cliente ya existe.");
+    if (error?.code === "23503") return erpError(400, "RELATED_RECORD_NOT_FOUND", "El cliente o uno de los productos relacionados no existe.");
     console.error("[erp] Order creation failed:", error?.message || "database error");
-    return erpError(503, "ORDER_SAVE_FAILED", "No se pudo guardar el pedido.");
+    return erpError(503, "ORDER_SAVE_FAILED", "No se pudo guardar el pedido y su cliente en Neon.");
   }
 }
 
@@ -536,6 +553,72 @@ async function handleProductAsset(request,env,user,sql) {
   return erpError(405,"METHOD_NOT_ALLOWED","Método no permitido para el archivo.");
 }
 
+async function createDgiSupportDocument(request, env, user, sql) {
+  if (!canAccess(user, ["owner","admin","finance"])) return erpError(403,"FORBIDDEN","No tienes permiso para registrar documentos DGI.");
+  if (!env?.ERP_ASSETS) return erpError(503,"R2_NOT_CONFIGURED","El almacenamiento privado de documentos no está disponible.");
+  let form;
+  try { form = await request.formData(); } catch { return erpError(400,"INVALID_FORM_DATA","El formulario del documento no es válido."); }
+  const documentDate=String(form.get("document_date")||"");
+  const documentType=String(form.get("document_type")||"");
+  const issuer=String(form.get("issuer")||"").trim();
+  const referenceNumber=String(form.get("reference_number")||"").trim();
+  const description=String(form.get("description")||"").trim();
+  const fiscalPeriod=String(form.get("fiscal_period")||"").trim();
+  const currency=form.get("currency")==="USD"?"USD":"NIO";
+  const originalAmount=Number(form.get("original_amount")||0);
+  const rate=Number(form.get("exchange_rate")||1);
+  const formalInvoice=form.get("formal_invoice")==="true";
+  const notes=String(form.get("notes")||"").trim();
+  const file=form.get("file");
+  const allowedTypes=new Map([["application/pdf","pdf"],["image/jpeg","jpg"],["image/png","png"]]);
+  const extension=allowedTypes.get(String(file?.type||"").toLowerCase());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(documentDate) || !["purchase_invoice","service_invoice","rent_receipt","municipal_payment","dgi_payment","other"].includes(documentType) ||
+      !issuer || issuer.length>180 || referenceNumber.length>100 || description.length>240 ||
+      (fiscalPeriod && !/^\d{4}-(0[1-9]|1[0-2])$/.test(fiscalPeriod)) ||
+      !Number.isFinite(originalAmount) || originalAmount<0 || !Number.isFinite(rate) || rate<=0 ||
+      !file || typeof file.stream!=="function" || !extension || file.size<1 || file.size>5*1024*1024) {
+    return erpError(400,"INVALID_DGI_DOCUMENT","Revisa fecha, tipo, emisor, período, importe y archivo PDF/JPG/PNG (máximo 5 MB).");
+  }
+  const id=crypto.randomUUID();
+  const key="dgi-documents/"+id+"/"+crypto.randomUUID()+"."+extension;
+  const amountNio=Math.round((currency==="NIO"?originalAmount:originalAmount*rate)*100)/100;
+  const fileName=String(file.name||("document."+extension)).slice(0,180);
+  try {
+    await env.ERP_ASSETS.put(key,file.stream(),{
+      httpMetadata:{contentType:file.type,cacheControl:"private, no-store"},
+      customMetadata:{documentId:id,uploadedBy:user.id,originalName:fileName}
+    });
+    const rows=await sql.query(
+      "WITH created AS (INSERT INTO dgi_support_documents(id,document_date,document_type,issuer,reference_number,description,fiscal_period,currency,original_amount,amount_nio,formal_invoice,file_key,file_name,file_type,file_size,notes,created_by) VALUES($1::uuid,$2::date,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $17,'upload','dgi_support_document',id::text,jsonb_build_object('document_type',$3,'issuer',$4,'document_date',$2,'file_name',$13) FROM created) SELECT * FROM created",
+      [id,documentDate,documentType,issuer,referenceNumber||null,description||null,fiscalPeriod||null,currency,originalAmount,amountNio,formalInvoice,key,fileName,file.type,file.size,notes||null,user.id]
+    );
+    if(!rows[0])throw new Error("El registro del documento no se creó.");
+    return erpJson({record:rows[0]},201);
+  } catch(error) {
+    try { await env.ERP_ASSETS.delete(key); } catch {}
+    if(error?.code==="23514"||error?.code==="22P02")return erpError(400,"INVALID_DGI_DOCUMENT","El documento no cumple las reglas de almacenamiento.");
+    console.error("[dgi] Document upload failed:",error?.message||"database error");
+    return erpError(503,"DGI_DOCUMENT_SAVE_FAILED","No se pudo guardar el documento y su respaldo.");
+  }
+}
+
+async function getDgiSupportDocumentFile(request, env, user, sql, id) {
+  if (!canAccess(user, ["owner","admin","finance"])) return erpError(403,"FORBIDDEN","No tienes permiso para consultar documentos DGI.");
+  if (!env?.ERP_ASSETS) return erpError(503,"R2_NOT_CONFIGURED","El almacenamiento privado no está disponible.");
+  if (!/^[0-9a-f-]{36}$/i.test(String(id||""))) return erpError(400,"INVALID_DOCUMENT_ID","La referencia del documento no es válida.");
+  const rows=await sql.query("SELECT file_key,file_name,file_type FROM dgi_support_documents WHERE id=$1::uuid LIMIT 1",[id]);
+  if(!rows[0])return erpError(404,"DGI_DOCUMENT_NOT_FOUND","No se encontró el documento.");
+  const object=await env.ERP_ASSETS.get(rows[0].file_key);
+  if(!object)return erpError(404,"DGI_FILE_NOT_FOUND","El archivo no existe en el almacenamiento privado.");
+  const headers=new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("cache-control","private, no-store");
+  headers.set("x-content-type-options","nosniff");
+  headers.set("content-security-policy","default-src 'none'; sandbox");
+  headers.set("content-disposition","inline; filename*=UTF-8''"+encodeURIComponent(rows[0].file_name||"documento"));
+  return new Response(object.body,{status:200,headers});
+}
+
 async function createPayrollItem(sql,user,body) {
   const periodId=String(body.payroll_period_id||"");
   const employeeId=String(body.employee_id||"");
@@ -760,9 +843,31 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!["owner","admin"].includes(user.role)) return erpError(403, "FORBIDDEN", "Solo propietario o administración puede cambiar la configuración.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     const key = String(body.setting_key || "");
-    if (!["default_exchange_rate","base_currency","payroll_currency"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
+    if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
     const value = body.setting_value;
     if (key === "default_exchange_rate" && (!Number.isFinite(Number(value?.value)) || Number(value.value) <= 0 || Number(value.value) > 100000)) return erpError(400, "INVALID_EXCHANGE_RATE", "El tipo de cambio debe ser mayor que cero.");
+    if (key === "dgi_compliance") {
+      const allowed = new Set(["taxpayer_name","ruc","business_address","regime_status","quota_fixed_amount_nio","certificate_available","certificate_displayed","computerized_invoicing_status","dgi_confirmation_date"]);
+      if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((field) => !allowed.has(field))) {
+        return erpError(400, "INVALID_DGI_SETTINGS", "La configuración tributaria contiene campos no permitidos.");
+      }
+      if (!["not_confirmed","cuota_fija","general"].includes(String(value.regime_status || "not_confirmed"))) {
+        return erpError(400, "INVALID_DGI_REGIME", "Selecciona un régimen tributario válido.");
+      }
+      if (!["not_confirmed","pending_authorization","authorized","not_applicable_confirmed"].includes(String(value.computerized_invoicing_status || "not_confirmed"))) {
+        return erpError(400, "INVALID_DGI_INVOICING_STATUS", "Selecciona un estado de autorización de facturación válido.");
+      }
+      const fee = Number(value.quota_fixed_amount_nio || 0);
+      if (!Number.isFinite(fee) || fee < 0 || fee > 10000000) return erpError(400, "INVALID_DGI_FEE", "La cuota mensual debe ser un importe válido en córdobas.");
+      if (typeof value.certificate_available !== "boolean" || typeof value.certificate_displayed !== "boolean") {
+        return erpError(400, "INVALID_DGI_CERTIFICATE", "Indica si el certificado está disponible y exhibido.");
+      }
+      for (const field of ["taxpayer_name","ruc","business_address","dgi_confirmation_date"]) {
+        if (value[field] != null && (typeof value[field] !== "string" || value[field].length > 180)) {
+          return erpError(400, "INVALID_DGI_FIELD", "Uno de los datos de identificación tributaria no es válido.");
+        }
+      }
+    }
     const rows = await sql.query("INSERT INTO app_settings(setting_key,setting_value,updated_by,updated_at) VALUES($1,$2::jsonb,$3,NOW()) ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_by=EXCLUDED.updated_by,updated_at=NOW() RETURNING setting_key,setting_value", [key,JSON.stringify(value),user.id]);
     await auditQuery(sql,user.id,"update","app_setting",key,value);
     return erpJson({ record: rows[0] });
@@ -802,6 +907,12 @@ export async function handleERPRequest(request, env, user, sql) {
     return changePayrollPeriodStatus(sql,user,id,body);
   }
   if (resource === "assets") return handleProductAsset(request,env,user,sql);
+  if (resource === "dgi-support-documents" && request.method === "POST" && !id) {
+    return createDgiSupportDocument(request,env,user,sql);
+  }
+  if (resource === "dgi-support-documents" && id && parts[4] === "file" && request.method === "GET") {
+    return getDgiSupportDocumentFile(request,env,user,sql,id);
+  }
   if (resource === "hr-payroll-items" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.hr_payroll_items.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
