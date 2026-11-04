@@ -1684,7 +1684,7 @@
     if(!name||price<=0||!Number.isInteger(minStock)||invalid||(!existing&&(!Number.isInteger(stock)||stock<0))){
       toast('Revisa nombre, precio, costos y existencias iniciales.');if(button)button.disabled=false;return;
     }
-    if(files.length>5){toast('Puedes agregar hasta cinco fotografías por producto.');if(button)button.disabled=false;return;}
+    if(files.length+Number(existing?.images?.length||0)>5){toast('Cada producto puede conservar hasta cinco fotografías. Elimina una antes de agregar otra.');if(button)button.disabled=false;return;}
     if(files.some(file=>file.size>8*1024*1024||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
       toast('Cada imagen debe ser JPG, PNG, WebP o AVIF y pesar máximo 8 MB.');if(button)button.disabled=false;return;
     }
@@ -1824,6 +1824,23 @@
       if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
     } else if(types[name])openBusinessDialog(types[name]);
     else if(name==='pay-payroll')openBusinessDialog('payroll-payment',action.getAttribute('data-id'));
+    else if(name==='remove-product-image'){
+      const productId=action.getAttribute('data-product-id'),key=action.getAttribute('data-key');
+      const product=products.find(item=>String(item.id)===String(productId));
+      if(!product||!key)return;
+      if(!window.confirm('¿Eliminar esta fotografía del almacenamiento privado?'))return;
+      action.disabled=true;
+      deleteProductAsset(productId,key)
+        .then(()=>loadERPFromNeon(true))
+        .then(()=>{
+          const updated=products.find(item=>String(item.id)===String(productId));
+          if(detailDialog.open)mountProductImageGallery(document.getElementById('product-detail-images'),updated);
+          if(dialog.open)mountProductImageGallery(document.getElementById('product-image-gallery'),updated);
+          renderView();toast('Imagen eliminada de R2 y desvinculada del producto.');
+        })
+        .catch(error=>toast(error?.message||'No se pudo eliminar la imagen.'))
+        .finally(()=>{action.disabled=false;});
+    }
     else if(name==='approve-payroll'){
       const id=action.getAttribute('data-id');
       if(!window.confirm('¿Aprobar el período? Al aprobarlo ya no se podrán agregar partidas.'))return;
