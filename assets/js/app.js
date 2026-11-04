@@ -2024,7 +2024,20 @@ import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
   function openStockModal(productId) {
     const activeProducts = products.filter(function (product) { return product.active !== false; });
     if (!activeProducts.length) { toast('Primero activa o registra un producto para mover existencias.'); return; }
+    const movementSelect = stockForm.elements.type;
+    const allowedTypes = [
+      { value: "entry", permission: "inventory.receipts.receive" },
+      { value: "exit", permission: "inventory.manual_out.create" },
+      { value: "adjustment", permission: "inventory.adjustments.adjust" }
+    ].filter((item) => permissionGranted(item.permission));
+    if (!allowedTypes.length) { toast("Tu cuenta no tiene permiso para registrar movimientos manuales."); return; }
+    Array.from(movementSelect.options).forEach((option) => {
+      const allowed = allowedTypes.some((item) => item.value === option.value);
+      option.hidden = !allowed;
+      option.disabled = !allowed;
+    });
     stockForm.reset();
+    movementSelect.value = allowedTypes[0].value;
     const productSearch=stockForm.querySelector('[data-lookup="product"]');
     if(productSearch){productSearch.value='';productSearch.setCustomValidity('');}
     if(productId!=null&&productSearch)selectLookupValue(productSearch,productId);
