@@ -873,6 +873,10 @@
     event.preventDefault();if(!businessForm.reportValidity())return;
     const data=new FormData(businessForm),get=k=>String(data.get(k)||'').trim(),num=k=>Number(data.get(k)||0);
     const type=businessForm.dataset.recordType,currency=get('currency')==='NIO'?'NIO':'USD',rate=exchangeRate,id=Date.now();
+    if(BACKEND_MODE&&!['customer','supplier','employee'].includes(type)){
+      toast('Este módulo todavía no está conectado al backend. No se guardó ningún dato.');
+      return;
+    }
     const snapshot=captureDemoState();
     const persistBusinessChanges=function(){if(!persistDemoData()){restoreDemoState(snapshot);return false;}return true;};
     if(type==='purchase-order'){
@@ -933,10 +937,24 @@
       businessDialog.close();renderView();toast('Recepción '+receipt.number+' registrada. Inventario actualizado por las unidades recibidas; sin pago ni CxP.');
     }else if(type==='customer'){
       if(!get('name'))return;
+      if(BACKEND_MODE){
+        try{
+          const result=await apiRequest('/api/catalog/customers','POST',{name:get('name'),contact:get('contact')});
+          customers.unshift(mapDbCustomer(result.customer));businessDialog.close();renderView();toast('Cliente guardado en Neon Development.');
+        }catch(error){toast(error?.message||'No se pudo guardar el cliente.');}
+        return;
+      }
       customers.unshift({name:get('name'),contact:get('contact'),orders:0,spent:0,since:new Date().toLocaleDateString('es-NI',{month:'short',year:'numeric'})});
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Cliente guardado en DEMO local.');
     }else if(type==='supplier'){
       if(!get('name'))return;
+      if(BACKEND_MODE){
+        try{
+          const result=await apiRequest('/api/catalog/suppliers','POST',{name:get('name'),contact:get('contact'),phone:get('phone'),email:get('email'),currency,notes:get('notes')});
+          suppliers.unshift(mapDbSupplier(result.supplier));businessDialog.close();renderView();toast('Proveedor guardado en Neon Development.');
+        }catch(error){toast(error?.message||'No se pudo guardar el proveedor.');}
+        return;
+      }
       suppliers.unshift({id,name:get('name'),contact:get('contact'),phone:get('phone'),email:get('email'),currency});
       if(!persistBusinessChanges())return;businessDialog.close();renderView();toast('Proveedor guardado en DEMO local.');
     }else if(type==='order'){
