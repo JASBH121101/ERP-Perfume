@@ -69,7 +69,7 @@ async function readBootstrap(sql, user) {
       tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`
     ]);
 
-  const result = { settings };
+  const result = { settings: settings.filter((setting) => setting.setting_key !== "dgi_compliance" || isOwner || canFinance) };
   if (isOwner || canInventory) {
     result.products = products;
     result.inventory_movements = movements;
