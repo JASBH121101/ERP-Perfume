@@ -996,3 +996,6 @@ body.auth-locked .app-shell {
   .page-heading .heading-actions{max-width:100%;flex-wrap:wrap;justify-content:flex-end}
   .export-menu{right:0;max-width:min(240px,calc(100vw - 48px))}
 }
+
+/* Preserve native permission and conditional visibility for styled buttons. */
+button[hidden] { display: none !important; }
