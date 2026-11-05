@@ -148,8 +148,8 @@ jobs:
           {
             echo "## Wrangler Pages deployment"
             echo "- Target: **$DEPLOY_TARGET**"
-            echo "- Source commit: `$GITHUB_SHA`"
-            echo "- Build output: `dist/`"
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Build output: dist/"
             if [ "$DEPLOY_TARGET" = "production" ]; then
               echo "- URL: https://erp-perfume.pages.dev"
             else
