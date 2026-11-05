@@ -1,9 +1,7 @@
 name: Wrangler Pages Preview and Promotion
 
 on:
-  push:
-    branches:
-      - main
+  # Manual by design: bundle and validate a complete change set before consuming a Pages deployment.
   workflow_dispatch:
     inputs:
       target:
