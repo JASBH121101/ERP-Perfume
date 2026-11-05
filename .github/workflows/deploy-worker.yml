@@ -105,6 +105,6 @@ jobs:
             echo "- Target: **Neon Development**"
             echo "- Source commit: $GITHUB_SHA"
             echo "- Confirmation: ${{ github.event_name == 'push' && 'true' || inputs.confirm_development_deploy }}"
-            echo "- Cloudflare service: `jb-parfums-erp-api`"
+            echo "- Cloudflare service: jb-parfums-erp-api"
             echo "- Neon production was not targeted."
           } >> "$GITHUB_STEP_SUMMARY"

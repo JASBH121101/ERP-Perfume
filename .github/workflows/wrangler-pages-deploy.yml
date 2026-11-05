@@ -1,7 +1,11 @@
 name: Wrangler Pages Preview and Promotion
 
 on:
-  # Manual by design: bundle and validate a complete change set before consuming a Pages deployment.
+  # One controlled marker deploys a complete validated frontend build to Preview.
+  push:
+    branches: [main]
+    paths:
+      - ".deployment/pages-preview"
   workflow_dispatch:
     inputs:
       target:
