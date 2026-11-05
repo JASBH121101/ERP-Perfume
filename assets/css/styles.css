@@ -982,3 +982,17 @@ body.auth-locked .app-shell {
     gap:14px;
   }
 }
+
+
+/* Exportación uniforme de las vistas del ERP */
+.export-actions{position:relative;z-index:24;flex:0 0 auto}
+.export-trigger{white-space:nowrap}
+.export-menu{position:absolute;top:calc(100% + 7px);right:0;z-index:80;display:grid;gap:3px;min-width:205px;padding:6px;border:1px solid #e5ddcf;border-radius:10px;background:#fffdf9;box-shadow:0 12px 30px #211f1b1c}
+.export-menu[hidden]{display:none!important}
+.export-menu button{width:100%;min-height:40px;padding:8px 10px;display:flex;align-items:flex-start;flex-direction:column;justify-content:center;gap:2px;border:0;border-radius:7px;background:transparent;text-align:left;font-size:11px;font-weight:650}
+.export-menu button:hover,.export-menu button:focus-visible{background:#f4f0e8}
+.export-menu button small{color:#958b7a;font-size:9px;font-weight:400}
+@media(max-width:680px){
+  .page-heading .heading-actions{max-width:100%;flex-wrap:wrap;justify-content:flex-end}
+  .export-menu{right:0;max-width:min(240px,calc(100vw - 48px))}
+}

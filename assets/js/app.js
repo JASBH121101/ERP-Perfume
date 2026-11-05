@@ -1,6 +1,7 @@
 import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
 import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financial-snapshot.mjs';
 import { profileHasPermission } from './permission-utils.mjs';
+import { downloadExport, openPrintExport } from './export-tools.mjs';
 
 'use strict';
 
@@ -557,6 +558,10 @@ import { profileHasPermission } from './permission-utils.mjs';
         button.hidden = !(permissionGranted("purchases.receipts.receive") && permissionGranted("inventory.receipts.receive"));
         return;
       }
+      if (action === "toggle-export-menu" || action === "export-current-view") {
+        button.hidden = !canViewERPView(state.view);
+        return;
+      }
       if (action === "receive-purchase-order") {
         button.hidden = !(permissionGranted("purchases.receipts.receive") && permissionGranted("inventory.receipts.receive"));
         return;
@@ -803,7 +808,7 @@ import { profileHasPermission } from './permission-utils.mjs';
       const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
       return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Acción"><button class="button button-quiet button-small" type="button" data-action="stock-product" data-id="' + product.id + '">Registrar movimiento</button></td></tr>';
     }).join('');
-    return heading(views.inventory, '<div class="heading-actions-inline"><button class="button button-quiet" data-action="export-inventory">' + svg('download') + ' Exportar CSV</button><button class="button button-primary" data-action="stock-new">' + svg('plus') + ' Registrar movimiento</button></div>') +
+    return heading(views.inventory, '<div class="heading-actions-inline"><button class="button button-primary" data-action="stock-new">' + svg('plus') + ' Registrar movimiento</button></div>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Referencias activas</span><strong>' + activeProducts.length + '</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong>' + activeProducts.reduce(function (sum, product) { return sum + product.stock; }, 0) + '</strong></div><div class="summary-mini"><span>Para reponer</span><strong>' + activeProducts.filter(needsRestock).length + '</strong></div></div>' +
       '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="inventory-product-search" type="search" value="' + esc(state.inventoryProductQuery) + '" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"' + (state.inventoryProductStock === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.inventoryProductStock === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.inventoryProductStock === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.inventoryProductStock === 'out' ? ' selected' : '') + '>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">' + rows.length + ' de ' + activeProducts.length + ' productos</span><span>Ordenados por menor existencia</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th></th></tr></thead><tbody id="inventory-product-body">' + (rows || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>') + '</tbody></table></div></article>' +
       (["inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted) ? renderInventoryLedger() : "") +
@@ -837,58 +842,143 @@ import { profileHasPermission } from './permission-utils.mjs';
     document.body.appendChild(link);link.click();link.remove();
     window.setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
-  function exportCurrentView(){
-    let rows=[],filename='jb-parfums-registro.csv';
-    if(state.view==='products'){
-      filename='jb-parfums-productos.csv';
-      rows=[['SKU','Producto','Marca','Categoría','Precio USD','Costo USD','Stock','Stock mínimo','Estado'],
-        ...products.map(p=>[p.sku,p.name,p.brand,p.category,p.price,p.unitCost,p.stock,p.minStock,p.active===false?'Inactivo':'Activo'])];
+  function buildCurrentExportDataset(){
+    const title=state.view==='hr'?'RR. HH. · '+({employees:'Personal',attendance:'Asistencia',leaves:'Permisos',payroll:'Nómina'}[state.hrTab]||'Personal'):(views[state.view]?.title||'Exportación');
+    const fileBase='jb-parfums-'+(state.view==='hr'?'rrhh-'+state.hrTab:state.view);
+    let headers=[],rows=[];
+    if(state.view==='dashboard'){
+      const finance=financialSnapshot();
+      const active=products.filter(p=>p.active!==false);
+      headers=['Indicador','Valor','Unidad'];
+      rows=[
+        ['Productos activos',active.length,'productos'],
+        ['Unidades en inventario',active.reduce((sum,p)=>sum+Number(p.stock||0),0),'unidades'],
+        ['Productos por reponer',active.filter(needsRestock).length,'productos'],
+        ['Pedidos registrados',orders.length,'pedidos'],
+        ['Facturas registradas',invoices.length,'facturas'],
+        ['Ventas facturadas',finance.revenue,'USD'],
+        ['Cobros recibidos',invoices.reduce((sum,i)=>sum+Number(i.paidUsd||0),0),'USD'],
+        ['Utilidad bruta',finance.grossProfit,'USD'],
+        ['Resultado después de gastos',finance.netProfit,'USD']
+      ];
+    }else if(state.view==='products'){
+      headers=['SKU','Producto','Marca','Categoría','Concentración','Género','Familia olfativa','Contenido ml','Precio USD','Costo unitario USD','Utilidad estimada USD','Margen %','Stock','Stock mínimo','Ubicación','Estado'];
+      rows=filteredProducts().map(p=>{const costs=costSummary(p);return [p.sku,p.name,p.brand,p.category,p.concentration,p.gender,p.family,p.sizeMl,p.price,costs.unitCost,costs.profit,roundMoney(costs.margin),p.stock,p.minStock,p.location,p.active===false?'Inactivo':'Activo'];});
+    }else if(state.view==='inventory'){
+      headers=['Tipo de registro','SKU','Producto','Categoría / tipo','Fecha','Variación / stock','Stock mínimo / anterior','Estado / stock nuevo','Ubicación / nota'];
+      rows=filteredInventoryProducts().map(p=>['Existencia',p.sku,p.name,p.category,'',p.stock,p.minStock,p.stock===0?'Agotado':(needsRestock(p)?'Stock bajo':'Disponible'),p.location||'']);
+      const query=String(state.inventoryMovementQuery||'').trim().toLocaleLowerCase('es');
+      const startDate=state.inventoryMovementStartDate||'',endDate=state.inventoryMovementEndDate||'';
+      const movements=inventoryMovements.slice().sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime()).filter(m=>{
+        const searchable=[m.productName,m.sku,m.note,m.type,m.sourceId].filter(Boolean).join(' ').toLocaleLowerCase('es');
+        if(query&&!searchable.includes(query))return false;
+        if(state.inventoryMovementType!=='all'&&String(m.type||'')!==state.inventoryMovementType)return false;
+        const date=new Date(m.createdAt),key=Number.isNaN(date.getTime())?'':date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+        if(startDate&&(!key||key<startDate))return false;
+        if(endDate&&(!key||key>endDate))return false;
+        return true;
+      });
+      movements.forEach(m=>rows.push(['Movimiento',m.sku,m.productName,m.type,dateText(m.createdAt),Number(m.delta||0),Number(m.previousStock||0),Number(m.newStock||0),m.note||'']));
     }else if(state.view==='orders'){
-      filename='jb-parfums-pedidos.csv';
-      rows=[['Pedido','Cliente','Fecha','Total USD','Estado','Pago'],
-        ...orders.map(o=>[o.id,o.customer,o.date,o.amount,o.status,o.paymentStatus])];
+      headers=['Pedido','Cliente','Fecha','Total USD','Método de pago','Estado del pago','Moneda cobrada','Importe cobrado','Estado del pedido'];
+      rows=orders.map(o=>[o.id,o.customer,o.date,o.amount,o.paymentMethod,o.paymentStatus,o.paymentCurrency,o.paymentAmount,o.status]);
     }else if(state.view==='customers'){
-      filename='jb-parfums-clientes.csv';
-      rows=[['Cliente','Contacto','Pedidos','Total USD'],...customers.map(x=>[x.name,x.contact,x.orders,x.spent])];
-    }else if(state.view==='suppliers'){
-      filename='jb-parfums-proveedores.csv';
-      rows=[['Proveedor','Contacto','Teléfono','Correo','Moneda'],...suppliers.map(x=>[x.name,x.contact,x.phone,x.email,x.currency])];
-    }else if(state.view==='purchases'){
-      filename='jb-parfums-compras.csv';
-      rows=[['Compra','Proveedor','Fecha','Total USD','Pagado USD','Estado'],...purchases.map(x=>[x.purchaseNumber,x.supplier,dateText(x.createdAt),x.totalUsd,x.paidUsd,x.status])];
+      headers=['Cliente','Contacto','Teléfono','Correo','Tipo','Pedidos','Total pedidos USD','Desde','Estado'];
+      rows=customers.map(c=>[c.name,c.contact,c.phone,c.email,c.customerType,c.orders,c.spent,c.since,c.active===false?'Inactivo':'Activo']);
     }else if(state.view==='billing'||state.view==='receivables'){
-      filename='jb-parfums-facturas.csv';
-      rows=[['Factura','Cliente','Fecha','Total USD','Pagado USD','Saldo USD','Estado'],...invoices.map(x=>[x.id,x.customer,dateText(x.createdAt),x.totalUsd,x.paidUsd,Math.max(0,x.totalUsd-x.paidUsd),x.status])];
-    }else if(state.view==='expenses'){
-      filename='jb-parfums-gastos.csv';
-      rows=[['Fecha','Categoría','Descripción','Moneda','Importe','Equivalente USD'],...expenses.map(x=>[dateText(x.createdAt),x.category,x.description,x.currency,x.originalAmount,x.amountUsd])];
-    }else if(state.view==='cash'){
-      filename='jb-parfums-caja-bancos.csv';
-      rows=[['Fecha','Dirección','Concepto','Cuenta','Moneda','Importe','USD'],...cashEntries.map(x=>[dateText(x.createdAt),x.direction,x.concept,x.account,x.currency,x.originalAmount,x.amountUsd])];
+      const records=state.view==='receivables'?invoices.filter(i=>Number(i.totalUsd||0)-Number(i.paidUsd||0)>0.001):invoices;
+      headers=['Factura','Cliente','Fecha','Origen','Moneda','Tipo de cambio','Total USD','Pagado USD','Saldo USD','Estado','Método de pago','Cantidad de abonos'];
+      rows=records.map(i=>[i.id,i.customer||i.customerName,dateText(i.createdAt),i.source,i.currency,i.exchangeRate,i.totalUsd,i.paidUsd,Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),i.status,i.paymentMethod,(i.payments||[]).length]);
+    }else if(state.view==='hr'){
+      const employeeName=id=>employees.find(e=>String(e.id)===String(id))?.name||'Colaborador';
+      if(state.hrTab==='employees'){
+        headers=['Código','Colaborador','Cargo','Departamento','Teléfono','Correo','Salario mensual NIO','Fecha de ingreso','Estado','Usuario vinculado'];
+        rows=employees.map(e=>[e.employeeCode,e.name,e.position,e.department,e.phone,e.email,e.salaryNio,e.hireDate,e.status,e.linkedUserId||'']);
+      }else if(state.hrTab==='attendance'){
+        headers=['Fecha','Colaborador','Entrada','Salida','Descanso minutos','Estado','Notas'];
+        rows=attendanceRecords.map(a=>[dateText(a.workDate),employeeName(a.employeeId),a.checkIn,a.checkOut,a.breakMinutes,a.status,a.notes]);
+      }else if(state.hrTab==='leaves'){
+        headers=['Colaborador','Tipo de permiso','Desde','Hasta','Días','Motivo','Estado','Fecha de revisión'];
+        rows=leaveRequests.map(l=>[employeeName(l.employeeId),l.leaveType,dateText(l.startDate),dateText(l.endDate),l.days,l.reason,l.status,dateText(l.reviewedAt)]);
+      }else if(state.hrTab==='payroll'){
+        headers=['Período','Colaborador','Salario base NIO','Bonos NIO','Deducciones NIO','Salario neto NIO','Estado del período','Fecha de pago','Notas'];
+        rows=payrollItems.map(item=>{
+          const period=payrollPeriods.find(p=>String(p.id)===String(item.payrollPeriodId));
+          return [period?dateText(period.periodStart)+' – '+dateText(period.periodEnd):item.payrollPeriodId,employeeName(item.employeeId),item.baseSalaryNio,item.bonusesNio,item.deductionsNio,item.netSalaryNio,period?.status||'',dateText(period?.paymentDate),item.notes];
+        });
+        if(!rows.length)rows=payrollPeriods.map(p=>[dateText(p.periodStart)+' – '+dateText(p.periodEnd),'',0,0,0,0,p.status,dateText(p.paymentDate),p.notes]);
+      }
+    }else if(state.view==='dgi'){
+      const dgi=getDgiBookRows();headers=dgi[0]||[];rows=dgi.slice(1);
     }else if(state.view==='analytics'){
-      const f=financialSnapshot();filename='jb-parfums-resultados.csv';
-      rows=[['Indicador','USD'],['Ventas facturadas (incluye entrega)',f.revenue],['Venta neta de productos',f.productNetSales],['Ingresos por entrega',f.deliveryIncome],['Costo de ventas',f.costOfSales],['Utilidad bruta de productos',f.grossProfit],['Gastos operativos',f.operatingExpenses],['Resultado después de gastos',f.netProfit]];
+      const finance=financialSnapshot(),supplierPayables=calculatePayablesSnapshot(purchases,supplierInvoices,roundMoney);
+      const inventoryValue=products.reduce((sum,p)=>sum+Number(p.unitCost||0)*Number(p.stock||0),0);
+      const potential=products.reduce((sum,p)=>sum+Math.max(0,costSummary(p).profit)*Number(p.stock||0),0);
+      headers=['Indicador','USD','Descripción'];
+      rows=[
+        ['Ventas facturadas',finance.revenue,'Incluye entrega'],
+        ['Venta neta de productos',finance.productNetSales,'Después de descuentos'],
+        ['Ingresos por entrega',finance.deliveryIncome,'Ingresos de entrega'],
+        ['Costo de ventas',finance.costOfSales,'Costo guardado en las facturas'],
+        ['Utilidad bruta',finance.grossProfit,'Antes de gastos operativos'],
+        ['Gastos operativos',finance.operatingExpenses,'Gastos registrados'],
+        ['Resultado después de gastos',finance.netProfit,'No representa utilidad fiscal'],
+        ['Cobros recibidos',invoices.reduce((sum,i)=>sum+Number(i.paidUsd||0),0),'Pagos registrados'],
+        ['Valor del inventario',inventoryValue,'A costo unitario'],
+        ['Margen potencial del stock',potential,'Estimación sobre existencias actuales'],
+        ['Cuentas por cobrar',invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0),'Saldos pendientes'],
+        ['Cuentas por pagar',supplierPayables.total,'Proveedores y compras anteriores']
+      ];
+    }else if(state.view==='settings'){
+      headers=['Parámetro','Valor'];
+      rows=[['Sistema','JB PARFUMS ERP'],['Entorno de base de datos','Neon Development'],['Moneda base','USD'],['Tipo de cambio vigente',exchangeRate],['Rol de la cuenta',window.JBAuth?.profile?.role||'']];
+    }else if(state.view==='purchases'){
+      headers=['Compra','Proveedor','Fecha','Moneda','Importe original','Tipo de cambio','Total USD','Pagado USD','Saldo USD','Estado'];
+      rows=purchases.map(p=>[p.purchaseNumber,p.supplier,dateText(p.createdAt),p.currency,p.originalTotal,p.exchangeRate,p.totalUsd,p.paidUsd,Math.max(0,p.totalUsd-p.paidUsd),p.status]);
+    }else if(state.view==='purchaseOrders'){
+      headers=['Orden','Proveedor','Fecha','Entrega estimada','Moneda','Tipo de cambio','Subtotal USD','Descuento USD','Flete USD','Impuestos USD','Total USD','Recepciones','Estado','Condiciones','Notas'];
+      rows=purchaseOrders.map(p=>[p.orderNumber,p.supplier,dateText(p.createdAt),dateText(p.expectedDate),p.currency,p.exchangeRate,p.subtotalUsd,p.discountUsd,p.freightUsd,p.taxesUsd,p.totalUsd,purchaseReceipts.filter(r=>String(r.purchase_order_id)===String(p.id)).length,p.status,p.paymentTerms,p.notes]);
+    }else if(state.view==='payables'){
+      headers=['Tipo de documento','Referencia','Proveedor','Fecha','Vencimiento','Moneda','Total USD','Pagado USD','Saldo USD','Estado'];
+      rows=[
+        ...supplierInvoices.map(i=>['Factura proveedor',i.invoiceNumber,i.supplier,dateText(i.invoiceDate),dateText(i.dueDate),i.currency,i.amountUsd,i.paidUsd,Math.max(0,i.amountUsd-i.paidUsd),i.status]),
+        ...purchases.filter(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001).map(p=>['Compra anterior',p.purchaseNumber,p.supplier,dateText(p.createdAt),'',p.currency,p.totalUsd,p.paidUsd,Math.max(0,p.totalUsd-p.paidUsd),p.paidUsd>0?'Abono parcial':'Pendiente'])
+      ];
+    }else if(state.view==='suppliers'){
+      headers=['Proveedor','Contacto','Teléfono','Correo','Moneda habitual','Compras vinculadas','Saldo por pagar USD','Estado'];
+      rows=suppliers.map(s=>[s.name,s.contact,s.phone,s.email,s.currency,purchases.filter(p=>p.supplier===s.name).length,supplierPayablesUsd(s),s.active===false?'Inactivo':'Activo']);
+    }else if(state.view==='expenses'){
+      headers=['Fecha','Categoría','Descripción','Moneda','Importe original','Tipo de cambio','Equivalente USD'];
+      rows=expenses.map(e=>[dateText(e.createdAt),e.category,e.description,e.currency,e.originalAmount,e.exchangeRate,e.amountUsd]);
+    }else if(state.view==='cash'){
+      headers=['Fecha','Dirección','Concepto','Cuenta','Moneda','Importe original','Tipo de cambio','Equivalente USD','Referencia'];
+      rows=cashEntries.map(e=>[dateText(e.createdAt),e.direction==='income'?'Entrada':'Salida',e.concept,e.account,e.currency,e.originalAmount,e.exchangeRate,e.amountUsd,[e.sourceType,e.sourceId].filter(Boolean).join(' · ')]);
     }
-    if(state.view==='dgi'){exportDgiBook();return;}
-    if(!rows.length){toast('No hay datos disponibles para exportar en esta sección.');return;}
-    exportCsvFile(filename,rows);
-    toast('Exportación CSV generada desde los datos de Neon.');
+    return {title,fileBase,headers,rows};
   }
-  function renderInventoryCsv() {
-    const rows = [['SKU', 'Producto', 'Categoría', 'Stock', 'Stock mínimo', 'Estado', 'Ubicación']];
-    products.filter(function (product) { return product.active !== false; }).forEach(function (product) {
-      rows.push([product.sku, product.name, product.category, product.stock, product.minStock, product.stock === 0 ? 'Agotado' : (needsRestock(product) ? 'Stock bajo' : 'Disponible'), product.location || '']);
-    });
-    const csv = '\uFEFF' + rows.map(function (row) {
-      return row.map(function (cell) { return '"' + String(cell == null ? '' : cell).replace(/"/g, '""') + '"'; }).join(',');
-    }).join('\r\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url; link.download = 'jb-parfums-inventario.csv';
-    document.body.appendChild(link); link.click(); link.remove();
-    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    toast('Inventario exportado a CSV.');
+  function renderExportActions(){
+    return '<div class="export-actions"><button type="button" class="button button-quiet export-trigger" data-action="toggle-export-menu" aria-haspopup="true" aria-expanded="false" aria-controls="current-export-menu">'+svg('download')+' Exportar</button>'+
+      '<div class="export-menu" id="current-export-menu" role="menu" aria-label="Formatos de exportación" hidden>'+
+      '<button type="button" role="menuitem" data-action="export-current-view" data-format="csv">CSV <small>.csv · Compatible</small></button>'+
+      '<button type="button" role="menuitem" data-action="export-current-view" data-format="excel">Excel <small>.xls · Abre en Excel</small></button>'+
+      '<button type="button" role="menuitem" data-action="export-current-view" data-format="pdf">PDF / Imprimir <small>Vista A4 para guardar como PDF</small></button>'+
+      '</div></div>';
   }
+  function exportCurrentView(format){
+    const dataset=buildCurrentExportDataset();
+    if(!dataset.headers.length){toast('Esta sección todavía no tiene una estructura de exportación.');return;}
+    if(!dataset.rows.length){toast('No hay registros disponibles para exportar en esta sección.');return;}
+    try{
+      if(format==='pdf'){
+        if(!openPrintExport(dataset)){toast('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes para este sitio e inténtalo de nuevo.');return;}
+        toast('Documento preparado. Selecciona “Guardar como PDF” en el diálogo de impresión.');
+      }else{
+        const filename=downloadExport(dataset,format||'csv');
+        toast((format==='excel'?'Archivo de Excel generado: ':'Archivo CSV generado: ')+filename);
+      }
+    }catch(error){toast(error?.message||'No se pudo generar la exportación.');}
+  }
+  function renderInventoryCsv(){exportCurrentView('csv');}
   function showOrderDetails(orderId) {
     const order = orders.find(function (item) { return String(item.id) === String(orderId); });
     if (!order) { toast('No se encontró el pedido seleccionado.'); return; }
@@ -1895,17 +1985,24 @@ import { profileHasPermission } from './permission-utils.mjs';
     return ({purchase_invoice:'Factura de compra',service_invoice:'Factura de servicio',rent_receipt:'Recibo de alquiler',municipal_payment:'Pago municipal',dgi_payment:'Pago DGI',other:'Otro soporte'})[type]||'Documento';
   }
   function dgiAmountNio(usd,rate){return roundMoney(Number(usd||0)*Number(rate||exchangeRate));}
+  function getDgiBookRows(){
+    return [['Fecha','Tipo de operación','Tercero / descripción','Referencia','Importe NIO','Clasificación'],
+      ...invoices.filter(i=>!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status)).flatMap(i=>(i.payments||[]).map(payment=>[
+        dateText(payment.createdAt),'Cobro recibido · factura',i.customer,i.id,dgiAmountNio(payment.amountUsd,payment.exchangeRate||1),'Ingreso percibido'
+      ])),
+      ...cashEntries.filter(entry=>entry.direction==='income'&&!entry.sourceType).map(entry=>[
+        dateText(entry.createdAt),'Ingreso de caja sin documento vinculado',entry.concept,entry.id,dgiAmountNio(entry.amountUsd,entry.exchangeRate||1),'Ingreso por conciliar'
+      ]),
+      ...purchases.map(p=>[
+        dateText(p.createdAt),'Compra de inventario',p.supplier,p.purchaseNumber,dgiAmountNio(p.totalUsd,p.exchangeRate||exchangeRate),'Egreso / compra'
+      ]),
+      ...expenses.map(e=>[
+        dateText(e.createdAt),'Gasto · '+e.category,e.description,e.id,dgiAmountNio(e.amountUsd,e.exchangeRate||exchangeRate),'Egreso'
+      ])
+    ];
+  }
   function exportDgiBook(){
-    const rows=[['Fecha','Tipo de operación','Tercero / descripción','Referencia','Importe NIO','Clasificación'],...invoices.filter(i=>!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status)).flatMap(i=>(i.payments||[]).map(payment=>[
-      dateText(payment.createdAt),'Cobro recibido · factura',i.customer,i.id,dgiAmountNio(payment.amountUsd,payment.exchangeRate||1),'Ingreso percibido'
-    ])),...cashEntries.filter(entry=>entry.direction==='income'&&!entry.sourceType).map(entry=>[
-      dateText(entry.createdAt),'Ingreso de caja sin documento vinculado',entry.concept,entry.id,dgiAmountNio(entry.amountUsd,entry.exchangeRate||1),'Ingreso por conciliar'
-    ]),...purchases.map(p=>[
-      dateText(p.createdAt),'Compra de inventario',p.supplier,p.purchaseNumber,dgiAmountNio(p.totalUsd,p.exchangeRate||exchangeRate),'Egreso / compra'
-    ]),...expenses.map(e=>[
-      dateText(e.createdAt),'Gasto · '+e.category,e.description,e.id,dgiAmountNio(e.amountUsd,e.exchangeRate||exchangeRate),'Egreso'
-    ])];
-    exportCsvFile('jb-parfums-libro-auxiliar-dgi.csv',rows);
+    exportCsvFile('jb-parfums-libro-auxiliar-dgi.csv',getDgiBookRows());
     toast('Libro auxiliar exportado. Concílialo con comprobantes y registros exigibles antes de presentarlo.');
   }
   async function saveDgiSettings(event){
@@ -2227,6 +2324,8 @@ import { profileHasPermission } from './permission-utils.mjs';
       cash: renderCash
     };
     root.innerHTML = (renderers[state.view] || renderDashboard)();
+    const pageActions=root.querySelector('.page-heading .heading-actions');
+    if(pageActions)pageActions.insertAdjacentHTML('afterbegin',renderExportActions());
     applyPermissionNavigation();
     applyPermissionActions();
     updateNotificationIndicator();
@@ -2515,6 +2614,10 @@ import { profileHasPermission } from './permission-utils.mjs';
   }
 
   document.addEventListener('click', async function (event) {
+    if(!event.target.closest('.export-actions')){
+      const openMenu=document.getElementById('current-export-menu');
+      if(openMenu&&!openMenu.hidden){openMenu.hidden=true;const trigger=root.querySelector('[data-action="toggle-export-menu"]');if(trigger)trigger.setAttribute('aria-expanded','false');}
+    }
     const viewButton = event.target.closest('[data-view], [data-view-link]');
     if (viewButton) {
       goToView(viewButton.getAttribute('data-view') || viewButton.getAttribute('data-view-link'));
@@ -2523,7 +2626,20 @@ import { profileHasPermission } from './permission-utils.mjs';
     const action = event.target.closest('[data-action]');
     if (action) {
       const name = action.getAttribute('data-action');
-      if (name === 'reload-erp') {
+      if(name==='toggle-export-menu'){
+        const menu=document.getElementById('current-export-menu');
+        if(!menu)return;
+        menu.hidden=!menu.hidden;
+        action.setAttribute('aria-expanded',String(!menu.hidden));
+        return;
+      } else if(name==='export-current-view'){
+        const menu=document.getElementById('current-export-menu');
+        if(menu)menu.hidden=true;
+        const trigger=root.querySelector('[data-action="toggle-export-menu"]');
+        if(trigger)trigger.setAttribute('aria-expanded','false');
+        exportCurrentView(action.getAttribute('data-format')||'csv');
+        return;
+      } else if (name === 'reload-erp') {
         action.disabled=true;
         loadERPFromNeon(true).then(()=>renderView()).catch(error=>toast(error?.message||'No se pudo cargar Neon.')).finally(()=>{action.disabled=false;});
       } else if (name === 'import-products') openCatalogImport();
