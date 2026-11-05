@@ -2635,11 +2635,25 @@ import { downloadExport, openPrintExport } from './export-tools.mjs';
         const menu=document.getElementById('current-export-menu');
         if(!menu)return;
         menu.hidden=!menu.hidden;
+        if(!menu.hidden && window.matchMedia('(max-width: 720px)').matches){
+          const rect=action.getBoundingClientRect();
+          const width=Math.min(240,window.innerWidth-24);
+          const left=Math.max(12,Math.min(rect.left,window.innerWidth-width-12));
+          menu.style.position='fixed';
+          menu.style.left=left+'px';
+          menu.style.right='auto';
+          menu.style.top=Math.min(rect.bottom+8,window.innerHeight-180)+'px';
+          menu.style.width=width+'px';
+          menu.style.maxHeight='min(260px, calc(100dvh - '+(Math.min(rect.bottom+20,window.innerHeight-180))+'px - 16px))';
+          menu.style.overflowY='auto';
+        }else{
+          menu.removeAttribute('style');
+        }
         action.setAttribute('aria-expanded',String(!menu.hidden));
         return;
       } else if(name==='export-current-view'){
         const menu=document.getElementById('current-export-menu');
-        if(menu)menu.hidden=true;
+        if(menu){menu.hidden=true;menu.removeAttribute('style');}
         const trigger=root.querySelector('[data-action="toggle-export-menu"]');
         if(trigger)trigger.setAttribute('aria-expanded','false');
         exportCurrentView(action.getAttribute('data-format')||'csv');
