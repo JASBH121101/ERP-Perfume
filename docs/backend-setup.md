@@ -146,9 +146,3 @@ Before using real records, verify the live Worker `/api/health`, sign in using t
 
 The existing Playwright procurement and inventory tests intercept the API and use in-memory QA fixtures. They verify browser interactions and request payloads, but do not prove that the live Worker can write to Neon. The source/visual QA and CI checks likewise do not replace this live runtime verification.
 
-
-
-1. Complete a live authenticated smoke test of the deployed Worker and R2 paths.
-2. Extend automated tests to cover database-backed inventory and transaction paths, including stock conflict, order-to-invoice transitions and duplicate prevention.
-3. Implement the dedicated purchase-order and partial goods-receipt workflow if it remains in scope.
-4. Continue the inventory module audit and strengthen any missing UX, validation, traceability and reporting before loading real catalog data.
