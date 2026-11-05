@@ -546,7 +546,7 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     expect(layout.document, 'document must not overflow the viewport at ' + viewport.name)
       .toBeLessThanOrEqual(layout.viewport + 1);
     expect(layout.content).toBeGreaterThan(0);
-    const evidenceDir = path.join(process.cwd(), '.visual-evidence');
+    const evidenceDir = path.join(process.cwd(), 'visual-evidence');
     mkdirSync(evidenceDir, { recursive: true });
     const screenshotPath = path.join(evidenceDir, 'inventory-' + viewport.name + '.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
