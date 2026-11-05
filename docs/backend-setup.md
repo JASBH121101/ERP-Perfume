@@ -7,7 +7,7 @@ This repository uses `main` as its single integration branch. Cloudflare Pages p
 - Frontend: static HTML/CSS/JavaScript, bundled with esbuild into `dist/`.
 - Hosting: Cloudflare Pages project `erp-perfume`, connected to GitHub `main`.
 - API: Cloudflare Worker `jb-parfums-erp-api`, source in `worker/src/index.js` and `worker/src/erp.js`.
-- Worker configuration used by deployment: `worker/wrangler.toml`.
+- Worker configuration used by the controlled Development deployment: root `wrangler.toml`.
 - Database: Neon PostgreSQL database `erp_perfume`; the deployed Worker is configured to use the Neon `development` branch.
 - Identity: Neon Managed Auth; the Worker verifies signed JWTs, verified email, account status and ERP role.
 - Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
@@ -38,31 +38,39 @@ Important boundaries:
 
 ## GitHub Actions and Worker deployment
 
-The workflow `.github/workflows/deploy-worker.yml` is **manual only**. A push to `main` must not trigger a Worker deployment. Run it from GitHub Actions only after code changes have been batched and reviewed; the required confirmation is explicitly for the Development Worker.
+The GitHub workflows have separate responsibilities:
 
-Required repository secret:
+- `.github/workflows/ui-checks.yml` builds the frontend, checks Worker syntax, runs unit tests and Playwright browser tests.
+- `.github/workflows/jb-expert-qa.yml` runs the source, completeness, interaction and responsive visual audit.
+- `.github/workflows/deploy-worker.yml` currently validates the Development Worker source, build and unit tests. It does **not** upload or deploy the Worker.
+- `.github/workflows/wrangler-pages-deploy.yml` publishes a controlled Pages Preview from the `.deployment/pages-preview` marker or manual dispatch. Production is a separate explicit workflow choice.
 
-- `CLOUDFLARE_WORKERS_API_TOKEN`: an account-owned Cloudflare API token with the **Editor** role scoped to the individual Worker `jb-parfums-erp-api`. This least-privilege scope is required for Wrangler to deploy that Worker. The token currently used by the prior workflow returned Cloudflare's `No access to the specified service` response and must be replaced or granted the appropriate Worker Editor scope before a manual deployment can succeed.
-- Keep the existing Pages deployment credential separate: `CLOUDFLARE_API_TOKEN` remains used by the Pages Wrangler workflow. Do not weaken Pages access or reuse a Pages-only token for Worker deployment.
+The last verified Pages Preview deployment is on branch `wrangler-preview` and has the alias `https://wrangler-preview.erp-perfume.pages.dev`. The active Worker is `jb-parfums-erp-api`; its current runtime variables report `ERP_ENVIRONMENT=development`, and its configured CORS origins include the Pages production domain and the Preview alias.
 
-The workflow checks the explicit confirmation, verifies that `worker/wrangler.toml` targets `ERP_ENVIRONMENT=development`, validates source, builds, runs unit tests, then runs `wrangler whoami` and `wrangler deploy` from the `worker/` directory. It is not a Production deployment workflow.
-
-Never store either token in source files, workflow logs, issues, or chat.
+Worker uploads are a separate, controlled operation. Do not assume that a green Worker validation job means the Worker was deployed. Do not create or request a second Cloudflare token merely to run validation. Before any Worker upload, confirm the intended source revision, environment bindings and Development-only target; verify the new active version after upload.
 
 ## Worker database secret
 
-The deployed Worker must have the secret `DATABASE_URL` configured in Cloudflare Workers & Pages → `jb-parfums-erp-api` → Settings → Variables and Secrets.
+The deployed Worker currently exposes a `DATABASE_URL` binding of type `secret_text`. Cloudflare does not return the secret value when settings are inspected, so its existence is confirmed but its exact database target cannot be proven from the binding metadata alone.
 
-Use the connection string for:
+Expected secret target:
 
 - Neon project: `erp-perfume`
 - Database: `erp_perfume`
 - Branch: `development`
 - Runtime role: `jb_erp_runtime_sql`
 
-The actual connection string and password are secrets. Do not paste them into GitHub, source files, logs, documentation or chat. If credentials change, update the Worker secret directly in Cloudflare and redeploy if required.
+The Worker also has the Neon Auth base URL and JWKS URL configured for the Development Auth endpoint, `ERP_ENVIRONMENT=development`, the configured owner bootstrap email and the private R2 bucket binding.
 
-The Worker also requires the Neon Auth base URL, JWKS URL, owner bootstrap email, `ERP_ENVIRONMENT=development`, the allowed Pages origin, and the R2 bucket binding. These settings are configured as Worker variables/bindings, not committed credentials.
+Before real business transactions, verify the live Worker endpoint:
+
+```sh
+curl --fail --show-error https://jb-parfums-erp-api.jaredblancoh19.workers.dev/api/health
+```
+
+Expected health response: `ok=true`, with `services.database=true`, `services.authentication=true`, `services.storage=true`, and `environment=development`. The `environment` flag alone is not proof that the hidden `DATABASE_URL` points to the Development branch. Do not use real data until the health response and a test authenticated profile confirm the actual runtime path.
+
+Never expose or commit the database connection string or password.
 
 ## Neon Auth security checklist
 
@@ -97,9 +105,11 @@ Not every resource supports generic update or delete. Financial, payroll and inv
 
 ## Database migrations
 
-SQL migrations are kept in `db/migrations/` and tracked in `public.app_schema_migrations` on the Development branch. The last direct read of Development showed versions `0001` through `0009` applied. The current `main` tree contains source files `0001` through `0007`; the exact source files for versions `0008` and `0009` are absent. Their registered names, checksums and observed schema are documented in `docs/migration-reconciliation-2026-11-05.md`.
+SQL migration sources `0001` through `0010` are now present in `db/migrations/` on `main`. The Neon Development registry was verified read-only and contains versions `0001` through `0010`.
 
-Do not recreate or rerun `0008`/`0009` from guesses: their records and resulting objects already exist in Development. Recover the exact original SQL or create a reviewed forward reconciliation migration. Migrations are not automatically executed by GitHub Actions, Pages or Worker deployments. Do not migrate Neon Production until the owner explicitly approves a reviewed cutover and backup plan.
+The historical source files for `0008` and `0009` had never been committed to GitHub. They have been restored as **schema-equivalent, idempotent reconstructions** from the live Development catalog, not as byte-for-byte copies of the original scripts. Their original recorded checksums are retained as audit evidence in `docs/migration-history-reconciliation.md`. The recovered DDL was re-validated idempotently against Development; no business data was inserted and the migration registry was not rewritten.
+
+Do not replay versions already registered on a branch. Migrations are not automatically executed by GitHub Actions, Pages or Worker deployments. Do not apply migrations to Neon Production until the owner explicitly approves a reviewed cutover and backup plan.
 
 ## Validation
 
@@ -126,7 +136,17 @@ Before using real records, verify the live Worker `/api/health`, sign in using t
 - Optional AI repair is disabled by default. No AI repair execution is part of the normal deployment.
 - Review Cloudflare and Neon usage before enabling scheduled jobs or expanding traffic.
 
-## Known items for the next implementation phase
+## Remaining verification before real business use
+
+1. **Live API and authentication smoke test:** request `/api/health`, sign in with the owner account and verify `/api/auth/profile` returns the expected ERP identity and permissions.
+2. **Live database transaction tests:** on Development only, test one product creation, inventory movement, supplier and purchase order, partial receipt, supplier invoice, payable payment, sales invoice and customer payment. Verify resulting records, balances, stock and audit entries directly in Neon. Use disposable fixtures or a rollback strategy; do not use real transactions for QA.
+3. **Private R2 paths:** verify authenticated upload, download and deletion of a test product image and a DGI support attachment.
+4. **Finance reconciliation:** validate opening balances, cash/bank movements, receivables, payables, expenses and gross/net profit against controlled transactions.
+5. **Operational policy review:** confirm payroll calculations and DGI requirements against the applicable Nicaraguan rules before using those modules for statutory operations.
+
+The existing Playwright procurement and inventory tests intercept the API and use in-memory QA fixtures. They verify browser interactions and request payloads, but do not prove that the live Worker can write to Neon. The source/visual QA and CI checks likewise do not replace this live runtime verification.
+
+
 
 1. Complete a live authenticated smoke test of the deployed Worker and R2 paths.
 2. Extend automated tests to cover database-backed inventory and transaction paths, including stock conflict, order-to-invoice transitions and duplicate prevention.
