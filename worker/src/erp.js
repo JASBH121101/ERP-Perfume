@@ -461,7 +461,7 @@ export async function createPurchaseOrder(sql, user, body) {
   const total = round(subtotal-discount+freight+taxes);
   if (discount > subtotal || total <= 0 || total > 999999999999.99) return erpError(400,"INVALID_PURCHASE_ORDER_TOTAL","El descuento no puede superar el subtotal y el total debe ser positivo.");
   const expected = body.expected_delivery_date ? String(body.expected_delivery_date) : null;
-  if (expected && !/^\\d{4}-\\d{2}-\\d{2}$/.test(expected)) return erpError(400,"INVALID_EXPECTED_DATE","La fecha estimada no es válida.");
+  if (expected && !/^\d{4}-\d{2}-\d{2}$/.test(expected)) return erpError(400,"INVALID_EXPECTED_DATE","La fecha estimada no es válida.");
   try {
     const rows = await sql.query(
       "WITH generated_number AS (SELECT 'JB-OC-'||TO_CHAR(CURRENT_DATE,'YYYY')||'-'||LPAD(nextval('public.purchase_order_number_seq')::text,6,'0') AS order_number),"+
