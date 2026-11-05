@@ -81,7 +81,7 @@ test("purchase order converts NIO line costs and stores order, lines and audit a
 
   assert.equal(result.status, 201);
   assert.equal(result.body.record.id, orderId);
-  assert.match(result.body.record.order_number, /^JB-OC-\\d{4}-\\d{6}$/);
+  assert.match(result.body.record.order_number, /^JB-OC-\d{4}-\d{6}$/);
   assert.equal(captured.values[0], supplierId);
   assert.equal(captured.values[1], "NIO");
   assert.equal(captured.values[2], 36.6);
@@ -91,8 +91,8 @@ test("purchase order converts NIO line costs and stores order, lines and audit a
   assert.equal(captured.values[6], 0.5);
   assert.equal(captured.values[7], 36.5);
   assert.equal(captured.values[12], actor.id);
-  assert.match(captured.statement, /nextval\\('public\\.purchase_order_number_seq'\\)/);
-  assert.match(captured.statement, /TO_CHAR\\(CURRENT_DATE,'YYYY'\\)/);
+  assert.match(captured.statement, /nextval\('public\.purchase_order_number_seq'\)/);
+  assert.match(captured.statement, /TO_CHAR\(CURRENT_DATE,'YYYY'\)/);
 
   const lines = JSON.parse(captured.values[11]);
   assert.deepEqual(lines.map(line => line.unit_cost_usd), [10, 5]);
