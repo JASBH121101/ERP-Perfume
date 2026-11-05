@@ -83,6 +83,16 @@ jobs:
       - name: Run build, static checks, unit tests and E2E
         run: bash scripts/run-validation.sh
 
+
+      - name: Upload Playwright visual evidence
+        if: always() && hashFiles('.playwright-results/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: erp-playwright-visual-evidence
+          path: .playwright-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Upload deterministic test log
         if: always() && hashFiles('.ai-output/validation.log') != ''
         uses: actions/upload-artifact@v4

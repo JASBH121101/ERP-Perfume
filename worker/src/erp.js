@@ -289,7 +289,7 @@ async function createOrder(sql, user, body) {
   }
 }
 
-async function createProduct(sql, user, body) {
+export async function createProduct(sql, user, body) {
   const name = String(body.name || "").trim();
   const sku = String(body.sku || "").trim();
   const stock = Number(body.stock || 0);
@@ -399,7 +399,7 @@ export async function importProducts(sql, user, body) {
   }
 }
 
-async function createInventoryMovement(sql, user, body) {
+export async function createInventoryMovement(sql, user, body) {
   const type = String(body.movement_type || "");
   const quantity = Number(body.quantity);
   const note = body.note == null ? "" : String(body.note).trim();

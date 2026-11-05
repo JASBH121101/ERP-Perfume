@@ -2818,11 +2818,36 @@ import { profileHasPermission } from './permission-utils.mjs';
     const button=stockForm.querySelector('[type="submit"]');
     if(button){button.disabled=true;button.textContent='Registrando…';}
     try{
-      await erpApi('inventory-movements',{method:'POST',body:JSON.stringify({
+      const result=await erpApi('inventory-movements',{method:'POST',body:JSON.stringify({
         product_id:product.id,movement_type:movementType,quantity,note,reference_type:'manual',reference_id:null
       })});
-      await loadERPFromNeon(true);
-      stockForm.reset();stockDialog.close();renderView();
+      const savedMovement=result?.record||null;
+      stockForm.reset();stockDialog.close();
+      try{
+        await loadERPFromNeon(true);
+      }catch(refreshError){
+        // The POST already committed. Reflect its returned balance locally and close the form
+        // so the operator cannot accidentally submit the same stock movement a second time.
+        const currentProduct=products.find(item=>String(item.id)===String(product.id));
+        if(currentProduct&&Number.isInteger(Number(savedMovement?.new_stock))){
+          currentProduct.stock=Number(savedMovement.new_stock);
+        }
+        if(savedMovement?.id&&!inventoryMovements.some(item=>String(item.id)===String(savedMovement.id))){
+          inventoryMovements.unshift({
+            id:savedMovement.id,productId:savedMovement.product_id,productName:product.name,sku:product.sku,
+            type:savedMovement.movement_type,quantity:Number(savedMovement.quantity||0),
+            delta:Number(savedMovement.quantity_delta||0),previousStock:Number(savedMovement.previous_stock||0),
+            newStock:Number(savedMovement.new_stock||0),note:savedMovement.note||"",
+            sourceType:savedMovement.reference_type||"",sourceId:savedMovement.reference_id||"",
+            createdAt:savedMovement.created_at||new Date().toISOString()
+          });
+          inventoryMovements=inventoryMovements.slice(0,5000);
+        }
+        renderView();
+        toast('Movimiento guardado en Neon. La recarga falló; el saldo quedó actualizado. Recarga los datos antes de otra operación.');
+        return;
+      }
+      renderView();
       toast(movementType+' registrado en Neon: '+product.name+'.');
     }catch(error){toast(error?.message||'No se pudo registrar el movimiento.');}
     finally{if(button){button.disabled=false;button.textContent='Registrar movimiento';}}

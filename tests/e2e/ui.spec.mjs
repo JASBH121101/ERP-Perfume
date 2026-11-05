@@ -90,6 +90,103 @@ async function navigateToView(page, view) {
   await sidebar.locator('button[data-view="' + view + '"]').click();
 }
 
+async function installStatefulInventoryApi(page, options = {}) {
+  await page.unroute(workerPattern);
+  const data = structuredClone(fixture);
+  const requests = [];
+  let nextProduct = 201;
+  let mutationCommitted = false;
+
+  const fulfill = (route, payload, status = 200) => route.fulfill({
+    status, contentType: 'application/json; charset=utf-8', body: JSON.stringify(payload)
+  });
+
+  await page.route(workerPattern, async route => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const method = request.method();
+    requests.push({ method, pathname, body: request.postDataJSON?.() || null });
+
+    if (pathname.endsWith('/bootstrap') && method === 'GET') {
+      if (options.failBootstrapAfterMutation && mutationCommitted) {
+        return fulfill(route, { error: { code: 'BOOTSTRAP_FAILED', message: 'No se pudo recargar el inventario.' } }, 503);
+      }
+      return fulfill(route, { data });
+    }
+
+    if (pathname === '/api/erp/products' && method === 'POST') {
+      const payload = request.postDataJSON();
+      if (data.products.some(item => String(item.sku).toLowerCase() === String(payload.sku).toLowerCase())) {
+        return fulfill(route, { error: { message: 'El SKU ya existe.' } }, 409);
+      }
+      const id = '00000000-0000-0000-0000-' + String(nextProduct++).padStart(12, '0');
+      const record = {
+        id, sku: payload.sku, name: payload.name, brand: payload.brand || null,
+        category: payload.category || 'Perfumería', concentration: payload.concentration || null,
+        gender: payload.gender || null, family: payload.family || null, size_ml: payload.size_ml || null,
+        presentation: payload.presentation || null, purchase_cost_usd: Number(payload.purchase_cost_usd || 0),
+        additional_cost_usd: Number(payload.additional_cost_usd || 0), unit_cost_usd: Number(payload.unit_cost_usd || 0),
+        price_usd: Number(payload.price_usd || 0), stock: Number(payload.stock || 0),
+        min_stock: Number(payload.min_stock || 0), location: payload.location || null, active: true,
+        barcode: payload.barcode || null, description: null, supplier_name: payload.supplier_name || null,
+        wholesale_price_usd: payload.wholesale_price_usd || null, tone: payload.tone || 'art-violet',
+        notes: payload.notes || null, images: [], created_at: new Date().toISOString()
+      };
+      data.products.push(record);
+      if (record.stock > 0) {
+        data.inventory_movements.unshift({
+          id: 'qa-initial-' + id, product_id: id, movement_type: 'Entrada',
+          quantity: record.stock, quantity_delta: record.stock, previous_stock: 0,
+          new_stock: record.stock, note: 'Existencias iniciales', reference_type: 'product',
+          reference_id: null, created_at: new Date().toISOString()
+        });
+      }
+      mutationCommitted = true;
+      return fulfill(route, { record }, 201);
+    }
+
+    const productMatch = pathname.match(/\/api\/erp\/products\/([0-9a-f-]+)$/i);
+    if (productMatch && method === 'PATCH') {
+      const record = data.products.find(item => item.id === productMatch[1]);
+      if (!record) return fulfill(route, { error: { message: 'Producto no encontrado.' } }, 404);
+      Object.assign(record, request.postDataJSON());
+      return fulfill(route, { record });
+    }
+
+    if (pathname === '/api/erp/inventory-movements' && method === 'POST') {
+      const payload = request.postDataJSON();
+      const product = data.products.find(item => item.id === payload.product_id && item.active !== false);
+      if (!product) return fulfill(route, { error: { message: 'Producto no disponible.' } }, 409);
+      const quantity = Number(payload.quantity);
+      const previousStock = Number(product.stock || 0);
+      const delta = payload.movement_type === 'Salida' ? -quantity
+        : payload.movement_type === 'Ajuste' ? quantity - previousStock : quantity;
+      const nextStock = previousStock + delta;
+      if (!Number.isInteger(quantity) || quantity < 0 ||
+          (payload.movement_type !== 'Ajuste' && quantity < 1) ||
+          !['Entrada', 'Salida', 'Ajuste'].includes(payload.movement_type) ||
+          nextStock < 0 || delta === 0) {
+        return fulfill(route, { error: { message: 'Movimiento inválido o existencias insuficientes.' } }, 409);
+      }
+      product.stock = nextStock;
+      const record = {
+        id: 'qa-stock-' + String(data.inventory_movements.length + 1),
+        product_id: product.id, movement_type: payload.movement_type, quantity: Math.abs(delta),
+        quantity_delta: delta, previous_stock: previousStock, new_stock: nextStock,
+        note: payload.note || null, reference_type: 'manual', reference_id: null,
+        created_at: new Date().toISOString()
+      };
+      data.inventory_movements.unshift(record);
+      mutationCommitted = true;
+      return fulfill(route, { record }, 201);
+    }
+
+    return fulfill(route, { records: [], data });
+  });
+
+  return { data, requests };
+}
+
 test('authenticated ERP renders dashboard and primary modules from API data', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/JB PARFUMS/);
@@ -305,4 +402,158 @@ test('local browser storage contains preferences only, not demo business data', 
   const keys = await page.evaluate(() => Object.keys(localStorage));
   expect(keys.some(key => key.includes('demo-data'))).toBe(false);
   await expect(page.locator('#db-connection-status')).toHaveText('Conectado');
+});
+
+
+test('product creation saves its opening balance and writes the first kardex entry', async ({ page }) => {
+  const api = await installStatefulInventoryApi(page);
+  await page.goto('/');
+  await navigateToView(page, 'products');
+  await page.locator('[data-action="new-product"]').click();
+
+  const dialog = page.locator('#product-dialog');
+  const form = page.locator('#product-form');
+  await expect(dialog).toBeVisible();
+  await form.locator('[name="name"]').fill('QA Inventory Created Perfume');
+  await form.locator('[name="sku"]').fill('QA-NEW-201');
+  await form.locator('[name="brand"]').fill('QA Atelier');
+  await form.locator('[name="price"]').fill('42.50');
+  await form.locator('[name="purchaseCost"]').fill('18');
+  await form.locator('[name="additionalCost"]').fill('2');
+  await form.locator('[name="stock"]').fill('4');
+  await form.locator('[name="minStock"]').fill('2');
+
+  const createRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/products') && request.method() === 'POST'
+  );
+  await form.locator('#save-product').click();
+  const request = await createRequest;
+  const payload = request.postDataJSON();
+  expect(payload.sku).toBe('QA-NEW-201');
+  expect(payload.stock).toBe(4);
+  expect(payload.unit_cost_usd).toBe(20);
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('#product-table-body')).toContainText('QA Inventory Created Perfume');
+
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#inventory-product-body')).toContainText('QA Inventory Created Perfume');
+  await expect(page.locator('#inventory-product-body')).toContainText('4 unidades');
+  await expect(page.locator('#inventory-movement-body')).toContainText('Existencias iniciales');
+  expect(api.data.inventory_movements.some(movement =>
+    movement.product_id.endsWith('000000000201') && movement.quantity_delta === 4
+  )).toBe(true);
+});
+
+test('inventory records receipts, issues and physical-count adjustments in the kardex', async ({ page }) => {
+  const api = await installStatefulInventoryApi(page);
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+
+  const productId = '00000000-0000-0000-0000-000000000101';
+  const register = async (type, quantity, note, expectedStock) => {
+    await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
+    const form = page.locator('#stock-form');
+    await expect(page.locator('#stock-dialog')).toBeVisible();
+    await form.locator('[name="type"]').selectOption(type);
+    await form.locator('[name="quantity"]').fill(String(quantity));
+    await form.locator('[name="note"]').fill(note);
+    const response = page.waitForResponse(item =>
+      item.url().endsWith('/api/erp/inventory-movements') && item.request().method() === 'POST'
+    );
+    await form.locator('button[type="submit"]').click();
+    expect((await response).status()).toBe(201);
+    await expect(page.locator('#stock-dialog')).not.toBeVisible();
+    await expect(page.locator('#inventory-product-body')).toContainText(expectedStock + ' unidades');
+    await expect(page.locator('#inventory-movement-body tr').first()).toContainText(note);
+  };
+
+  await register('entry', 3, 'Entrada QA proveedor', 8);
+  await register('exit', 2, 'Salida QA venta', 6);
+  await register('adjustment', 4, 'Conteo físico QA', 4);
+
+  const product = api.data.products.find(item => item.id === productId);
+  expect(product.stock).toBe(4);
+  const qaNotes = new Set(['Entrada QA proveedor', 'Salida QA venta', 'Conteo físico QA']);
+  const qaMovements = api.data.inventory_movements.filter(item => qaNotes.has(item.note));
+  expect(qaMovements.map(item => item.quantity_delta)).toEqual([-2, -2, 3]);
+  expect(qaMovements.map(item => item.new_stock)).toEqual([4, 6, 8]);
+});
+
+test('inventory prevents an issue larger than available stock before sending it to the API', async ({ page }) => {
+  const api = await installStatefulInventoryApi(page);
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+
+  const productId = '00000000-0000-0000-0000-000000000103';
+  await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
+  const form = page.locator('#stock-form');
+  await form.locator('[name="type"]').selectOption('exit');
+  await form.locator('[name="quantity"]').fill('1');
+  await form.locator('[name="note"]').fill('Salida que no debe existir');
+  await form.locator('button[type="submit"]').click();
+
+  await expect(page.locator('#toast-region')).toContainText('Stock insuficiente');
+  await expect(page.locator('#stock-dialog')).toBeVisible();
+  expect(api.requests.filter(item =>
+    item.pathname.endsWith('/inventory-movements') && item.method === 'POST'
+  )).toHaveLength(0);
+  expect(api.data.products.find(item => item.id === productId).stock).toBe(0);
+});
+
+test('a committed stock movement is not repeated when the following data refresh fails', async ({ page }) => {
+  const api = await installStatefulInventoryApi(page, { failBootstrapAfterMutation: true });
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+
+  const productId = '00000000-0000-0000-0000-000000000101';
+  await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
+  const form = page.locator('#stock-form');
+  await form.locator('[name="type"]').selectOption('entry');
+  await form.locator('[name="quantity"]').fill('2');
+  await form.locator('[name="note"]').fill('Entrada comprometida QA');
+  await form.locator('button[type="submit"]').click();
+
+  await expect(page.locator('#stock-dialog')).not.toBeVisible();
+  await expect(page.locator('#inventory-product-body')).toContainText('7 unidades');
+  await expect(page.locator('#toast-region')).toContainText('Movimiento guardado en Neon');
+  expect(api.requests.filter(item =>
+    item.pathname.endsWith('/inventory-movements') && item.method === 'POST'
+  )).toHaveLength(1);
+  expect(api.data.products.find(item => item.id === productId).stock).toBe(7);
+});
+
+test('inventory and catalog stay usable at mobile, tablet and desktop widths', async ({ page }, testInfo) => {
+  await installStatefulInventoryApi(page);
+  const viewports = [
+    { name: 'mobile', width: 390, height: 844 },
+    { name: 'tablet', width: 768, height: 1024 },
+    { name: 'desktop', width: 1440, height: 900 }
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto('/');
+    await navigateToView(page, 'inventory');
+    await expect(page.getByRole('heading', { name: 'Inventario' })).toBeVisible();
+    await expect(page.locator('#inventory-product-search')).toBeVisible();
+    const layout = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+      content: document.querySelector('.main-panel')?.getBoundingClientRect().width || 0
+    }));
+    expect(layout.document, 'document must not overflow the viewport at ' + viewport.name)
+      .toBeLessThanOrEqual(layout.viewport + 1);
+    expect(layout.content).toBeGreaterThan(0);
+    const screenshotPath = testInfo.outputPath('inventory-' + viewport.name + '.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await testInfo.attach('inventory-' + viewport.name, { path: screenshotPath, contentType: 'image/png' });
+
+    await navigateToView(page, 'products');
+    await expect(page.getByRole('heading', { name: 'Catálogo de productos' })).toBeVisible();
+    await expect(page.locator('#product-table-body')).toContainText('QA Fixture Perfume');
+    const catalogLayout = await page.evaluate(() => ({
+      viewport: window.innerWidth, document: document.documentElement.scrollWidth
+    }));
+    expect(catalogLayout.document).toBeLessThanOrEqual(catalogLayout.viewport + 1);
+  }
 });
