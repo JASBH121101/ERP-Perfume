@@ -52,6 +52,8 @@ import { profileHasPermission } from './permission-utils.mjs';
   let purchaseOrderItems = [];
   let purchaseReceipts = [];
   let purchaseReceiptItems = [];
+  let supplierInvoices = [];
+  let supplierInvoicePayments = [];
   let expenses = [];
   let cashEntries = [];
   let cashAccounts = [];
@@ -367,6 +369,13 @@ import { profileHasPermission } from './permission-utils.mjs';
       purchaseOrderItems = data.purchase_order_items || [];
       purchaseReceipts = data.purchase_receipts || [];
       purchaseReceiptItems = data.purchase_receipt_items || [];
+      supplierInvoices = (data.supplier_invoices || []).map(invoice => ({
+        id:invoice.id,supplierId:invoice.supplier_id,supplier:invoice.supplier_name,purchaseOrderId:invoice.purchase_order_id||null,
+        invoiceNumber:invoice.invoice_number,invoiceDate:invoice.invoice_date,dueDate:invoice.due_date||null,currency:invoice.currency,
+        exchangeRate:Number(invoice.exchange_rate||1),originalAmount:Number(invoice.original_amount||0),amountUsd:Number(invoice.amount_usd||0),
+        paidUsd:Number(invoice.paid_amount_usd||0),status:invoice.status,notes:invoice.notes||"",createdAt:invoice.created_at
+      }));
+      supplierInvoicePayments = data.supplier_invoice_payments || [];
       const rawInvoiceItems = data.invoice_items || [];
       const rawInvoicePayments = data.invoice_payments || [];
       invoices = (data.invoices || []).map(i => ({
@@ -475,7 +484,7 @@ import { profileHasPermission } from './permission-utils.mjs';
     dgi: ["dgi.documents.view"], analytics: ["analytics.reports.view"], settings: ["settings.general.view"],
     purchases: ["purchases.receipts.view"],
     purchaseOrders: ["purchases.purchase_orders.view","purchases.receipts.view"],
-    payables: ["payables.payments.view"], suppliers: ["suppliers.records.view"],
+    payables: ["payables.payments.view","purchases.supplier_invoices.view"], suppliers: ["suppliers.records.view"],
     expenses: ["expenses.records.view"], cash: ["cash.entries.view"]
   };
   function permissionGranted(key) {
@@ -517,7 +526,10 @@ import { profileHasPermission } from './permission-utils.mjs';
     "cancel-purchase-order": ["purchases.purchase_orders.cancel"],
     "add-purchase-order-line": ["purchases.purchase_orders.create"],
     "remove-purchase-order-line": ["purchases.purchase_orders.create"],
-    "new-purchase-payment": ["payables.payments.create"], "new-supplier": ["suppliers.records.create"],
+    "new-purchase-payment": ["payables.payments.create"],
+    "new-supplier-invoice": ["purchases.supplier_invoices.create"],
+    "new-supplier-invoice-payment": ["payables.payments.create"],
+    "new-supplier": ["suppliers.records.create"],
     "new-expense": ["expenses.records.create"], "new-cash": ["cash.entries.create"],
     "new-cash-account": ["cash.entries.create"], "new-employee": ["hr.employees.create"],
     "new-attendance": ["hr.attendance.create"], "new-leave": ["hr.leave.create"],
@@ -1219,7 +1231,7 @@ import { profileHasPermission } from './permission-utils.mjs';
     if(typeof previewDialog.showModal==='function')previewDialog.showModal();
   }
   function openBusinessDialog(type,recordId){
-    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra',expense:'Registrar gasto',cash:'Registrar recibo o pago','cash-account':'Nueva cuenta de caja o banco',invoice:'Nueva factura',payment:'Registrar abono',employee:'Agregar colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
+    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra','supplier-invoice':'Registrar factura de proveedor','supplier-invoice-payment':'Registrar pago a proveedor',expense:'Registrar gasto',cash:'Registrar recibo o pago','cash-account':'Nueva cuenta de caja o banco',invoice:'Nueva factura',payment:'Registrar abono',employee:'Agregar colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
     let body='';
     if(type==='customer')body='<div class="form-grid">'+formField('Nombre del cliente','name','text',true,'maxlength="80"')+formField('Teléfono o contacto','contact','text',false,'maxlength="40"')+'</div>';
     if(type==='supplier')body='<div class="form-grid">'+formField('Nombre del proveedor','name','text',true,'maxlength="80"')+formField('Contacto','contact','text',false,'maxlength="80"')+formField('Teléfono','phone','tel',false,'maxlength="40"')+formField('Correo','email','email',false,'maxlength="120"')+currencyField('USD')+'</div>';
@@ -1240,6 +1252,20 @@ import { profileHasPermission } from './permission-utils.mjs';
       if(!suppliers.length){toast('Registra primero un proveedor.');return;}
       if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
       body='<div class="form-grid">'+searchableField('Proveedor','supplierIndex','supplier',true)+searchableField('Producto','productId','product',true)+formField('Cantidad recibida','quantity','number',true,'min="1" step="1"')+formField('Costo de compra por unidad','unitCost','number',true,'min="0.01" step="0.01"')+currencyField('USD')+formField('Pago inicial','initialPayment','number',false,'min="0" step="0.01" value="0"')+selectField('Cuenta para pago inicial','initialAccount',cashAccountOptions(),false)+'</div><p class="form-helper">Registra el costo de adquisición por unidad antes de costos adicionales. El ERP recalcula el costo promedio ponderado y aumenta las existencias en una sola operación.</p><p class="form-helper">El pago inicial se registra como salida de caja; el saldo restante queda pendiente con el proveedor.</p>';
+    }
+    if(type==='supplier-invoice'){
+      if(!suppliers.length){toast('Registra primero un proveedor.');return;}
+      const supplierOpts=suppliers.filter(item=>item.active!==false).map(item=>'<option value="'+esc(item.id)+'">'+esc(item.name)+'</option>').join('');
+      const orderOpts=purchaseOrders.filter(item=>['Confirmada','Recepción parcial','Recibida'].includes(item.status)).map(item=>'<option value="'+esc(item.id)+'">'+esc(item.orderNumber)+' · '+esc(item.supplier)+'</option>').join('');
+      const today=new Date().toISOString().slice(0,10);
+      body='<div class="form-grid">'+selectField('Proveedor','supplierId','<option value="">Seleccionar proveedor</option>'+supplierOpts,true)+selectField('Orden de compra relacionada (opcional)','purchaseOrderId','<option value="">Sin orden vinculada</option>'+orderOpts,false)+formField('Número de factura del proveedor','invoiceNumber','text',true,'maxlength="100"')+formField('Fecha de factura','invoiceDate','date',true,'value="'+today+'"')+formField('Fecha de vencimiento','dueDate','date',false,'')+currencyField('USD')+formField('Tipo de cambio','exchangeRate','number',true,'min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'"')+formField('Importe total de factura','originalAmount','number',true,'min="0.01" step="0.01"')+formField('Notas','notes','text',false,'maxlength="1000"')+'</div><p class="form-helper">Esta factura registra la deuda real documentada por el proveedor. No vuelve a ingresar inventario: la mercancía se registra desde la recepción física de la orden.</p>';
+    }
+    if(type==='supplier-invoice-payment'){
+      const invoice=supplierInvoices.find(item=>String(item.id)===String(recordId));
+      if(!invoice){toast('No se encontró la factura del proveedor.');return;}
+      const balance=Math.max(0,invoice.amountUsd-invoice.paidUsd);
+      if(balance<=0.001){toast('Esta factura ya está pagada.');return;}
+      body='<div class="form-grid"><div class="detail-field full-field"><span>'+esc(invoice.supplier)+' · Factura '+esc(invoice.invoiceNumber)+'</span><strong>Saldo pendiente: '+money(balance)+' USD</strong><small>Importe original: '+moneyInCurrency(invoice.originalAmount,invoice.currency)+' · Vence: '+dateText(invoice.dueDate)+'</small></div><input type="hidden" name="currency" value="'+esc(invoice.currency)+'">'+formField('Importe del pago ('+invoice.currency+')','amount','number',true,'min="0.01" step="0.01"')+selectField('Cuenta de salida','accountId',cashAccountOptions(invoice.currency),true)+formField('Referencia de pago','paymentReference','text',false,'maxlength="160"')+'</div><p class="form-helper">El pago actualiza el saldo de esta factura y registra una salida en Caja y bancos. No modifica existencias ni el costo del producto.</p>';
     }
     if(type==='purchase-payment'){
       const purchase=purchases.find(item=>String(item.id)===String(recordId));
@@ -1313,7 +1339,7 @@ import { profileHasPermission } from './permission-utils.mjs';
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
     const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
     document.querySelector('#business-dialog .eyebrow').textContent=window.JBAuth?.profile?'GESTIÓN · NEON DEVELOPMENT':'ACCESO REQUERIDO';
-    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon');
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon')));
     if(businessForm.querySelector('[name="currency"]'))refreshCashAccountOptions(businessForm,businessForm.querySelector('[name="currency"]').value);
     if(type==='payroll-payment')refreshCashAccountOptions(businessForm,'NIO');
     if(type==='invoice'){
@@ -1449,6 +1475,24 @@ import { profileHasPermission } from './permission-utils.mjs';
           invoice_id:invoice.dbId,currency,original_amount:amount,exchange_rate:rate,amount_usd:amountUsd,
           account_name:account,payment_method:'Abono'
         })});
+      } else if(type==='supplier-invoice'){
+        const supplier=suppliers.find(item=>String(item.id)===get('supplierId'));
+        const amount=num('originalAmount'),invoiceDate=get('invoiceDate'),dueDate=get('dueDate'),invoiceNumber=get('invoiceNumber');
+        const invoiceRate=num('exchangeRate');
+        if(!supplier||!invoiceNumber||!invoiceDate||!Number.isFinite(amount)||amount<=0||!Number.isFinite(invoiceRate)||invoiceRate<=0)throw new Error('Revisa proveedor, número, fecha e importe de la factura.');
+        if(dueDate&&dueDate<invoiceDate)throw new Error('La fecha de vencimiento no puede ser anterior a la fecha de factura.');
+        const orderId=get('purchaseOrderId')||null;
+        if(orderId){const order=purchaseOrders.find(item=>String(item.id)===orderId);if(!order||String(order.supplierId)!==String(supplier.id))throw new Error('La orden seleccionada no corresponde al proveedor.');}
+        await erpApi('supplier-invoices',{method:'POST',body:JSON.stringify({supplier_id:supplier.id,purchase_order_id:orderId,invoice_number:invoiceNumber,invoice_date:invoiceDate,due_date:dueDate||null,currency,exchange_rate:invoiceRate,original_amount:amount,notes:get('notes')||null})});
+      } else if(type==='supplier-invoice-payment'){
+        const invoice=supplierInvoices.find(item=>String(item.id)===String(businessForm.dataset.recordId));
+        const amount=num('amount'),accountId=get('accountId'),paymentCurrency=get('currency');
+        if(!invoice||!accountId||!Number.isFinite(amount)||amount<=0)throw new Error('Revisa la factura, la cuenta y el importe.');
+        const amountUsd=toUsd(amount,paymentCurrency);
+        if(amountUsd>Math.max(0,invoice.amountUsd-invoice.paidUsd)+0.001)throw new Error('El pago supera el saldo pendiente de la factura.');
+        const account=cashAccounts.find(item=>String(item.id)===accountId&&item.currency===paymentCurrency&&item.active!==false);
+        if(!account)throw new Error('La cuenta de salida no existe o no coincide con la moneda de la factura.');
+        await erpApi('supplier-invoice-payments',{method:'POST',body:JSON.stringify({supplier_invoice_id:invoice.id,account_id:account.id,currency:paymentCurrency,original_amount:amount,exchange_rate:exchangeRate,amount_usd:amountUsd,payment_reference:get('paymentReference')||null})});
       } else if(type==='purchase-payment'){
         const purchase=purchases.find(p=>String(p.id)===String(businessForm.dataset.recordId));
         const amount=num('amount'),account=get('account'),amountUsd=toUsd(amount,currency);
@@ -1548,6 +1592,8 @@ import { profileHasPermission } from './permission-utils.mjs';
       } else {
         const messages={
           customer:'Cliente guardado en Neon.',supplier:'Proveedor guardado en Neon.',order:'Pedido guardado en Neon.',
+          'supplier-invoice':'Factura de proveedor registrada. El saldo pendiente ya está en cuentas por pagar.',
+          'supplier-invoice-payment':'Pago aplicado a la factura del proveedor y salida registrada en caja/banco.',
           purchase:'Compra registrada: inventario, costo y cuenta por pagar actualizados.',
           expense:'Gasto registrado en Neon y reflejado en caja y resultados.',cash:'Movimiento registrado en Caja y bancos.',
           payment:'Abono de cliente registrado.', 'purchase-payment':'Abono a proveedor registrado.',
@@ -1564,7 +1610,7 @@ import { profileHasPermission } from './permission-utils.mjs';
     } catch(error) {
       toast(error?.message||'No se pudo completar la operación en Neon.');
     } finally {
-      if(button){button.disabled=false;button.textContent=type==='invoice'?'Generar factura':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon');}
+      if(button){button.disabled=false;button.textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon')));}
     }
   }
   function dateText(value){
@@ -1778,15 +1824,27 @@ import { profileHasPermission } from './permission-utils.mjs';
     return heading(views.purchases,'<button class="button button-primary" data-action="new-purchase">'+svg('plus')+' Registrar compra</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Compras</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Compras USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Pagado USD</span><strong>'+money(paid)+'</strong></div><div class="summary-mini"><span>Por pagar USD</span><strong>'+money(due)+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FECHA</th><th>PROVEEDOR</th><th>PERFUME</th><th>UNIDADES</th><th>TOTAL</th><th>PAGADO USD</th><th>SALDO USD</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">No hay compras registradas.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Recepción y costo de inventario</strong><p>La compra actualiza existencias, costo promedio, kardex, saldo del proveedor y el pago inicial cuando corresponde. Los abonos posteriores no modifican el inventario.</p></div></div>';
   }
   function renderPayables(){
-    const open=purchases.filter(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001);
-    const total=open.reduce((s,p)=>s+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
-    const suppliersOpen=new Set(open.map(p=>p.supplier)).size;
-    const rows=open.map(p=>{
-      const balance=Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0));
-      const status=Number(p.paidUsd||0)>0?'Abono parcial':'Pendiente';
-      return '<tr><td data-label="Compra / fecha" class="table-primary"><strong>'+esc(p.id)+'</strong><small class="table-secondary">'+dateText(p.createdAt)+'</small></td><td data-label="Proveedor">'+esc(p.supplier)+'</td><td data-label="Producto">'+esc(p.product)+' · '+p.quantity+' uds.</td><td data-label="Total">'+money(Number(p.totalUsd||0))+'</td><td data-label="Abonado">'+money(Number(p.paidUsd||0))+'</td><td data-label="Saldo"><strong>'+money(balance)+'</strong></td><td data-label="Estado"><span class="status-chip status-pending">'+status+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="new-purchase-payment" data-id="'+esc(p.id)+'">Registrar abono</button></td></tr>';
+    const open=supplierInvoices.filter(invoice=>invoice.status!=='Anulada'&&invoice.amountUsd-invoice.paidUsd>0.001);
+    const total=open.reduce((sum,invoice)=>sum+Math.max(0,invoice.amountUsd-invoice.paidUsd),0);
+    const suppliersOpen=new Set(open.map(invoice=>invoice.supplierId)).size;
+    const today=new Date().toISOString().slice(0,10);
+    const rows=supplierInvoices.map(invoice=>{
+      const balance=Math.max(0,invoice.amountUsd-invoice.paidUsd);
+      const overdue=balance>0.001&&invoice.dueDate&&invoice.dueDate<today;
+      const linkedOrder=purchaseOrders.find(order=>String(order.id)===String(invoice.purchaseOrderId));
+      const paymentRows=supplierInvoicePayments.filter(payment=>String(payment.supplier_invoice_id)===String(invoice.id));
+      const status=invoice.status==='Pagada'?'Pagada':invoice.status==='Anulada'?'Anulada':invoice.paidUsd>0?'Abono parcial':overdue?'Vencida':'Pendiente';
+      const action=balance>0.001&&invoice.status!=='Anulada'&&permissionGranted('payables.payments.create')?'<button class="button button-quiet button-small" data-action="new-supplier-invoice-payment" data-id="'+esc(invoice.id)+'">Registrar pago</button>':'—';
+      return '<tr><td data-label="Factura / fecha" class="table-primary"><strong>'+esc(invoice.invoiceNumber)+'</strong><small class="table-secondary">'+dateText(invoice.invoiceDate)+'</small><small class="table-secondary">'+paymentRows.length+' pago(s)</small></td><td data-label="Proveedor">'+esc(invoice.supplier)+'</td><td data-label="Orden relacionada">'+(linkedOrder?esc(linkedOrder.orderNumber):'—')+'</td><td data-label="Total USD">'+money(invoice.amountUsd)+'<small class="table-secondary">'+moneyInCurrency(invoice.originalAmount,invoice.currency)+' · '+invoice.currency+'</small></td><td data-label="Pagado">'+money(invoice.paidUsd)+'</td><td data-label="Saldo"><strong>'+money(balance)+'</strong></td><td data-label="Vencimiento">'+dateText(invoice.dueDate)+'</td><td data-label="Estado"><span class="status-chip '+(status==='Pagada'?'status-success':status==='Vencida'?'status-danger':'status-pending')+'">'+status+'</span></td><td data-label="Acción">'+action+'</td></tr>';
     }).join('');
-    return heading(views.payables,'<button class="button button-quiet" data-view="purchases">Ver compras</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Proveedores pendientes</span><strong>'+suppliersOpen+'</strong></div><div class="summary-mini"><span>Compras con saldo</span><strong>'+open.length+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COMPRA / FECHA</th><th>PROVEEDOR</th><th>PRODUCTO</th><th>TOTAL USD</th><th>ABONADO</th><th>SALDO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">No hay cuentas pendientes con proveedores.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Cuentas por pagar</strong><p>Los saldos se calculan desde compras registradas en Neon. Cada abono conserva moneda, tipo de cambio, cuenta de salida y trazabilidad.</p></div></div>';
+    const canCreate=permissionGranted('purchases.supplier_invoices.create')&&permissionGranted('suppliers.records.view');
+    const legacy=purchases.filter(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001);
+    const legacyRows=legacy.map(p=>'<tr><td>'+dateText(p.createdAt)+'</td><td>'+esc(p.supplier)+'</td><td>'+esc(p.product)+' · '+p.quantity+' uds.</td><td>'+money(p.totalUsd)+'</td><td>'+money(p.paidUsd)+'</td><td>'+money(Math.max(0,p.totalUsd-p.paidUsd))+'</td><td><button class="button button-quiet button-small" data-action="new-purchase-payment" data-id="'+esc(p.id)+'">Abonar compra anterior</button></td></tr>').join('');
+    return heading(views.payables,(canCreate?'<button class="button button-primary" data-action="new-supplier-invoice">'+svg('plus')+' Registrar factura</button>':'')+'<button class="button button-quiet" data-view="purchaseOrders">Órdenes de compra</button>')+
+      '<div class="summary-strip"><div class="summary-mini"><span>Saldo documental USD</span><strong>'+money(total)+'</strong></div><div class="summary-mini"><span>Proveedores pendientes</span><strong>'+suppliersOpen+'</strong></div><div class="summary-mini"><span>Facturas abiertas</span><strong>'+open.length+'</strong></div><div class="summary-mini"><span>Facturas vencidas</span><strong>'+open.filter(invoice=>invoice.dueDate&&invoice.dueDate<today).length+'</strong></div></div>'+
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FACTURA / FECHA</th><th>PROVEEDOR</th><th>ORDEN</th><th>TOTAL</th><th>PAGADO</th><th>SALDO</th><th>VENCE</th><th>ESTADO</th><th>ACCIÓN</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Todavía no hay facturas de proveedor registradas.</td></tr>')+'</tbody></table></div></article>'+
+      (legacyRows?'<article class="list-panel"><div class="panel-heading"><div><h3>Compras anteriores</h3><p>Registros del flujo anterior; sus saldos se conservan hasta completar su conciliación documental.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>PROVEEDOR</th><th>PRODUCTO</th><th>TOTAL</th><th>PAGADO</th><th>SALDO</th><th></th></tr></thead><tbody>'+legacyRows+'</tbody></table></div></article>':'')+
+      '<div class="notice-panel">'+svg('shield')+'<div><strong>Conciliación documental y financiera</strong><p>Las facturas registran la deuda real; los pagos conservan moneda, tipo de cambio, cuenta de salida y referencia. Las recepciones actualizan inventario por separado, evitando duplicar existencias.</p></div></div>';
   }
   function renderExpenses(){
     const rows=expenses.map(e=>'<tr><td data-label="Fecha">'+dateText(e.createdAt)+'</td><td data-label="Categoría">'+esc(e.category)+'</td><td data-label="Descripción" class="table-primary">'+esc(e.description)+'</td><td data-label="Importe / conversión">'+moneyInCurrency(e.originalAmount,e.currency)+'<small class="table-secondary">'+money(e.amountUsd)+' · '+rateLabel(e.exchangeRate)+'</small></td></tr>').join('');
@@ -2872,6 +2930,8 @@ import { profileHasPermission } from './permission-utils.mjs';
     }
     else if(name==='new-payment')openBusinessDialog('payment',action.getAttribute('data-id'));
     else if(name==='new-purchase-payment')openBusinessDialog('purchase-payment',action.getAttribute('data-id'));
+    else if(name==='new-supplier-invoice')openBusinessDialog('supplier-invoice');
+    else if(name==='new-supplier-invoice-payment')openBusinessDialog('supplier-invoice-payment',action.getAttribute('data-id'));
     else if(name==='add-invoice-product'){
       if(businessForm.dataset.recordType!=='invoice')return;
       const hidden=businessForm.querySelector('[name="draftProductId"]'),product=products.find(p=>String(p.id)===String(hidden?.value||''));
