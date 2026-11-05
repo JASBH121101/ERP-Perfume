@@ -301,3 +301,22 @@ test("procurement and supplier-payables endpoints require their own permission k
     "payables.payments.create"
   );
 });
+
+test("supplier invoice payment rejects voided invoices without creating a payment or cash outflow", async () => {
+  let calls=0;
+  let paymentStatement="";
+  const sql={
+    async query(statement) {
+      calls+=1;
+      if(calls===1){paymentStatement=statement;return [];}
+      return [{amount_usd:"10.00",paid_amount_usd:"0.00",status:"Anulada",account_currency:"NIO"}];
+    }
+  };
+  const result=await responseOf(await addSupplierInvoicePayment(sql,actor,validSupplierPayment()));
+  assert.equal(result.status,409);
+  assert.equal(result.body.error.code,"SUPPLIER_INVOICE_VOIDED");
+  assert.equal(calls,2);
+  assert.match(paymentStatement,/invoice_status<>'Anulada'/);
+  assert.match(paymentStatement,/INSERT INTO supplier_invoice_payments/);
+  assert.match(paymentStatement,/INSERT INTO cash_entries/);
+});

@@ -1,5 +1,5 @@
 import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
-import { calculateFinancialSnapshot } from './financial-snapshot.mjs';
+import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financial-snapshot.mjs';
 import { profileHasPermission } from './permission-utils.mjs';
 
 'use strict';
@@ -1730,9 +1730,11 @@ import { profileHasPermission } from './permission-utils.mjs';
     const finance=financialSnapshot();
     const inventory=products.reduce((sum,p)=>sum+Number(p.unitCost||0)*Number(p.stock||0),0);
     const potential=products.reduce((sum,p)=>sum+Math.max(0,costSummary(p).profit)*Number(p.stock||0),0);
-    const purchasesTotal=purchases.reduce((sum,p)=>sum+Number(p.totalUsd||0),0);
+    const supplierPayables=calculatePayablesSnapshot(purchases,supplierInvoices,roundMoney);
+    const purchasesTotal=roundMoney(purchases.reduce((sum,p)=>sum+Number(p.totalUsd||0),0)+
+      supplierInvoices.filter(invoice=>invoice.status!=="Anulada").reduce((sum,invoice)=>sum+Number(invoice.amountUsd||0),0));
     const receivables=invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0);
-    const payables=purchases.reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
+    const payables=supplierPayables.total;
     const paidRevenue=invoices.reduce((sum,i)=>sum+Number(i.paidUsd||0),0);
     return heading(views.analytics,'')+
       '<div class="metric-grid">'+
@@ -1746,18 +1748,21 @@ import { profileHasPermission } from './permission-utils.mjs';
       '<div class="summary-strip">'+
       '<div class="summary-mini"><span>Valor del inventario a costo</span><strong>'+money(inventory)+'</strong></div>'+
       '<div class="summary-mini"><span>Margen potencial del stock</span><strong>'+money(potential)+'</strong></div>'+
-      '<div class="summary-mini"><span>Compras acumuladas</span><strong>'+money(purchasesTotal)+'</strong></div>'+
+      '<div class="summary-mini"><span>Compras y facturas proveedor</span><strong>'+money(purchasesTotal)+'</strong></div>'+
       '<div class="summary-mini"><span>Cuentas por cobrar</span><strong>'+money(receivables)+'</strong></div>'+
       '<div class="summary-mini"><span>Cuentas por pagar</span><strong>'+money(payables)+'</strong></div>'+
       '</div>'+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Criterio del resultado</strong><p>La utilidad bruta se calcula con los renglones de facturas y su costo unitario registrado. El resultado después de gastos descuenta los gastos operativos capturados; no representa utilidad fiscal ni incorpora impuestos, nómina o ajustes que aún no estén registrados.</p></div></div>';
   }
-  function supplierPayablesUsd(supplierName){
-    return purchases.filter(p=>p.supplier===supplierName).reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
+  function supplierPayablesUsd(supplier){
+    const supplierName=supplier.name;
+    const legacy=purchases.filter(p=>p.supplier===supplierName);
+    const documents=supplierInvoices.filter(invoice=>String(invoice.supplierId)===String(supplier.id));
+    return calculatePayablesSnapshot(legacy,documents,roundMoney).total;
   }
   function renderSuppliers(){
-    const rows=suppliers.map(s=>'<tr><td data-label="Proveedor / contacto" class="table-primary">'+esc(s.name)+'<small class="table-secondary">'+esc(s.contact||s.email||'Sin contacto')+'</small></td><td data-label="Teléfono">'+esc(s.phone||'—')+'</td><td data-label="Moneda habitual">'+(s.currency==='NIO'?'NIO · Córdoba':'USD · Dólar')+'</td><td data-label="Compras">'+purchases.filter(p=>p.supplier===s.name).length+'</td><td data-label="Saldo por pagar">'+money(supplierPayablesUsd(s.name))+'</td></tr>').join('');
-    const outstanding=purchases.reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
+    const rows=suppliers.map(s=>'<tr><td data-label="Proveedor / contacto" class="table-primary">'+esc(s.name)+'<small class="table-secondary">'+esc(s.contact||s.email||'Sin contacto')+'</small></td><td data-label="Teléfono">'+esc(s.phone||'—')+'</td><td data-label="Moneda habitual">'+(s.currency==='NIO'?'NIO · Córdoba':'USD · Dólar')+'</td><td data-label="Compras">'+purchases.filter(p=>p.supplier===s.name).length+'</td><td data-label="Saldo por pagar">'+money(supplierPayablesUsd(s))+'</td></tr>').join('');
+    const outstanding=calculatePayablesSnapshot(purchases,supplierInvoices,roundMoney).total;
     return heading(views.suppliers,'<button class="button button-primary" data-action="new-supplier">'+svg('plus')+' Nuevo proveedor</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Proveedores</span><strong>'+suppliers.length+'</strong></div><div class="summary-mini"><span>Compras vinculadas</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Saldo por pagar USD</span><strong>'+money(outstanding)+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PROVEEDOR / CONTACTO</th><th>TELÉFONO</th><th>MONEDA HABITUAL</th><th>COMPRAS</th><th>SALDO USD</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
   }
   function purchaseOrderLineHtml(){

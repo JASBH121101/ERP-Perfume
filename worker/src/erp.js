@@ -1104,9 +1104,9 @@ export async function addSupplierInvoicePayment(sql,user,body) {
   if(Math.abs(expected-amountUsd)>0.02)return erpError(400,"SUPPLIER_PAYMENT_CONVERSION_MISMATCH","El importe convertido no coincide con el pago.");
   try{
     const rows=await sql.query(
-      "WITH target AS MATERIALIZED (SELECT si.id,si.invoice_number,si.amount_usd,si.paid_amount_usd,si.currency AS invoice_currency FROM supplier_invoices si WHERE si.id=$1::uuid FOR UPDATE),"+
+      "WITH target AS MATERIALIZED (SELECT si.id,si.invoice_number,si.amount_usd,si.paid_amount_usd,si.currency AS invoice_currency,si.status AS invoice_status FROM supplier_invoices si WHERE si.id=$1::uuid FOR UPDATE),"+
       "account AS MATERIALIZED (SELECT id,currency FROM cash_accounts WHERE id=$2::uuid AND active=TRUE),"+
-      "valid AS MATERIALIZED (SELECT t.*,a.id AS account_id FROM target t CROSS JOIN account a WHERE a.currency=$3 AND t.paid_amount_usd+$4<=t.amount_usd),"+
+      "valid AS MATERIALIZED (SELECT t.*,a.id AS account_id FROM target t CROSS JOIN account a WHERE t.invoice_status<>'Anulada' AND a.currency=$3 AND t.paid_amount_usd+$4<=t.amount_usd),"+
       "payment AS (INSERT INTO supplier_invoice_payments(supplier_invoice_id,account_id,currency,original_amount,exchange_rate,amount_usd,payment_reference,created_by) "+
       "SELECT id,account_id,$3,$5,$6,$4,$7,$8 FROM valid RETURNING *),"+
       "cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) "+
@@ -1119,8 +1119,9 @@ export async function addSupplierInvoicePayment(sql,user,body) {
       [invoiceId,accountId,currency,amountUsd,original,rate,reference,user.id]
     );
     if(!rows[0]){
-      const state=await sql.query("SELECT si.amount_usd,si.paid_amount_usd,ca.currency AS account_currency FROM supplier_invoices si LEFT JOIN cash_accounts ca ON ca.id=$2::uuid AND ca.active=TRUE WHERE si.id=$1::uuid",[invoiceId,accountId]);
+      const state=await sql.query("SELECT si.amount_usd,si.paid_amount_usd,si.status,ca.currency AS account_currency FROM supplier_invoices si LEFT JOIN cash_accounts ca ON ca.id=$2::uuid AND ca.active=TRUE WHERE si.id=$1::uuid",[invoiceId,accountId]);
       if(!state[0])return erpError(404,"SUPPLIER_INVOICE_NOT_FOUND","No se encontró la factura del proveedor.");
+      if(state[0].status==="Anulada")return erpError(409,"SUPPLIER_INVOICE_VOIDED","No se puede pagar una factura anulada.");
       if(!state[0].account_currency)return erpError(400,"CASH_ACCOUNT_NOT_FOUND","La cuenta de pago no existe o está inactiva.");
       if(state[0].account_currency!==currency)return erpError(400,"CASH_ACCOUNT_CURRENCY_MISMATCH","La moneda de la cuenta no coincide con el pago.");
       return erpError(409,"SUPPLIER_PAYMENT_EXCEEDS_BALANCE","El pago supera el saldo pendiente de la factura.");

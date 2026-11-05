@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateFinancialSnapshot } from "../assets/js/financial-snapshot.mjs";
+import { calculateFinancialSnapshot, calculatePayablesSnapshot } from "../assets/js/financial-snapshot.mjs";
 
 test("financial snapshot separates product gross profit from delivery income and expenses", () => {
   const invoices = [
@@ -53,4 +53,28 @@ test("financial snapshot preserves a negative operating result instead of hiding
 
   assert.equal(result.grossProfit, -5);
   assert.equal(result.netProfit, -8);
+});
+
+test("payables snapshot combines legacy purchases and supplier invoices without counting voided or settled invoices", () => {
+  const result=calculatePayablesSnapshot(
+    [{totalUsd:100,paidUsd:40}],
+    [
+      {amountUsd:200,paidUsd:50,status:"Abono parcial"},
+      {amountUsd:80,paidUsd:0,status:"Anulada"},
+      {amountUsd:25,paidUsd:25,status:"Pagada"}
+    ]
+  );
+  assert.deepEqual(result,{
+    legacyPurchasePayables:60,
+    supplierInvoicePayables:150,
+    total:210
+  });
+});
+
+test("payables snapshot handles empty ledgers and malformed collection inputs", () => {
+  assert.deepEqual(calculatePayablesSnapshot(null,undefined),{
+    legacyPurchasePayables:0,
+    supplierInvoicePayables:0,
+    total:0
+  });
 });
