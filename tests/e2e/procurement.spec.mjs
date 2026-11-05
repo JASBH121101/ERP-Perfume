@@ -106,7 +106,7 @@ async function installProcurementApi(page) {
       }, 0);
       const order = {
         id: ids.order,
-        order_number: body.order_number,
+        order_number: 'JB-OC-2026-000001',
         supplier_id: supplier.id,
         supplier_name: supplier.name,
         currency: body.currency,
@@ -299,7 +299,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await navigateToView(page, 'purchaseOrders');
   const orderForm = page.locator('#purchase-order-form');
   await expect(orderForm).toBeVisible();
-  await orderForm.locator('[name="order_number"]').fill('OC-QA-2026-001');
+  await expect(orderForm.locator('input[readonly]')).toHaveValue('Se asigna al generar');
   await orderForm.locator('[name="supplier_id"]').selectOption(ids.supplier);
   await orderForm.locator('[name="currency"]').selectOption('NIO');
   await orderForm.locator('[name="exchange_rate"]').fill('36.6');
@@ -325,10 +325,11 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await orderForm.locator('[type="submit"]').click();
   const createPayload = (await createRequest).postDataJSON();
   expect(createPayload.items).toHaveLength(2);
+  expect(createPayload).not.toHaveProperty('order_number');
   expect(createPayload.currency).toBe('NIO');
   expect(api.data.purchase_orders[0].total_usd).toBe(36.5);
 
-  const orderRow = page.locator('tr').filter({ hasText: 'OC-QA-2026-001' });
+  const orderRow = page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' });
   await expect(orderRow).toContainText('Borrador');
   const submitRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
@@ -336,17 +337,17 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   );
   await orderRow.locator('[data-action="submit-purchase-order"]').click();
   expect((await submitRequest).postDataJSON().status).toBe('Enviada');
-  await expect(page.locator('tr').filter({ hasText: 'OC-QA-2026-001' })).toContainText('Enviada');
+  await expect(page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' })).toContainText('Enviada');
 
   const approveRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
     request.method() === 'PATCH'
   );
-  await page.locator('tr').filter({ hasText: 'OC-QA-2026-001' }).locator('[data-action="approve-purchase-order"]').click();
+  await page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' }).locator('[data-action="approve-purchase-order"]').click();
   expect((await approveRequest).postDataJSON().status).toBe('Confirmada');
-  await expect(page.locator('tr').filter({ hasText: 'OC-QA-2026-001' })).toContainText('Confirmada');
+  await expect(page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' })).toContainText('Confirmada');
 
-  await page.locator('tr').filter({ hasText: 'OC-QA-2026-001' }).locator('[data-action="receive-purchase-order"]').click();
+  await page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' }).locator('[data-action="receive-purchase-order"]').click();
   const receiptDialog = page.locator('#purchase-receipt-dialog');
   await expect(receiptDialog).toBeVisible();
   const receiptLines = receiptDialog.locator('[data-receipt-line]');
@@ -362,7 +363,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptDialog.locator('[type="submit"]').click();
   const receiptPayload = (await receiptRequest).postDataJSON();
   expect(receiptPayload.items).toHaveLength(2);
-  await expect(page.locator('tr').filter({ hasText: 'OC-QA-2026-001' })).toContainText('Recepción parcial');
+  await expect(page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' })).toContainText('Recepción parcial');
 
   expect(api.data.purchase_receipts).toHaveLength(1);
   expect(api.data.purchase_order_items.map(item => item.received_quantity)).toEqual([1, 2]);

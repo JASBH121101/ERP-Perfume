@@ -427,7 +427,6 @@ export async function createInventoryMovement(sql, user, body) {
 
 export async function createPurchaseOrder(sql, user, body) {
   const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-  const orderNumber = String(body.order_number || "").trim();
   const supplierId = String(body.supplier_id || "").trim();
   const currency = String(body.currency || "USD").toUpperCase();
   const rate = Number(body.exchange_rate ?? 1);
@@ -436,12 +435,11 @@ export async function createPurchaseOrder(sql, user, body) {
   const taxes = round(body.estimated_taxes_usd ?? 0);
   const notes = body.notes == null ? null : String(body.notes).trim();
   const items = Array.isArray(body.items) ? body.items : [];
-  if (!orderNumber || orderNumber.length > 80 || !supplierId ||
-      !["USD","NIO"].includes(currency) || !Number.isFinite(rate) || rate <= 0 || rate > 100000 ||
+  if (!supplierId || !["USD","NIO"].includes(currency) || !Number.isFinite(rate) || rate <= 0 || rate > 100000 ||
       !Number.isFinite(discount) || discount < 0 || !Number.isFinite(freight) || freight < 0 ||
       !Number.isFinite(taxes) || taxes < 0 || (notes && notes.length > 1000) ||
       items.length < 1 || items.length > 100) {
-    return erpError(400,"INVALID_PURCHASE_ORDER","Revisa número, proveedor, moneda, tipo de cambio y productos de la orden.");
+    return erpError(400,"INVALID_PURCHASE_ORDER","Revisa proveedor, moneda, tipo de cambio y productos de la orden.");
   }
   const seen = new Set();
   const lines = [];
@@ -463,12 +461,13 @@ export async function createPurchaseOrder(sql, user, body) {
   const total = round(subtotal-discount+freight+taxes);
   if (discount > subtotal || total <= 0 || total > 999999999999.99) return erpError(400,"INVALID_PURCHASE_ORDER_TOTAL","El descuento no puede superar el subtotal y el total debe ser positivo.");
   const expected = body.expected_delivery_date ? String(body.expected_delivery_date) : null;
-  if (expected && !/^\d{4}-\d{2}-\d{2}$/.test(expected)) return erpError(400,"INVALID_EXPECTED_DATE","La fecha estimada no es válida.");
+  if (expected && !/^\\d{4}-\\d{2}-\\d{2}$/.test(expected)) return erpError(400,"INVALID_EXPECTED_DATE","La fecha estimada no es válida.");
   try {
     const rows = await sql.query(
-      "WITH input AS (SELECT $1::text order_number,$2::uuid supplier_id,$3::text currency,$4::numeric exchange_rate,"+
-      "$5::numeric subtotal_usd,$6::numeric discount_usd,$7::numeric freight_usd,$8::numeric taxes_usd,$9::numeric total_usd,"+
-      "$10::date expected_date,$11::text payment_terms,$12::text notes,$13::jsonb items,$14::uuid actor),"+
+      "WITH generated_number AS (SELECT 'JB-OC-'||TO_CHAR(CURRENT_DATE,'YYYY')||'-'||LPAD(nextval('public.purchase_order_number_seq')::text,6,'0') AS order_number),"+
+      "input AS (SELECT n.order_number,$1::uuid supplier_id,$2::text currency,$3::numeric exchange_rate,"+
+      "$4::numeric subtotal_usd,$5::numeric discount_usd,$6::numeric freight_usd,$7::numeric taxes_usd,$8::numeric total_usd,"+
+      "$9::date expected_date,$10::text payment_terms,$11::text notes,$12::jsonb items,$13::uuid actor FROM generated_number n),"+
       "supplier AS (SELECT id,name FROM suppliers WHERE id=(SELECT supplier_id FROM input) AND active=TRUE),"+
       "lines AS (SELECT * FROM jsonb_to_recordset((SELECT items FROM input)) AS x(product_id uuid,ordered_quantity integer,unit_cost_input numeric,unit_cost_usd numeric)),"+
       "valid AS (SELECT COUNT(*) FILTER(WHERE p.id IS NULL OR p.active IS NOT TRUE) invalid,COUNT(*) line_count FROM lines l LEFT JOIN products p ON p.id=l.product_id),"+
@@ -479,16 +478,16 @@ export async function createPurchaseOrder(sql, user, body) {
       "SELECT c.id,p.id,p.name,p.sku,l.ordered_quantity,l.unit_cost_input,l.unit_cost_usd,ROUND(l.ordered_quantity*l.unit_cost_usd,2) FROM created c CROSS JOIN lines l JOIN products p ON p.id=l.product_id RETURNING id),"+
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'create','purchase_order',c.id::text,jsonb_build_object('order_number',c.order_number,'supplier',c.supplier_name,'total_usd',c.total_usd,'items',(SELECT COUNT(*) FROM created_items)) FROM created c CROSS JOIN input i RETURNING id) "+
       "SELECT c.*,(SELECT COUNT(*) FROM created_items)::int item_count FROM created c",
-      [orderNumber,supplierId,currency,rate,subtotal,discount,freight,taxes,total,expected,body.payment_terms==null?null:String(body.payment_terms).slice(0,160),notes,JSON.stringify(lines),user.id]
+      [supplierId,currency,rate,subtotal,discount,freight,taxes,total,expected,body.payment_terms==null?null:String(body.payment_terms).slice(0,160),notes,JSON.stringify(lines),user.id]
     );
     if (!rows[0]) return erpError(409,"PURCHASE_ORDER_REFERENCE_INVALID","El proveedor o uno de los productos no existe, está inactivo o la orden no pudo validarse.");
     return erpJson({record:rows[0]},201);
   } catch(error) {
-    if (error?.code==="23505") return erpError(409,"DUPLICATE_PURCHASE_ORDER","El número de orden ya existe.");
+    if (error?.code==="23505") return erpError(409,"PURCHASE_ORDER_CODE_CONFLICT","No se pudo asignar un código de orden único. Vuelve a generar la orden.");
     if (error?.code==="22P02") return erpError(400,"INVALID_PURCHASE_ORDER_REFERENCE","El proveedor o un producto tiene un identificador inválido.");
     if (error?.code==="23503") return erpError(400,"PURCHASE_ORDER_REFERENCE_NOT_FOUND","El proveedor o producto seleccionado ya no existe.");
     console.error("[erp] Purchase order creation failed:",error?.message||"database error");
-    return erpError(503,"PURCHASE_ORDER_SAVE_FAILED","No se pudo guardar la orden de compra.");
+    return erpError(503,"PURCHASE_ORDER_SAVE_FAILED","No se pudo generar la orden de compra en Neon.");
   }
 }
 

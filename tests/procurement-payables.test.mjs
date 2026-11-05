@@ -23,7 +23,6 @@ async function responseOf(response) {
 
 function validPurchaseOrder(overrides = {}) {
   return {
-    order_number: "OC-QA-2026-001",
     supplier_id: supplierId,
     currency: "NIO",
     exchange_rate: 36.6,
@@ -74,7 +73,7 @@ test("purchase order converts NIO line costs and stores order, lines and audit a
   const sql = {
     async query(statement, values) {
       captured = { statement, values };
-      return [{ id: orderId, order_number: "OC-QA-2026-001", item_count: 2, subtotal_usd: "35.00", total_usd: "36.50" }];
+      return [{ id: orderId, order_number: "JB-OC-2026-000001", item_count: 2, subtotal_usd: "35.00", total_usd: "36.50" }];
     }
   };
 
@@ -82,16 +81,20 @@ test("purchase order converts NIO line costs and stores order, lines and audit a
 
   assert.equal(result.status, 201);
   assert.equal(result.body.record.id, orderId);
-  assert.equal(captured.values[2], "NIO");
-  assert.equal(captured.values[3], 36.6);
-  assert.equal(captured.values[4], 35);
-  assert.equal(captured.values[5], 1);
-  assert.equal(captured.values[6], 2);
-  assert.equal(captured.values[7], 0.5);
-  assert.equal(captured.values[8], 36.5);
-  assert.equal(captured.values[13], actor.id);
+  assert.match(result.body.record.order_number, /^JB-OC-\\d{4}-\\d{6}$/);
+  assert.equal(captured.values[0], supplierId);
+  assert.equal(captured.values[1], "NIO");
+  assert.equal(captured.values[2], 36.6);
+  assert.equal(captured.values[3], 35);
+  assert.equal(captured.values[4], 1);
+  assert.equal(captured.values[5], 2);
+  assert.equal(captured.values[6], 0.5);
+  assert.equal(captured.values[7], 36.5);
+  assert.equal(captured.values[12], actor.id);
+  assert.match(captured.statement, /nextval\\('public\\.purchase_order_number_seq'\\)/);
+  assert.match(captured.statement, /TO_CHAR\\(CURRENT_DATE,'YYYY'\\)/);
 
-  const lines = JSON.parse(captured.values[12]);
+  const lines = JSON.parse(captured.values[11]);
   assert.deepEqual(lines.map(line => line.unit_cost_usd), [10, 5]);
   assert.deepEqual(lines.map(line => line.ordered_quantity), [2, 3]);
   assert.match(captured.statement, /INSERT INTO purchase_orders/);

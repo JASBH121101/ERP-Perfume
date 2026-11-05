@@ -1797,8 +1797,8 @@ import { profileHasPermission } from './permission-utils.mjs';
     }).join('');
     const supplierOptions=suppliers.filter(supplier=>supplier.active!==false).map(supplier=>'<option value="'+esc(supplier.id)+'">'+esc(supplier.name)+'</option>').join('');
     const canCreate=permissionGranted("purchases.purchase_orders.create")&&permissionGranted("products.catalog.view")&&permissionGranted("suppliers.records.view");
-    const createForm=canCreate?'<section class="panel purchase-order-create"><div class="panel-heading"><div><h2>Nueva orden</h2><p>Guardar un borrador no modifica existencias ni caja.</p></div></div>'+
-      '<form id="purchase-order-form"><div class="form-grid"><label>Número de orden<input name="order_number" required maxlength="80" placeholder="OC-2026-001"></label>'+
+    const createForm=canCreate?'<section class="panel purchase-order-create"><div class="panel-heading"><div><h2>Nueva orden</h2><p>Solicita productos a un proveedor; el código se asigna al generar.</p></div></div>'+
+      '<form id="purchase-order-form"><div class="form-grid"><label>Código de orden<input type="text" value="Se asigna al generar" readonly aria-readonly="true"><small class="form-helper">Código automático y único, generado por el sistema.</small></label>'+
       '<label>Proveedor<select name="supplier_id" required><option value="">Seleccionar proveedor</option>'+supplierOptions+'</select></label>'+
       '<label>Moneda<select name="currency"><option value="USD">USD · Dólar</option><option value="NIO">NIO · Córdoba</option></select></label>'+
       '<label>Tipo de cambio<input name="exchange_rate" type="number" min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'" required></label>'+
@@ -1806,7 +1806,7 @@ import { profileHasPermission } from './permission-utils.mjs';
       '<div class="purchase-order-lines-heading"><strong>Productos solicitados</strong><button class="button button-quiet button-small" type="button" data-action="add-purchase-order-line">Añadir producto</button></div>'+
       '<div id="purchase-order-lines">'+purchaseOrderLineHtml()+'</div>'+
       '<div class="form-grid purchase-order-adjustments"><label>Descuento USD<input name="discount_usd" type="number" min="0" step="0.01" value="0"></label><label>Flete estimado USD<input name="estimated_freight_usd" type="number" min="0" step="0.01" value="0"></label><label>Impuestos estimados USD<input name="estimated_taxes_usd" type="number" min="0" step="0.01" value="0"></label><label>Notas<input name="notes" maxlength="1000"></label></div>'+
-      '<div class="form-actions"><button class="button button-primary" type="submit">Guardar orden en Neon</button></div></form></section>':'';
+      '<div class="form-actions"><button class="button button-primary" type="submit">Generar orden</button></div></form></section>':'';
     return heading(views.purchaseOrders,'<button class="button button-quiet" data-view="purchases">Compras recibidas</button>')+createForm+
       '<div class="summary-strip"><div class="summary-mini"><span>Órdenes</span><strong>'+purchaseOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+purchaseOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+purchaseOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+purchaseOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>'+
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>'+
@@ -3122,15 +3122,19 @@ import { profileHasPermission } from './permission-utils.mjs';
         product_id:row.querySelector('[name="product_id"]').value,ordered_quantity:Number(row.querySelector('[name="ordered_quantity"]').value),
         unit_cost_input:Number(row.querySelector('[name="unit_cost_input"]').value)
       }));
-      const payload={order_number:String(data.get("order_number")||"").trim(),supplier_id:String(data.get("supplier_id")||""),
+      const payload={supplier_id:String(data.get("supplier_id")||""),
         currency:String(data.get("currency")||"USD"),exchange_rate:Number(data.get("exchange_rate")||1),
         expected_delivery_date:String(data.get("expected_delivery_date")||"")||null,payment_terms:String(data.get("payment_terms")||"").trim()||null,
         notes:String(data.get("notes")||"").trim()||null,discount_usd:Number(data.get("discount_usd")||0),
         estimated_freight_usd:Number(data.get("estimated_freight_usd")||0),estimated_taxes_usd:Number(data.get("estimated_taxes_usd")||0),items:lines};
-      const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Guardando…";}
-      try{await erpApi("purchase-orders",{method:"POST",body:JSON.stringify(payload)});await loadERPFromNeon(true);goToView("purchaseOrders");toast("Orden guardada como borrador. El inventario permanece sin cambios.");}
-      catch(error){toast(error?.message||"No se pudo crear la orden de compra.");}
-      finally{if(submit){submit.disabled=false;submit.textContent="Guardar orden en Neon";}}
+      const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Generando…";}
+      try{
+        const response=await erpApi("purchase-orders",{method:"POST",body:JSON.stringify(payload)});
+        await loadERPFromNeon(true);goToView("purchaseOrders");
+        toast("Orden "+(response.record?.order_number||"generada")+" como borrador. El inventario permanece sin cambios.");
+      }
+      catch(error){toast(error?.message||"No se pudo generar la orden de compra.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Generar orden";}}
       return;
     }
     if(form?.id==="purchase-receipt-form"){

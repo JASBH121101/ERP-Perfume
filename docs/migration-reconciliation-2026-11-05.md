@@ -69,3 +69,13 @@ El Worker enlaza el pago con un egreso de caja mediante `cash_entries.source_typ
 4. Antes de una eventual migración nueva, comparar columnas, índices, restricciones y claves foráneas en Development; después registrar y verificar el resultado sin modificar datos comerciales.
 
 Este documento describe el esquema observado; **no es un archivo ejecutable de migración** y no sustituye los SQL originales ni autoriza una reejecución.
+
+
+## Versión 0010 — código automático de órdenes de compra
+
+**Archivo fuente:** `0010_purchase_order_number_sequence.sql`  
+**Checksum SHA-256:** `c42f04bca7650985eb6a2c3809cca8551edc635b73c076f5a8692efdb93736eb`
+
+La migración agrega `public.purchase_order_number_seq` y la inicializa por encima del mayor sufijo existente con formato `JB-OC-YYYY-NNNNNN`. No modifica órdenes, recepciones ni existencias existentes. La restricción `UNIQUE` existente en `purchase_orders.order_number` se mantiene como protección final.
+
+El Worker genera `JB-OC-YYYY-NNNNNN` dentro de la sentencia que crea la orden. La secuencia PostgreSQL asigna el valor concurrentemente; no se acepta un número proporcionado por el navegador. Los saltos numéricos son normales ante intentos inválidos o transacciones revertidas y no comprometen unicidad.
