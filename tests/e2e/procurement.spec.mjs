@@ -1,0 +1,422 @@
+import { test, expect } from '@playwright/test';
+
+const workerPattern = /\/api\/erp\/[^?]+/;
+const apiBase = 'https://jb-parfums-erp-api.jaredblancoh19.workers.dev';
+const ids = {
+  supplier: '00000000-0000-0000-0000-000000000201',
+  productA: '00000000-0000-0000-0000-000000000301',
+  productB: '00000000-0000-0000-0000-000000000302',
+  accountNio: '00000000-0000-0000-0000-000000000601',
+  accountUsd: '00000000-0000-0000-0000-000000000602',
+  order: '00000000-0000-0000-0000-000000000701',
+  lineA: '00000000-0000-0000-0000-000000000711',
+  lineB: '00000000-0000-0000-0000-000000000712',
+  receipt: '00000000-0000-0000-0000-000000000721',
+  invoice: '00000000-0000-0000-0000-000000000731',
+  payment: '00000000-0000-0000-0000-000000000741'
+};
+
+function createProcurementFixture() {
+  return {
+    products: [
+      {
+        id: ids.productA, sku: 'QA-PO-001', name: 'QA Purchase Perfume A', brand: 'QA Maison',
+        category: 'Diseñador', purchase_cost_usd: 20, additional_cost_usd: 5,
+        unit_cost_usd: 25, price_usd: 50, stock: 5, min_stock: 1, active: true, images: []
+      },
+      {
+        id: ids.productB, sku: 'QA-PO-002', name: 'QA Purchase Perfume B', brand: 'QA Maison',
+        category: 'Árabes', purchase_cost_usd: 12, additional_cost_usd: 2,
+        unit_cost_usd: 14, price_usd: 30, stock: 1, min_stock: 1, active: true, images: []
+      }
+    ],
+    suppliers: [{
+      id: ids.supplier, name: 'Proveedor QA', contact: 'QA Contact', phone: '0000',
+      email: 'qa-supplier@example.test', currency: 'NIO', active: true
+    }],
+    purchase_orders: [],
+    purchase_order_items: [],
+    purchase_receipts: [],
+    purchase_receipt_items: [],
+    supplier_invoices: [],
+    supplier_invoice_payments: [],
+    purchases: [],
+    purchase_items: [],
+    inventory_movements: [],
+    cash_accounts: [
+      { id: ids.accountNio, name: 'Caja NIO', currency: 'NIO', account_type: 'Caja', active: true },
+      { id: ids.accountUsd, name: 'Caja USD', currency: 'USD', account_type: 'Caja', active: true }
+    ],
+    cash_entries: [],
+    customers: [],
+    orders: [],
+    order_items: [],
+    invoices: [],
+    invoice_items: [],
+    invoice_payments: [],
+    expenses: [],
+    employees: [],
+    hr_attendance: [],
+    hr_leave_requests: [],
+    hr_payroll_periods: [],
+    hr_payroll_items: [],
+    settings: [{ setting_key: 'default_exchange_rate', setting_value: { value: 36.6 } }]
+  };
+}
+
+async function installProcurementApi(page) {
+  const data = createProcurementFixture();
+  const requests = [];
+  const fulfill = (route, payload, status = 200) => route.fulfill({
+    status,
+    contentType: 'application/json; charset=utf-8',
+    body: JSON.stringify(payload)
+  });
+
+  await page.route('**/assets/js/bootstrap.mjs', route => route.fulfill({
+    status: 200,
+    contentType: 'text/javascript; charset=utf-8',
+    body: "document.body.classList.remove('auth-pending','auth-locked');" +
+      "document.body.classList.add('erp-authorized');" +
+      "window.JBAuth = {" +
+      "mode:'authenticated', user:{id:'qa-owner',email:'qa-owner@example.test'}," +
+      "profile:{id:'qa-owner',name:'QA Owner',role:'owner',permissions:['*']}," +
+      "apiUrl:path=>new URL(path,'" + apiBase + "').toString()," +
+      "getToken:async()=> 'qa-only-token' }; import('./app.js');"
+  }));
+
+  await page.route(workerPattern, async route => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const method = request.method();
+    const body = method === 'GET' ? null : (request.postDataJSON?.() || null);
+    requests.push({ method, pathname, body });
+
+    if (pathname.endsWith('/bootstrap') && method === 'GET') {
+      return fulfill(route, { data });
+    }
+
+    if (pathname === '/api/erp/purchase-orders' && method === 'POST') {
+      const supplier = data.suppliers.find(item => item.id === body.supplier_id);
+      if (!supplier) return fulfill(route, { error: { message: 'Proveedor no encontrado.' } }, 404);
+      const orderRate = Number(body.exchange_rate || 1);
+      const subtotal = body.items.reduce((sum, item) => {
+        const unitUsd = body.currency === 'NIO' ? Number(item.unit_cost_input) / orderRate : Number(item.unit_cost_input);
+        return sum + unitUsd * Number(item.ordered_quantity);
+      }, 0);
+      const order = {
+        id: ids.order,
+        order_number: body.order_number,
+        supplier_id: supplier.id,
+        supplier_name: supplier.name,
+        currency: body.currency,
+        exchange_rate: orderRate,
+        subtotal_usd: Number(subtotal.toFixed(2)),
+        discount_usd: Number(body.discount_usd || 0),
+        estimated_freight_usd: Number(body.estimated_freight_usd || 0),
+        estimated_taxes_usd: Number(body.estimated_taxes_usd || 0),
+        total_usd: Number((subtotal - Number(body.discount_usd || 0) +
+          Number(body.estimated_freight_usd || 0) + Number(body.estimated_taxes_usd || 0)).toFixed(2)),
+        status: 'Borrador',
+        expected_delivery_date: body.expected_delivery_date,
+        payment_terms: body.payment_terms,
+        notes: body.notes,
+        created_at: '2026-11-05T10:00:00.000Z'
+      };
+      data.purchase_orders.push(order);
+      body.items.forEach((item, index) => {
+        const product = data.products.find(p => p.id === item.product_id);
+        const unitUsd = body.currency === 'NIO' ? Number(item.unit_cost_input) / orderRate : Number(item.unit_cost_input);
+        data.purchase_order_items.push({
+          id: index === 0 ? ids.lineA : ids.lineB,
+          purchase_order_id: order.id,
+          product_id: product.id,
+          product_name: product.name,
+          sku_snapshot: product.sku,
+          ordered_quantity: Number(item.ordered_quantity),
+          received_quantity: 0,
+          unit_cost_input: Number(item.unit_cost_input),
+          unit_cost_usd: Number(unitUsd.toFixed(4)),
+          line_total_usd: Number((unitUsd * Number(item.ordered_quantity)).toFixed(2))
+        });
+      });
+      return fulfill(route, { record: order }, 201);
+    }
+
+    const orderStatusMatch = pathname.match(/^\/api\/erp\/purchase-orders\/([^/]+)$/);
+    if (orderStatusMatch && method === 'PATCH') {
+      const order = data.purchase_orders.find(item => item.id === orderStatusMatch[1]);
+      if (!order) return fulfill(route, { error: { message: 'Orden no encontrada.' } }, 404);
+      order.status = body.status;
+      return fulfill(route, { record: order });
+    }
+
+    const receiptMatch = pathname.match(/^\/api\/erp\/purchase-orders\/([^/]+)\/receipts$/);
+    if (receiptMatch && method === 'POST') {
+      const order = data.purchase_orders.find(item => item.id === receiptMatch[1]);
+      if (!order) return fulfill(route, { error: { message: 'Orden no encontrada.' } }, 404);
+      const receipt = {
+        id: ids.receipt,
+        receipt_number: body.receipt_number,
+        purchase_order_id: order.id,
+        actual_freight_usd: Number(body.actual_freight_usd || 0),
+        notes: body.notes || null,
+        received_by: 'qa-owner',
+        received_at: '2026-11-05T10:15:00.000Z'
+      };
+      const totalValue = body.items.reduce((sum, item) => {
+        const line = data.purchase_order_items.find(x => x.id === item.purchase_order_item_id);
+        return sum + Number(line.unit_cost_usd) * Number(item.quantity_received);
+      }, 0);
+      data.purchase_receipts.push(receipt);
+      for (const item of body.items) {
+        const line = data.purchase_order_items.find(x => x.id === item.purchase_order_item_id);
+        const product = data.products.find(x => x.id === line.product_id);
+        const quantity = Number(item.quantity_received);
+        const oldStock = Number(product.stock || 0);
+        const oldPurchaseCost = Number(product.purchase_cost_usd || 0);
+        const lineValue = Number(line.unit_cost_usd) * quantity;
+        const allocatedFreight = totalValue > 0 ? Number(body.actual_freight_usd || 0) * lineValue / totalValue : 0;
+        const landedUnit = Number(line.unit_cost_usd) + allocatedFreight / quantity;
+        const nextStock = oldStock + quantity;
+        product.stock = nextStock;
+        product.purchase_cost_usd = Number(((oldStock * oldPurchaseCost + quantity * landedUnit) / nextStock).toFixed(2));
+        product.unit_cost_usd = Number((product.purchase_cost_usd + Number(product.additional_cost_usd || 0)).toFixed(2));
+        line.received_quantity += quantity;
+        data.purchase_receipt_items.push({
+          id: 'qa-receipt-item-' + item.purchase_order_item_id,
+          receipt_id: receipt.id,
+          purchase_order_item_id: line.id,
+          product_id: product.id,
+          product_name: product.name,
+          quantity_received: quantity,
+          landed_unit_cost_usd: Number(landedUnit.toFixed(4))
+        });
+        data.inventory_movements.unshift({
+          id: 'qa-po-movement-' + item.purchase_order_item_id,
+          product_id: product.id,
+          movement_type: 'Entrada',
+          quantity,
+          quantity_delta: quantity,
+          previous_stock: oldStock,
+          new_stock: nextStock,
+          note: 'Recepción ' + receipt.receipt_number,
+          reference_type: 'purchase_receipt',
+          reference_id: receipt.id,
+          created_at: receipt.received_at
+        });
+      }
+      const allReceived = data.purchase_order_items
+        .filter(x => x.purchase_order_id === order.id)
+        .every(x => x.received_quantity >= x.ordered_quantity);
+      order.status = allReceived ? 'Recibida' : 'Recepción parcial';
+      return fulfill(route, { record: { ...receipt, purchase_order_status: order.status } }, 201);
+    }
+
+    if (pathname === '/api/erp/supplier-invoices' && method === 'POST') {
+      const supplier = data.suppliers.find(item => item.id === body.supplier_id);
+      if (!supplier) return fulfill(route, { error: { message: 'Proveedor no encontrado.' } }, 404);
+      const amountUsd = body.currency === 'NIO'
+        ? Number(body.original_amount) / Number(body.exchange_rate)
+        : Number(body.original_amount);
+      const invoice = {
+        id: ids.invoice,
+        supplier_id: supplier.id,
+        supplier_name: supplier.name,
+        purchase_order_id: body.purchase_order_id || null,
+        invoice_number: body.invoice_number,
+        invoice_date: body.invoice_date,
+        due_date: body.due_date || null,
+        currency: body.currency,
+        exchange_rate: Number(body.exchange_rate),
+        original_amount: Number(body.original_amount),
+        amount_usd: Number(amountUsd.toFixed(2)),
+        paid_amount_usd: 0,
+        status: 'Pendiente',
+        notes: body.notes || null,
+        created_at: '2026-11-05T10:30:00.000Z'
+      };
+      data.supplier_invoices.push(invoice);
+      return fulfill(route, { record: invoice }, 201);
+    }
+
+    if (pathname === '/api/erp/supplier-invoice-payments' && method === 'POST') {
+      const invoice = data.supplier_invoices.find(item => item.id === body.supplier_invoice_id);
+      if (!invoice) return fulfill(route, { error: { message: 'Factura no encontrada.' } }, 404);
+      const balance = Number(invoice.amount_usd) - Number(invoice.paid_amount_usd);
+      if (Number(body.amount_usd) > balance + 0.001) {
+        return fulfill(route, { error: { message: 'El pago supera el saldo.' } }, 409);
+      }
+      const payment = {
+        id: ids.payment,
+        supplier_invoice_id: invoice.id,
+        account_id: body.account_id,
+        currency: body.currency,
+        original_amount: Number(body.original_amount),
+        exchange_rate: Number(body.exchange_rate),
+        amount_usd: Number(body.amount_usd),
+        payment_reference: body.payment_reference || null,
+        paid_at: '2026-11-05T10:45:00.000Z'
+      };
+      invoice.paid_amount_usd = Number((Number(invoice.paid_amount_usd) + Number(body.amount_usd)).toFixed(2));
+      invoice.status = invoice.paid_amount_usd >= Number(invoice.amount_usd) - 0.001 ? 'Pagada' : 'Abono parcial';
+      data.supplier_invoice_payments.push(payment);
+      data.cash_entries.push({
+        id: 'qa-cash-entry-' + payment.id,
+        direction: 'expense',
+        concept: 'Pago factura proveedor ' + invoice.invoice_number,
+        account_id: body.account_id,
+        currency: body.currency,
+        original_amount: Number(body.original_amount),
+        exchange_rate: Number(body.exchange_rate),
+        amount_usd: Number(body.amount_usd),
+        source_type: 'supplier_invoice_payment',
+        source_id: payment.id,
+        created_at: payment.paid_at
+      });
+      return fulfill(route, { record: { ...payment, paid_amount_usd: invoice.paid_amount_usd, status: invoice.status } }, 201);
+    }
+
+    return fulfill(route, { records: [], data });
+  });
+
+  return { data, requests };
+}
+
+async function navigateToView(page, view) {
+  const sidebar = page.locator('#sidebar');
+  const isMobile = await page.evaluate(() => window.matchMedia('(max-width: 720px)').matches);
+  if (isMobile && !(await sidebar.evaluate(node => node.classList.contains('open')))) {
+    await page.locator('#menu-toggle').click();
+  }
+  await sidebar.locator('button[data-view="' + view + '"]').click();
+}
+
+test('procurement UI creates a mult-line order, receives partially, records supplier invoice and applies payment', async ({ page }) => {
+  const api = await installProcurementApi(page);
+  await page.goto('/');
+
+  await navigateToView(page, 'purchaseOrders');
+  const orderForm = page.locator('#purchase-order-form');
+  await expect(orderForm).toBeVisible();
+  await orderForm.locator('[name="order_number"]').fill('OC-QA-2026-001');
+  await orderForm.locator('[name="supplier_id"]').selectOption(ids.supplier);
+  await orderForm.locator('[name="currency"]').selectOption('NIO');
+  await orderForm.locator('[name="exchange_rate"]').fill('36.6');
+
+  const firstLine = orderForm.locator('.purchase-order-line').nth(0);
+  await firstLine.locator('[name="product_id"]').selectOption(ids.productA);
+  await firstLine.locator('[name="ordered_quantity"]').fill('2');
+  await firstLine.locator('[name="unit_cost_input"]').fill('366');
+
+  await page.locator('[data-action="add-purchase-order-line"]').click();
+  const secondLine = orderForm.locator('.purchase-order-line').nth(1);
+  await secondLine.locator('[name="product_id"]').selectOption(ids.productB);
+  await secondLine.locator('[name="ordered_quantity"]').fill('3');
+  await secondLine.locator('[name="unit_cost_input"]').fill('183');
+
+  await orderForm.locator('[name="discount_usd"]').fill('1');
+  await orderForm.locator('[name="estimated_freight_usd"]').fill('2');
+  await orderForm.locator('[name="estimated_taxes_usd"]').fill('0.5');
+
+  const createRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/purchase-orders') && request.method() === 'POST'
+  );
+  await orderForm.locator('[type="submit"]').click();
+  const createPayload = (await createRequest).postDataJSON();
+  expect(createPayload.items).toHaveLength(2);
+  expect(createPayload.currency).toBe('NIO');
+  expect(api.data.purchase_orders[0].total_usd).toBe(36.5);
+
+  const orderRow = page.locator('tr').filter({ hasText: 'OC-QA-2026-001' });
+  await expect(orderRow).toContainText('Borrador');
+  const submitRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
+    request.method() === 'PATCH'
+  );
+  await orderRow.locator('[data-action="submit-purchase-order"]').click();
+  expect((await submitRequest).postDataJSON().status).toBe('Enviada');
+  await expect(page.locator('tr').filter({ hasText: 'OC-QA-2026-001' })).toContainText('Enviada');
+
+  const approveRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
+    request.method() === 'PATCH'
+  );
+  await page.locator('tr').filter({ hasText: 'OC-QA-2026-001' }).locator('[data-action="approve-purchase-order"]').click();
+  expect((await approveRequest).postDataJSON().status).toBe('Confirmada');
+  await expect(page.locator('tr').filter({ hasText: 'OC-QA-2026-001' })).toContainText('Confirmada');
+
+  await page.locator('tr').filter({ hasText: 'OC-QA-2026-001' }).locator('[data-action="receive-purchase-order"]').click();
+  const receiptDialog = page.locator('#purchase-receipt-dialog');
+  await expect(receiptDialog).toBeVisible();
+  const receiptLines = receiptDialog.locator('[data-receipt-line]');
+  await expect(receiptLines).toHaveCount(2);
+  await receiptLines.nth(0).locator('[data-receipt-quantity]').fill('1');
+  await receiptLines.nth(1).locator('[data-receipt-quantity]').fill('2');
+  await receiptDialog.locator('[name="actual_freight_usd"]').fill('1.5');
+
+  const receiptRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/purchase-orders/' + ids.order + '/receipts') &&
+    request.method() === 'POST'
+  );
+  await receiptDialog.locator('[type="submit"]').click();
+  const receiptPayload = (await receiptRequest).postDataJSON();
+  expect(receiptPayload.items).toHaveLength(2);
+  await expect(page.locator('tr').filter({ hasText: 'OC-QA-2026-001' })).toContainText('Recepción parcial');
+
+  expect(api.data.purchase_receipts).toHaveLength(1);
+  expect(api.data.purchase_order_items.map(item => item.received_quantity)).toEqual([1, 2]);
+  expect(api.data.products.find(item => item.id === ids.productA).stock).toBe(6);
+  expect(api.data.products.find(item => item.id === ids.productB).stock).toBe(3);
+  expect(api.data.inventory_movements).toHaveLength(2);
+
+  await navigateToView(page, 'inventory');
+  await expect(page.locator('#inventory-product-body')).toContainText('QA Purchase Perfume A');
+  await expect(page.locator('#inventory-product-body')).toContainText('6');
+
+  await navigateToView(page, 'payables');
+  await page.locator('[data-action="new-supplier-invoice"]').click();
+  const businessDialog = page.locator('#business-dialog');
+  await expect(businessDialog).toBeVisible();
+  const businessForm = page.locator('#business-form');
+  await businessForm.locator('[name="supplierId"]').selectOption(ids.supplier);
+  await businessForm.locator('[name="purchaseOrderId"]').selectOption(ids.order);
+  await businessForm.locator('[name="invoiceNumber"]').fill('FAC-PROV-QA-001');
+  await businessForm.locator('[name="invoiceDate"]').fill('2026-11-05');
+  await businessForm.locator('[name="dueDate"]').fill('2026-11-20');
+  await businessForm.locator('[name="currency"]').selectOption('NIO');
+  await businessForm.locator('[name="exchangeRate"]').fill('36.6');
+  await businessForm.locator('[name="originalAmount"]').fill('732');
+
+  const invoiceRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/supplier-invoices') && request.method() === 'POST'
+  );
+  await businessForm.locator('#business-save').click();
+  const invoicePayload = (await invoiceRequest).postDataJSON();
+  expect(invoicePayload.purchase_order_id).toBe(ids.order);
+  expect(api.data.supplier_invoices[0].amount_usd).toBe(20);
+  await expect(businessDialog).not.toBeVisible();
+
+  const invoiceRow = page.locator('tr').filter({ hasText: 'FAC-PROV-QA-001' });
+  await expect(invoiceRow).toContainText('Pendiente');
+  await invoiceRow.locator('[data-action="new-supplier-invoice-payment"]').click();
+  await expect(businessDialog).toBeVisible();
+  await businessForm.locator('[name="amount"]').fill('366');
+  await businessForm.locator('[name="account"]').selectOption(ids.accountNio);
+  await businessForm.locator('[name="paymentReference"]').fill('REF-QA-2026-001');
+
+  const paymentRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/supplier-invoice-payments') && request.method() === 'POST'
+  );
+  await businessForm.locator('#business-save').click();
+  const paymentPayload = (await paymentRequest).postDataJSON();
+  expect(paymentPayload.original_amount).toBe(366);
+  expect(paymentPayload.amount_usd).toBe(10);
+  await expect(businessDialog).not.toBeVisible();
+  await expect(page.locator('tr').filter({ hasText: 'FAC-PROV-QA-001' })).toContainText('Abono parcial');
+
+  expect(api.data.supplier_invoice_payments).toHaveLength(1);
+  expect(api.data.supplier_invoices[0].paid_amount_usd).toBe(10);
+  expect(api.data.cash_entries).toHaveLength(1);
+  expect(api.data.cash_entries[0].source_type).toBe('supplier_invoice_payment');
+});
