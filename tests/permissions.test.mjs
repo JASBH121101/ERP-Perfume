@@ -121,3 +121,12 @@ test("purchase order physical receipt route is separated from order creation", (
   assert.equal(resolveRoutePermission("purchase-orders","POST","po-1",["api","erp","purchase-orders","po-1","receipts"],{}),
     "purchases.receipts.receive");
 });
+test("supplier invoice and supplier payment routes require their dedicated permissions", () => {
+  assert.equal(resolveRoutePermission("supplier-invoices","POST","",[],{}),
+    "purchases.supplier_invoices.create");
+  assert.equal(resolveRoutePermission("supplier-invoices","GET","",[],null),
+    "purchases.supplier_invoices.view");
+  assert.equal(resolveRoutePermission("supplier-invoice-payments","POST","",[],{}),
+    "payables.payments.create");
+  assert.equal(resolveRoutePermission("supplier-invoice-payments","PATCH","payment-1",[],{}), null);
+});

@@ -484,7 +484,7 @@ import { profileHasPermission } from './permission-utils.mjs';
     dgi: ["dgi.documents.view"], analytics: ["analytics.reports.view"], settings: ["settings.general.view"],
     purchases: ["purchases.receipts.view"],
     purchaseOrders: ["purchases.purchase_orders.view","purchases.receipts.view"],
-    payables: ["payables.payments.view","purchases.supplier_invoices.view"], suppliers: ["suppliers.records.view"],
+    payables: ["purchases.supplier_invoices.view"], suppliers: ["suppliers.records.view"],
     expenses: ["expenses.records.view"], cash: ["cash.entries.view"]
   };
   function permissionGranted(key) {
