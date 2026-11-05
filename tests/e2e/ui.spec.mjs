@@ -538,14 +538,29 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     await navigateToView(page, 'inventory');
     await expect(page.getByRole('heading', { name: 'Inventario' })).toBeVisible();
     await expect(page.locator('#inventory-product-search')).toBeVisible();
-    const layout = await page.evaluate(() => ({
-      viewport: window.innerWidth,
-      document: document.documentElement.scrollWidth,
-      content: document.querySelector('.main-panel')?.getBoundingClientRect().width || 0
-    }));
+    const layout = await page.evaluate(() => {
+      const sidebar = document.getElementById('sidebar');
+      const main = document.querySelector('.main-panel');
+      const sidebarRect = sidebar.getBoundingClientRect();
+      const mainRect = main.getBoundingClientRect();
+      return {
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+        content: mainRect.width,
+        sidebarLeft: sidebarRect.left,
+        sidebarRight: sidebarRect.right,
+        sidebarWidth: sidebarRect.width,
+        panelLeft: mainRect.left,
+        collapsed: document.body.classList.contains('sidebar-collapsed')
+      };
+    });
     expect(layout.document, 'document must not overflow the viewport at ' + viewport.name)
       .toBeLessThanOrEqual(layout.viewport + 1);
     expect(layout.content).toBeGreaterThan(0);
+    expect(
+      layout.panelLeft,
+      'main panel overlaps the fixed sidebar at ' + viewport.name + ': ' + JSON.stringify(layout)
+    ).toBeGreaterThanOrEqual(layout.sidebarRight - 1);
     const evidenceDir = path.join(process.cwd(), 'visual-evidence');
     mkdirSync(evidenceDir, { recursive: true });
     const screenshotPath = path.join(evidenceDir, 'inventory-' + viewport.name + '.png');
