@@ -992,9 +992,17 @@ body.auth-locked .app-shell {
 .export-menu button{width:100%;min-height:40px;padding:8px 10px;display:flex;align-items:flex-start;flex-direction:column;justify-content:center;gap:2px;border:0;border-radius:7px;background:transparent;text-align:left;font-size:11px;font-weight:650}
 .export-menu button:hover,.export-menu button:focus-visible{background:#f4f0e8}
 .export-menu button small{color:#958b7a;font-size:9px;font-weight:400}
-@media(max-width:680px){
+@media(max-width:720px){
   .page-heading .heading-actions{max-width:100%;flex-wrap:wrap;justify-content:flex-end}
-  .export-menu{right:0;max-width:min(240px,calc(100vw - 48px))}
+  /* On compact layouts Export is the first action: anchor the menu to its left edge,
+     not its right edge, so its width cannot push the menu off-screen. */
+  .export-menu{
+    left:0;
+    right:auto;
+    width:min(240px,calc(100vw - 40px));
+    min-width:0;
+    max-width:calc(100vw - 40px);
+  }
 }
 
 /* Preserve native permission and conditional visibility for styled buttons. */
