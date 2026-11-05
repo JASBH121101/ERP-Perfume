@@ -1,110 +1,73 @@
-name: Deploy JB PARFUMS API Worker
+name: Validate JB PARFUMS API Worker
 
 on:
-  # One controlled release marker triggers exactly one Development Worker deployment.
   push:
     branches: [main]
     paths:
-      - ".deployment/worker-development"
+      - "worker/src/**"
+      - "worker/wrangler.toml"
+      - "wrangler.toml"
+      - "scripts/build.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "tests/**"
   workflow_dispatch:
-    inputs:
-      confirm_development_deploy:
-        description: "Confirm deployment of the current main revision to the Development Worker"
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: jb-parfums-api-worker-development
-  cancel-in-progress: false
+  group: jb-parfums-api-worker-validation
+  cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Build and deploy Development API
+  validate:
+    name: Build and validate Development API source
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ddfbc84938d4d2795dd70d524b4197c9
     steps:
-      - name: Check out the approved main revision
+      - name: Check out main
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install pinned ERP dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      - name: Validate source and build
+      - name: Verify Development target
+        shell: bash
         run: |
+          set -euo pipefail
+          grep -q '^ERP_ENVIRONMENT = "development"$' wrangler.toml
+          grep -q '^name = "jb-parfums-erp-api"$' wrangler.toml
+          echo "Worker configuration is pinned to jb-parfums-erp-api / Development."
+
+      - name: Validate source, build and unit tests
+        run: |
+          set -euo pipefail
           node --check assets/js/bootstrap.mjs
           node --check assets/js/app.js
           node --input-type=module --check < worker/src/index.js
           node --input-type=module --check < worker/src/erp.js
+          node --input-type=module --check < worker/src/permissions.js
           npm run build
           npm run test:unit
 
-      - name: Require explicit Development deployment approval
-        env:
-          CONFIRM_DEVELOPMENT_DEPLOY: ${{ github.event_name == 'push' && 'true' || inputs.confirm_development_deploy }}
-        shell: bash
-        run: |
-          if [ "$CONFIRM_DEVELOPMENT_DEPLOY" != "true" ]; then
-            echo "::error::Deployment was not confirmed. Re-run this workflow and check the Development deployment confirmation."
-            exit 1
-          fi
-          if ! grep -q '^ERP_ENVIRONMENT = "development"$' wrangler.toml; then
-            echo "::error::Worker configuration is not pinned to ERP_ENVIRONMENT=development."
-            exit 1
-          fi
-          echo "Explicit Development deployment confirmed."
-
-      - name: Check Cloudflare Worker token
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
-        shell: bash
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::Missing CLOUDFLARE_WORKERS_API_TOKEN. Add an account-owned Cloudflare API token with the Editor role scoped to jb-parfums-erp-api."
-            exit 1
-          fi
-          echo "Dedicated Worker deployment token is present."
-
-      - name: Deploy Development Worker with Wrangler
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
-        shell: bash
-        working-directory: worker
-        run: |
-          set -euo pipefail
-          token="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
-          if [ -z "$token" ]; then
-            echo "::error::CLOUDFLARE_WORKERS_API_TOKEN is empty after whitespace normalization."
-            exit 1
-          fi
-          echo "::add-mask::$token"
-          export CLOUDFLARE_API_TOKEN="$token"
-          npm install --global wrangler@4
-          wrangler whoami
-          wrangler deploy
-
-      - name: Write deployment summary
+      - name: Write validation summary
         if: always()
         shell: bash
         run: |
           {
-            echo "## JB PARFUMS API Worker"
-            echo "- Target: **Neon Development**"
+            echo "## JB PARFUMS API Worker validation"
+            echo "- Result: source/build/unit-test validation only"
+            echo "- Target configuration: Neon Development"
             echo "- Source commit: $GITHUB_SHA"
-            echo "- Confirmation: ${{ github.event_name == 'push' && 'true' || inputs.confirm_development_deploy }}"
-            echo "- Cloudflare service: jb-parfums-erp-api"
-            echo "- Neon production was not targeted."
+            echo "- No Cloudflare secrets required by this validation workflow."
+            echo "- No deployment or Production change was performed."
           } >> "$GITHUB_STEP_SUMMARY"
