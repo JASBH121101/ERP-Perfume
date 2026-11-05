@@ -5,7 +5,7 @@ usage_model = "standard"
 keep_vars = true
 
 [vars]
-API_CORS_ORIGINS = "https://erp-perfume.pages.dev,https://feat-erp-operational-modules.erp-perfume.pages.dev"
+API_CORS_ORIGINS = "https://erp-perfume.pages.dev,https://wrangler-preview.erp-perfume.pages.dev"
 BOOTSTRAP_OWNER_EMAIL = "jaredblancoh19@gmail.com"
 ERP_ENVIRONMENT = "development"
 NEON_AUTH_BASE_URL = "https://ep-lingering-field-bethkduo.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth"
