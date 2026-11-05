@@ -1,33 +1,37 @@
 name: Deploy JB PARFUMS API Worker
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "worker/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/deploy-worker.yml"
+  # Deployment is manual and Development-only. Batch code changes before dispatching.
   workflow_dispatch:
+    inputs:
+      confirm_development_deploy:
+        description: "Confirm deployment of the current main revision to the Development Worker"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: jb-parfums-api-worker-production
-  cancel-in-progress: true
+  group: jb-parfums-api-worker-development
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Build and deploy standalone API
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Build and deploy Development API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ddfbc84938d4d2795dd70d524b4197c9
     steps:
-      - name: Check out main
+      - name: Check out the approved main revision
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - name: Set up Node.js
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -35,42 +39,68 @@ jobs:
       - name: Install pinned ERP dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Validate JavaScript syntax
+      - name: Validate source and build
         run: |
           node --check assets/js/bootstrap.mjs
           node --check assets/js/app.js
           node --input-type=module --check < worker/src/index.js
-          echo "Frontend and Worker JavaScript syntax checks passed."
+          node --input-type=module --check < worker/src/erp.js
+          npm run build
+          npm run test:unit
 
-      - name: Validate frontend build
-        run: npm run build
-
-      - name: Check Cloudflare deployment secret
-        id: cloudflare-secret
+      - name: Require explicit Development deployment approval
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CONFIRM_DEVELOPMENT_DEPLOY: ${{ inputs.confirm_development_deploy }}
+        shell: bash
+        run: |
+          if [ "$CONFIRM_DEVELOPMENT_DEPLOY" != "true" ]; then
+            echo "::error::Deployment was not confirmed. Re-run this workflow and check the Development deployment confirmation."
+            exit 1
+          fi
+          if ! grep -q '^ERP_ENVIRONMENT = "development"$' wrangler.toml; then
+            echo "::error::Worker configuration is not pinned to ERP_ENVIRONMENT=development."
+            exit 1
+          fi
+          echo "Explicit Development deployment confirmed."
+
+      - name: Check Cloudflare Worker token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
         shell: bash
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Worker deployment skipped. Add CLOUDFLARE_API_TOKEN to repository Actions secrets, then rerun this workflow."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Missing CLOUDFLARE_WORKERS_API_TOKEN. Add an account-owned Cloudflare API token with the Editor role scoped to jb-parfums-erp-api."
+            exit 1
           fi
+          echo "Dedicated Worker deployment token is present."
 
-      - name: Deploy Worker to Cloudflare
-        if: steps.cloudflare-secret.outputs.skip != 'true'
+      - name: Deploy Development Worker with Wrangler
         env:
-          RAW_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
         shell: bash
         working-directory: worker
         run: |
-          token="$(printf '%s' "$RAW_CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          set -euo pipefail
+          token="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
           if [ -z "$token" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN is empty after whitespace normalization. Re-copy the token in Cloudflare and replace the GitHub Actions secret."
+            echo "::error::CLOUDFLARE_WORKERS_API_TOKEN is empty after whitespace normalization."
             exit 1
           fi
           echo "::add-mask::$token"
           export CLOUDFLARE_API_TOKEN="$token"
           npm install --global wrangler@4
+          wrangler whoami
           wrangler deploy
+
+      - name: Write deployment summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## JB PARFUMS API Worker"
+            echo "- Target: **Neon Development**"
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Confirmation: ${{ inputs.confirm_development_deploy }}"
+            echo "- Cloudflare service: `jb-parfums-erp-api`"
+            echo "- Neon production was not targeted."
+          } >> "$GITHUB_STEP_SUMMARY"

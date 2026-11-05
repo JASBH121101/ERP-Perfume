@@ -30,7 +30,7 @@ Connected data areas include:
 
 Important boundaries:
 
-- The current purchase-registration path is a simplified purchase workflow. Although `purchase_orders`, `purchase_order_items`, `purchase_receipts` and `purchase_receipt_items` tables exist, their dedicated multi-line purchase-order and partial goods-receipt workflow is not yet exposed through `RESOURCE_DEFS` or the current UI.
+- The dedicated multi-line purchase-order workflow is now present in the UI and Worker API. It includes order creation, status/approval transitions, partial or complete goods receipt, stock/cost updates, kardex movements and audit records. Supplier invoices and their payment ledger are also present. The critical paths have newly added service-level unit coverage, but live authenticated end-to-end tests against Neon Development are still required before real purchasing.
 - Invoice preview/print is an internal non-fiscal document. DGI support-document storage and reference indicators are not a fiscal authorization or electronic invoicing integration.
 - Payroll values are stored in NIO. USD/NIO conversion is available for commercial and cash/payment operations using a saved exchange rate.
 - Product and DGI files are stored privately in R2 and are accessed through authenticated Worker endpoints.
@@ -38,15 +38,16 @@ Important boundaries:
 
 ## GitHub Actions and Worker deployment
 
-The workflow `.github/workflows/deploy-worker.yml` deploys the Worker from the `worker/` directory when relevant Worker files change on `main`.
+The workflow `.github/workflows/deploy-worker.yml` is **manual only**. A push to `main` must not trigger a Worker deployment. Run it from GitHub Actions only after code changes have been batched and reviewed; the required confirmation is explicitly for the Development Worker.
 
 Required repository secret:
 
-- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token with Worker edit/deploy permissions, limited to the intended Cloudflare account.
+- `CLOUDFLARE_WORKERS_API_TOKEN`: an account-owned Cloudflare API token with the **Editor** role scoped to the individual Worker `jb-parfums-erp-api`. This least-privilege scope is required for Wrangler to deploy that Worker. The token currently used by the prior workflow returned Cloudflare's `No access to the specified service` response and must be replaced or granted the appropriate Worker Editor scope before a manual deployment can succeed.
+- Keep the existing Pages deployment credential separate: `CLOUDFLARE_API_TOKEN` remains used by the Pages Wrangler workflow. Do not weaken Pages access or reuse a Pages-only token for Worker deployment.
 
-The workflow checks the token, validates frontend and Worker syntax, builds the frontend, then runs `wrangler deploy` with the working directory set to `worker`. The Worker uses `worker/wrangler.toml`.
+The workflow checks the explicit confirmation, verifies that `worker/wrangler.toml` targets `ERP_ENVIRONMENT=development`, validates source, builds, runs unit tests, then runs `wrangler whoami` and `wrangler deploy` from the `worker/` directory. It is not a Production deployment workflow.
 
-Never store the token in source files, workflow logs, issues, or chat.
+Never store either token in source files, workflow logs, issues, or chat.
 
 ## Worker database secret
 
@@ -96,9 +97,9 @@ Not every resource supports generic update or delete. Financial, payroll and inv
 
 ## Database migrations
 
-SQL migrations are kept in `db/migrations/` and tracked in `public.app_schema_migrations` on the Development branch. The current application migration history contains versions `0001` through `0006`.
+SQL migrations are kept in `db/migrations/` and tracked in `public.app_schema_migrations` on the Development branch. The last direct read of Development showed versions `0001` through `0009` applied. The current `main` tree contains source files `0001` through `0007`; the exact source files for versions `0008` and `0009` are absent. Their registered names, checksums and observed schema are documented in `docs/migration-reconciliation-2026-11-05.md`.
 
-Migrations are not automatically executed by GitHub Actions, Pages or Worker deployments. Apply and verify migrations deliberately against Development first. Do not migrate Neon Production until the owner explicitly approves a reviewed cutover and backup plan.
+Do not recreate or rerun `0008`/`0009` from guesses: their records and resulting objects already exist in Development. Recover the exact original SQL or create a reviewed forward reconciliation migration. Migrations are not automatically executed by GitHub Actions, Pages or Worker deployments. Do not migrate Neon Production until the owner explicitly approves a reviewed cutover and backup plan.
 
 ## Validation
 
