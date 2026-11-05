@@ -1107,7 +1107,7 @@ async function addSupplierInvoicePayment(sql,user,body) {
     const rows=await sql.query(
       "WITH target AS MATERIALIZED (SELECT si.id,si.invoice_number,si.amount_usd,si.paid_amount_usd,si.currency AS invoice_currency FROM supplier_invoices si WHERE si.id=$1::uuid FOR UPDATE),"+
       "account AS MATERIALIZED (SELECT id,currency FROM cash_accounts WHERE id=$2::uuid AND active=TRUE),"+
-      "valid AS MATERIALIZED (SELECT t.*,a.id AS account_id FROM target t CROSS JOIN account a WHERE a.currency=$3 AND t.paid_amount_usd+$4< = t.amount_usd),"+
+      "valid AS MATERIALIZED (SELECT t.*,a.id AS account_id FROM target t CROSS JOIN account a WHERE a.currency=$3 AND t.paid_amount_usd+$4<=t.amount_usd),"+
       "payment AS (INSERT INTO supplier_invoice_payments(supplier_invoice_id,account_id,currency,original_amount,exchange_rate,amount_usd,payment_reference,created_by) "+
       "SELECT id,account_id,$3,$5,$6,$4,$7,$8 FROM valid RETURNING *),"+
       "cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) "+
