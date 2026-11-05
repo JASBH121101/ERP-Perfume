@@ -1,0 +1,158 @@
+name: Wrangler Pages Preview and Promotion
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Choose Preview for testing or Production only after final approval"
+        required: true
+        type: choice
+        default: preview
+        options:
+          - preview
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: erp-pages-wrangler-${{ github.event_name == 'workflow_dispatch' && inputs.target == 'production' && 'production' || 'preview' }}
+  cancel-in-progress: false
+
+jobs:
+  build-test-deploy:
+    name: Build, validate and deploy with Wrangler
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DEPLOY_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'preview' }}
+      CLOUDFLARE_ACCOUNT_ID: ddfbc84938d4d2795dd70d524b4197c9
+    steps:
+      - name: Check out the approved GitHub main revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install ERP dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build static ERP
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Confirm Cloudflare credentials are configured
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::The existing CLOUDFLARE_API_TOKEN Actions secret is unavailable to this workflow."
+            exit 1
+          fi
+          echo "Cloudflare API token is present."
+
+      - name: Publish with Wrangler to Preview or Production
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_TARGET" = "production" ]; then
+            branch="main"
+          else
+            branch="wrangler-preview"
+          fi
+
+          cd "$RUNNER_TEMP"
+          npx --yes wrangler@4 pages deploy "$GITHUB_WORKSPACE/dist" \
+            --project-name=erp-perfume \
+            --branch="$branch"
+
+          if [ "$branch" = "main" ]; then
+            echo "url=https://erp-perfume.pages.dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=https://wrangler-preview.erp-perfume.pages.dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify Preview frontend and Cloudflare API
+        if: env.DEPLOY_TARGET == 'preview'
+        shell: bash
+        env:
+          PREVIEW_URL: https://wrangler-preview.erp-perfume.pages.dev
+          API_URL: https://jb-parfums-erp-api.jaredblancoh19.workers.dev
+        run: |
+          set -euo pipefail
+
+          echo "Checking Pages Preview..."
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 15 "$PREVIEW_URL/" -o "$RUNNER_TEMP/preview.html"; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::Pages Preview did not become reachable."
+              exit 1
+            fi
+            sleep 5
+          done
+          grep -q '<html' "$RUNNER_TEMP/preview.html"
+
+          echo "Checking Worker CORS preflight from the Preview origin..."
+          curl --fail --silent --show-error --max-time 15 \
+            -X OPTIONS "$API_URL/api/config" \
+            -H "Origin: $PREVIEW_URL" \
+            -H "Access-Control-Request-Method: GET" \
+            -D "$RUNNER_TEMP/cors.headers" \
+            -o /dev/null
+          grep -iqF "access-control-allow-origin: $PREVIEW_URL" "$RUNNER_TEMP/cors.headers"
+
+          echo "Checking Worker -> Neon and R2 bindings..."
+          curl --fail --silent --show-error --max-time 20 \
+            "$API_URL/api/health" \
+            -H "Origin: $PREVIEW_URL" \
+            -D "$RUNNER_TEMP/health.headers" \
+            -o "$RUNNER_TEMP/health.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const data = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/health.json", "utf8"));
+          if (data.ok !== true) throw new Error("Worker health endpoint did not return ok=true.");
+          if (data.services?.database !== true) throw new Error("Neon database connectivity is not healthy.");
+          if (data.services?.authentication !== true) throw new Error("Neon Auth configuration is missing.");
+          if (data.services?.storage !== true) throw new Error("Cloudflare R2 binding is missing.");
+          if (data.environment !== "development") throw new Error("Preview is not isolated to the Neon development environment.");
+          console.log("Runtime smoke test passed:", JSON.stringify(data));
+          NODE
+          grep -iqF "access-control-allow-origin: $PREVIEW_URL" "$RUNNER_TEMP/health.headers"
+
+          echo "Checking configured Neon Auth endpoint..."
+          curl --fail --silent --show-error --max-time 20 \
+            "https://ep-lingering-field-bethkduo.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth/.well-known/jwks.json" \
+            -o "$RUNNER_TEMP/neon-jwks.json"
+          node -e "const x=require('$RUNNER_TEMP/neon-jwks.json'); if(!Array.isArray(x.keys)||!x.keys.length) process.exit(1); console.log('Neon Auth JWKS reachable.');"
+
+      - name: Write deployment summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Wrangler Pages deployment"
+            echo "- Target: **$DEPLOY_TARGET**"
+            echo "- Source commit: `$GITHUB_SHA`"
+            echo "- Build output: `dist/`"
+            if [ "$DEPLOY_TARGET" = "production" ]; then
+              echo "- URL: https://erp-perfume.pages.dev"
+            else
+              echo "- URL: https://wrangler-preview.erp-perfume.pages.dev"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
