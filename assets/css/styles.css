@@ -582,20 +582,14 @@ body.auth-locked .app-shell {
 .invoice-paper::before {
   position: absolute;
   z-index: 0;
-  top: 48%;
+  top: 50%;
   left: 50%;
-  width: 140%;
-  content: "JB PARFUMS";
-  transform: translate(-50%, -50%) rotate(-31deg);
-  color: #b89a68;
-  opacity: .105;
-  font-family: "Playfair Display", Georgia, serif;
-  font-size: clamp(42px, 8vw, 94px);
-  font-weight: 700;
-  letter-spacing: .12em;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
+  width: min(64%, 150mm);
+  aspect-ratio: 1;
+  content: "";
+  transform: translate(-50%, -50%);
+  background: url("/assets/images/jb-parfums-watermark.png") center / contain no-repeat;
+  opacity: .09;
   pointer-events: none;
   user-select: none;
 }
@@ -605,7 +599,7 @@ body.auth-locked .app-shell {
 }
 @media print {
   .invoice-paper::before {
-    opacity: .09;
+    opacity: .085;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
