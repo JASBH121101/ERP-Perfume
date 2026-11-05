@@ -48,6 +48,10 @@ import { profileHasPermission } from './permission-utils.mjs';
   let customers = [];
   let suppliers = [];
   let purchases = [];
+  let purchaseOrders = [];
+  let purchaseOrderItems = [];
+  let purchaseReceipts = [];
+  let purchaseReceiptItems = [];
   let expenses = [];
   let cashEntries = [];
   let cashAccounts = [];
@@ -353,6 +357,16 @@ import { profileHasPermission } from './permission-utils.mjs';
           createdAt: p.created_at
         };
       });
+      purchaseOrders = (data.purchase_orders || []).map(order => ({
+        id:order.id, orderNumber:order.order_number, supplierId:order.supplier_id, supplier:order.supplier_name,
+        currency:order.currency, exchangeRate:Number(order.exchange_rate||1), subtotalUsd:Number(order.subtotal_usd||0),
+        discountUsd:Number(order.discount_usd||0), freightUsd:Number(order.estimated_freight_usd||0),
+        taxesUsd:Number(order.estimated_taxes_usd||0), totalUsd:Number(order.total_usd||0), status:order.status,
+        expectedDate:order.expected_delivery_date, paymentTerms:order.payment_terms||"", notes:order.notes||"", createdAt:order.created_at
+      }));
+      purchaseOrderItems = data.purchase_order_items || [];
+      purchaseReceipts = data.purchase_receipts || [];
+      purchaseReceiptItems = data.purchase_receipt_items || [];
       const rawInvoiceItems = data.invoice_items || [];
       const rawInvoicePayments = data.invoice_payments || [];
       invoices = (data.invoices || []).map(i => ({
@@ -444,7 +458,8 @@ import { profileHasPermission } from './permission-utils.mjs';
     dgi: { title: 'DGI', eyebrow: 'CUMPLIMIENTO TRIBUTARIO', heading: 'Control tributario DGI', subtitle: 'Organiza libros simplificados, límites de referencia y soportes documentales.' },
     analytics: { title: 'Informes', eyebrow: 'RENDIMIENTO', heading: 'Informes y análisis', subtitle: 'Indicadores preparados para tomar decisiones.' },
     settings: { title: 'Configuración', eyebrow: 'SISTEMA', heading: 'Configuración', subtitle: 'Preferencias y conexiones de JB PARFUMS ERP.' },
-    purchases: { title: 'Compras', eyebrow: 'ABASTECIMIENTO', heading: 'Compras', subtitle: 'Registra adquisiciones y recepción de productos.' },
+    purchases: { title: 'Compras', eyebrow: 'ABASTECIMIENTO', heading: 'Compras recibidas', subtitle: 'Consulta adquisiciones que ya ingresaron físicamente al inventario.' },
+    purchaseOrders: { title: 'Órdenes de compra', eyebrow: 'ABASTECIMIENTO', heading: 'Órdenes de compra', subtitle: 'Prepara, envía, aprueba y recibe pedidos de proveedores.' },
     payables: { title: 'Cuentas por pagar', eyebrow: 'ABASTECIMIENTO', heading: 'Cuentas por pagar', subtitle: 'Controla saldos y abonos pendientes con tus proveedores.' },
     suppliers: { title: 'Proveedores', eyebrow: 'ABASTECIMIENTO', heading: 'Proveedores', subtitle: 'Administra proveedores y monedas habituales.' },
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
@@ -458,7 +473,8 @@ import { profileHasPermission } from './permission-utils.mjs';
     receivables: ["receivables.view","billing.payments.view"], customers: ["customers.records.view"],
     hr: ["hr.employees.view","hr.attendance.view","hr.payroll.view","hr.leave.view","hr.contracts.view"],
     dgi: ["dgi.documents.view"], analytics: ["analytics.reports.view"], settings: ["settings.general.view"],
-    purchases: ["purchases.purchase_orders.view","purchases.receipts.view","purchases.supplier_invoices.view"],
+    purchases: ["purchases.receipts.view"],
+    purchaseOrders: ["purchases.purchase_orders.view","purchases.receipts.view"],
     payables: ["payables.payments.view"], suppliers: ["suppliers.records.view"],
     expenses: ["expenses.records.view"], cash: ["cash.entries.view"]
   };
@@ -496,6 +512,11 @@ import { profileHasPermission } from './permission-utils.mjs';
     "stock-new": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "stock-product": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "export-inventory": ["inventory.stock.view"], "new-purchase": ["purchases.receipts.receive"],
+    "submit-purchase-order": ["purchases.purchase_orders.submit"],
+    "approve-purchase-order": ["purchases.approvals.approve"],
+    "cancel-purchase-order": ["purchases.purchase_orders.cancel"],
+    "add-purchase-order-line": ["purchases.purchase_orders.create"],
+    "remove-purchase-order-line": ["purchases.purchase_orders.create"],
     "new-purchase-payment": ["payables.payments.create"], "new-supplier": ["suppliers.records.create"],
     "new-expense": ["expenses.records.create"], "new-cash": ["cash.entries.create"],
     "new-cash-account": ["cash.entries.create"], "new-employee": ["hr.employees.create"],
@@ -521,6 +542,10 @@ import { profileHasPermission } from './permission-utils.mjs';
         return;
       }
       if (action === "new-purchase") {
+        button.hidden = !(permissionGranted("purchases.receipts.receive") && permissionGranted("inventory.receipts.receive"));
+        return;
+      }
+      if (action === "receive-purchase-order") {
         button.hidden = !(permissionGranted("purchases.receipts.receive") && permissionGranted("inventory.receipts.receive"));
         return;
       }
@@ -1689,6 +1714,58 @@ import { profileHasPermission } from './permission-utils.mjs';
     const outstanding=purchases.reduce((sum,p)=>sum+Math.max(0,Number(p.totalUsd||0)-Number(p.paidUsd||0)),0);
     return heading(views.suppliers,'<button class="button button-primary" data-action="new-supplier">'+svg('plus')+' Nuevo proveedor</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Proveedores</span><strong>'+suppliers.length+'</strong></div><div class="summary-mini"><span>Compras vinculadas</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Saldo por pagar USD</span><strong>'+money(outstanding)+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PROVEEDOR / CONTACTO</th><th>TELÉFONO</th><th>MONEDA HABITUAL</th><th>COMPRAS</th><th>SALDO USD</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
   }
+  function purchaseOrderLineHtml(){
+    const options=products.filter(product=>product.active!==false).map(product=>'<option value="'+esc(product.id)+'">'+esc(product.name)+' · '+esc(product.sku||'Sin SKU')+'</option>').join('');
+    return '<div class="purchase-order-line"><label>Producto<select name="product_id" required><option value="">Seleccionar producto</option>'+options+'</select></label><label>Cantidad<input name="ordered_quantity" type="number" min="1" max="1000000" step="1" value="1" required></label><label>Costo unitario (moneda de la orden)<input name="unit_cost_input" type="number" min="0.01" step="0.01" required placeholder="0.00"></label><button class="button button-quiet button-small" type="button" data-action="remove-purchase-order-line" aria-label="Quitar producto">Quitar</button></div>';
+  }
+  function openPurchaseReceiptDialog(orderId){
+    const order=purchaseOrders.find(item=>String(item.id)===String(orderId));if(!order)return;
+    const lines=purchaseOrderItems.filter(item=>String(item.purchase_order_id)===String(order.id)).map(item=>({...item,remaining:Number(item.ordered_quantity||0)-Number(item.received_quantity||0)})).filter(item=>item.remaining>0);
+    if(!lines.length){toast("Esta orden no tiene cantidades pendientes de recibir.");return;}
+    let dialog=document.getElementById("purchase-receipt-dialog");
+    if(!dialog){dialog=document.createElement("dialog");dialog.id="purchase-receipt-dialog";dialog.className="modal-dialog purchase-receipt-dialog";document.body.appendChild(dialog);}
+    const receiptNumber="REC-"+new Date().toISOString().slice(0,10).replace(/-/g,"")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
+    const receiptLines=lines.map(item=>'<div class="purchase-receipt-line" data-receipt-line data-po-item-id="'+esc(item.id)+'"><div><strong>'+esc(item.product_name)+'</strong><small class="table-secondary">'+esc(item.sku_snapshot||'')+' · '+Number(item.received_quantity||0)+' recibidas de '+Number(item.ordered_quantity||0)+'</small></div><label>Recibir ahora<input data-receipt-quantity type="number" min="0" max="'+item.remaining+'" step="1" value="'+item.remaining+'" required></label><small>Máximo: '+item.remaining+'</small></div>').join('');
+    dialog.innerHTML='<form id="purchase-receipt-form" class="modal-form"><div class="modal-header"><div><span class="eyebrow">RECEPCIÓN FÍSICA</span><h2>Recibir '+esc(order.orderNumber)+'</h2><p>'+esc(order.supplier)+' · '+money(order.totalUsd)+' USD</p></div><button class="icon-button" type="button" data-action="close-purchase-receipt" aria-label="Cerrar">×</button></div>'+
+      '<input type="hidden" name="purchase_order_id" value="'+esc(order.id)+'"><input type="hidden" name="receipt_number" value="'+esc(receiptNumber)+'"><div class="purchase-receipt-lines">'+receiptLines+'</div>'+
+      '<div class="form-grid"><label>Flete real de esta recepción (USD)<input name="actual_freight_usd" type="number" min="0" step="0.01" value="0" required></label><label>Notas de recepción<input name="notes" maxlength="1000" placeholder="Estado de la mercancía, faltantes…"></label></div>'+
+      '<p class="form-helper">Solo las unidades recibidas aumentarán el inventario. El flete se distribuirá proporcionalmente entre los productos recibidos y actualizará el costo promedio.</p>'+
+      '<div class="form-actions"><button class="button button-quiet" type="button" data-action="close-purchase-receipt">Cancelar</button><button class="button button-primary" type="submit">Confirmar recepción</button></div></form>';
+    if(typeof dialog.showModal==="function")dialog.showModal();else toast("Tu navegador no admite el formulario de recepción.");
+  }
+  function renderPurchaseOrders(){
+    const linesByOrder=new Map();
+    purchaseOrderItems.forEach(item=>{const key=String(item.purchase_order_id);if(!linesByOrder.has(key))linesByOrder.set(key,[]);linesByOrder.get(key).push(item);});
+    const receiptCounts=new Map();
+    purchaseReceipts.forEach(receipt=>receiptCounts.set(String(receipt.purchase_order_id),(receiptCounts.get(String(receipt.purchase_order_id))||0)+1));
+    const rows=purchaseOrders.map(order=>{
+      const lines=linesByOrder.get(String(order.id))||[];
+      const itemSummary=lines.map(line=>esc(line.product_name)+' × '+Number(line.ordered_quantity)+' <small class="table-secondary">('+Number(line.received_quantity||0)+' recibidas)</small>').join('<br>');
+      const actions=[];
+      if(order.status==="Borrador"&&permissionGranted("purchases.purchase_orders.submit"))actions.push('<button class="button button-quiet button-small" data-action="submit-purchase-order" data-id="'+esc(order.id)+'">Enviar</button>');
+      if(order.status==="Enviada"&&permissionGranted("purchases.approvals.approve"))actions.push('<button class="button button-quiet button-small" data-action="approve-purchase-order" data-id="'+esc(order.id)+'">Aprobar</button>');
+      if(["Borrador","Enviada"].includes(order.status)&&permissionGranted("purchases.purchase_orders.cancel"))actions.push('<button class="button button-quiet button-small" data-action="cancel-purchase-order" data-id="'+esc(order.id)+'">Cancelar</button>');
+      const remaining=lines.reduce((sum,line)=>sum+Math.max(0,Number(line.ordered_quantity||0)-Number(line.received_quantity||0)),0);
+      if(["Confirmada","Recepción parcial"].includes(order.status)&&remaining>0&&permissionGranted("purchases.receipts.receive")&&permissionGranted("inventory.receipts.receive"))actions.push('<button class="button button-primary button-small" data-action="receive-purchase-order" data-id="'+esc(order.id)+'">Recibir ('+remaining+')</button>');
+      return '<tr><td data-label="Orden" class="table-primary"><strong>'+esc(order.orderNumber)+'</strong><small class="table-secondary">'+dateText(order.createdAt)+'</small></td><td data-label="Proveedor">'+esc(order.supplier)+'</td><td data-label="Productos">'+(itemSummary||'—')+'</td><td data-label="Entrega estimada">'+(order.expectedDate?dateText(order.expectedDate):'—')+'</td><td data-label="Total">'+money(order.totalUsd)+'</td><td data-label="Recepciones">'+(receiptCounts.get(String(order.id))||0)+'</td><td data-label="Estado"><span class="status-chip '+(order.status==="Recibida"?'status-success':order.status==="Cancelada"?'status-muted':'status-pending')+'">'+esc(order.status)+'</span></td><td data-label="Acciones">'+(actions.join(' ')||'—')+'</td></tr>';
+    }).join('');
+    const supplierOptions=suppliers.filter(supplier=>supplier.active!==false).map(supplier=>'<option value="'+esc(supplier.id)+'">'+esc(supplier.name)+'</option>').join('');
+    const canCreate=permissionGranted("purchases.purchase_orders.create")&&permissionGranted("products.catalog.view")&&permissionGranted("suppliers.records.view");
+    const createForm=canCreate?'<section class="panel purchase-order-create"><div class="panel-heading"><div><h2>Nueva orden</h2><p>Guardar un borrador no modifica existencias ni caja.</p></div></div>'+
+      '<form id="purchase-order-form"><div class="form-grid"><label>Número de orden<input name="order_number" required maxlength="80" placeholder="OC-2026-001"></label>'+
+      '<label>Proveedor<select name="supplier_id" required><option value="">Seleccionar proveedor</option>'+supplierOptions+'</select></label>'+
+      '<label>Moneda<select name="currency"><option value="USD">USD · Dólar</option><option value="NIO">NIO · Córdoba</option></select></label>'+
+      '<label>Tipo de cambio<input name="exchange_rate" type="number" min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'" required></label>'+
+      '<label>Entrega estimada<input name="expected_delivery_date" type="date"></label><label>Condiciones de pago<input name="payment_terms" maxlength="160" placeholder="Contado, crédito 15 días…"></label></div>'+
+      '<div class="purchase-order-lines-heading"><strong>Productos solicitados</strong><button class="button button-quiet button-small" type="button" data-action="add-purchase-order-line">Añadir producto</button></div>'+
+      '<div id="purchase-order-lines">'+purchaseOrderLineHtml()+'</div>'+
+      '<div class="form-grid purchase-order-adjustments"><label>Descuento USD<input name="discount_usd" type="number" min="0" step="0.01" value="0"></label><label>Flete estimado USD<input name="estimated_freight_usd" type="number" min="0" step="0.01" value="0"></label><label>Impuestos estimados USD<input name="estimated_taxes_usd" type="number" min="0" step="0.01" value="0"></label><label>Notas<input name="notes" maxlength="1000"></label></div>'+
+      '<div class="form-actions"><button class="button button-primary" type="submit">Guardar orden en Neon</button></div></form></section>':'';
+    return heading(views.purchaseOrders,'<button class="button button-quiet" data-view="purchases">Compras recibidas</button>')+createForm+
+      '<div class="summary-strip"><div class="summary-mini"><span>Órdenes</span><strong>'+purchaseOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+purchaseOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+purchaseOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+purchaseOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>'+
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>'+
+      '<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Crear y aprobar una orden no aumenta existencias. El stock y el costo promedio se actualizan únicamente cuando se confirma una recepción física.</p></div></div>';
+  }
   function renderPurchases(){
     const total=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
     const paid=purchases.reduce((s,p)=>s+Number(p.paidUsd||0),0);
@@ -2080,6 +2157,7 @@ import { profileHasPermission } from './permission-utils.mjs';
       analytics: renderAnalytics,
       settings: renderSettings,
       purchases: renderPurchases,
+      purchaseOrders: renderPurchaseOrders,
       payables: renderPayables,
       suppliers: renderSuppliers,
       expenses: renderExpenses,
@@ -2822,6 +2900,36 @@ import { profileHasPermission } from './permission-utils.mjs';
     const button=event.target.closest("[data-action]");
     if(!button)return;
     const action=button.getAttribute("data-action");
+    if(action==="close-purchase-receipt"){document.getElementById("purchase-receipt-dialog")?.close();return;}
+    if(action==="add-purchase-order-line"){
+      if(!permissionGranted("purchases.purchase_orders.create"))return;
+      const container=document.getElementById("purchase-order-lines");
+      if(container)container.insertAdjacentHTML("beforeend",purchaseOrderLineHtml());
+      return;
+    }
+    if(action==="remove-purchase-order-line"){
+      const line=button.closest(".purchase-order-line");
+      if(line?.parentElement?.children.length>1)line.remove();else toast("La orden necesita al menos un producto.");
+      return;
+    }
+    if(action==="receive-purchase-order"){
+      if(!permissionGranted("purchases.receipts.receive")||!permissionGranted("inventory.receipts.receive")){toast("Necesitas permisos de recepción de compras e inventario.");return;}
+      openPurchaseReceiptDialog(button.getAttribute("data-id"));
+      return;
+    }
+    if(["submit-purchase-order","approve-purchase-order","cancel-purchase-order"].includes(action)){
+      const id=button.getAttribute("data-id");
+      const nextStatus=action==="submit-purchase-order"?"Enviada":action==="approve-purchase-order"?"Confirmada":"Cancelada";
+      if(!id)return;
+      if(action==="cancel-purchase-order"&&!window.confirm("¿Cancelar esta orden de compra?"))return;
+      button.disabled=true;
+      try{
+        await erpApi("purchase-orders/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status:nextStatus,reason:"Cancelada desde el ERP"})});
+        await loadERPFromNeon(true);goToView("purchaseOrders");toast("Estado de la orden actualizado: "+nextStatus+".");
+      }catch(error){toast(error?.message||"No se pudo actualizar la orden.");}
+      finally{button.disabled=false;}
+      return;
+    }
     if(action==="refresh-access-manager"){
       button.disabled=true;
       await loadAccessManager(true);
@@ -2921,6 +3029,42 @@ import { profileHasPermission } from './permission-utils.mjs';
   });
   document.addEventListener("submit",async function(event){
     const form=event.target;
+    if(form?.id==="purchase-order-form"){
+      event.preventDefault();
+      if(!permissionGranted("purchases.purchase_orders.create")){toast("Tu cuenta no puede crear órdenes de compra.");return;}
+      const data=new FormData(form);
+      const lines=Array.from(form.querySelectorAll(".purchase-order-line")).map(row=>({
+        product_id:row.querySelector('[name="product_id"]').value,ordered_quantity:Number(row.querySelector('[name="ordered_quantity"]').value),
+        unit_cost_input:Number(row.querySelector('[name="unit_cost_input"]').value)
+      }));
+      const payload={order_number:String(data.get("order_number")||"").trim(),supplier_id:String(data.get("supplier_id")||""),
+        currency:String(data.get("currency")||"USD"),exchange_rate:Number(data.get("exchange_rate")||1),
+        expected_delivery_date:String(data.get("expected_delivery_date")||"")||null,payment_terms:String(data.get("payment_terms")||"").trim()||null,
+        notes:String(data.get("notes")||"").trim()||null,discount_usd:Number(data.get("discount_usd")||0),
+        estimated_freight_usd:Number(data.get("estimated_freight_usd")||0),estimated_taxes_usd:Number(data.get("estimated_taxes_usd")||0),items:lines};
+      const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Guardando…";}
+      try{await erpApi("purchase-orders",{method:"POST",body:JSON.stringify(payload)});await loadERPFromNeon(true);goToView("purchaseOrders");toast("Orden guardada como borrador. El inventario permanece sin cambios.");}
+      catch(error){toast(error?.message||"No se pudo crear la orden de compra.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Guardar orden en Neon";}}
+      return;
+    }
+    if(form?.id==="purchase-receipt-form"){
+      event.preventDefault();
+      if(!permissionGranted("purchases.receipts.receive")||!permissionGranted("inventory.receipts.receive")){toast("Tu cuenta no puede registrar esta recepción.");return;}
+      const data=new FormData(form);
+      const items=Array.from(form.querySelectorAll("[data-receipt-line]")).map(row=>({purchase_order_item_id:row.getAttribute("data-po-item-id"),quantity_received:Number(row.querySelector("[data-receipt-quantity]").value||0)})).filter(item=>item.quantity_received>0);
+      if(!items.length){toast("Introduce al menos una cantidad recibida.");return;}
+      const payload={receipt_number:String(data.get("receipt_number")||""),items,actual_freight_usd:Number(data.get("actual_freight_usd")||0),notes:String(data.get("notes")||"").trim()||null};
+      const orderId=String(data.get("purchase_order_id")||"");
+      const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Registrando…";}
+      try{
+        const result=await erpApi("purchase-orders/"+encodeURIComponent(orderId)+"/receipts",{method:"POST",body:JSON.stringify(payload)});
+        document.getElementById("purchase-receipt-dialog")?.close();await loadERPFromNeon(true);goToView("purchaseOrders");
+        toast("Recepción "+(result.record?.receipt_number||"registrada")+". Inventario y costo promedio actualizados.");
+      }catch(error){toast(error?.message||"No se pudo registrar la recepción.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Confirmar recepción";}}
+      return;
+    }
     if(form?.id==="role-permissions-form"){
       event.preventDefault();
       if(window.JBAuth?.profile?.role!=="owner")return;

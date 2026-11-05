@@ -107,3 +107,17 @@ test("owner-only management routes resolve to dedicated granular permissions", (
 test("unknown routes fail closed", () => {
   assert.equal(resolveRoutePermission("unknown-resource", "GET", "", [], null), null);
 });
+
+
+test("purchase order routes distinguish drafting, submission, approval and cancellation", () => {
+  assert.equal(resolveRoutePermission("purchase-orders","POST","",[],{}),"purchases.purchase_orders.create");
+  assert.equal(resolveRoutePermission("purchase-orders","PATCH","po-1",[],{status:"Enviada"}),"purchases.purchase_orders.submit");
+  assert.equal(resolveRoutePermission("purchase-orders","PATCH","po-1",[],{status:"Confirmada"}),"purchases.approvals.approve");
+  assert.equal(resolveRoutePermission("purchase-orders","PATCH","po-1",[],{status:"Cancelada"}),"purchases.purchase_orders.cancel");
+  assert.equal(resolveRoutePermission("purchase-orders","PATCH","po-1",[],{status:"Recibida"}),"purchases.purchase_orders.edit");
+});
+
+test("purchase order physical receipt route is separated from order creation", () => {
+  assert.equal(resolveRoutePermission("purchase-orders","POST","po-1",["api","erp","purchase-orders","po-1","receipts"],{}),
+    "purchases.receipts.receive");
+});

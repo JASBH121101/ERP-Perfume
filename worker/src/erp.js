@@ -498,6 +498,66 @@ async function changePurchaseOrderStatus(sql,user,id,body) {
   return erpJson({record:rows[0]});
 }
 
+async function createPurchaseReceipt(sql,user,orderId,body) {
+  const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  const freight = Number(body.actual_freight_usd ?? 0);
+  const notes = body.notes == null ? null : String(body.notes).trim();
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  if (!/^[0-9a-f-]{36}$/i.test(String(orderId)) || !Number.isFinite(freight) || freight < 0 ||
+      freight > 999999999999.99 || (notes && notes.length > 1000) || rawItems.length < 1 || rawItems.length > 100) {
+    return erpError(400,"INVALID_PURCHASE_RECEIPT","Revisa el flete real, las notas y las cantidades recibidas.");
+  }
+  const seen = new Set(), items = [];
+  for (const item of rawItems) {
+    const lineId=String(item?.purchase_order_item_id||"").trim(), quantity=Number(item?.quantity_received);
+    if(!/^[0-9a-f-]{36}$/i.test(lineId)||!Number.isInteger(quantity)||quantity<1||quantity>1000000)
+      return erpError(400,"INVALID_PURCHASE_RECEIPT_LINE","Cada línea recibida requiere una referencia y una cantidad entera positiva.");
+    if(seen.has(lineId)) return erpError(400,"DUPLICATE_RECEIPT_LINE","No repitas una línea de la orden en la misma recepción.");
+    seen.add(lineId); items.push({purchase_order_item_id:lineId,quantity_received:quantity});
+  }
+  const generatedNumber="REC-"+new Date().toISOString().slice(0,10).replace(/-/g,"")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
+  const receiptNumber=String(body.receipt_number||generatedNumber).trim();
+  if(!/^[A-Z0-9-]{8,64}$/i.test(receiptNumber)) return erpError(400,"INVALID_RECEIPT_NUMBER","El número de recepción no tiene un formato válido.");
+  try {
+    const rows=await sql.query(
+      "WITH input AS MATERIALIZED (SELECT $1::uuid order_id,$2::text receipt_number,$3::numeric actual_freight_usd,$4::text notes,$5::jsonb items,$6::uuid actor),"+
+      "locked_order AS MATERIALIZED (SELECT po.id,po.status,po.subtotal_usd,po.discount_usd FROM purchase_orders po JOIN input i ON i.order_id=po.id FOR UPDATE OF po),"+
+      "order_lines AS MATERIALIZED (SELECT oi.id AS purchase_order_item_id,oi.purchase_order_id,oi.product_id,oi.product_name,oi.ordered_quantity,oi.received_quantity,oi.unit_cost_usd,p.stock AS previous_stock,p.purchase_cost_usd,p.additional_cost_usd FROM purchase_order_items oi JOIN locked_order po ON po.id=oi.purchase_order_id JOIN products p ON p.id=oi.product_id FOR UPDATE OF oi,p),"+
+      "requested AS MATERIALIZED (SELECT * FROM jsonb_to_recordset((SELECT items FROM input)) AS x(purchase_order_item_id uuid,quantity_received integer)),"+
+      "matched AS MATERIALIZED (SELECT l.*,r.quantity_received FROM order_lines l JOIN requested r ON r.purchase_order_item_id=l.purchase_order_item_id),"+
+      "validation AS MATERIALIZED (SELECT EXISTS(SELECT 1 FROM locked_order) AS order_exists,COALESCE((SELECT status FROM locked_order),'') AS current_status,(SELECT COUNT(*) FROM requested)::int AS request_count,(SELECT COUNT(*) FROM matched)::int AS matched_count,(SELECT COUNT(DISTINCT purchase_order_item_id) FROM requested)::int AS distinct_count,(SELECT COUNT(*) FROM matched WHERE quantity_received<1 OR quantity_received>(ordered_quantity-received_quantity))::int AS invalid_quantity_count,(SELECT COUNT(*) FROM order_lines)::int AS order_line_count),"+
+      "merchandise AS MATERIALIZED (SELECT COALESCE(SUM(unit_cost_usd*quantity_received),0)::numeric AS total_value FROM matched),"+
+      "priced AS MATERIALIZED (SELECT m.*,ROUND(m.unit_cost_usd*(1-COALESCE((SELECT discount_usd/NULLIF(subtotal_usd,0) FROM locked_order),0)+CASE WHEN merchandise.total_value>0 THEN (SELECT actual_freight_usd FROM input)/merchandise.total_value ELSE 0 END),4) AS landed_unit_cost_usd FROM matched m CROSS JOIN merchandise),"+
+      "created_receipt AS (INSERT INTO purchase_receipts(receipt_number,purchase_order_id,actual_freight_usd,notes,received_by) SELECT i.receipt_number,i.order_id,i.actual_freight_usd,i.notes,i.actor FROM input i CROSS JOIN validation v WHERE v.order_exists AND v.current_status IN ('Confirmada','Recepción parcial') AND v.request_count>0 AND v.request_count=v.matched_count AND v.request_count=v.distinct_count AND v.invalid_quantity_count=0 AND v.order_line_count>0 RETURNING *),"+
+      "receipt_lines AS (INSERT INTO purchase_receipt_items(receipt_id,purchase_order_item_id,product_id,product_name,quantity_received,landed_unit_cost_usd) SELECT r.id,p.purchase_order_item_id,p.product_id,p.product_name,p.quantity_received,p.landed_unit_cost_usd FROM created_receipt r CROSS JOIN priced p RETURNING id),"+
+      "updated_order_items AS (UPDATE purchase_order_items oi SET received_quantity=oi.received_quantity+p.quantity_received FROM priced p CROSS JOIN created_receipt r WHERE oi.id=p.purchase_order_item_id AND EXISTS(SELECT 1 FROM receipt_lines) RETURNING oi.id),"+
+      "updated_products AS (UPDATE products product SET stock=product.stock+p.quantity_received,purchase_cost_usd=ROUND(((product.purchase_cost_usd*p.previous_stock)+(p.landed_unit_cost_usd*p.quantity_received))/NULLIF(p.previous_stock+p.quantity_received,0),2),unit_cost_usd=ROUND(((product.purchase_cost_usd*p.previous_stock)+(p.landed_unit_cost_usd*p.quantity_received))/NULLIF(p.previous_stock+p.quantity_received,0),2)+product.additional_cost_usd,updated_at=NOW() FROM priced p WHERE product.id=p.product_id AND EXISTS(SELECT 1 FROM updated_order_items) RETURNING product.id),"+
+      "movements AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT p.product_id,'Entrada',p.quantity_received,p.quantity_received,p.previous_stock,p.previous_stock+p.quantity_received,'Recepción '+i.receipt_number,'purchase_receipt',r.id::text,i.actor FROM priced p JOIN updated_products u ON u.id=p.product_id CROSS JOIN created_receipt r CROSS JOIN input i RETURNING id),"+
+      "remaining AS MATERIALIZED (SELECT COUNT(*) FILTER(WHERE oi.received_quantity+COALESCE(req.quantity_received,0)<oi.ordered_quantity)::int AS open_lines FROM purchase_order_items oi JOIN locked_order po ON po.id=oi.purchase_order_id LEFT JOIN requested req ON req.purchase_order_item_id=oi.id),"+
+      "updated_order AS (UPDATE purchase_orders po SET status=CASE WHEN remaining.open_lines=0 THEN 'Recibida' ELSE 'Recepción parcial' END,updated_at=NOW() FROM remaining CROSS JOIN created_receipt r WHERE po.id=r.purchase_order_id AND EXISTS(SELECT 1 FROM movements) RETURNING po.id,po.status),"+
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'receive','purchase_receipt',r.id::text,jsonb_build_object('receipt_number',r.receipt_number,'purchase_order_id',r.purchase_order_id,'actual_freight_usd',r.actual_freight_usd,'line_count',(SELECT COUNT(*) FROM receipt_lines),'new_order_status',u.status) FROM input i CROSS JOIN created_receipt r CROSS JOIN updated_order u RETURNING id) "+
+      "SELECT r.*,(SELECT COUNT(*) FROM receipt_lines)::int AS item_count,u.status AS purchase_order_status,v.order_exists,v.current_status AS previous_order_status,v.request_count,v.matched_count,v.distinct_count,v.invalid_quantity_count,v.order_line_count FROM validation v LEFT JOIN created_receipt r ON TRUE LEFT JOIN updated_order u ON TRUE",
+      [orderId,receiptNumber,round(freight),notes,JSON.stringify(items),user.id]
+    );
+    const result=rows[0];
+    if(!result?.id){
+      if(!result?.order_exists)return erpError(404,"PURCHASE_ORDER_NOT_FOUND","No se encontró la orden de compra.");
+      if(!["Confirmada","Recepción parcial"].includes(result.previous_order_status))return erpError(409,"PURCHASE_ORDER_NOT_APPROVED","Solo se puede recibir mercancía de una orden confirmada.");
+      if(result.request_count===0||result.request_count!==result.matched_count||result.request_count!==result.distinct_count||result.invalid_quantity_count>0)
+        return erpError(409,"RECEIPT_QUANTITY_CONFLICT","Una o más cantidades superan lo pendiente o las líneas no pertenecen a esta orden. Actualiza la pantalla y vuelve a intentarlo.");
+      return erpError(409,"PURCHASE_RECEIPT_NOT_CREATED","No se pudo registrar la recepción. Verifica los productos y el estado de la orden.");
+    }
+    return erpJson({record:result},201);
+  }catch(error){
+    if(error?.code==="22P02")return erpError(400,"INVALID_PURCHASE_RECEIPT_REFERENCE","La orden o una línea de recepción tiene un identificador inválido.");
+    if(error?.code==="23505")return erpError(409,"DUPLICATE_PURCHASE_RECEIPT","Esta recepción ya fue registrada o su número está duplicado. Actualiza la orden para comprobarlo.");
+    if(error?.code==="23503")return erpError(400,"PURCHASE_RECEIPT_REFERENCE_NOT_FOUND","La orden o el producto relacionado ya no existe.");
+    if(error?.code==="23514"||error?.code==="22003")return erpError(400,"INVALID_PURCHASE_RECEIPT","La recepción excede los límites de inventario o de importes.");
+    console.error("[erp] Purchase receipt failed:",error?.message||"database error");
+    return erpError(503,"PURCHASE_RECEIPT_SAVE_FAILED","No se pudo guardar la recepción.");
+  }
+}
+
 async function createPurchase(sql, user, body) {
   const roundCurrency = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   const rate = Number(body.exchange_rate ?? 1);
@@ -1087,6 +1147,7 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     return method === "GET" ? "purchases.receipts.view" : method === "POST" ? "purchases.receipts.receive" : null;
   }
   if (resource === "purchase-orders") {
+    if (parts[4] === "receipts" && method === "POST") return "purchases.receipts.receive";
     if (method === "GET") return "purchases.purchase_orders.view";
     if (method === "POST") return "purchases.purchase_orders.create";
     if (method === "PATCH") {
@@ -1558,6 +1619,13 @@ export async function handleERPRequest(request, env, user, sql) {
   if (resource === "purchase-orders" && request.method === "POST") {
     let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }
     return createPurchaseOrder(sql,user,body);
+  }
+  if (resource === "purchase-orders" && parts[4] === "receipts" && request.method === "POST" && id) {
+    if (!hasPermission(permissionContext,"purchases.receipts.receive") || !hasPermission(permissionContext,"inventory.receipts.receive")) {
+      return erpError(403,"FORBIDDEN","Registrar una recepción requiere permisos de compras e inventario.");
+    }
+    let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }
+    return createPurchaseReceipt(sql,user,id,body);
   }
   if (resource === "purchase-orders" && request.method === "PATCH" && id) {
     let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }

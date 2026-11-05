@@ -919,3 +919,28 @@ body.auth-locked .app-shell {
 .permission-editor-row small{font-size:10px}
 .permission-editor-row code{display:none!important}
 @media(max-width:760px){.access-manager-section .permission-editor-grid{grid-template-columns:minmax(0,1fr);padding:10px}.permission-editor-module>summary{min-height:42px}.permission-editor-row{min-height:36px}}
+
+
+/* Procurement: purchase orders and physical receiving */
+.purchase-order-create{margin-bottom:16px;padding:18px}
+.purchase-order-create .panel-heading{margin-bottom:14px}
+.purchase-order-create .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.purchase-order-create label,.purchase-receipt-dialog label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted,#777)}
+.purchase-order-create input,.purchase-order-create select,.purchase-receipt-dialog input{width:100%;min-height:40px;padding:9px 11px;border:1px solid var(--line,#e7e2d9);border-radius:9px;background:var(--surface,#fff);color:var(--text,#222);font:inherit}
+.purchase-order-lines-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 8px}
+.purchase-order-line{display:grid;grid-template-columns:minmax(0,2fr) minmax(90px,.7fr) minmax(110px,.9fr) auto;align-items:end;gap:10px;padding:10px 0;border-top:1px solid var(--line,#e7e2d9)}
+.purchase-order-adjustments{margin-top:14px}
+.purchase-order-create .form-actions{display:flex;justify-content:flex-end;margin-top:12px}
+.purchase-receipt-dialog{width:min(680px,calc(100vw - 28px));max-height:min(88vh,820px);overflow:auto;border:1px solid var(--line,#e7e2d9);border-radius:16px;padding:20px;background:var(--surface,#fff);color:var(--text,#222)}
+.purchase-receipt-dialog::backdrop{background:rgba(20,18,15,.48)}
+.purchase-receipt-dialog .modal-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px}
+.purchase-receipt-dialog .modal-header h2{margin:4px 0;font-size:20px}
+.purchase-receipt-dialog .modal-header p{margin:0;color:var(--muted,#777);font-size:13px}
+.purchase-receipt-lines{display:grid;gap:8px;margin-bottom:16px}
+.purchase-receipt-line{display:grid;grid-template-columns:minmax(0,1fr) 140px 90px;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line,#e7e2d9)}
+.purchase-receipt-line>div{display:grid;gap:3px}
+.purchase-receipt-line small{font-size:11px;color:var(--muted,#777)}
+.purchase-receipt-dialog .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.purchase-receipt-dialog .form-helper{font-size:12px;color:var(--muted,#777);line-height:1.5;margin:14px 0}
+.purchase-receipt-dialog .form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+@media(max-width:680px){.purchase-order-create{padding:13px}.purchase-order-create .form-grid,.purchase-receipt-dialog .form-grid{grid-template-columns:1fr}.purchase-order-line{grid-template-columns:1fr 1fr}.purchase-order-line label:first-child{grid-column:1/-1}.purchase-order-line button{justify-self:start}.purchase-receipt-dialog{padding:14px}.purchase-receipt-line{grid-template-columns:minmax(0,1fr) 112px;gap:8px}.purchase-receipt-line>small{grid-column:1/-1}}
