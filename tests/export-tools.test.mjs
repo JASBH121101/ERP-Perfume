@@ -27,7 +27,7 @@ describe("ERP export tools", () => {
     const xml = serializeExcelXml(dataset);
     assert.ok(xml.startsWith('<?xml version="1.0"'));
     assert.ok(xml.includes('ss:Type="Number">25.5'));
-    assert.ok(xml.includes('ss:Type="String">=HYPERLINK'));
+    assert.ok(xml.includes('ss:Type="String">&apos;=HYPERLINK'));
     assert.ok(xml.includes("&lt;script&gt;"));
     assert.ok(xml.includes('ss:StyleID="Header"'));
   });
@@ -36,7 +36,8 @@ describe("ERP export tools", () => {
     const html = renderPrintableHtml(dataset, "05/11/2026");
     assert.ok(html.includes("&lt;script&gt;"));
     assert.ok(html.includes("&quot;"));
-    assert.ok(!html.includes("<script>"));
+    assert.equal((html.match(/<script>/g)||[]).length, 1);
+    assert.ok(html.includes("<td>&lt;script&gt;</td>"));
     assert.ok(html.includes("window.print()"));
     assert.ok(html.includes("05/11/2026"));
   });
