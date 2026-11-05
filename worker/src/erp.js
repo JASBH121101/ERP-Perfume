@@ -6,6 +6,7 @@ const RESOURCE_DEFS = {
   suppliers: { table: "suppliers", roles: ["owner", "admin", "inventory"], fields: ["name","contact","phone","email","currency","notes","active"], order: "name ASC" },
   orders: { table: "orders", roles: ["owner", "admin", "sales"], fields: ["order_number","customer_id","customer_name","phone","status","payment_status","payment_method","delivery_mode","currency","original_amount","exchange_rate","total_usd","discount_usd","delivery_fee_usd","notes"], order: "created_at DESC" },
   purchases: { table: "purchases", roles: ["owner", "admin", "inventory"], fields: ["purchase_number","supplier_id","supplier_name","currency","exchange_rate","total_usd","paid_usd","status","notes"], order: "created_at DESC" },
+  purchase_orders: { table: "purchase_orders", roles: ["owner", "admin", "inventory"], fields: ["order_number","supplier_id","supplier_name","currency","exchange_rate","subtotal_usd","discount_usd","estimated_freight_usd","estimated_taxes_usd","total_usd","status","expected_delivery_date","payment_terms","notes","close_reason"], order: "created_at DESC" },
   invoices: { table: "invoices", roles: ["owner", "admin", "sales", "finance"], fields: ["invoice_number","source","order_id","order_number_snapshot","customer_id","customer_name","customer_phone","currency","exchange_rate","subtotal_usd","discount_usd","delivery_fee_usd","total_usd","paid_usd","status","payment_method","notes"], order: "created_at DESC" },
   expenses: { table: "expenses", roles: ["owner", "admin", "finance"], fields: ["category","description","currency","original_amount","exchange_rate","amount_usd"], order: "created_at DESC" },
   cash_entries: { table: "cash_entries", roles: ["owner", "admin", "finance"], fields: ["direction","concept","account_id","currency","original_amount","exchange_rate","amount_usd","source_type","source_id"], order: "created_at DESC" },
@@ -43,7 +44,7 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
 }
 
 async function readBootstrap(sql, user, permissionContext) {
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
+  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
@@ -53,6 +54,10 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM order_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT * FROM purchases ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM purchase_items ORDER BY id ASC LIMIT 10000`,
+      tx`SELECT * FROM purchase_orders ORDER BY created_at DESC LIMIT 2000`,
+      tx`SELECT * FROM purchase_order_items ORDER BY created_at ASC LIMIT 10000`,
+      tx`SELECT * FROM purchase_receipts ORDER BY received_at DESC LIMIT 5000`,
+      tx`SELECT * FROM purchase_receipt_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT * FROM invoices ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM invoice_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT * FROM invoice_payments ORDER BY created_at DESC LIMIT 10000`,
@@ -90,6 +95,13 @@ async function readBootstrap(sql, user, permissionContext) {
   if (hasPermission(permissionContext, "purchases.receipts.view")) {
     result.purchases = purchases;
     result.purchase_items = purchaseItems;
+  }
+  if (hasPermission(permissionContext, "purchases.purchase_orders.view") ||
+      hasPermission(permissionContext, "purchases.receipts.view")) {
+    result.purchase_orders = purchaseOrders;
+    result.purchase_order_items = purchaseOrderItems;
+    result.purchase_receipts = purchaseReceipts;
+    result.purchase_receipt_items = purchaseReceiptItems;
   }
   if (hasPermission(permissionContext, "customers.records.view")) result.customers = customers;
   if (hasPermission(permissionContext, "orders.records.view")) {
@@ -404,6 +416,87 @@ async function createInventoryMovement(sql, user, body) {
   }
 }
 
+
+async function createPurchaseOrder(sql, user, body) {
+  const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  const orderNumber = String(body.order_number || "").trim();
+  const supplierId = String(body.supplier_id || "").trim();
+  const currency = String(body.currency || "USD").toUpperCase();
+  const rate = Number(body.exchange_rate ?? 1);
+  const discount = round(body.discount_usd ?? 0);
+  const freight = round(body.estimated_freight_usd ?? 0);
+  const taxes = round(body.estimated_taxes_usd ?? 0);
+  const notes = body.notes == null ? null : String(body.notes).trim();
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!orderNumber || orderNumber.length > 80 || !supplierId ||
+      !["USD","NIO"].includes(currency) || !Number.isFinite(rate) || rate <= 0 || rate > 100000 ||
+      !Number.isFinite(discount) || discount < 0 || !Number.isFinite(freight) || freight < 0 ||
+      !Number.isFinite(taxes) || taxes < 0 || (notes && notes.length > 1000) ||
+      items.length < 1 || items.length > 100) {
+    return erpError(400,"INVALID_PURCHASE_ORDER","Revisa número, proveedor, moneda, tipo de cambio y productos de la orden.");
+  }
+  const seen = new Set();
+  const lines = [];
+  for (const item of items) {
+    const productId = String(item?.product_id || "").trim();
+    const quantity = Number(item?.ordered_quantity ?? item?.quantity);
+    const unitInput = Number(item?.unit_cost_input ?? item?.unit_cost);
+    if (!productId || !Number.isInteger(quantity) || quantity < 1 || quantity > 1000000 ||
+        !Number.isFinite(unitInput) || unitInput <= 0 || unitInput > 999999999) {
+      return erpError(400,"INVALID_PURCHASE_ORDER_LINE","Cada línea requiere producto, cantidad entera y costo unitario positivo.");
+    }
+    if (seen.has(productId)) return erpError(400,"DUPLICATE_PURCHASE_ORDER_PRODUCT","Combina las cantidades del mismo producto en una sola línea.");
+    seen.add(productId);
+    const unitUsd = round(currency === "NIO" ? unitInput / rate : unitInput);
+    if (!Number.isFinite(unitUsd) || unitUsd <= 0) return erpError(400,"INVALID_PURCHASE_ORDER_COST","No se pudo convertir el costo unitario a USD.");
+    lines.push({product_id:productId,ordered_quantity:quantity,unit_cost_input:round(unitInput),unit_cost_usd:unitUsd});
+  }
+  const subtotal = round(lines.reduce((sum,line)=>sum+round(line.ordered_quantity*line.unit_cost_usd),0));
+  const total = round(subtotal-discount+freight+taxes);
+  if (discount > subtotal || total <= 0 || total > 999999999999.99) return erpError(400,"INVALID_PURCHASE_ORDER_TOTAL","El descuento no puede superar el subtotal y el total debe ser positivo.");
+  const expected = body.expected_delivery_date ? String(body.expected_delivery_date) : null;
+  if (expected && !/^\d{4}-\d{2}-\d{2}$/.test(expected)) return erpError(400,"INVALID_EXPECTED_DATE","La fecha estimada no es válida.");
+  try {
+    const rows = await sql.query(
+      "WITH input AS (SELECT $1::text order_number,$2::uuid supplier_id,$3::text currency,$4::numeric exchange_rate,"+
+      "$5::numeric subtotal_usd,$6::numeric discount_usd,$7::numeric freight_usd,$8::numeric taxes_usd,$9::numeric total_usd,"+
+      "$10::date expected_date,$11::text payment_terms,$12::text notes,$13::jsonb items,$14::uuid actor),"+
+      "supplier AS (SELECT id,name FROM suppliers WHERE id=(SELECT supplier_id FROM input) AND active=TRUE),"+
+      "lines AS (SELECT * FROM jsonb_to_recordset((SELECT items FROM input)) AS x(product_id uuid,ordered_quantity integer,unit_cost_input numeric,unit_cost_usd numeric)),"+
+      "valid AS (SELECT COUNT(*) FILTER(WHERE p.id IS NULL OR p.active IS NOT TRUE) invalid,COUNT(*) line_count FROM lines l LEFT JOIN products p ON p.id=l.product_id),"+
+      "created AS (INSERT INTO purchase_orders(order_number,supplier_id,supplier_name,currency,exchange_rate,subtotal_usd,discount_usd,estimated_freight_usd,estimated_taxes_usd,total_usd,status,expected_delivery_date,payment_terms,notes,created_by) "+
+      "SELECT i.order_number,s.id,s.name,i.currency,i.exchange_rate,i.subtotal_usd,i.discount_usd,i.freight_usd,i.taxes_usd,i.total_usd,'Borrador',i.expected_date,i.payment_terms,i.notes,i.actor "+
+      "FROM input i JOIN supplier s ON TRUE CROSS JOIN valid v WHERE v.invalid=0 AND v.line_count=jsonb_array_length(i.items) RETURNING *),"+
+      "created_items AS (INSERT INTO purchase_order_items(purchase_order_id,product_id,product_name,sku_snapshot,ordered_quantity,unit_cost_input,unit_cost_usd,line_total_usd) "+
+      "SELECT c.id,p.id,p.name,p.sku,l.ordered_quantity,l.unit_cost_input,l.unit_cost_usd,ROUND(l.ordered_quantity*l.unit_cost_usd,2) FROM created c CROSS JOIN lines l JOIN products p ON p.id=l.product_id RETURNING id),"+
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'create','purchase_order',c.id::text,jsonb_build_object('order_number',c.order_number,'supplier',c.supplier_name,'total_usd',c.total_usd,'items',(SELECT COUNT(*) FROM created_items)) FROM created c CROSS JOIN input i RETURNING id) "+
+      "SELECT c.*,(SELECT COUNT(*) FROM created_items)::int item_count FROM created c",
+      [orderNumber,supplierId,currency,rate,subtotal,discount,freight,taxes,total,expected,body.payment_terms==null?null:String(body.payment_terms).slice(0,160),notes,JSON.stringify(lines),user.id]
+    );
+    if (!rows[0]) return erpError(409,"PURCHASE_ORDER_REFERENCE_INVALID","El proveedor o uno de los productos no existe, está inactivo o la orden no pudo validarse.");
+    return erpJson({record:rows[0]},201);
+  } catch(error) {
+    if (error?.code==="23505") return erpError(409,"DUPLICATE_PURCHASE_ORDER","El número de orden ya existe.");
+    if (error?.code==="22P02") return erpError(400,"INVALID_PURCHASE_ORDER_REFERENCE","El proveedor o un producto tiene un identificador inválido.");
+    if (error?.code==="23503") return erpError(400,"PURCHASE_ORDER_REFERENCE_NOT_FOUND","El proveedor o producto seleccionado ya no existe.");
+    console.error("[erp] Purchase order creation failed:",error?.message||"database error");
+    return erpError(503,"PURCHASE_ORDER_SAVE_FAILED","No se pudo guardar la orden de compra.");
+  }
+}
+
+async function changePurchaseOrderStatus(sql,user,id,body) {
+  const status=String(body.status||"").trim();
+  const allowed=["Enviada","Confirmada","Cancelada"];
+  if(!allowed.includes(status)) return erpError(400,"INVALID_PURCHASE_ORDER_STATUS","Estado de orden no permitido.");
+  const rows=await sql.query(
+    "WITH changed AS (UPDATE purchase_orders SET status=$2,close_reason=CASE WHEN $2='Cancelada' THEN NULLIF(LEFT(BTRIM($3),300),'') ELSE close_reason END,updated_at=NOW() "+
+    "WHERE id=$1::uuid AND ((status='Borrador' AND $2 IN ('Enviada','Cancelada')) OR (status='Enviada' AND $2 IN ('Confirmada','Cancelada'))) RETURNING *),"+
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $4,'status_change','purchase_order',id::text,jsonb_build_object('status',status,'close_reason',close_reason) FROM changed RETURNING id) SELECT * FROM changed",
+    [id,status,body.reason||"",user.id]
+  );
+  if(!rows[0]) return erpError(409,"PURCHASE_ORDER_TRANSITION_INVALID","La orden no existe o su estado actual no permite esa transición.");
+  return erpJson({record:rows[0]});
+}
 
 async function createPurchase(sql, user, body) {
   const roundCurrency = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -993,6 +1086,18 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
   if (resource === "purchases") {
     return method === "GET" ? "purchases.receipts.view" : method === "POST" ? "purchases.receipts.receive" : null;
   }
+  if (resource === "purchase-orders") {
+    if (method === "GET") return "purchases.purchase_orders.view";
+    if (method === "POST") return "purchases.purchase_orders.create";
+    if (method === "PATCH") {
+      const status = String(body?.status || "").toLowerCase();
+      if (status === "enviada") return "purchases.purchase_orders.submit";
+      if (status === "confirmada") return "purchases.approvals.approve";
+      if (status === "cancelada") return "purchases.purchase_orders.cancel";
+      return "purchases.purchase_orders.edit";
+    }
+    return null;
+  }
   if (resource === "payroll-periods") {
     if (parts[4] === "status" && method === "PATCH") return "hr.payroll.approve";
     return method === "GET" ? "hr.payroll.view" : null;
@@ -1449,6 +1554,14 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.inventory_movements.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para modificar existencias.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createInventoryMovement(sql, user, body);
+  }
+  if (resource === "purchase-orders" && request.method === "POST") {
+    let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }
+    return createPurchaseOrder(sql,user,body);
+  }
+  if (resource === "purchase-orders" && request.method === "PATCH" && id) {
+    let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }
+    return changePurchaseOrderStatus(sql,user,id,body);
   }
   if (resource === "purchases" && request.method === "POST") {
     if (!hasPermission(permissionContext, "purchases.receipts.receive") ||
