@@ -244,7 +244,7 @@ test('exports the active catalog filters to CSV and offers Excel and printable P
   const csvDownloadPromise = page.waitForEvent('download');
   await page.locator('[data-action="export-current-view"][data-format="csv"]').click();
   const csvDownload = await csvDownloadPromise;
-  expect(csvDownload.suggestedFilename()).toMatch(/productos.*\.csv$/);
+  expect(csvDownload.suggestedFilename()).toMatch(/products.*\.csv$/);
   const csvPath = await csvDownload.path();
   const csv = await readFile(csvPath, 'utf8');
   expect(csv).toContain('QA Out of Stock Perfume');
@@ -255,7 +255,7 @@ test('exports the active catalog filters to CSV and offers Excel and printable P
   const excelDownloadPromise = page.waitForEvent('download');
   await page.locator('[data-action="export-current-view"][data-format="excel"]').click();
   const excelDownload = await excelDownloadPromise;
-  expect(excelDownload.suggestedFilename()).toMatch(/productos.*\.xls$/);
+  expect(excelDownload.suggestedFilename()).toMatch(/products.*\.xls$/);
 
   await page.locator('[data-action="toggle-export-menu"]').click();
   const popupPromise = page.waitForEvent('popup');
