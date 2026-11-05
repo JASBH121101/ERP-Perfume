@@ -402,7 +402,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await invoiceRow.locator('[data-action="new-supplier-invoice-payment"]').click();
   await expect(businessDialog).toBeVisible();
   await businessForm.locator('[name="amount"]').fill('366');
-  await businessForm.locator('[name="account"]').selectOption(ids.accountNio);
+  await businessForm.locator('[name="account"]').selectOption('Caja NIO');
   await businessForm.locator('[name="paymentReference"]').fill('REF-QA-2026-001');
 
   const paymentRequest = page.waitForRequest(request =>
