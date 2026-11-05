@@ -1,7 +1,7 @@
-Controlled Preview release marker: verified mobile export menu fix on main; Worker Development already deployed. Production remains untouched.
+Controlled Preview release marker: mobile export menu fix.
 Preview release: inventory watermark image copy fix.
 Preview release: consolidated supplier payables and block payments on voided invoices.
 Preview release: unified CSV, Excel-compatible XLS and printable PDF export across ERP views.
-Preview release: active view filters are reflected in export data; report export permissions enforced for Analytics and DGI.
-Preview release: mobile export menu anchored to the trigger and constrained to the viewport at 390px.
-Preview release: 22 Playwright browser tests, unit tests, static checks, build, Worker validation and JB Expert QA passed.
+Preview release: active view filters reflected in export data; report export permissions enforced for Analytics and DGI.
+Preview release: mobile export dropdown positioned against the viewport and bounded to visible screen area.
+Validation: ERP quality gate and JB Expert QA passed on commit 73aa38fd6aa6fae7185c26e1729e2f14062dc7cd.
