@@ -425,7 +425,7 @@ export async function createInventoryMovement(sql, user, body) {
 }
 
 
-async function createPurchaseOrder(sql, user, body) {
+export async function createPurchaseOrder(sql, user, body) {
   const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   const orderNumber = String(body.order_number || "").trim();
   const supplierId = String(body.supplier_id || "").trim();
@@ -506,7 +506,7 @@ async function changePurchaseOrderStatus(sql,user,id,body) {
   return erpJson({record:rows[0]});
 }
 
-async function createPurchaseReceipt(sql,user,orderId,body) {
+export async function createPurchaseReceipt(sql,user,orderId,body) {
   const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   const freight = Number(body.actual_freight_usd ?? 0);
   const notes = body.notes == null ? null : String(body.notes).trim();
@@ -1051,7 +1051,7 @@ async function addInvoicePayment(sql, user, body) {
   }
 }
 
-async function createSupplierInvoice(sql,user,body) {
+export async function createSupplierInvoice(sql,user,body) {
   const round=value=>Math.round((Number(value)+Number.EPSILON)*100)/100;
   const supplierId=String(body.supplier_id||"").trim();
   const orderId=body.purchase_order_id?String(body.purchase_order_id).trim():null;
@@ -1091,7 +1091,7 @@ async function createSupplierInvoice(sql,user,body) {
   }
 }
 
-async function addSupplierInvoicePayment(sql,user,body) {
+export async function addSupplierInvoicePayment(sql,user,body) {
   const invoiceId=String(body.supplier_invoice_id||"").trim();
   const accountId=String(body.account_id||"").trim();
   const currency=String(body.currency||"USD").toUpperCase();
