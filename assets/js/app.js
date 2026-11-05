@@ -1265,7 +1265,7 @@ import { profileHasPermission } from './permission-utils.mjs';
       if(!invoice){toast('No se encontró la factura del proveedor.');return;}
       const balance=Math.max(0,invoice.amountUsd-invoice.paidUsd);
       if(balance<=0.001){toast('Esta factura ya está pagada.');return;}
-      body='<div class="form-grid"><div class="detail-field full-field"><span>'+esc(invoice.supplier)+' · Factura '+esc(invoice.invoiceNumber)+'</span><strong>Saldo pendiente: '+money(balance)+' USD</strong><small>Importe original: '+moneyInCurrency(invoice.originalAmount,invoice.currency)+' · Vence: '+dateText(invoice.dueDate)+'</small></div><input type="hidden" name="currency" value="'+esc(invoice.currency)+'">'+formField('Importe del pago ('+invoice.currency+')','amount','number',true,'min="0.01" step="0.01"')+selectField('Cuenta de salida','accountId',cashAccountOptions(invoice.currency),true)+formField('Referencia de pago','paymentReference','text',false,'maxlength="160"')+'</div><p class="form-helper">El pago actualiza el saldo de esta factura y registra una salida en Caja y bancos. No modifica existencias ni el costo del producto.</p>';
+      body='<div class="form-grid"><div class="detail-field full-field"><span>'+esc(invoice.supplier)+' · Factura '+esc(invoice.invoiceNumber)+'</span><strong>Saldo pendiente: '+money(balance)+' USD</strong><small>Importe original: '+moneyInCurrency(invoice.originalAmount,invoice.currency)+' · Vence: '+dateText(invoice.dueDate)+'</small></div><input type="hidden" name="currency" value="'+esc(invoice.currency)+'">'+formField('Importe del pago ('+invoice.currency+')','amount','number',true,'min="0.01" step="0.01"')+selectField('Cuenta de salida','account',cashAccountOptions(invoice.currency),true)+formField('Referencia de pago','paymentReference','text',false,'maxlength="160"')+'</div><p class="form-helper">El pago actualiza el saldo de esta factura y registra una salida en Caja y bancos. No modifica existencias ni el costo del producto.</p>';
     }
     if(type==='purchase-payment'){
       const purchase=purchases.find(item=>String(item.id)===String(recordId));
@@ -1486,11 +1486,11 @@ import { profileHasPermission } from './permission-utils.mjs';
         await erpApi('supplier-invoices',{method:'POST',body:JSON.stringify({supplier_id:supplier.id,purchase_order_id:orderId,invoice_number:invoiceNumber,invoice_date:invoiceDate,due_date:dueDate||null,currency,exchange_rate:invoiceRate,original_amount:amount,notes:get('notes')||null})});
       } else if(type==='supplier-invoice-payment'){
         const invoice=supplierInvoices.find(item=>String(item.id)===String(businessForm.dataset.recordId));
-        const amount=num('amount'),accountId=get('accountId'),paymentCurrency=get('currency');
-        if(!invoice||!accountId||!Number.isFinite(amount)||amount<=0)throw new Error('Revisa la factura, la cuenta y el importe.');
+        const amount=num('amount'),accountName=get('account'),paymentCurrency=get('currency');
+        if(!invoice||!accountName||!Number.isFinite(amount)||amount<=0)throw new Error('Revisa la factura, la cuenta y el importe.');
         const amountUsd=toUsd(amount,paymentCurrency);
         if(amountUsd>Math.max(0,invoice.amountUsd-invoice.paidUsd)+0.001)throw new Error('El pago supera el saldo pendiente de la factura.');
-        const account=cashAccounts.find(item=>String(item.id)===accountId&&item.currency===paymentCurrency&&item.active!==false);
+        const account=cashAccounts.find(item=>item.name===accountName&&item.currency===paymentCurrency&&item.active!==false);
         if(!account)throw new Error('La cuenta de salida no existe o no coincide con la moneda de la factura.');
         await erpApi('supplier-invoice-payments',{method:'POST',body:JSON.stringify({supplier_invoice_id:invoice.id,account_id:account.id,currency:paymentCurrency,original_amount:amount,exchange_rate:exchangeRate,amount_usd:amountUsd,payment_reference:get('paymentReference')||null})});
       } else if(type==='purchase-payment'){
