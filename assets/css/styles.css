@@ -978,3 +978,13 @@ body.auth-locked .app-shell {
     min-width:0;
   }
 }
+
+/* Tablet page headings with inline action groups must stack; width:100% actions
+   cannot share a horizontal row with the title inside the reduced content column. */
+@media (min-width:721px) and (max-width:950px) {
+  .page-heading:has(.heading-actions-inline) {
+    align-items:flex-start;
+    flex-direction:column;
+    gap:14px;
+  }
+}
