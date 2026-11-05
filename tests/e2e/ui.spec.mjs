@@ -265,6 +265,30 @@ test('exports the active catalog filters to CSV and offers Excel and printable P
   await expect(printPage.locator('body')).not.toContainText('QA Fixture Perfume');
 });
 
+test('mobile export menu stays fully inside the viewport on Orders', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await navigateToView(page, 'orders');
+  await expect(page.getByRole('heading', { name: 'Pedidos y ventas' })).toBeVisible();
+
+  const trigger = page.locator('[data-action="toggle-export-menu"]');
+  await trigger.click();
+  const menu = page.locator('#current-export-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem')).toHaveCount(3);
+  await expect(menu.getByRole('menuitem', { name: /CSV/ })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /Excel/ })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /PDF \/ Imprimir/ })).toBeVisible();
+
+  const bounds = await page.evaluate(() => {
+    const menu = document.getElementById('current-export-menu').getBoundingClientRect();
+    return { left: menu.left, right: menu.right, width: menu.width, viewport: document.documentElement.clientWidth };
+  });
+  expect(bounds.left).toBeGreaterThanOrEqual(0);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.viewport);
+  expect(bounds.width).toBeGreaterThan(0);
+});
+
 test('inventory kardex searches, filters by type and date, and paginates all movements', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'inventory');
