@@ -60,6 +60,10 @@ Expected secret target:
 - Branch: `development`
 - Runtime role: `jb_erp_runtime_sql`
 
+On 2026-11-05, the Development runtime role received its least-privilege grants: SELECT on all 33 operational tables, INSERT on 32, UPDATE on 21, and DELETE only on the two permission-mapping tables. It can read the verified Neon Auth user record and use the purchase-order number sequence. The migration registry is intentionally excluded, and the role has no elevated PostgreSQL role privileges. The repeatable grant configuration was applied directly to Neon Development.
+
+Cloudflare masks the `DATABASE_URL` secret value. The role permissions are now ready, but the exact username embedded in the active Worker secret cannot be independently verified from Cloudflare settings. Confirm it with an authenticated live Worker request before treating the runtime connection as fully certified.
+
 The Worker also has the Neon Auth base URL and JWKS URL configured for the Development Auth endpoint, `ERP_ENVIRONMENT=development`, the configured owner bootstrap email and the private R2 bucket binding.
 
 Before real business transactions, verify the live Worker endpoint:
