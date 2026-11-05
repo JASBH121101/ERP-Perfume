@@ -44,7 +44,7 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
 }
 
 async function readBootstrap(sql, user, permissionContext) {
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
+  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
@@ -58,6 +58,8 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM purchase_order_items ORDER BY created_at ASC LIMIT 10000`,
       tx`SELECT * FROM purchase_receipts ORDER BY received_at DESC LIMIT 5000`,
       tx`SELECT * FROM purchase_receipt_items ORDER BY id ASC LIMIT 10000`,
+      tx`SELECT si.*,s.name AS supplier_name FROM supplier_invoices si JOIN suppliers s ON s.id=si.supplier_id ORDER BY si.invoice_date DESC,si.created_at DESC LIMIT 5000`,
+      tx`SELECT sip.*,ca.name AS account_name FROM supplier_invoice_payments sip JOIN cash_accounts ca ON ca.id=sip.account_id ORDER BY sip.paid_at DESC LIMIT 10000`,
       tx`SELECT * FROM invoices ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM invoice_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT * FROM invoice_payments ORDER BY created_at DESC LIMIT 10000`,
@@ -102,6 +104,12 @@ async function readBootstrap(sql, user, permissionContext) {
     result.purchase_order_items = purchaseOrderItems;
     result.purchase_receipts = purchaseReceipts;
     result.purchase_receipt_items = purchaseReceiptItems;
+  }
+  if (hasPermission(permissionContext, "purchases.supplier_invoices.view")) {
+    result.supplier_invoices = supplierInvoices;
+  }
+  if (hasPermission(permissionContext, "payables.payments.view")) {
+    result.supplier_invoice_payments = supplierInvoicePayments;
   }
   if (hasPermission(permissionContext, "customers.records.view")) result.customers = customers;
   if (hasPermission(permissionContext, "orders.records.view")) {
@@ -1043,6 +1051,90 @@ async function addInvoicePayment(sql, user, body) {
   }
 }
 
+async function createSupplierInvoice(sql,user,body) {
+  const round=value=>Math.round((Number(value)+Number.EPSILON)*100)/100;
+  const supplierId=String(body.supplier_id||"").trim();
+  const orderId=body.purchase_order_id?String(body.purchase_order_id).trim():null;
+  const invoiceNumber=String(body.invoice_number||"").trim();
+  const invoiceDate=String(body.invoice_date||"");
+  const dueDate=body.due_date?String(body.due_date):null;
+  const currency=String(body.currency||"USD").toUpperCase();
+  const rate=Number(body.exchange_rate??1);
+  const original=round(body.original_amount);
+  const amountUsd=round(currency==="NIO"?original/rate:original);
+  const notes=body.notes==null?null:String(body.notes).trim();
+  if(!/^[0-9a-f-]{36}$/i.test(supplierId)||!invoiceNumber||invoiceNumber.length>100||
+     !/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)||(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))||
+     (dueDate&&dueDate<invoiceDate)||!["USD","NIO"].includes(currency)||!Number.isFinite(rate)||rate<=0||rate>100000||
+     !Number.isFinite(original)||original<=0||original>999999999999.99||(notes&&notes.length>1000)) {
+    return erpError(400,"INVALID_SUPPLIER_INVOICE","Revisa proveedor, número, fechas, moneda, tipo de cambio e importe.");
+  }
+  if(orderId&&!/^[0-9a-f-]{36}$/i.test(orderId))return erpError(400,"INVALID_PURCHASE_ORDER_REFERENCE","La orden de compra seleccionada no es válida.");
+  try {
+    const rows=await sql.query(
+      "WITH input AS MATERIALIZED (SELECT $1::uuid supplier_id,$2::uuid order_id,$3::text invoice_number,$4::date invoice_date,$5::date due_date,$6::text currency,$7::numeric rate,$8::numeric original_amount,$9::numeric amount_usd,$10::text notes,$11::uuid actor),"+
+      "valid AS MATERIALIZED (SELECT s.id,s.name,(i.order_id IS NULL OR EXISTS(SELECT 1 FROM purchase_orders po WHERE po.id=i.order_id AND po.supplier_id=s.id)) AS order_matches FROM input i JOIN suppliers s ON s.id=i.supplier_id AND s.active=TRUE),"+
+      "created AS (INSERT INTO supplier_invoices(supplier_id,purchase_order_id,invoice_number,invoice_date,due_date,currency,exchange_rate,original_amount,amount_usd,paid_amount_usd,status,notes,created_by) "+
+      "SELECT v.id,i.order_id,i.invoice_number,i.invoice_date,i.due_date,i.currency,i.rate,i.original_amount,i.amount_usd,0,'Pendiente',i.notes,i.actor FROM input i JOIN valid v ON v.order_matches RETURNING *),"+
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'create','supplier_invoice',c.id::text,jsonb_build_object('invoice_number',c.invoice_number,'supplier_id',c.supplier_id,'amount_usd',c.amount_usd,'purchase_order_id',c.purchase_order_id) FROM input i CROSS JOIN created c RETURNING id) "+
+      "SELECT c.* FROM created c",
+      [supplierId,orderId,invoiceNumber,invoiceDate,dueDate,currency,rate,original,amountUsd,notes,user.id]
+    );
+    if(!rows[0])return erpError(409,"SUPPLIER_INVOICE_REFERENCE_INVALID","El proveedor está inactivo o la orden no pertenece a ese proveedor.");
+    return erpJson({record:rows[0]},201);
+  }catch(error){
+    if(error?.code==="23505")return erpError(409,"DUPLICATE_SUPPLIER_INVOICE","Ya existe una factura con ese número para el proveedor.");
+    if(error?.code==="23503")return erpError(400,"SUPPLIER_INVOICE_REFERENCE_NOT_FOUND","El proveedor o la orden seleccionada ya no existe.");
+    if(error?.code==="22P02")return erpError(400,"INVALID_SUPPLIER_INVOICE_REFERENCE","El proveedor u orden tiene un identificador inválido.");
+    console.error("[erp] Supplier invoice creation failed:",error?.message||"database error");
+    return erpError(503,"SUPPLIER_INVOICE_SAVE_FAILED","No se pudo guardar la factura del proveedor.");
+  }
+}
+
+async function addSupplierInvoicePayment(sql,user,body) {
+  const invoiceId=String(body.supplier_invoice_id||"").trim();
+  const accountId=String(body.account_id||"").trim();
+  const currency=String(body.currency||"USD").toUpperCase();
+  const original=Number(body.original_amount),rate=Number(body.exchange_rate||1),amountUsd=Number(body.amount_usd);
+  const reference=body.payment_reference==null?null:String(body.payment_reference).trim();
+  if(!/^[0-9a-f-]{36}$/i.test(invoiceId)||!/^[0-9a-f-]{36}$/i.test(accountId)||
+     !["USD","NIO"].includes(currency)||!Number.isFinite(original)||original<=0||
+     !Number.isFinite(rate)||rate<=0||rate>100000||!Number.isFinite(amountUsd)||amountUsd<=0||
+     (reference&&reference.length>160))return erpError(400,"INVALID_SUPPLIER_PAYMENT","Revisa factura, cuenta, moneda e importe del pago.");
+  const expected=currency==="NIO"?original/rate:original;
+  if(Math.abs(expected-amountUsd)>0.02)return erpError(400,"SUPPLIER_PAYMENT_CONVERSION_MISMATCH","El importe convertido no coincide con el pago.");
+  try{
+    const rows=await sql.query(
+      "WITH target AS MATERIALIZED (SELECT si.id,si.invoice_number,si.amount_usd,si.paid_amount_usd,si.currency AS invoice_currency FROM supplier_invoices si WHERE si.id=$1::uuid FOR UPDATE),"+
+      "account AS MATERIALIZED (SELECT id,currency FROM cash_accounts WHERE id=$2::uuid AND active=TRUE),"+
+      "valid AS MATERIALIZED (SELECT t.*,a.id AS account_id FROM target t CROSS JOIN account a WHERE a.currency=$3 AND t.paid_amount_usd+$4< = t.amount_usd),"+
+      "payment AS (INSERT INTO supplier_invoice_payments(supplier_invoice_id,account_id,currency,original_amount,exchange_rate,amount_usd,payment_reference,created_by) "+
+      "SELECT id,account_id,$3,$5,$6,$4,$7,$8 FROM valid RETURNING *),"+
+      "cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) "+
+      "SELECT 'expense','Pago factura proveedor '||t.invoice_number||CASE WHEN COALESCE($7,'')='' THEN '' ELSE ' · '||$7 END,p.account_id,p.currency,p.original_amount,p.exchange_rate,p.amount_usd,'supplier_invoice_payment',p.id::text,$8 "+
+      "FROM payment p JOIN target t ON t.id=p.supplier_invoice_id RETURNING id),"+
+      "updated AS (UPDATE supplier_invoices si SET paid_amount_usd=v.paid_amount_usd+$4,status=CASE WHEN v.paid_amount_usd+$4>=v.amount_usd-0.001 THEN 'Pagada' ELSE 'Abono parcial' END,updated_at=NOW() "+
+      "FROM valid v JOIN payment p ON p.supplier_invoice_id=v.id WHERE si.id=v.id AND EXISTS(SELECT 1 FROM cash) RETURNING si.*),"+
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $8,'payment','supplier_invoice',u.id::text,jsonb_build_object('amount_usd',$4,'currency',$3,'original_amount',$5,'payment_id',(SELECT id FROM payment)) FROM updated u RETURNING id) "+
+      "SELECT u.*,(SELECT id FROM payment) AS payment_id FROM updated u",
+      [invoiceId,accountId,currency,amountUsd,original,rate,reference,user.id]
+    );
+    if(!rows[0]){
+      const state=await sql.query("SELECT si.amount_usd,si.paid_amount_usd,ca.currency AS account_currency FROM supplier_invoices si LEFT JOIN cash_accounts ca ON ca.id=$2::uuid AND ca.active=TRUE WHERE si.id=$1::uuid",[invoiceId,accountId]);
+      if(!state[0])return erpError(404,"SUPPLIER_INVOICE_NOT_FOUND","No se encontró la factura del proveedor.");
+      if(!state[0].account_currency)return erpError(400,"CASH_ACCOUNT_NOT_FOUND","La cuenta de pago no existe o está inactiva.");
+      if(state[0].account_currency!==currency)return erpError(400,"CASH_ACCOUNT_CURRENCY_MISMATCH","La moneda de la cuenta no coincide con el pago.");
+      return erpError(409,"SUPPLIER_PAYMENT_EXCEEDS_BALANCE","El pago supera el saldo pendiente de la factura.");
+    }
+    return erpJson({record:rows[0]},201);
+  }catch(error){
+    if(error?.code==="22P02")return erpError(400,"INVALID_SUPPLIER_PAYMENT_REFERENCE","La factura o cuenta tiene un identificador inválido.");
+    if(error?.code==="23503")return erpError(400,"SUPPLIER_PAYMENT_REFERENCE_NOT_FOUND","La factura o cuenta seleccionada ya no existe.");
+    console.error("[erp] Supplier invoice payment failed:",error?.message||"database error");
+    return erpError(503,"SUPPLIER_PAYMENT_SAVE_FAILED","No se pudo registrar el pago al proveedor.");
+  }
+}
+
 async function addPurchasePayment(sql, user, body) {
   const original = Number(body.original_amount), rate = Number(body.exchange_rate || 1), usd = Number(body.amount_usd);
   if (!body.purchase_id || !Number.isFinite(original) || original <= 0 || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(usd) || usd <= 0 || !body.account_name) return erpError(400, "INVALID_PAYMENT", "Revisa compra, importe, tipo de cambio y cuenta.");
@@ -1185,6 +1277,8 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
   }
   if (resource === "invoice-payments") return method === "POST" ? "billing.payments.create" : null;
   if (resource === "purchase-payments") return method === "POST" ? "payables.payments.create" : null;
+  if (resource === "supplier-invoices") return method === "GET" ? "purchases.supplier_invoices.view" : method === "POST" ? "purchases.supplier_invoices.create" : null;
+  if (resource === "supplier-invoice-payments") return method === "POST" ? "payables.payments.create" : null;
   if (resource === "assets") {
     return method === "GET" ? "products.catalog.view" : "products.catalog.edit";
   }
@@ -1685,6 +1779,14 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, ["owner","admin","finance","sales"])) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar cobros.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return addInvoicePayment(sql,user,body);
+  }
+  if (resource === "supplier-invoices" && request.method === "POST") {
+    let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }
+    return createSupplierInvoice(sql,user,body);
+  }
+  if (resource === "supplier-invoice-payments" && request.method === "POST") {
+    let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }
+    return addSupplierInvoicePayment(sql,user,body);
   }
   if (resource === "purchase-payments" && request.method === "POST") {
     if (!canAccess(user, ["owner","admin","finance","inventory"])) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar pagos a proveedores.");
