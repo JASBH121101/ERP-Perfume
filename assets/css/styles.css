@@ -944,3 +944,37 @@ body.auth-locked .app-shell {
 .purchase-receipt-dialog .form-helper{font-size:12px;color:var(--muted,#777);line-height:1.5;margin:14px 0}
 .purchase-receipt-dialog .form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 @media(max-width:680px){.purchase-order-create{padding:13px}.purchase-order-create .form-grid,.purchase-receipt-dialog .form-grid{grid-template-columns:1fr}.purchase-order-line{grid-template-columns:1fr 1fr}.purchase-order-line label:first-child{grid-column:1/-1}.purchase-order-line button{justify-self:start}.purchase-receipt-dialog{padding:14px}.purchase-receipt-line{grid-template-columns:minmax(0,1fr) 112px;gap:8px}.purchase-receipt-line>small{grid-column:1/-1}}
+
+
+/* Tablet layout: stack catalog filters so their intrinsic widths cannot push
+   the entire ERP canvas beyond the available content column. */
+@media (min-width:721px) and (max-width:950px) {
+  .products-toolbar:not(.hr-tabs) {
+    align-items:stretch;
+    flex-direction:column;
+    min-width:0;
+  }
+  .products-toolbar:not(.hr-tabs) .toolbar-left,
+  .products-toolbar:not(.hr-tabs) .toolbar-right {
+    width:100%;
+    min-width:0;
+  }
+  .products-toolbar:not(.hr-tabs) .toolbar-left > * {
+    width:100%;
+    min-width:0;
+  }
+  .products-toolbar:not(.hr-tabs) .toolbar-right {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    justify-content:stretch;
+    gap:8px;
+  }
+  .products-toolbar:not(.hr-tabs) .toolbar-right > * {
+    width:100%;
+    min-width:0;
+    max-width:100%;
+  }
+  .products-toolbar:not(.hr-tabs) .toolbar-right select {
+    min-width:0;
+  }
+}
