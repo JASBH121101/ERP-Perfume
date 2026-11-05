@@ -9,6 +9,7 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(new URL("../dist/assets/js/", import.meta.url), { recursive: true });
 await cp(new URL("../index.html", import.meta.url), new URL("../dist/index.html", import.meta.url));
 await cp(new URL("../assets/css/", import.meta.url), new URL("../dist/assets/css/", import.meta.url), { recursive: true });
+await cp(new URL("../assets/images/", import.meta.url), new URL("../dist/assets/images/", import.meta.url), { recursive: true });
 
 await build({
   entryPoints: ["assets/js/bootstrap.mjs"],
