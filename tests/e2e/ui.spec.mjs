@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const workerPattern = /\/api\/erp\/[^?]+/;
@@ -226,6 +227,44 @@ test('inventory products search by SKU and filter category and stock status', as
   await expect(rows).toContainText('QA Low Stock Perfume');
 });
 
+
+test('exports the active catalog filters to CSV and offers Excel and printable PDF', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'products');
+  await page.locator('#stock-filter').selectOption('out');
+  await expect(page.locator('#product-table-body')).toContainText('QA Out of Stock Perfume');
+  await expect(page.locator('#product-table-body')).not.toContainText('QA Fixture Perfume');
+
+  await page.locator('[data-action="toggle-export-menu"]').click();
+  await expect(page.locator('#current-export-menu')).toBeVisible();
+  await expect(page.locator('#current-export-menu')).toContainText('CSV');
+  await expect(page.locator('#current-export-menu')).toContainText('Excel');
+  await expect(page.locator('#current-export-menu')).toContainText('PDF / Imprimir');
+
+  const csvDownloadPromise = page.waitForEvent('download');
+  await page.locator('[data-action="export-current-view"][data-format="csv"]').click();
+  const csvDownload = await csvDownloadPromise;
+  expect(csvDownload.suggestedFilename()).toMatch(/productos.*\.csv$/);
+  const csvPath = await csvDownload.path();
+  const csv = await readFile(csvPath, 'utf8');
+  expect(csv).toContain('QA Out of Stock Perfume');
+  expect(csv).not.toContain('QA Fixture Perfume');
+  expect(csv).not.toContain('QA Archived Perfume');
+
+  await page.locator('[data-action="toggle-export-menu"]').click();
+  const excelDownloadPromise = page.waitForEvent('download');
+  await page.locator('[data-action="export-current-view"][data-format="excel"]').click();
+  const excelDownload = await excelDownloadPromise;
+  expect(excelDownload.suggestedFilename()).toMatch(/productos.*\.xls$/);
+
+  await page.locator('[data-action="toggle-export-menu"]').click();
+  const popupPromise = page.waitForEvent('popup');
+  await page.locator('[data-action="export-current-view"][data-format="pdf"]').click();
+  const printPage = await popupPromise;
+  await expect(printPage.locator('body')).toContainText('QA Out of Stock Perfume');
+  await expect(printPage.locator('body')).not.toContainText('QA Fixture Perfume');
+});
+
 test('inventory kardex searches, filters by type and date, and paginates all movements', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'inventory');
@@ -283,7 +322,7 @@ test('HR permissions tab explains how to add the first collaborator', async ({ p
   await expect(page.getByText('Primero registra al colaborador')).toBeVisible();
 });
 
-test('custom role can open DGI when the explicit view permission is granted', async ({ page }) => {
+test('custom role can open DGI but cannot export reports without the explicit export permission', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
   await page.evaluate(() => {
@@ -295,6 +334,8 @@ test('custom role can open DGI when the explicit view permission is granted', as
   await page.locator('#sidebar button[data-view="dashboard"]').click();
   await page.locator('#sidebar button[data-view="dgi"]').click();
   await expect(page.getByRole('heading', { name: 'Control tributario DGI' })).toBeVisible();
+  await expect(page.locator('[data-action="toggle-export-menu"]')).toBeHidden();
+  await expect(page.locator('[data-action="export-dgi-book"]')).toBeHidden();
 });
 
 test('custom role without DGI permission is returned to an allowed module', async ({ page }) => {
