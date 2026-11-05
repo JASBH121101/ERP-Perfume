@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 
 const workerPattern = /\/api\/erp\/[^?]+/;
 const apiBase = 'https://jb-parfums-erp-api.jaredblancoh19.workers.dev';
@@ -544,7 +546,9 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     expect(layout.document, 'document must not overflow the viewport at ' + viewport.name)
       .toBeLessThanOrEqual(layout.viewport + 1);
     expect(layout.content).toBeGreaterThan(0);
-    const screenshotPath = testInfo.outputPath('inventory-' + viewport.name + '.png');
+    const evidenceDir = path.join(process.cwd(), '.visual-evidence');
+    mkdirSync(evidenceDir, { recursive: true });
+    const screenshotPath = path.join(evidenceDir, 'inventory-' + viewport.name + '.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
     await testInfo.attach('inventory-' + viewport.name, { path: screenshotPath, contentType: 'image/png' });
 

@@ -85,11 +85,11 @@ jobs:
 
 
       - name: Upload Playwright visual evidence
-        if: always() && hashFiles('.playwright-results/**') != ''
+        if: always() && hashFiles('.visual-evidence/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: erp-playwright-visual-evidence
-          path: .playwright-results/
+          path: .visual-evidence/
           retention-days: 7
           if-no-files-found: ignore
 
