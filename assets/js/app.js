@@ -497,6 +497,10 @@ import { downloadExport, openPrintExport } from './export-tools.mjs';
     const keys = permissionViews[view] || [];
     return keys.some(permissionGranted);
   }
+  function canExportERPView(view) {
+    if (!canViewERPView(view)) return false;
+    return !["analytics", "dgi"].includes(view) || permissionGranted("analytics.reports.export");
+  }
   function firstPermittedView() {
     return Object.keys(permissionViews).find(canViewERPView) || null;
   }
@@ -559,7 +563,7 @@ import { downloadExport, openPrintExport } from './export-tools.mjs';
         return;
       }
       if (action === "toggle-export-menu" || action === "export-current-view") {
-        button.hidden = !canViewERPView(state.view);
+        button.hidden = !canExportERPView(state.view);
         return;
       }
       if (action === "receive-purchase-order") {
@@ -965,6 +969,7 @@ import { downloadExport, openPrintExport } from './export-tools.mjs';
       '</div></div>';
   }
   function exportCurrentView(format){
+    if(!canExportERPView(state.view)){toast('Tu cuenta no tiene permiso para exportar esta sección.');return;}
     const dataset=buildCurrentExportDataset();
     if(!dataset.headers.length){toast('Esta sección todavía no tiene una estructura de exportación.');return;}
     if(!dataset.rows.length){toast('No hay registros disponibles para exportar en esta sección.');return;}
