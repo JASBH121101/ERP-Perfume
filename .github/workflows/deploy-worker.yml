@@ -1,7 +1,11 @@
 name: Deploy JB PARFUMS API Worker
 
 on:
-  # Deployment is manual and Development-only. Batch code changes before dispatching.
+  # One controlled release marker triggers exactly one Development Worker deployment.
+  push:
+    branches: [main]
+    paths:
+      - ".deployment/worker-development"
   workflow_dispatch:
     inputs:
       confirm_development_deploy:
@@ -50,7 +54,7 @@ jobs:
 
       - name: Require explicit Development deployment approval
         env:
-          CONFIRM_DEVELOPMENT_DEPLOY: ${{ inputs.confirm_development_deploy }}
+          CONFIRM_DEVELOPMENT_DEPLOY: ${{ github.event_name == 'push' && 'true' || inputs.confirm_development_deploy }}
         shell: bash
         run: |
           if [ "$CONFIRM_DEVELOPMENT_DEPLOY" != "true" ]; then
@@ -100,7 +104,7 @@ jobs:
             echo "## JB PARFUMS API Worker"
             echo "- Target: **Neon Development**"
             echo "- Source commit: $GITHUB_SHA"
-            echo "- Confirmation: ${{ inputs.confirm_development_deploy }}"
+            echo "- Confirmation: ${{ github.event_name == 'push' && 'true' || inputs.confirm_development_deploy }}"
             echo "- Cloudflare service: `jb-parfums-erp-api`"
             echo "- Neon production was not targeted."
           } >> "$GITHUB_STEP_SUMMARY"
