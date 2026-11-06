@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createProduct, createInventoryMovement } from "../worker/src/erp.js";
+import { createProduct, createInventoryMovement, reverseInventoryMovement } from "../worker/src/erp.js";
 
 const actor = { id: "00000000-0000-0000-0000-000000000099", role: "owner" };
 const productId = "00000000-0000-0000-0000-000000000101";
@@ -107,8 +107,76 @@ test("database identifier errors are converted into a client error", async () =>
     async query() { throw Object.assign(new Error("invalid uuid"), { code: "22P02" }); }
   };
   const result = await readResponse(await createInventoryMovement(sql, actor, {
-    product_id: "not-a-uuid", movement_type: "Entrada", quantity: 1
+    product_id: "not-a-uuid", movement_type: "Entrada", quantity: 1, note: "Referencia QA"
   }));
   assert.equal(result.status, 400);
   assert.equal(result.body.error.code, "INVALID_PRODUCT_ID");
+});
+
+
+test("manual movements require a meaningful reason before changing the ledger", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return []; } };
+  for (const note of [undefined, "", "x", "  "]) {
+    const result = await readResponse(await createInventoryMovement(sql, actor, {
+      product_id: productId, movement_type: "Entrada", quantity: 1, note
+    }));
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error.code, "INVALID_MOVEMENT");
+  }
+  assert.equal(calls, 0);
+});
+
+test("manual movement reversals append an opposite ledger row and record the actor", async () => {
+  let captured = null;
+  const responseRow = {
+    movement_exists: true, is_reversal: false, is_manual: true, already_reversed: false,
+    current_stock: 8, original_delta: 3, reversal_id: "qa-reversal-1",
+    product_id: productId, previous_stock: 8, new_stock: 5,
+    reversed_at: "2026-11-06T12:00:00.000Z"
+  };
+  const sql = {
+    async query(statement, values) { captured = { statement, values }; return [responseRow]; }
+  };
+  const result = await readResponse(await reverseInventoryMovement(sql, actor, "00000000-0000-0000-0000-000000000501", {
+    reason: "Entrada duplicada"
+  }));
+  assert.equal(result.status, 201);
+  assert.equal(result.body.record.reversal_id, "qa-reversal-1");
+  assert.match(captured.statement, /FOR UPDATE OF m/);
+  assert.match(captured.statement, /FOR UPDATE OF p/);
+  assert.match(captured.statement, /stock=p.stock-o.quantity_delta/);
+  assert.match(captured.statement, /'Reversion'/);
+  assert.match(captured.statement, /'reversal'/);
+  assert.match(captured.statement, /INSERT INTO audit_log/);
+  assert.deepEqual(captured.values, ["00000000-0000-0000-0000-000000000501", actor.id, "Entrada duplicada"]);
+});
+
+test("movement reversals reject missing, linked, already-reversed and invalid-stock cases", async () => {
+  const cases = [
+    { row: { movement_exists: false }, expected: [404, "MOVEMENT_NOT_FOUND"] },
+    { row: { movement_exists: true, is_reversal: true }, expected: [409, "REVERSAL_NOT_ALLOWED"] },
+    { row: { movement_exists: true, is_reversal: false, is_manual: false }, expected: [409, "SOURCE_REVERSAL_REQUIRED"] },
+    { row: { movement_exists: true, is_reversal: false, is_manual: true, already_reversed: true }, expected: [409, "MOVEMENT_ALREADY_REVERSED"] },
+    { row: { movement_exists: true, is_reversal: false, is_manual: true, already_reversed: false, current_stock: 1, original_delta: 3 }, expected: [409, "REVERSAL_STOCK_CONFLICT"] }
+  ];
+  for (const item of cases) {
+    const sql = { async query() { return [item.row]; } };
+    const result = await readResponse(await reverseInventoryMovement(sql, actor, "00000000-0000-0000-0000-000000000501", {
+      reason: "Corrección QA"
+    }));
+    assert.equal(result.status, item.expected[0]);
+    assert.equal(result.body.error.code, item.expected[1]);
+  }
+});
+
+test("movement reversal validates a reason before querying Neon", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return []; } };
+  for (const reason of ["", "x", "x".repeat(241)]) {
+    const result = await readResponse(await reverseInventoryMovement(sql, actor, "00000000-0000-0000-0000-000000000501", { reason }));
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error.code, "INVALID_MOVEMENT_REVERSAL");
+  }
+  assert.equal(calls, 0);
 });
