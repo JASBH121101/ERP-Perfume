@@ -13,3 +13,6 @@ Source commit: af62896f44ce2df437fc4ca4b658d1ba637d3845.
 
 Preview release: fix conditional commission field visibility; keep commission percentage hidden and non-required when commission is disabled.
 Preview source commit: 5ca51729242441649eaeeb407ed5fe553519a686.
+
+Preview release: corrected server-side employee email and phone validation, including Nicaragua E.164 normalization.
+Preview source commit: ac9e7da2a28e802e116fb12978348c67287c4335.
