@@ -735,6 +735,9 @@ export async function createInvoice(sql, user, body) {
   if(salespersonId){
     const seller=await sql.query("SELECT id FROM employees WHERE id=$1::uuid AND status=$2 AND commission_enabled=TRUE AND commission_rate>0 LIMIT 1",[salespersonId,"Activo"]);
     if(!seller[0])return erpError(400,"INVALID_COMMISSION_SELLER","El vendedor seleccionado no está activo o no tiene una comisión configurada.");
+    const productIds=[...new Set(items.map(item=>String(item.product_id)))];
+    const missingCost=await sql.query("SELECT name FROM products WHERE id=ANY($1::uuid[]) AND COALESCE(unit_cost_usd,0)<=0 LIMIT 5",[productIds]);
+    if(missingCost.length)return erpError(409,"PRODUCT_COST_REQUIRED_FOR_COMMISSION","No se puede calcular la comisión hasta registrar el costo unitario de: "+missingCost.map(item=>item.name).join(", ")+".");
   }
   const originalPayment=Number(body.original_payment_amount||0);
   if(paid>0&&(!Number.isFinite(originalPayment)||originalPayment<=0||!body.account_name))
