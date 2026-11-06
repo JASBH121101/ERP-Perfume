@@ -38,6 +38,50 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     node.innerHTML = svg(node.getAttribute('data-icon'));
   });
 
+  // JB PARFUMS · accessible drag-and-drop for the existing file inputs.
+  // Dropped files are routed through the same native input/change handlers,
+  // so the existing type, size, count and upload validations remain authoritative.
+  function fileDropContext(target) {
+    const field = target && target.closest ? target.closest('.form-field') : null;
+    const input = field && field.querySelector ? field.querySelector('input[type="file"]') : null;
+    return input ? { field, input } : null;
+  }
+  document.addEventListener('dragenter', function (event) {
+    const context = fileDropContext(event.target);
+    if (!context) return;
+    event.preventDefault();
+    context.field.classList.add('is-file-dragover');
+  });
+  document.addEventListener('dragover', function (event) {
+    const context = fileDropContext(event.target);
+    if (!context) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    context.field.classList.add('is-file-dragover');
+  });
+  document.addEventListener('dragleave', function (event) {
+    const context = fileDropContext(event.target);
+    if (!context) return;
+    if (event.relatedTarget && context.field.contains(event.relatedTarget)) return;
+    context.field.classList.remove('is-file-dragover');
+  });
+  document.addEventListener('drop', function (event) {
+    const context = fileDropContext(event.target);
+    if (!context) return;
+    event.preventDefault();
+    context.field.classList.remove('is-file-dragover');
+    const files = Array.from(event.dataTransfer && event.dataTransfer.files || []);
+    if (!files.length || typeof DataTransfer === 'undefined') return;
+    const transfer = new DataTransfer();
+    files.forEach(function (file) { transfer.items.add(file); });
+    try {
+      context.input.files = transfer.files;
+      context.input.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (error) {
+      toast('No se pudo adjuntar el archivo. Usa el selector para intentarlo de nuevo.');
+    }
+  });
+
   let exchangeRate = 36.6;
   function roundMoney(value) { return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100; }
   function toUsd(value, currency) { const amount=Number(value||0);return roundMoney(currency==='USD'?amount:amount/exchangeRate); }
