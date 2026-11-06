@@ -141,3 +141,11 @@ test("partial employee updates preserve contract terms not included in the paylo
   assert.equal(Object.hasOwn(result.value, "contract_start_date"), false);
   assert.equal(Object.hasOwn(result.value, "contract_end_date"), false);
 });
+
+
+test("new employee records default missing contract terms to pending definition", () => {
+  const result = normalizeEmployeeCreateInput({ name: "Colaborador", commission_enabled: false });
+  assert.equal(result.error, undefined);
+  assert.equal(result.value.contract_type, "Por definir");
+  assert.equal(result.value.work_schedule, "Por definir");
+});

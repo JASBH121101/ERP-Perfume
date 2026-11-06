@@ -1511,7 +1511,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         const label=item.eventType==='position'?'Cambio de puesto / departamento':item.eventType==='compensation'?'Cambio salarial o de comisión':item.eventType==='status'?'Cambio de estado':item.eventType==='contract'?'Cambio de contrato / jornada':'Alta inicial';
         const detail=item.eventType==='position'?'De '+(item.fromPosition||'—')+' a '+(item.toPosition||'—')+' · '+(item.toDepartment||'Sin departamento'):
           item.eventType==='compensation'?'Salario: '+moneyInCurrency(item.fromSalaryNio||0,'NIO')+' → '+moneyInCurrency(item.toSalaryNio||0,'NIO')+' · Comisión: '+Number(item.toCommissionRate||0).toFixed(2)+'%':
-          item.eventType==='status'?'Estado: '+(item.fromStatus||'—')+' → '+(item.toStatus||'—)':
+          item.eventType==='status'?'Estado: '+(item.fromStatus||'—')+' → '+(item.toStatus||'—'):
           item.eventType==='contract'?'Contrato: '+(item.fromContractType||'—')+' → '+(item.toContractType||'—')+' · Jornada: '+(item.fromWorkSchedule||'—')+' → '+(item.toWorkSchedule||'—')+' · Vigencia: '+dateText(item.toContractStartDate)+' – '+(item.toContractEndDate?dateText(item.toContractEndDate):'Sin fecha de finalización'):
           'Registro inicial del colaborador';
         return '<div class="employee-history-item"><div class="employee-history-date">'+dateText(item.effectiveDate)+'</div><div><strong>'+label+'</strong><p>'+esc(detail)+'</p><small>'+esc(item.reason||'Sin observaciones')+'</small></div></div>';

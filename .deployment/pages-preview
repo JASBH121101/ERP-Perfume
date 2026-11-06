@@ -28,3 +28,4 @@ Preview source commit: 5cd2fec2cd89e46d8398bc9ffccb717ce8573658.
 Preview release: sync current validated main revision through Wrangler to Preview only; keep Pages Production untouched and use Neon Development.
 
 Preview release: HR employee contract type, work schedule, fixed-term dates and change history.
+Preview revalidation: employee contract UI and audit; use corrected main revision.
