@@ -1421,7 +1421,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     }
     if(type==='employee'){
       const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
-      body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80" autocomplete="name"')+formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Fecha de ingreso','hireDate','date',true,'value="'+today+'"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+selectField('¿Gana comisión?','commissionEnabled','<option value="false" selected>No</option><option value="true">Sí</option>',true)+formField('Porcentaje de comisión (%)','commissionRate','number',false,'min="0.01" max="100" step="0.01" value="3"')+'</div><p class="form-helper">El sistema calcula antigüedad y prestaciones desde la fecha de ingreso. Activa comisión solo para quienes corresponda y configura el porcentaje pactado.</p><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
+      body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80" autocomplete="name"')+formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email"')+formField('Número de celular','phone','tel',false,'maxlength="40" autocomplete="tel" inputmode="tel"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Fecha de ingreso','hireDate','date',true,'value="'+today+'"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+selectField('¿Gana comisión?','commissionEnabled','<option value="false" selected>No</option><option value="true">Sí</option>',true)+'<div id="employee-commission-rate-field" style="display:none">'+formField('Porcentaje de comisión (%)','commissionRate','number',false,'min="0.01" max="100" step="0.01" value="3"')+'</div></div><p class="form-helper">El correo y el celular se podrán utilizar como medios de recuperación cuando la cuenta tenga esos canales verificados.</p><p class="form-helper">El sistema calcula antigüedad y prestaciones desde la fecha de ingreso. El porcentaje solo aplica si el colaborador gana comisión.</p><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
     }
     if(type==='attendance'){
       if(!employees.some(e=>e.status==='Activo')){toast('Primero agrega un colaborador activo en RRHH > Personal.');return;}
@@ -1461,6 +1461,18 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
     document.querySelector('#business-dialog .eyebrow').textContent=window.JBAuth?.profile?'GESTIÓN · NEON DEVELOPMENT':'ACCESO REQUERIDO';
     document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon')));
+    if(type==='employee'){
+      const commissionSelect=businessForm.querySelector('[name="commissionEnabled"]');
+      const commissionField=businessForm.querySelector('#employee-commission-rate-field');
+      const commissionInput=businessForm.querySelector('[name="commissionRate"]');
+      const syncCommissionField=()=>{
+        const enabled=commissionSelect?.value==='true';
+        if(commissionField)commissionField.style.display=enabled?'':'none';
+        if(commissionInput){commissionInput.required=enabled;if(!enabled)commissionInput.value='';}
+      };
+      commissionSelect?.addEventListener('change',syncCommissionField);
+      syncCommissionField();
+    }
     if(businessForm.querySelector('[name="currency"]'))refreshCashAccountOptions(businessForm,businessForm.querySelector('[name="currency"]').value);
     if(type==='payroll-payment')refreshCashAccountOptions(businessForm,'NIO');
     if(type==='invoice'){
@@ -1661,10 +1673,11 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         })});
       } else if(type==='employee'){
         const salary=num('salaryNio'),commissionEnabled=get('commissionEnabled')==='true',commissionRate=commissionEnabled?num('commissionRate'):0;
-        if(!get('name')||!get('position')||!get('hireDate')||!Number.isFinite(salary)||salary<0||
-          (commissionEnabled&&(!Number.isFinite(commissionRate)||commissionRate<=0||commissionRate>100)))throw new Error('Revisa los datos, fecha de ingreso, salario y porcentaje de comisión.');
+        const phone=get('phone').trim();
+        if(!get('name')||!get('position')||!get('hireDate')||!Number.isFinite(salary)||salary<0||phone.length>40||
+          (commissionEnabled&&(!Number.isFinite(commissionRate)||commissionRate<=0||commissionRate>100)))throw new Error('Revisa los datos, fecha de ingreso, salario, teléfono y porcentaje de comisión.');
         await erpApi('employees',{method:'POST',body:JSON.stringify({
-          name:get('name'),email:get('email')||null,position:get('position'),department:get('department')||null,
+          name:get('name'),email:get('email')||null,phone:get('phone')||null,position:get('position'),department:get('department')||null,
           hire_date:get('hireDate'),salary_nio:salary,status:'Activo',commission_enabled:commissionEnabled,commission_rate:commissionRate
         })});
         hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
