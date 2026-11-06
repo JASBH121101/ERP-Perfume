@@ -1814,8 +1814,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     const monthlyOrdinarySalaries=(employeeId,cycleEnd)=>{
       const totals=new Map();
       const cycleEndDate=cycleEnd?new Date(cycleEnd+'T00:00:00Z'):null;
-      const cutoff=cycleEndDate?new Date(cycleEndDate):null;
-      if(cutoff){cutoff.setUTCMonth(cutoff.getUTCMonth()-6);cutoff.setUTCDate(cutoff.getUTCDate()+1);}
+      const cutoff=cycleEndDate?new Date(Date.UTC(cycleEndDate.getUTCFullYear(),cycleEndDate.getUTCMonth()-5,1)):null;
       const cutoffText=cutoff?cutoff.toISOString().slice(0,10):'0000-01-01';
       payrollItems.filter(item=>String(item.employeeId)===String(employeeId)).forEach(item=>{
         const period=payrollPeriods.find(p=>String(p.id)===String(item.payrollPeriodId));
