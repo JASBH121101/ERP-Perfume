@@ -32,3 +32,5 @@ Preview revalidation: employee contract UI and audit; use corrected main revisio
 Catalog import modal width fix and HR contract expiry reminders.
 Catalog import modal: fixed intrinsic-width overflow and isolated table scrolling; validate desktop/mobile Preview.
 Preview release: catalog import modal width guard; contract expiry reminders (30-day window, 15-day priority) confirmed. Recheck desktop and mobile dialog layouts.
+
+Preview release: persistent notification center, role-filtered OC approvals, temporary contract and low-stock alerts; six-level readable typography and owner-only browser error telemetry.

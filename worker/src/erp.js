@@ -47,7 +47,7 @@ export function normalizeClientErrorInput(input = {}) {
   const redact = (value) => String(value || "")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
     .replace(/\bBearer\s+[^\s]+/gi, "Bearer [redacted]")
-    .replace(/\b(?:password|token|secret|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\b(password|token|secret|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
     .replace(/\+?\d[\d\s().-]{7,}\d/g, "[number]")
     .slice(0, 600);
   const errorMessage = redact(input.error_message).trim();

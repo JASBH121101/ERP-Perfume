@@ -640,7 +640,7 @@ test('catalog import dialog fits desktop and mobile viewports without clipping i
   }));
   expect(desktop.width).toBeGreaterThan(900);
   expect(desktop.formScrollWidth).toBeLessThanOrEqual(desktop.formClientWidth + 1);
-  await dialog.locator('[data-import-close]').click();
+  await dialog.locator('[data-import-close]').first().click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: /Importar catálogo/ }).click();

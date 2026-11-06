@@ -2683,8 +2683,6 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     button.disabled=true;
     try{
       await erpApi('notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH',body:JSON.stringify({})});
-      notificationRecords=notificationRecords.map(item=>String(item.id)===String(id)?{...item,read_at:item.read_at||new Date().toISOString()}:item);
-      notificationUnreadCount=Math.max(0,notificationUnreadCount-(notificationRecords.find(item=>String(item.id)===String(id))?.read_at?1:0));
       await loadNotifications({silent:true});
       closeNotificationPanel();
       if(targetView)goToView(targetView);
