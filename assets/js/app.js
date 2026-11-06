@@ -2,6 +2,7 @@ import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from '
 import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financial-snapshot.mjs';
 import { profileHasPermission } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
+import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss } from './hr-calculations.mjs';
 
 'use strict';
 
@@ -65,6 +66,8 @@ import { downloadExport, openPrintExport } from './export-tools.mjs';
   let leaveRequests = [];
   let payrollPeriods = [];
   let payrollItems = [];
+  let hrCommissions = [];
+  let hrInssSettings = { regime:'integral', employer_band:'under_50', employee_rate:7, employer_rate:21.5 };
   let inventoryMovements = [];
   let dgiSupportDocuments = [];
   let dgiDocumentsLoaded = false, dgiDocumentsLoading = false, dgiDocumentsLoadAttempted = false, dgiDocumentsError = "";
@@ -415,6 +418,7 @@ import { downloadExport, openPrintExport } from './export-tools.mjs';
         id: e.id, employeeCode: e.employee_code || "", name: e.name, position: e.position,
         department: e.department || "", salaryNio: Number(e.salary_nio || 0), status: e.status || "Activo",
         hireDate: e.hire_date || null, phone: e.phone || "", email: e.email || "", notes: e.notes || "",
+        commissionEnabled:e.commission_enabled===true, commissionRate:Number(e.commission_rate||0),
         linkedUserId:e.linked_user_id||null, linkedAccountStatus:e.linked_account_status||null, accountActive:e.account_active===true
       }));
       attendanceRecords = (data.hr_attendance || []).map(e => ({
@@ -432,8 +436,21 @@ import { downloadExport, openPrintExport } from './export-tools.mjs';
       payrollItems = (data.hr_payroll_items || []).map(e => ({
         id:e.id, payrollPeriodId:e.payroll_period_id, employeeId:e.employee_id,
         baseSalaryNio:Number(e.base_salary_nio||0), bonusesNio:Number(e.bonuses_nio||0),
+        commissionsNio:Number(e.commissions_nio||0), inssEmployeeNio:Number(e.inss_employee_nio||0),
+        inssEmployerNio:Number(e.inss_employer_nio||0), aguinaldoNio:Number(e.aguinaldo_nio||0),
         deductionsNio:Number(e.deductions_nio||0), netSalaryNio:Number(e.net_salary_nio||0), notes:e.notes||""
       }));
+      hrCommissions = (data.hr_commissions || []).map(c => ({
+        id:c.id, invoiceId:c.invoice_id, invoiceNumber:c.invoice_number||'', invoiceItemId:c.invoice_item_id,
+        employeeId:c.employee_id, employeeName:c.employee_name||'Colaborador', saleDate:c.sale_date,
+        productName:c.product_name, quantity:Number(c.quantity||0), grossSaleUsd:Number(c.gross_sale_usd||0),
+        netSaleUsd:Number(c.net_sale_usd||0), unitCostUsd:Number(c.unit_cost_usd||0),
+        grossProfitUsd:Number(c.gross_profit_usd||0), rate:Number(c.commission_rate||0),
+        commissionUsd:Number(c.commission_usd||0), commissionNio:Number(c.commission_nio||0),
+        exchangeRate:Number(c.exchange_rate||1), status:c.status||'Pendiente', payrollPeriodId:c.payroll_period_id||null
+      }));
+      const inssSetting = (data.settings || []).find(s => s.setting_key === 'hr_inss_settings');
+      if (inssSetting?.setting_value && typeof inssSetting.setting_value === 'object') hrInssSettings = { ...hrInssSettings, ...inssSetting.setting_value };
       const rateSetting = (data.settings || []).find(s => s.setting_key === "default_exchange_rate");
       if (rateSetting && Number(rateSetting.setting_value?.value) > 0) exchangeRate = Number(rateSetting.setting_value.value);
       const dgiSetting = (data.settings || []).find(s => s.setting_key === "dgi_compliance");
