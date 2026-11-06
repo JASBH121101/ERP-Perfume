@@ -44,7 +44,7 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
 }
 
 async function readBootstrap(sql, user, permissionContext) {
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings, employeeHistory] =
+  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings, employeeHistory, employeeDocuments] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
@@ -72,7 +72,8 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`,
       tx`SELECT * FROM hr_payroll_items ORDER BY created_at DESC LIMIT 5000`,
       tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`,
-      tx`SELECT * FROM employee_history ORDER BY effective_date DESC, created_at DESC LIMIT 5000`
+      tx`SELECT * FROM employee_history ORDER BY effective_date DESC, created_at DESC LIMIT 5000`,
+      tx`SELECT id,employee_id,document_type,file_name,file_type,file_size,created_at FROM employee_documents ORDER BY created_at DESC LIMIT 2000`
     ]);
 
   const result = {};
@@ -130,6 +131,7 @@ async function readBootstrap(sql, user, permissionContext) {
   if (hasPermission(permissionContext, "hr.employees.view")) {
     result.employees = employees;
     result.employee_history = employeeHistory;
+    result.employee_documents = employeeDocuments;
   }
   if (hasPermission(permissionContext, "hr.attendance.view")) result.hr_attendance = attendance;
   if (hasPermission(permissionContext, "hr.leave.view")) result.hr_leave_requests = leaveRequests;
@@ -1003,6 +1005,62 @@ async function getDgiSupportDocumentFile(request, env, user, sql, id) {
   return new Response(object.body,{status:200,headers});
 }
 
+async function createEmployeeDocument(request,env,user,sql) {
+  const permissions=await loadUserPermissions(sql,user);
+  if(!hasPermission(permissions,"hr.employees.edit"))return erpError(403,"FORBIDDEN","No tienes permiso para adjuntar documentos de personal.");
+  if(!env?.ERP_ASSETS)return erpError(503,"R2_NOT_CONFIGURED","El almacenamiento privado de documentos no está disponible.");
+  let form;try{form=await request.formData();}catch{return erpError(400,"INVALID_FORM_DATA","El formulario del documento no es válido.");}
+  const employeeId=String(form.get("employee_id")||"");
+  const documentType=String(form.get("document_type")||"").trim();
+  const file=form.get("file");
+  const extensions=new Map([["application/pdf","pdf"],["image/jpeg","jpg"],["image/png","png"]]);
+  const extension=extensions.get(String(file?.type||"").toLowerCase());
+  if(!/^[0-9a-f-]{36}$/i.test(employeeId)||!["Contrato","Identificación","Constancia","Otro"].includes(documentType)||
+     !file||typeof file.stream!=="function"||!extension||file.size<1||file.size>5*1024*1024) {
+    return erpError(400,"INVALID_EMPLOYEE_DOCUMENT","Selecciona un tipo y archivo PDF/JPG/PNG válido de máximo 5 MB.");
+  }
+  const employee=await sql.query("SELECT id FROM employees WHERE id=$1::uuid LIMIT 1",[employeeId]);
+  if(!employee[0])return erpError(404,"EMPLOYEE_NOT_FOUND","No se encontró el colaborador.");
+  const documentId=crypto.randomUUID();
+  const key="employee-documents/"+employeeId+"/"+documentId+"."+extension;
+  const fileName=String(file.name||("documento."+extension)).replace(/[\\/\\x00-\\x1f]/g,"_").slice(0,180);
+  try {
+    await env.ERP_ASSETS.put(key,file.stream(),{
+      httpMetadata:{contentType:file.type,cacheControl:"private, no-store"},
+      customMetadata:{employeeId,documentId,uploadedBy:user.id,originalName:fileName}
+    });
+    const rows=await sql.query(
+      "WITH created AS (INSERT INTO employee_documents(id,employee_id,document_type,file_key,file_name,file_type,file_size,uploaded_by) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8) RETURNING id,employee_id,document_type,file_name,file_type,file_size,created_at), "+
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $8,'upload','employee_document',id::text,jsonb_build_object('employee_id',$2,'document_type',$3,'file_name',$5,'size',$7) FROM created) SELECT * FROM created",
+      [documentId,employeeId,documentType,key,fileName,file.type,file.size,user.id]
+    );
+    if(!rows[0])throw new Error("El registro del documento no se creó.");
+    return erpJson({document:rows[0]},201);
+  } catch(error) {
+    try{await env.ERP_ASSETS.delete(key);}catch{}
+    console.error("[hr] Employee document upload failed:",error?.message||"storage error");
+    return erpError(503,"EMPLOYEE_DOCUMENT_SAVE_FAILED","No se pudo guardar el documento del expediente.");
+  }
+}
+
+async function getEmployeeDocumentFile(request,env,user,sql,id) {
+  const permissions=await loadUserPermissions(sql,user);
+  if(!hasPermission(permissions,"hr.employees.view"))return erpError(403,"FORBIDDEN","No tienes permiso para consultar expedientes de personal.");
+  if(!env?.ERP_ASSETS)return erpError(503,"R2_NOT_CONFIGURED","El almacenamiento privado no está disponible.");
+  if(!/^[0-9a-f-]{36}$/i.test(String(id||"")))return erpError(400,"INVALID_DOCUMENT_ID","La referencia del documento no es válida.");
+  const rows=await sql.query("SELECT file_key,file_name FROM employee_documents WHERE id=$1::uuid LIMIT 1",[id]);
+  if(!rows[0])return erpError(404,"EMPLOYEE_DOCUMENT_NOT_FOUND","No se encontró el documento.");
+  const object=await env.ERP_ASSETS.get(rows[0].file_key);
+  if(!object)return erpError(404,"EMPLOYEE_FILE_NOT_FOUND","El archivo no existe en el almacenamiento privado.");
+  const headers=new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("cache-control","private, no-store");
+  headers.set("x-content-type-options","nosniff");
+  headers.set("content-security-policy","default-src 'none'; sandbox");
+  headers.set("content-disposition","attachment; filename*=UTF-8''"+encodeURIComponent(rows[0].file_name||"documento"));
+  return new Response(object.body,{status:200,headers});
+}
+
 async function createPayrollItem(sql,user,body) {
   const periodId=String(body.payroll_period_id||"");
   const employeeId=String(body.employee_id||"");
@@ -1443,6 +1501,10 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
   if (resource === "dgi-support-documents") {
     if (method === "GET") return "dgi.documents.view";
     return method === "POST" ? "dgi.documents.manage" : null;
+  }
+  if (resource === "employee-documents") {
+    if (method === "GET") return "hr.employees.view";
+    return method === "POST" ? "hr.employees.edit" : null;
   }
 
   if (method === "PATCH" || method === "DELETE") {
@@ -1911,6 +1973,12 @@ export async function handleERPRequest(request, env, user, sql) {
     return changePayrollPeriodStatus(sql,user,id,body);
   }
   if (resource === "assets") return handleProductAsset(request,env,user,sql);
+  if (resource === "employee-documents" && request.method === "POST" && !id) {
+    return createEmployeeDocument(request,env,user,sql);
+  }
+  if (resource === "employee-documents" && id && parts[4] === "file" && request.method === "GET") {
+    return getEmployeeDocumentFile(request,env,user,sql,id);
+  }
   if (resource === "dgi-support-documents" && request.method === "POST" && !id) {
     return createDgiSupportDocument(request,env,user,sql);
   }
