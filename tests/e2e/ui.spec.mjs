@@ -44,6 +44,7 @@ const fixture = {
       previous_stock: 10, new_stock: 10 + delta,
       note: 'Movimiento QA ' + String(index + 1),
       reference_type: 'manual', reference_id: null,
+      created_by: 'qa-owner', created_by_name: 'Responsable QA',
       created_at: new Date(Date.UTC(2026, 10, day, 12, index % 9, 0)).toISOString()
     };
   }), customers: [], suppliers: [], orders: [], order_items: [],
@@ -179,8 +180,38 @@ async function installStatefulInventoryApi(page, options = {}) {
         note: payload.note || null, reference_type: 'manual', reference_id: null,
         created_at: new Date().toISOString()
       };
+      record.created_by = 'qa-owner';
+      record.created_by_name = 'Responsable QA';
       data.inventory_movements.unshift(record);
       mutationCommitted = true;
+      return fulfill(route, { record }, 201);
+    }
+
+    const reversalMatch = pathname.match(/\\/api\\/erp\\/inventory-movements\\/([0-9a-f-]+)\\/reverse$/i);
+    if (reversalMatch && method === 'POST') {
+      const original = data.inventory_movements.find(item => item.id === reversalMatch[1]);
+      if (!original) return fulfill(route, { error: { message: 'Movimiento no encontrado.' } }, 404);
+      if (original.reference_type !== 'manual') return fulfill(route, { error: { message: 'Este movimiento requiere corregirse desde su documento de origen.' } }, 409);
+      if (data.inventory_movements.some(item => item.reference_type === 'reversal' && item.reference_id === original.id)) {
+        return fulfill(route, { error: { message: 'Movimiento ya revertido.' } }, 409);
+      }
+      const reason = String(request.postDataJSON()?.reason || '').trim();
+      if (reason.length < 3 || reason.length > 240) return fulfill(route, { error: { message: 'Motivo inválido.' } }, 400);
+      const product = data.products.find(item => item.id === original.product_id);
+      const previousStock = Number(product?.stock || 0);
+      const delta = -Number(original.quantity_delta);
+      if (!product || previousStock + delta < 0) return fulfill(route, { error: { message: 'La reversión dejaría stock negativo.' } }, 409);
+      product.stock = previousStock + delta;
+      const record = {
+        id: 'qa-reversal-' + String(data.inventory_movements.length + 1),
+        product_id: product.id, movement_type: 'Reversion', quantity: Math.abs(delta),
+        quantity_delta: delta, previous_stock: previousStock, new_stock: product.stock,
+        note: 'Reversión de movimiento ' + original.id + ': ' + reason,
+        reference_type: 'reversal', reference_id: original.id,
+        created_by: 'qa-owner', created_by_name: 'Responsable QA',
+        created_at: new Date().toISOString()
+      };
+      data.inventory_movements.unshift(record);
       return fulfill(route, { record }, 201);
     }
 
@@ -254,6 +285,41 @@ test('inventory is a read-only workspace: product lookup, details and kardex do 
   )).toHaveLength(0);
 });
 
+
+
+test('kardex shows responsible user and origin, and reverses a manual movement with a reason', async ({ page }) => {
+  const api = await installStatefulInventoryApi(page);
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+
+  const ledger = page.locator('#inventory-movement-body');
+  await expect(ledger).toContainText('Responsable: Responsable QA');
+  await expect(ledger).toContainText('Origen: Movimiento manual');
+
+  const originalId = 'qa-movement-1';
+  const originalRow = ledger.locator('tr').filter({ has: page.locator('[data-action="reverse-inventory-movement"][data-id="' + originalId + '"]') });
+  const reverseButton = page.locator('[data-action="reverse-inventory-movement"][data-id="' + originalId + '"]');
+  await expect(reverseButton).toBeVisible();
+  await reverseButton.click();
+
+  const dialog = page.locator('#inventory-reversal-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('#inventory-reversal-summary')).toContainText('QA Fixture Perfume');
+  await dialog.locator('[name="reason"]').fill('Entrada duplicada en conteo QA');
+
+  const reversalRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/inventory-movements/' + originalId + '/reverse') &&
+    request.method() === 'POST'
+  );
+  await dialog.locator('[type="submit"]').click();
+  expect((await reversalRequest).postDataJSON().reason).toBe('Entrada duplicada en conteo QA');
+  await expect(dialog).not.toBeVisible();
+  await expect(ledger).toContainText('Movimiento revertido');
+  await expect(ledger).toContainText('Reversión registrada');
+  await expect(page.locator('[data-action="reverse-inventory-movement"][data-id="' + originalId + '"]')).toHaveCount(0);
+  expect(api.data.products.find(item => item.id === '00000000-0000-0000-0000-000000000101').stock).toBeGreaterThan(0);
+  expect(api.data.inventory_movements.some(item => item.reference_type === 'reversal' && item.reference_id === originalId)).toBe(true);
+});
 
 
 test('exports the active catalog filters to CSV and offers Excel and printable PDF', async ({ page }) => {
