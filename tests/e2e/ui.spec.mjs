@@ -445,7 +445,7 @@ test('employee commission rate is required and enabled only when commission is Y
   expect(payload.commission_rate).toBe(5.5);
 });
 
-test('employee registration requires at least one recovery contact', async ({ page }) => {
+test('employee registration allows completing recovery contacts later', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'hr');
   await page.getByRole('button', { name: /Agregar colaborador/ }).click();
@@ -455,9 +455,18 @@ test('employee registration requires at least one recovery contact', async ({ pa
   await dialog.locator('[name="position"]').fill('Asistente');
   await dialog.locator('[name="salaryNio"]').fill('8000');
 
+  const post = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/employees') && request.method() === 'POST'
+  );
   await dialog.locator('#business-save').click();
-  await expect(page.locator('#toast-region')).toContainText('Registra un correo electrónico o un número de celular');
-  await expect(dialog).toBeVisible();
+  const request = await post;
+  const payload = request.postDataJSON();
+
+  expect(payload.email).toBeNull();
+  expect(payload.phone).toBeNull();
+  expect(payload.commission_enabled).toBe(false);
+  expect(payload.commission_rate).toBe(0);
+  await expect(dialog).toBeHidden();
 });
 
 test('custom role can open DGI but cannot export reports without the explicit export permission', async ({ page }) => {
