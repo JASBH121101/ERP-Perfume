@@ -471,7 +471,7 @@ test('employee history attaches and downloads private personnel documents', asyn
   const download=page.waitForEvent('download');
   await dialog.locator('[data-action="download-employee-document"]').click();
   const file=await download;
-  expect(file.suggestedFilename()).toBe('documento-personal');
+  expect(file.suggestedFilename()).toBe('contrato-qa.pdf');
   expect(hr.data.employee_documents).toHaveLength(1);
 });
 

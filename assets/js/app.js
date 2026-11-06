@@ -3385,9 +3385,10 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       });
       if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload?.error?.message||'No se pudo descargar el documento.');}
       const blob=await response.blob();
+      const fileName=employeeDocuments.find(item=>String(item.id)===String(documentId))?.fileName||'documento-personal';
       const url=URL.createObjectURL(blob);
       const link=document.createElement('a');
-      link.href=url;link.download='documento-personal';document.body.appendChild(link);link.click();link.remove();
+      link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
     }finally{if(button){button.disabled=false;button.textContent=originalText;}}
   }
