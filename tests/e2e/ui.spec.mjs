@@ -625,6 +625,22 @@ test('product creation saves its opening balance and writes the first kardex ent
   )).toBe(true);
 });
 
+test('purchase order form omits the generated code field and keeps payment terms aligned', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'purchaseOrders');
+
+  const form = page.locator('#purchase-order-form');
+  await expect(form).toBeVisible();
+  await expect(form.getByText('Código de orden')).toHaveCount(0);
+  await expect(form.locator('input[value="Se asigna al generar"]')).toHaveCount(0);
+  await expect(form.locator('[name="supplier_id"]')).toBeVisible();
+  await expect(form.locator('[name="payment_terms"]').locator('..')).toHaveClass(/purchase-order-full-field/);
+
+  const gridColumn = await form.locator('.purchase-order-full-field').evaluate(node => getComputedStyle(node).gridColumn);
+  expect(gridColumn).toContain('1 / -1');
+});
+
+
 test('inventory and catalog stay usable at mobile, tablet and desktop widths', async ({ page }, testInfo) => {
   await installStatefulInventoryApi(page);
   const viewports = [
