@@ -901,7 +901,7 @@ body.auth-locked .app-shell {
 
 /* Compact, centered and collapsible permission editor */
 .access-manager-section{width:min(100%,1180px);margin-inline:auto}
-.access-manager-section .permission-editor-grid{width:min(100%,980px);margin-inline:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}
+.access-manager-section .permission-editor-grid{width:100%;max-width:none;box-sizing:border-box;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px;align-items:stretch}
 .permission-editor-module{min-width:0;padding:0;border:1px solid var(--line,#e7e2d9);border-radius:11px;background:var(--surface,#fff);overflow:hidden}
 .permission-editor-module>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:10px 13px;cursor:pointer;list-style:none;font-size:13px;font-weight:700}
 .permission-editor-module>summary::-webkit-details-marker{display:none}
@@ -919,6 +919,7 @@ body.auth-locked .app-shell {
 .purchase-order-create{margin-bottom:16px;padding:18px}
 .purchase-order-create .panel-heading{margin-bottom:14px}
 .purchase-order-create .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.purchase-order-create .purchase-order-full-field{grid-column:1/-1;}
 .purchase-order-create label,.purchase-receipt-dialog label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted,#777)}
 .purchase-order-create input,.purchase-order-create select,.purchase-receipt-dialog input{width:100%;min-height:40px;padding:9px 11px;border:1px solid var(--line,#e7e2d9);border-radius:9px;background:var(--surface,#fff);color:var(--text,#222);font:inherit}
 .purchase-order-lines-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 8px}
@@ -1378,14 +1379,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: linear-gradient(90deg,#f7f0e3,#fbf8f1);
 }
 .modal-actions { gap: 9px; }
-.toast-region { right: 20px; bottom: 20px; gap: 9px; }
+.toast-region { right: 24px; bottom: 24px; gap: 12px; }
 .toast {
+  max-width: min(440px,calc(100vw - 36px));
+  padding: 15px 17px;
+  gap: 12px;
   border-color: #e7ddcb;
-  border-radius: 12px;
+  border-radius: 13px;
   box-shadow: var(--shadow-raised);
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1.45;
 }
-.toast-mark { box-shadow: 0 0 0 4px rgba(85,125,103,.1); }
+.toast-mark {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  font-size: 15px;
+  box-shadow: 0 0 0 4px rgba(85,125,103,.1);
+}
 
 /* Small utilities and polish */
 .font-controls {
