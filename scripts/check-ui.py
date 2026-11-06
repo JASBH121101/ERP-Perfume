@@ -143,7 +143,7 @@ def main():
     if css.count("{") != css.count("}"):
         return fail("CSS brace count is unbalanced.")
     for value, (label, scale) in FONT_SCALE_VALUES.items():
-        pattern = rf'body\\s*\\[data-font-scale="{re.escape(value)}"\\]\\s*\\{{[^}}]*--ui-font-scale:\\s*{re.escape(scale)}\\s*;'
+        pattern = rf'body\s*\[data-font-scale="{re.escape(value)}"\]\s*\{{[^}}]*--ui-font-scale:\s*{re.escape(scale)}\s*;'
         if not re.search(pattern, css):
             return fail(f"Font level {label} ({value}) is missing its {scale}x CSS mapping.")
 
