@@ -438,7 +438,7 @@ test('employee edit preserves hire date and records a promotion reason', async (
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[name="name"]')).toHaveValue('Colaborador QA');
   await expect(dialog.locator('[name="hireDate"]')).toHaveCount(0);
-  await expect(dialog.getByText('Fecha original de ingreso')).toBeVisible();
+  await expect(dialog.getByText('Fecha original de ingreso',{exact:true})).toBeVisible();
   await dialog.locator('[name="position"]').fill('Supervisor de operaciones');
   await dialog.locator('[name="salaryNio"]').fill('12500');
   await dialog.locator('[name="changeReason"]').fill('Ascenso por desempeño');
@@ -459,7 +459,7 @@ test('employee history attaches and downloads private personnel documents', asyn
   const dialog=page.locator('#business-dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Historial laboral')).toBeVisible();
-  await expect(dialog.getByText('Alta inicial')).toBeVisible();
+  await expect(dialog.locator('strong').filter({hasText:'Alta inicial'}).first()).toBeVisible();
   await dialog.locator('#employee-document-file').setInputFiles({
     name:'contrato-qa.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 QA')
   });
