@@ -42,13 +42,13 @@ La modalidad seleccionada debe coincidir con la afiliación real del empleador a
 3. Si hay vendedor comisionista, todos los productos de la factura deben tener costo unitario mayor que cero.
 4. Se calcula por renglón: `max(0, venta neta después del descuento asignado - costo unitario × cantidad) × porcentaje`.
 5. El descuento de factura se distribuye por renglón proporcionalmente al valor de venta. El cargo de entrega no forma parte de la base.
-6. Se guarda una fotografía de costo, precio, descuento, utilidad, porcentaje y tipo de cambio en la tabla `employee_commissions`; cambios posteriores no alteran ventas históricas.
+6. La comisión devengada se conserva en USD, igual que la venta y el costo. Se guarda una fotografía de costo, precio, descuento, utilidad, porcentaje y tipo de cambio de la venta en `employee_commissions`; cambios posteriores no alteran ventas históricas.
 
-Las comisiones pendientes de cada vendedor se asignan una única vez a un período ordinario que abarque la fecha de venta. Al pagar el período pasan a `Pagada`; al anularlo regresan a `Pendiente`. El historial no se elimina ni se reinicia manualmente.
+Al crear un período ordinario se define su tasa USD/NIO. Esa tasa queda congelada para todos los colaboradores del período. Las comisiones pendientes, almacenadas en USD, se convierten a córdobas con esa tasa y el renglón de nómina guarda tanto el monto original USD como el monto C$ y la tasa aplicada. El salario base y la nómina se pagan en córdobas. Las comisiones pendientes de cada vendedor se asignan una única vez a un período ordinario que abarque la fecha de venta. Al pagar el período pasan a `Pagada`; al anularlo regresan a `Pendiente`. El historial no se elimina ni se reinicia manualmente.
 
 ## Límites de esta entrega
 
 - El cálculo de comisiones se dispara al crear la factura (también cuando el cobro es parcial o queda a crédito); no espera a que el cliente termine de pagar.
 - No se recalculan comisiones de facturas históricas anteriores a la migración.
-- La tasa y el costo quedan congelados por venta; para corregir una venta anterior se requerirá un flujo de reversión/auditoría, no edición manual del ledger.
+- El costo, la tasa de comisión y la tasa USD/NIO de la venta quedan congelados en el ledger. La conversión a C$ de nómina usa la tasa fijada al crear el período; para corregir una venta anterior se requerirá un flujo de reversión/auditoría, no edición manual del ledger.
 - Las cifras son herramientas internas de control; el cálculo final de planillas y obligaciones debe revisarse con el contador o asesor laboral conforme al régimen real de JB Parfums.
