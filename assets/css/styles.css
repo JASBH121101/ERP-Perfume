@@ -1758,3 +1758,30 @@ dialog.catalog-import-dialog[open] {
   .contract-reminder-row > div { flex-basis:calc(100% - 100px); }
   .contract-reminder-row .button { margin-left:auto; }
 }
+
+
+/* Catalog import dialog: hard width guard against the shared .modal sizing. */
+html body dialog.modal.catalog-import-dialog[open] {
+  box-sizing:border-box !important;
+  width:min(980px,calc(100vw - 40px)) !important;
+  min-width:0 !important;
+  max-width:calc(100vw - 40px) !important;
+  margin:0 !important;
+  left:50% !important;
+  right:auto !important;
+  top:50% !important;
+  transform:translate(-50%,-50%) !important;
+}
+html body dialog.modal.catalog-import-dialog[open] > form.catalog-import-card {
+  box-sizing:border-box !important;
+  display:block !important;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+}
+@media(max-width:720px) {
+  html body dialog.modal.catalog-import-dialog[open] {
+    width:calc(100vw - 20px) !important;
+    max-width:calc(100vw - 20px) !important;
+  }
+}
