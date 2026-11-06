@@ -731,6 +731,7 @@ export async function createInvoice(sql, user, body) {
   if(!number)return erpError(400,"INVOICE_NUMBER_REQUIRED","El número de comprobante es obligatorio.");
   const currency=body.currency==="NIO"?"NIO":"USD";
   const salespersonId=body.salesperson_employee_id?String(body.salesperson_employee_id):null;
+  if(salespersonId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(salespersonId))return erpError(400,"INVALID_COMMISSION_SELLER","El vendedor seleccionado no es válido.");
   if(salespersonId){
     const seller=await sql.query("SELECT id FROM employees WHERE id=$1::uuid AND status=$2 AND commission_enabled=TRUE AND commission_rate>0 LIMIT 1",[salespersonId,"Activo"]);
     if(!seller[0])return erpError(400,"INVALID_COMMISSION_SELLER","El vendedor seleccionado no está activo o no tiene una comisión configurada.");
@@ -927,7 +928,7 @@ async function createPayrollItem(sql,user,body) {
         "AND pp.period_end>=(CURRENT_DATE-INTERVAL '6 months')::date AND pp.period_end<=CURRENT_DATE " +
         "GROUP BY date_trunc('month',pp.period_end)), " +
       "variable_basis AS (SELECT MAX(ordinary_salary)::numeric(14,2) AS highest_salary FROM monthly_ordinary), " +
-      "aguinaldo_calc AS (SELECT CASE WHEN p.period_type='Aguinaldo' AND e.hire_date IS NOT NULL AND c.as_of>=GREATEST(e.hire_date,c.cycle_start) " +
+      "aguinaldo_calc AS (SELECT CASE WHEN p.period_type='Aguinaldo' AND e.hire_date IS NOT NULL AND e.hire_date+INTERVAL '1 month'<=c.as_of AND c.as_of>=GREATEST(e.hire_date,c.cycle_start) " +
         "THEN ROUND((CASE WHEN e.commission_enabled THEN COALESCE(v.highest_salary,e.salary_nio) ELSE e.salary_nio END) * " +
         "((LEAST(c.as_of,c.cycle_end)-GREATEST(e.hire_date,c.cycle_start)+1)::numeric / NULLIF((c.cycle_end-c.cycle_start+1),0)),2) " +
         "ELSE 0 END AS aguinaldo_nio FROM period p CROSS JOIN employee e CROSS JOIN cycle c CROSS JOIN variable_basis v), " +
