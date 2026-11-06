@@ -31,6 +31,10 @@ function erpError(status, code, message) {
   return erpJson({ error: { code, message } }, status);
 }
 
+function roundCurrency(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
 function canAccess(user, roles) {
   // Every request is checked against the granular policy before reaching a handler.
   return Boolean(user && (user._permissionValidated === true || roles.includes(user.role)));
@@ -532,13 +536,12 @@ export async function createInventoryMovement(sql, user, body) {
 
 
 export async function createPurchaseOrder(sql, user, body) {
-  const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   const supplierId = String(body.supplier_id || "").trim();
   const currency = String(body.currency || "USD").toUpperCase();
   const rate = Number(body.exchange_rate ?? 1);
-  const discount = round(body.discount_usd ?? 0);
-  const freight = round(body.estimated_freight_usd ?? 0);
-  const taxes = round(body.estimated_taxes_usd ?? 0);
+  const discount = roundCurrency(body.discount_usd ?? 0);
+  const freight = roundCurrency(body.estimated_freight_usd ?? 0);
+  const taxes = roundCurrency(body.estimated_taxes_usd ?? 0);
   const notes = body.notes == null ? null : String(body.notes).trim();
   const items = Array.isArray(body.items) ? body.items : [];
   if (!supplierId || !["USD","NIO"].includes(currency) || !Number.isFinite(rate) || rate <= 0 || rate > 100000 ||
@@ -559,12 +562,12 @@ export async function createPurchaseOrder(sql, user, body) {
     }
     if (seen.has(productId)) return erpError(400,"DUPLICATE_PURCHASE_ORDER_PRODUCT","Combina las cantidades del mismo producto en una sola línea.");
     seen.add(productId);
-    const unitUsd = round(currency === "NIO" ? unitInput / rate : unitInput);
+    const unitUsd = roundCurrency(currency === "NIO" ? unitInput / rate : unitInput);
     if (!Number.isFinite(unitUsd) || unitUsd <= 0) return erpError(400,"INVALID_PURCHASE_ORDER_COST","No se pudo convertir el costo unitario a USD.");
-    lines.push({product_id:productId,ordered_quantity:quantity,unit_cost_input:round(unitInput),unit_cost_usd:unitUsd});
+    lines.push({product_id:productId,ordered_quantity:quantity,unit_cost_input:roundCurrency(unitInput),unit_cost_usd:unitUsd});
   }
-  const subtotal = round(lines.reduce((sum,line)=>sum+round(line.ordered_quantity*line.unit_cost_usd),0));
-  const total = round(subtotal-discount+freight+taxes);
+  const subtotal = roundCurrency(lines.reduce((sum,line)=>sum+roundCurrency(line.ordered_quantity*line.unit_cost_usd),0));
+  const total = roundCurrency(subtotal-discount+freight+taxes);
   if (discount > subtotal || total <= 0 || total > 999999999999.99) return erpError(400,"INVALID_PURCHASE_ORDER_TOTAL","El descuento no puede superar el subtotal y el total debe ser positivo.");
   const expected = body.expected_delivery_date ? String(body.expected_delivery_date) : null;
   if (expected && !/^\d{4}-\d{2}-\d{2}$/.test(expected)) return erpError(400,"INVALID_EXPECTED_DATE","La fecha estimada no es válida.");
@@ -612,7 +615,6 @@ async function changePurchaseOrderStatus(sql,user,id,body) {
 }
 
 export async function createPurchaseReceipt(sql,user,orderId,body) {
-  const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   const freight = Number(body.actual_freight_usd ?? 0);
   const notes = body.notes == null ? null : String(body.notes).trim();
   const rawItems = Array.isArray(body.items) ? body.items : [];
@@ -650,7 +652,7 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
       "updated_order AS (UPDATE purchase_orders po SET status=CASE WHEN remaining.open_lines=0 THEN 'Recibida' ELSE 'Recepción parcial' END,updated_at=NOW() FROM remaining CROSS JOIN created_receipt r WHERE po.id=r.purchase_order_id AND EXISTS(SELECT 1 FROM movements) RETURNING po.id,po.status),"+
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'receive','purchase_receipt',r.id::text,jsonb_build_object('receipt_number',r.receipt_number,'purchase_order_id',r.purchase_order_id,'actual_freight_usd',r.actual_freight_usd,'line_count',(SELECT COUNT(*) FROM receipt_lines),'new_order_status',u.status) FROM input i CROSS JOIN created_receipt r CROSS JOIN updated_order u RETURNING id) "+
       "SELECT r.*,(SELECT COUNT(*) FROM receipt_lines)::int AS item_count,u.status AS purchase_order_status,v.order_exists,v.current_status AS previous_order_status,v.request_count,v.matched_count,v.distinct_count,v.invalid_quantity_count,v.order_line_count FROM validation v LEFT JOIN created_receipt r ON TRUE LEFT JOIN updated_order u ON TRUE",
-      [orderId,receiptNumber,round(freight),notes,JSON.stringify(items),user.id]
+      [orderId,receiptNumber,roundCurrency(freight),notes,JSON.stringify(items),user.id]
     );
     const result=rows[0];
     if(!result?.id){
@@ -672,7 +674,6 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
 }
 
 async function createPurchase(sql, user, body) {
-  const roundCurrency = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   const rate = Number(body.exchange_rate ?? 1);
   const paidUsd = roundCurrency(body.paid_usd ?? 0);
   const purchaseNumber = String(body.purchase_number || "").trim();
@@ -1267,7 +1268,6 @@ async function addInvoicePayment(sql, user, body) {
 }
 
 export async function createSupplierInvoice(sql,user,body) {
-  const round=value=>Math.round((Number(value)+Number.EPSILON)*100)/100;
   const supplierId=String(body.supplier_id||"").trim();
   const orderId=body.purchase_order_id?String(body.purchase_order_id).trim():null;
   const invoiceNumber=String(body.invoice_number||"").trim();
@@ -1275,8 +1275,8 @@ export async function createSupplierInvoice(sql,user,body) {
   const dueDate=body.due_date?String(body.due_date):null;
   const currency=String(body.currency||"USD").toUpperCase();
   const rate=Number(body.exchange_rate??1);
-  const original=round(body.original_amount);
-  const amountUsd=round(currency==="NIO"?original/rate:original);
+  const original=roundCurrency(body.original_amount);
+  const amountUsd=roundCurrency(currency==="NIO"?original/rate:original);
   const notes=body.notes==null?null:String(body.notes).trim();
   if(!/^[0-9a-f-]{36}$/i.test(supplierId)||!invoiceNumber||invoiceNumber.length>100||
      !/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)||(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))||
