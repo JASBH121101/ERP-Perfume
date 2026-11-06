@@ -859,7 +859,6 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
       return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
         '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
-        '' +
         '</div></td></tr>';
     }).join('');
     const count = document.getElementById('inventory-product-count');
@@ -877,7 +876,6 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
       return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
         '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
-        '' +
         '</div></td></tr>';
     }).join('');
     return heading(views.inventory, '') +
