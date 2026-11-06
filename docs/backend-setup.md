@@ -109,11 +109,11 @@ Not every resource supports generic update or delete. Financial, payroll and inv
 
 ## Database migrations
 
-SQL migration sources `0001` through `0010` are now present in `db/migrations/` on `main`. The Neon Development registry was verified read-only and contains versions `0001` through `0010`.
+The repository now contains migration sources `0001` through `0019`. The Development migration ledger and live catalog are not fully aligned: versions `0012`–`0014` have their expected HR objects (tables, sequence, triggers and indexes) in Development but no corresponding ledger rows; version `0018` is recorded in Neon with a rejection-reason constraint, while its original SQL source was not committed. A schema-equivalent reconstruction is retained in the repository and documented separately; its checksum is not claimed to match the original.
 
-The historical source files for `0008` and `0009` had never been committed to GitHub. They have been restored as **schema-equivalent, idempotent reconstructions** from the live Development catalog, not as byte-for-byte copies of the original scripts. Their original recorded checksums are retained as audit evidence in `docs/migration-history-reconciliation.md`. The recovered DDL was re-validated idempotently against Development; no business data was inserted and the migration registry was not rewritten.
+Version `0019` adds supporting indexes for nullable audit foreign keys and permission lookups. It is a pending additive migration until its Development execution and ledger entry are explicitly verified. Existing indexes are not duplicated: for example, `employee_commissions.invoice_item_id` is already protected by a unique index.
 
-Do not replay versions already registered on a branch. Migrations are not automatically executed by GitHub Actions, Pages or Worker deployments. Do not apply migrations to Neon Production until the owner explicitly approves a reviewed cutover and backup plan.
+See `docs/migration-audit-2026-11-06.md` for the read-only audit, observed checksums and reconciliation rules. Do not replay versions already represented by live objects. Migrations are not automatically executed by GitHub Actions, Pages or Wrangler Worker deployments. Neon Production was not changed; do not apply Production migrations without an explicitly approved cutover and backup plan.
 
 ## Validation
 

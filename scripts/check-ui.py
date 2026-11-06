@@ -31,6 +31,15 @@ REQUIRED_VIEWS = {
     'data-view="hr"',
 }
 
+FONT_SCALE_VALUES = {
+    "normal": ("100%", "1"),
+    "large": ("110%", "1.1"),
+    "larger": ("120%", "1.2"),
+    "largest": ("130%", "1.3"),
+    "huge": ("140%", "1.4"),
+    "extra": ("150%", "1.5"),
+}
+
 
 class UIParser(HTMLParser):
     def __init__(self):
@@ -133,11 +142,24 @@ def main():
     css = CSS_FILE.read_text(encoding="utf-8")
     if css.count("{") != css.count("}"):
         return fail("CSS brace count is unbalanced.")
-    for marker in ('data-font-scale="normal"', 'data-font-scale="large"', 'data-font-scale="larger"'):
-        if marker not in css:
-            return fail("Missing font scale style: " + marker)
+    for value, (label, scale) in FONT_SCALE_VALUES.items():
+        pattern = rf'body\\s*\\[data-font-scale="{re.escape(value)}"\\]\\s*\\{{[^}}]*--ui-font-scale:\\s*{re.escape(scale)}\\s*;'
+        if not re.search(pattern, css):
+            return fail(f"Font level {label} ({value}) is missing its {scale}x CSS mapping.")
+
+    for selector in (
+        ".notification-wrap", ".notification-panel", ".notification-item",
+        ".notification-count", ".notification-panel[hidden]",
+    ):
+        if selector not in css:
+            return fail("Missing notification center style: " + selector)
 
     js = JS_FILE.read_text(encoding="utf-8")
+    for value, (label, _scale) in FONT_SCALE_VALUES.items():
+        marker = f"value: '{value}', label: '{label}'"
+        if marker not in js:
+            return fail("Missing JavaScript font level: " + marker)
+
     for marker in ("new FormData(form)", "renderView()", "function setFontLevel", "function setSidebarCollapsed", "function showOrderDetails", "function saveOrderStatus"):
         if marker not in js:
             return fail("Expected UI hook was not found: " + marker)

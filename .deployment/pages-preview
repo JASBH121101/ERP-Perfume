@@ -34,3 +34,4 @@ Catalog import modal: fixed intrinsic-width overflow and isolated table scrollin
 Preview release: catalog import modal width guard; contract expiry reminders (30-day window, 15-day priority) confirmed. Recheck desktop and mobile dialog layouts.
 
 Preview release: persistent notification center, role-filtered OC approvals, temporary contract and low-stock alerts; six-level readable typography and owner-only browser error telemetry.
+Preview release: fix the full 100%-150% font scale, style the notification drawer as a responsive dropdown, refresh on tab focus and poll every 120 seconds to reduce unnecessary Neon compute wakeups. Migration audit and additive foreign-key index migration are documented; no SQL is run by this deployment.

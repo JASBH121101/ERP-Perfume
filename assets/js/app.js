@@ -2689,9 +2689,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }catch(error){toast(error?.message||'No se pudo abrir la notificación.');}
     finally{button.disabled=false;}
   }
-  window.setInterval(function(){
+  document.addEventListener('visibilitychange',function(){
     if(document.visibilityState==='visible'&&window.JBAuth?.profile)loadNotifications({silent:true});
-  },60000);
+  });
+  window.setInterval(function(){
+    if(document.visibilityState==='visible'&&window.navigator.onLine&&window.JBAuth?.profile)loadNotifications({silent:true});
+  },120000);
   function renderView() {
     if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
     const meta = views[state.view] || views.dashboard;
