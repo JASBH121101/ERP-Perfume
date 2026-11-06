@@ -1139,55 +1139,6 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       (item.sku&&products.find(p=>String(p.sku).toLowerCase()===String(item.sku).toLowerCase())) ||
       (item.name&&products.find(p=>String(p.name).toLowerCase()===String(item.name).toLowerCase())) || null;
   }
-  function orderInventoryRequirements(order) {
-    const grouped=new Map();
-    for(const item of (Array.isArray(order.items)?order.items:[])){
-      const quantity=Number(item.quantity),product=resolveOrderProduct(item);
-      if(!Number.isInteger(quantity)||quantity<1)return {error:'El pedido contiene una cantidad inválida.'};
-      if(!product)return {error:'No se pudo vincular uno de los perfumes del pedido con el inventario. No se realizó ningún cambio.'};
-      const current=grouped.get(String(product.id));
-      if(current)current.quantity+=quantity;else grouped.set(String(product.id),{product,quantity});
-    }
-    if(!grouped.size)return {error:'El pedido no contiene productos para descontar del inventario.'};
-    return {items:Array.from(grouped.values())};
-  }
-  function recordOrderInventory(order,restoreStock) {
-    const requirement=orderInventoryRequirements(order);
-    if(requirement.error)return requirement;
-    if(!restoreStock){
-      const insufficient=requirement.items.find(line=>line.product.active===false||line.product.stock<line.quantity);
-      if(insufficient)return {error:insufficient.product.active===false?'El perfume '+insufficient.product.name+' está desactivado y no puede venderse.':'Stock insuficiente para '+insufficient.product.name+'. Disponible: '+insufficient.product.stock+'; solicitado: '+insufficient.quantity+'.'};
-    }
-    const timestamp=new Date().toISOString();
-    requirement.items.forEach(function(line,index){
-      const product=line.product,previous=Number(product.stock||0),delta=restoreStock?line.quantity:-line.quantity,next=previous+delta;
-      product.stock=next;
-      inventoryMovements.unshift({id:Date.now()+index,productId:product.id,productName:product.name,sku:product.sku,type:restoreStock?'Reingreso por pedido':'Salida por pedido',quantity:line.quantity,delta,previousStock:previous,newStock:next,note:(restoreStock?'Reversión del pedido ':'Pedido confirmado ')+order.id,sourceType:'order',sourceId:String(order.id),createdAt:timestamp});
-    });
-    return {items:requirement.items};
-  }
-  function recordInvoiceInventory(invoice){
-    const prior=inventoryMovements.some(m=>m.sourceType==='invoice'&&String(m.sourceId)===String(invoice.id)&&Number(m.delta)<0);
-    if(invoice.inventoryAppliedAt||prior){invoice.inventoryAppliedAt=invoice.inventoryAppliedAt||new Date().toISOString();return {already:true};}
-    const grouped=new Map();
-    for(const item of invoice.items||[]){
-      const product=resolveOrderProduct(item),quantity=Number(item.quantity);
-      if(!product||!Number.isInteger(quantity)||quantity<1)return {error:'No se pudo vincular un perfume con el inventario o la cantidad es inválida.'};
-      const current=grouped.get(String(product.id));
-      if(current)current.quantity+=quantity;else grouped.set(String(product.id),{product,quantity});
-    }
-    const lines=Array.from(grouped.values());
-    const insufficient=lines.find(line=>line.product.active===false||Number(line.product.stock||0)<line.quantity);
-    if(insufficient)return {error:insufficient.product.active===false?'El perfume '+insufficient.product.name+' está desactivado.':'Stock insuficiente para '+insufficient.product.name+'. Disponible: '+insufficient.product.stock+'; solicitado: '+insufficient.quantity+'.'};
-    const timestamp=new Date().toISOString();
-    lines.forEach((line,index)=>{
-      const product=line.product,previous=Number(product.stock||0),next=previous-line.quantity;
-      product.stock=next;
-      inventoryMovements.unshift({id:Date.now()+index,productId:product.id,productName:product.name,sku:product.sku,type:'Venta por factura',quantity:line.quantity,delta:-line.quantity,previousStock:previous,newStock:next,note:'Factura '+invoice.id,sourceType:'invoice',sourceId:String(invoice.id),createdAt:timestamp});
-    });
-    invoice.inventoryAppliedAt=timestamp;
-    return {items:lines};
-  }
   async function saveOrderStatus() {
     const button=document.getElementById('save-order-status');
     const order=orders.find(item=>String(item.id)===button?.getAttribute('data-id'));
@@ -2011,9 +1962,6 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         monthlyOrdinarySalaries:monthlyOrdinarySalaries(employee.id,cycle.cycleEnd),asOf:today
       });
     };
-    const pendingCommissionFor=(employeeId)=>activeCommissions
-      .filter(c=>String(c.employeeId)===String(employeeId))
-      .reduce((sum,c)=>sum+Number(c.commissionUsd||0)*Number(exchangeRate||36.6),0);
     const inssFor=(employee)=>calculateInss({
       baseSalaryNio:employee.salaryNio,
       commissionsNio:activeCommissions.filter(c=>String(c.employeeId)===String(employee.id)&&c.status==='Pendiente')
