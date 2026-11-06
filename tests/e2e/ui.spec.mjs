@@ -600,7 +600,7 @@ test('inventory records receipts, issues and physical-count adjustments in the k
 
   const productId = '00000000-0000-0000-0000-000000000101';
   const register = async (type, quantity, note, expectedStock) => {
-    await page.locator('[data-action="stock-new"]').click();
+    await page.locator('[data-action="stock-product"]').click();
     const form = page.locator('#stock-form');
     await expect(page.locator('#stock-dialog')).toBeVisible();
     await form.locator('[name="type"]').selectOption(type);
@@ -634,7 +634,7 @@ test('inventory prevents an issue larger than available stock before sending it 
   await navigateToView(page, 'inventory');
 
   const productId = '00000000-0000-0000-0000-000000000103';
-  await page.locator('[data-action="stock-new"]').click();
+  await page.locator('[data-action="stock-product"]').click();
   const form = page.locator('#stock-form');
   await form.locator('[name="type"]').selectOption('exit');
   await form.locator('[name="quantity"]').fill('1');
@@ -655,7 +655,7 @@ test('a committed stock movement is not repeated when the following data refresh
   await navigateToView(page, 'inventory');
 
   const productId = '00000000-0000-0000-0000-000000000101';
-  await page.locator('[data-action="stock-new"]').click();
+  await page.locator('[data-action="stock-product"]').click();
   const form = page.locator('#stock-form');
   await form.locator('[name="type"]').selectOption('entry');
   await form.locator('[name="quantity"]').fill('2');
