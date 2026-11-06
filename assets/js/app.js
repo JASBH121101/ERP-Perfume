@@ -1434,7 +1434,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       body='<div class="form-grid">'+selectField('Colaborador','employeeId',options,true)+selectField('Tipo','leaveType','<option>Vacaciones</option><option>Permiso</option><option>Incapacidad</option><option>Otro</option>',true)+formField('Fecha inicial','startDate','date',true,'')+formField('Fecha final','endDate','date',true,'')+formField('Días solicitados','days','number',true,'min="0.5" step="0.5"')+formField('Motivo','reason','text',false,'maxlength="300"')+'</div>';
     }
     if(type==='payroll-period'){
-      body='<div class="form-grid">'+formField('Inicio del período','periodStart','date',true,'')+formField('Fin del período','periodEnd','date',true,'')+formField('Fecha prevista de pago','paymentDate','date',false,'')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">El período se crea en estado Borrador. Podrás agregar una partida por colaborador antes de aprobarlo.</p>';
+      body='<div class="form-grid">'+selectField('Tipo de período','periodType','<option value="Ordinaria" selected>Nómina ordinaria</option><option value="Aguinaldo">Aguinaldo · decimotercer mes</option>',true)+formField('Inicio del período','periodStart','date',true,'')+formField('Fin del período','periodEnd','date',true,'')+formField('Fecha prevista de pago','paymentDate','date',false,'')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">El período se crea en estado Borrador. En nómina ordinaria se calculan comisiones e INSS. En Aguinaldo, el sistema calcula el proporcional del decimotercer mes por separado.</p>';
     }
     if(type==='payroll-payment'){
       const period=payrollPeriods.find(p=>String(p.id)===String(recordId));
@@ -1448,9 +1448,12 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const available=payrollPeriods.filter(p=>p.status==='Borrador');
       if(!available.length){toast('Crea primero un período de nómina en estado Borrador.');return;}
       if(!employees.length){toast('Registra primero un colaborador.');return;}
-      const periodOptions=available.map(p=>'<option value="'+p.id+'">'+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</option>').join('');
+      const periodOptions=available.map(p=>'<option value="'+p.id+'" data-period-type="'+esc(p.periodType||'Ordinaria')+'">'+(p.periodType==='Aguinaldo'?'Aguinaldo · ':'Ordinaria · ')+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</option>').join('');
+      const firstPeriod=available[0];
       const employeeOptions=employees.filter(e=>e.status==='Activo').map(e=>'<option value="'+e.id+'" data-salary="'+Number(e.salaryNio||0)+'">'+esc(e.name)+' · '+moneyInCurrency(e.salaryNio,'NIO')+'</option>').join('');
-      body='<div class="form-grid">'+selectField('Período de nómina','payrollPeriodId',periodOptions,true)+selectField('Colaborador','employeeId',employeeOptions,true)+formField('Salario base (C$)','baseSalaryNio','number',true,'min="0" step="0.01"')+formField('Bonos (C$)','bonusesNio','number',false,'min="0" step="0.01" value="0"')+formField('Deducciones (C$)','deductionsNio','number',false,'min="0" step="0.01" value="0"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">El neto se calcula en el servidor: salario base + bonos − deducciones. Solo se permiten partidas dentro de períodos en borrador.</p>';
+      const initialSalary=firstPeriod?.periodType==='Aguinaldo'?0:Number(employees.find(e=>e.status==='Activo')?.salaryNio||0);
+      const isAguinaldo=firstPeriod?.periodType==='Aguinaldo';
+      body='<div class="form-grid">'+selectField('Período de nómina','payrollPeriodId',periodOptions,true)+selectField('Colaborador','employeeId',employeeOptions,true)+formField('Salario base (C$)','baseSalaryNio','number',true,'min="0" step="0.01" value="'+initialSalary+'"')+formField('Bonos (C$)','bonusesNio','number',false,'min="0" step="0.01" value="0"')+formField('Deducciones (C$)','deductionsNio','number',false,'min="0" step="0.01" value="0"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper" id="payroll-item-help">'+(isAguinaldo?'El sistema calcula el decimotercer mes proporcional usando el ciclo laboral y el salario que corresponda; el aguinaldo está exento de INSS.':'El servidor calcula el INSS del trabajador y patronal, e incorpora las comisiones pendientes de ventas dentro de este período.')+'</p>';
     }
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
@@ -1685,7 +1688,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         const startDate=get('periodStart'),endDate=get('periodEnd'),paymentDate=get('paymentDate');
         if(!startDate||!endDate||endDate<startDate)throw new Error('El período requiere fechas válidas y el fin no puede ser anterior al inicio.');
         await erpApi('hr_payroll_periods',{method:'POST',body:JSON.stringify({
-          period_start:startDate,period_end:endDate,payment_date:paymentDate||null,status:'Borrador',notes:get('notes')||null
+          period_start:startDate,period_end:endDate,period_type:get('periodType')==='Aguinaldo'?'Aguinaldo':'Ordinaria',payment_date:paymentDate||null,status:'Borrador',notes:get('notes')||null
         })});
       } else if(type==='payroll-item'){
         const periodId=get('payrollPeriodId'),employeeId=get('employeeId');
@@ -3088,10 +3091,22 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);
   businessForm.addEventListener('change',function(event){
     if(event.target.name==='currency')refreshCashAccountOptions(businessForm,event.target.value);
+    if(businessForm.dataset.recordType==='payroll-item'&&event.target.name==='payrollPeriodId'){
+      const periodType=event.target.selectedOptions?.[0]?.getAttribute('data-period-type');
+      const salary=businessForm.querySelector('[name="baseSalaryNio"]');
+      const help=businessForm.querySelector('#payroll-item-help');
+      const isAguinaldo=periodType==='Aguinaldo';
+      if(salary){salary.value=isAguinaldo?'0':(businessForm.querySelector('[name="employeeId"]')?.selectedOptions?.[0]?.getAttribute('data-salary')||'0');}
+      if(help)help.textContent=isAguinaldo?'El sistema calcula el decimotercer mes proporcional usando el ciclo laboral y el salario que corresponda; el aguinaldo está exento de INSS.':'El servidor calcula el INSS del trabajador y patronal, e incorpora las comisiones pendientes de ventas dentro de este período.';
+      return;
+    }
     if(businessForm.dataset.recordType==='payroll-item'&&event.target.name==='employeeId'){
       const selected=event.target.selectedOptions?.[0];
       const salary=businessForm.querySelector('[name="baseSalaryNio"]');
-      if(salary&&selected){salary.value=selected.getAttribute('data-salary')||'0';}
+      if(salary&&selected){
+        const periodType=businessForm.querySelector('[name="payrollPeriodId"]')?.selectedOptions?.[0]?.getAttribute('data-period-type');
+        salary.value=periodType==='Aguinaldo'?'0':(selected.getAttribute('data-salary')||'0');
+      }
       return;
     }
     if(businessForm.dataset.recordType!=='invoice')return;
