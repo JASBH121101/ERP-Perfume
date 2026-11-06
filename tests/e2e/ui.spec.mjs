@@ -253,6 +253,10 @@ test('authenticated ERP renders dashboard and primary modules from API data', as
   await page.goto('/');
   await expect(page).toHaveTitle(/JB PARFUMS/);
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
+  const inventoryDonut = page.locator('.inventory-donut');
+  await expect(inventoryDonut).toBeVisible();
+  await expect(inventoryDonut).toHaveAttribute('aria-label', /Distribución de productos/);
+  await expect(page.locator('.donut-legend-item')).toHaveCount(3);
   await navigateToView(page, 'products');
   await expect(page.getByRole('heading', { name: 'Catálogo de productos' })).toBeVisible();
   await expect(page.locator('#product-table-body')).toContainText('QA Fixture Perfume');
@@ -260,6 +264,8 @@ test('authenticated ERP renders dashboard and primary modules from API data', as
   await expect(page.getByRole('heading', { name: 'Facturación' })).toBeVisible();
   await navigateToView(page, 'hr');
   await expect(page.getByRole('heading', { name: 'Recursos Humanos' })).toBeVisible();
+  await expect(page.locator('.hr-summary-strip')).toBeVisible();
+  await expect(page.locator('.hr-tabs')).toBeVisible();
   await navigateToView(page, 'analytics');
   await expect(page.getByRole('heading', { name: 'Informes y análisis' })).toBeVisible();
 });
@@ -267,6 +273,8 @@ test('authenticated ERP renders dashboard and primary modules from API data', as
 test('inventory products search by SKU and filter category and stock status', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'inventory');
+  await expect(page.locator('.inventory-stock-panel')).toBeVisible();
+  await expect(page.locator('.inventory-products-meta')).toBeVisible();
   const rows = page.locator('#inventory-product-body tr');
   await expect(rows).toHaveCount(3);
   await expect(page.locator('#inventory-product-count')).toContainText('productos');

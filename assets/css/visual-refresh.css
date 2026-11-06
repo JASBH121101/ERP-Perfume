@@ -174,3 +174,199 @@ body.sidebar-collapsed .main-panel{width:calc(100% - 82px);margin-left:82px}
 @media(prefers-reduced-motion:reduce){
  .metric-card,.nav-item,.button,.icon-button,.table-action{transition:none}
 }
+
+
+/* Premium module compositions and a real data-driven inventory doughnut. */
+.inventory-status-panel { min-width:0; }
+.inventory-status-panel .panel-heading { align-items:flex-start; }
+.inventory-donut-layout {
+  min-height:190px;
+  display:grid;
+  grid-template-columns:minmax(150px,180px) minmax(0,1fr);
+  align-items:center;
+  gap:22px;
+  padding:7px 4px 10px;
+}
+.inventory-donut {
+  width:174px;
+  aspect-ratio:1;
+  display:grid;
+  place-items:center;
+  justify-self:center;
+  border:1px solid #e6ebf0;
+  border-radius:50%;
+  box-shadow:0 8px 24px rgba(32,41,54,.08);
+  position:relative;
+}
+.inventory-donut-center {
+  width:68%;
+  height:68%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  border:1px solid #edf0f4;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 2px 8px rgba(32,41,54,.04);
+}
+.inventory-donut-center strong {
+  color:#202b39;
+  font-size:32px;
+  font-weight:750;
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+}
+.inventory-donut-center span {
+  margin-top:6px;
+  color:#8290a0;
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.4px;
+}
+.donut-legend { min-width:0; display:grid; gap:8px; }
+.donut-legend-item {
+  min-width:0;
+  min-height:43px;
+  padding:8px 10px;
+  display:grid;
+  grid-template-columns:10px minmax(0,1fr) auto auto;
+  align-items:center;
+  gap:9px;
+  border:1px solid #edf0f4;
+  border-radius:10px;
+  background:#fbfcfd;
+}
+.donut-swatch { width:9px; height:9px; border-radius:50%; }
+.donut-swatch.available { background:#3f8b68; }
+.donut-swatch.low { background:#d7a44e; }
+.donut-swatch.out { background:#bf6a62; }
+.donut-legend-label { overflow:hidden; color:#59677a; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.donut-legend-item strong { color:#273447; font-size:13px; font-weight:750; font-variant-numeric:tabular-nums; }
+.donut-legend-item small { min-width:34px; color:#8994a2; font-size:11px; text-align:right; }
+.inventory-status-panel .panel-footer-note { line-height:1.55; }
+
+.dashboard-sales-bars { gap:12px; }
+.dashboard-sales-bars .stock-row { gap:6px; }
+.dashboard-sales-bars .stock-row-head { color:#718093; font-size:12px; }
+.dashboard-sales-bars .stock-row-head strong { color:#344052; font-weight:650; font-variant-numeric:tabular-nums; }
+.dashboard-sales-bars .stock-track { height:8px; background:#edf1f5; }
+.dashboard-sales-bars .stock-fill { min-width:0; border-radius:99px; background:linear-gradient(90deg,#b58b4b,#d8bd8a); }
+.dashboard-grid > .panel:first-child { background:linear-gradient(150deg,#fff 0%,#fbfcfe 100%); }
+
+.inventory-stock-panel {
+  overflow:hidden;
+  border-color:#dfe6ee;
+  border-radius:15px;
+}
+.inventory-stock-panel .toolbar { padding:14px 15px 12px; margin:0; }
+.inventory-products-meta {
+  padding:0 16px 12px;
+  color:#748195;
+  font-size:11px;
+}
+.inventory-products-meta span:first-child { color:#39485c; font-weight:700; }
+.inventory-stock-table th { background:#f6f8fb; }
+.inventory-stock-table td { vertical-align:middle; }
+.inventory-stock-table .product-cell { gap:12px; }
+.inventory-stock-table .product-cell .product-image-slot,
+.inventory-stock-table .product-cell .product-art { flex:0 0 42px; }
+.inventory-stock-table .table-primary { font-size:13px; }
+.inventory-stock-table .table-secondary { font-size:11px; }
+.inventory-summary-strip .summary-mini { min-height:74px; }
+.inventory-summary-strip .summary-mini strong { color:#263448; font-size:24px; }
+.inventory-summary-strip .summary-mini:nth-child(3) strong { color:#9b6a24; }
+
+.purchases-view .page-heading { margin-bottom:18px; }
+.purchases-summary-strip { grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.purchases-summary-strip .summary-mini { min-height:82px; display:flex; flex-direction:column; justify-content:space-between; gap:10px; }
+.purchases-summary-strip .summary-mini span { color:#718093; font-size:12px; font-weight:550; }
+.purchases-summary-strip .summary-mini strong { color:#273447; font-size:24px; }
+.purchases-summary-strip .summary-mini:nth-child(4) strong { color:#986b34; }
+.purchases-list-panel,.purchase-orders-list-panel { overflow:hidden; border-radius:15px; }
+.purchases-list-panel .data-table td,.purchase-orders-list-panel .data-table td { vertical-align:middle; }
+.purchases-list-panel .data-table td[data-label="Saldo"] { color:#344052; font-weight:700; font-variant-numeric:tabular-nums; }
+.purchases-list-panel .data-table td[data-label="Pagado"] { color:#33734e; font-variant-numeric:tabular-nums; }
+.purchase-orders-summary-strip { grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.purchase-orders-summary-strip .summary-mini { min-height:76px; display:flex; flex-direction:column; justify-content:space-between; gap:8px; }
+.purchase-orders-summary-strip .summary-mini strong { color:#273447; font-size:23px; }
+.purchase-order-create {
+  border-color:#dfe6ee;
+  border-radius:15px;
+  background:linear-gradient(155deg,#fff,#fbfcfe);
+  box-shadow:0 8px 24px rgba(32,41,54,.045);
+}
+.purchase-order-create .panel-heading h2 { font-size:18px; }
+.purchase-order-create .panel-heading p { font-size:13px; }
+.purchase-order-create label { color:#59677a; font-weight:650; }
+.purchase-order-create input,.purchase-order-create select {
+  border-color:#dfe5ec;
+  border-radius:9px;
+  color:#344052;
+  background:#fff;
+}
+.purchase-order-lines-heading { color:#344052; font-size:14px; }
+.purchase-order-line { border-top-color:#e9edf2; }
+.purchase-order-adjustments { padding-top:10px; border-top:1px solid #e9edf2; }
+
+.hr-view .hr-summary-strip .summary-mini {
+  min-height:72px;
+  padding:13px 14px;
+  border-color:#e2e8ef;
+  border-radius:12px;
+  background:linear-gradient(150deg,#fff,#fbfcfe);
+}
+.hr-view .hr-summary-strip .summary-mini span { color:#718093; font-size:11px; }
+.hr-view .hr-summary-strip .summary-mini strong { color:#263448; font-size:20px; font-weight:750; font-variant-numeric:tabular-nums; }
+.hr-view .hr-tabs { padding:7px; border:1px solid #e3e8ef; border-radius:13px; background:#f8fafc; }
+.hr-view .hr-tabs .toolbar-left { gap:7px; }
+.hr-view .hr-tab-button {
+  min-height:40px;
+  border-radius:9px;
+  font-size:12px;
+  font-weight:650;
+}
+.hr-view .hr-tab-button.button-primary {
+  border-color:#c3a16c;
+  color:#2a2419;
+  background:linear-gradient(135deg,#ead7b0,#d5b77d);
+  box-shadow:0 3px 8px rgba(143,104,47,.12);
+}
+.hr-view .hr-tab-button.button-quiet { border-color:transparent; background:transparent; }
+.hr-view .hr-tab-button.button-quiet:hover { border-color:#e1e7ee; background:#fff; }
+.hr-view .hr-tab-button .ledger-count {
+  min-width:21px;
+  padding:3px 6px;
+  border:1px solid #e3e8ef;
+  border-radius:99px;
+  color:#627084;
+  background:#fff;
+  font-size:10px;
+  font-weight:700;
+}
+.hr-view .hr-content { display:grid; gap:14px; }
+.hr-view .hr-content .list-panel { border-radius:14px; }
+.hr-view .hr-content .data-table th { background:#f7f9fb; }
+.hr-view .contract-reminders { box-shadow:0 4px 14px rgba(32,41,54,.035); }
+.hr-view .employee-profile-summary { border-color:#e3e8ef; border-radius:13px; background:#f8fafc; }
+.hr-view .hr-benefit-settings { border-color:#e3e8ef; border-radius:14px; }
+
+@media(max-width:720px) {
+  .inventory-donut-layout { grid-template-columns:124px minmax(0,1fr); gap:12px; min-height:140px; padding-inline:0; }
+  .inventory-donut { width:124px; }
+  .inventory-donut-center strong { font-size:25px; }
+  .donut-legend { gap:6px; }
+  .donut-legend-item { min-height:37px; padding:6px 7px; grid-template-columns:8px minmax(0,1fr) auto; gap:6px; }
+  .donut-legend-item small { display:none; }
+  .donut-legend-label { font-size:11px; }
+  .donut-legend-item strong { font-size:12px; }
+  .purchases-summary-strip,.purchase-orders-summary-strip { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .purchases-summary-strip .summary-mini,.purchase-orders-summary-strip .summary-mini { min-height:68px; padding:11px; }
+  .purchases-summary-strip .summary-mini strong,.purchase-orders-summary-strip .summary-mini strong { font-size:19px; }
+}
+@media(max-width:380px) {
+  .inventory-donut-layout { grid-template-columns:1fr; justify-items:center; gap:12px; }
+  .inventory-donut { width:142px; }
+  .donut-legend { width:100%; }
+  .donut-legend-item small { display:block; }
+}
