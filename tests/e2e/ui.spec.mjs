@@ -625,6 +625,35 @@ test('catalog import explicitly accepts CSV, PDF, PNG, JPG and JPEG', async ({ p
   await expect(dialog).toContainText('Admite CSV, PDF, PNG, JPG y JPEG');
 });
 
+test('catalog import dialog fits desktop and mobile viewports without clipping its form', async ({ page }) => {
+  await page.setViewportSize({ width: 1365, height: 900 });
+  await page.goto('/');
+  await navigateToView(page, 'products');
+  await page.getByRole('button', { name: /Importar catálogo/ }).click();
+  const dialog = page.locator('#catalog-import-dialog');
+  await expect(dialog).toBeVisible();
+  const desktop = await dialog.evaluate(element => ({
+    width: element.getBoundingClientRect().width,
+    clientWidth: element.clientWidth,
+    formClientWidth: element.querySelector('.modal-card').clientWidth,
+    formScrollWidth: element.querySelector('.modal-card').scrollWidth
+  }));
+  expect(desktop.width).toBeGreaterThan(900);
+  expect(desktop.formScrollWidth).toBeLessThanOrEqual(desktop.formClientWidth + 1);
+  await dialog.locator('[data-import-close]').click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: /Importar catálogo/ }).click();
+  const mobile = await dialog.evaluate(element => ({
+    width: element.getBoundingClientRect().width,
+    viewportWidth: window.innerWidth,
+    formClientWidth: element.querySelector('.modal-card').clientWidth,
+    formScrollWidth: element.querySelector('.modal-card').scrollWidth
+  }));
+  expect(mobile.width).toBeLessThanOrEqual(mobile.viewportWidth - 18);
+  expect(mobile.formScrollWidth).toBeLessThanOrEqual(mobile.formClientWidth + 1);
+});
+
 test('CSV import parses the selected file and exposes an editable preview', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'products');
