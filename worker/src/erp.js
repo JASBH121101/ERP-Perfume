@@ -35,6 +35,155 @@ function roundCurrency(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+export function canApprovePurchaseOrder(actorId, creatorId) {
+  return !creatorId || String(actorId) !== String(creatorId);
+}
+
+export function normalizeClientErrorInput(input = {}) {
+  const errorType = String(input.error_type || "");
+  if (!["javascript_error", "unhandled_rejection"].includes(errorType)) {
+    return { error: { code: "INVALID_CLIENT_ERROR_TYPE", message: "El tipo de error recibido no está permitido." } };
+  }
+  const redact = (value) => String(value || "")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    .replace(/\bBearer\s+[^\s]+/gi, "Bearer [redacted]")
+    .replace(/\b(?:password|token|secret|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, "[number]")
+    .slice(0, 600);
+  const errorMessage = redact(input.error_message).trim();
+  if (!errorMessage) return { error: { code: "EMPTY_CLIENT_ERROR", message: "El mensaje del error está vacío." } };
+  const pagePath = String(input.page_path || "/").split(/[?#]/)[0].slice(0, 180);
+  const sourceFile = String(input.source_file || "").split(/[?#]/)[0].slice(0, 300);
+  const lineNumber = Number(input.line_number || 0);
+  const columnNumber = Number(input.column_number || 0);
+  return {
+    value: {
+      error_type: errorType,
+      error_message: errorMessage,
+      page_path: pagePath.startsWith("/") ? pagePath : "/",
+      source_file: sourceFile || null,
+      line_number: Number.isInteger(lineNumber) && lineNumber > 0 && lineNumber <= 1000000 ? lineNumber : null,
+      column_number: Number.isInteger(columnNumber) && columnNumber > 0 && columnNumber <= 1000000 ? columnNumber : null
+    }
+  };
+}
+
+async function syncAndListNotifications(sql, user, permissionContext) {
+  const recipientId = user.id;
+  if (hasPermission(permissionContext, "purchases.approvals.approve")) {
+    await sql.query(
+      "INSERT INTO erp_notifications(recipient_user_id,dedupe_key,category,severity,title,message,entity_type,entity_id,target_view) " +
+      "SELECT $1,'purchase-order:'||po.id::text,'approval','warning','Orden de compra por aprobar', " +
+      "'OC '||po.order_number||' · '||po.supplier_name||' · US$ '||TO_CHAR(po.total_usd,'FM999,999,990.00'), " +
+      "'purchase_order',po.id,'purchaseOrders' FROM purchase_orders po " +
+      "WHERE po.status='Enviada' AND po.created_by IS DISTINCT FROM $1::uuid " +
+      "ON CONFLICT(recipient_user_id,dedupe_key) DO UPDATE SET title=EXCLUDED.title,message=EXCLUDED.message," +
+      "severity=EXCLUDED.severity,entity_id=EXCLUDED.entity_id,target_view=EXCLUDED.target_view," +
+      "resolved_at=NULL,updated_at=NOW()",
+      [recipientId]
+    );
+    await sql.query(
+      "UPDATE erp_notifications n SET resolved_at=NOW(),updated_at=NOW() " +
+      "WHERE n.recipient_user_id=$1 AND n.category='approval' AND n.resolved_at IS NULL " +
+      "AND NOT EXISTS(SELECT 1 FROM purchase_orders po WHERE po.id=n.entity_id AND po.status='Enviada' " +
+      "AND po.created_by IS DISTINCT FROM $1::uuid)",
+      [recipientId]
+    );
+  }
+  if (hasPermission(permissionContext, "hr.employees.view")) {
+    await sql.query(
+      "INSERT INTO erp_notifications(recipient_user_id,dedupe_key,category,severity,title,message,entity_type,entity_id,target_view) " +
+      "SELECT $1,'contract-expiry:'||e.id::text||':'||e.contract_end_date::text,'contract', " +
+      "CASE WHEN e.contract_end_date<CURRENT_DATE THEN 'critical' WHEN e.contract_end_date<=CURRENT_DATE+15 THEN 'warning' ELSE 'info' END, " +
+      "CASE WHEN e.contract_end_date<CURRENT_DATE THEN 'Contrato temporal vencido' " +
+      "WHEN e.contract_end_date<=CURRENT_DATE+15 THEN 'Contrato próximo a vencer' ELSE 'Contrato por vencer' END, " +
+      "e.name||' · '||CASE WHEN e.contract_end_date<CURRENT_DATE THEN 'Venció el ' ELSE 'Finaliza el ' END||TO_CHAR(e.contract_end_date,'DD/MM/YYYY'), " +
+      "'employee',e.id,'hr' FROM employees e WHERE e.status='Activo' AND e.contract_type='Temporal' " +
+      "AND e.contract_end_date IS NOT NULL AND e.contract_end_date<=CURRENT_DATE+30 " +
+      "ON CONFLICT(recipient_user_id,dedupe_key) DO UPDATE SET title=EXCLUDED.title,message=EXCLUDED.message," +
+      "severity=EXCLUDED.severity,entity_id=EXCLUDED.entity_id,target_view=EXCLUDED.target_view," +
+      "resolved_at=NULL,updated_at=NOW()",
+      [recipientId]
+    );
+    await sql.query(
+      "UPDATE erp_notifications n SET resolved_at=NOW(),updated_at=NOW() " +
+      "WHERE n.recipient_user_id=$1 AND n.category='contract' AND n.resolved_at IS NULL " +
+      "AND NOT EXISTS(SELECT 1 FROM employees e WHERE e.id=n.entity_id AND e.status='Activo' " +
+      "AND e.contract_type='Temporal' AND e.contract_end_date IS NOT NULL " +
+      "AND e.contract_end_date<=CURRENT_DATE+30 " +
+      "AND n.dedupe_key='contract-expiry:'||e.id::text||':'||e.contract_end_date::text)",
+      [recipientId]
+    );
+  }
+  if (hasPermission(permissionContext, "inventory.stock.view")) {
+    await sql.query(
+      "INSERT INTO erp_notifications(recipient_user_id,dedupe_key,category,severity,title,message,entity_type,entity_id,target_view) " +
+      "SELECT $1,'low-stock:'||p.id::text,'inventory','warning','Existencias por debajo del mínimo', " +
+      "p.name||' · Disponible: '||p.stock||' · Mínimo: '||p.min_stock,'product',p.id,'inventory' " +
+      "FROM products p WHERE p.active=TRUE AND p.min_stock>0 AND p.stock<=p.min_stock " +
+      "ON CONFLICT(recipient_user_id,dedupe_key) DO UPDATE SET message=EXCLUDED.message,entity_id=EXCLUDED.entity_id," +
+      "resolved_at=NULL,updated_at=NOW()",
+      [recipientId]
+    );
+    await sql.query(
+      "UPDATE erp_notifications n SET resolved_at=NOW(),updated_at=NOW() " +
+      "WHERE n.recipient_user_id=$1 AND n.category='inventory' AND n.resolved_at IS NULL " +
+      "AND NOT EXISTS(SELECT 1 FROM products p WHERE p.id=n.entity_id AND p.active=TRUE " +
+      "AND p.min_stock>0 AND p.stock<=p.min_stock)",
+      [recipientId]
+    );
+  }
+  const [rows, unreadRows] = await Promise.all([
+    sql.query(
+      "SELECT id,category,severity,title,message,entity_type,entity_id,target_view,created_at,read_at " +
+      "FROM erp_notifications WHERE recipient_user_id=$1 AND resolved_at IS NULL " +
+      "ORDER BY (read_at IS NULL) DESC, CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,created_at DESC LIMIT 100",
+      [recipientId]
+    ),
+    sql.query(
+      "SELECT COUNT(*)::int AS unread_count FROM erp_notifications " +
+      "WHERE recipient_user_id=$1 AND resolved_at IS NULL AND read_at IS NULL",
+      [recipientId]
+    )
+  ]);
+  return erpJson({ notifications: rows, unread_count: Number(unreadRows[0]?.unread_count || 0) });
+}
+
+async function handleClientErrors(sql, user, method, id, body) {
+  if (method === "POST" && !id) {
+    const normalized = normalizeClientErrorInput(body || {});
+    if (normalized.error) return erpError(400, normalized.error.code, normalized.error.message);
+    const recent = await sql.query(
+      "SELECT COUNT(*)::int AS count FROM erp_client_errors WHERE user_id=$1 AND created_at>NOW()-INTERVAL '10 minutes'",
+      [user.id]
+    );
+    if (Number(recent[0]?.count || 0) >= 20) {
+      return erpError(429, "CLIENT_ERROR_RATE_LIMIT", "Se alcanzó el límite temporal de reportes de error.");
+    }
+    const value = normalized.value;
+    const rows = await sql.query(
+      "INSERT INTO erp_client_errors(user_id,error_type,error_message,source_file,line_number,column_number,page_path) " +
+      "VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,created_at",
+      [user.id,value.error_type,value.error_message,value.source_file,value.line_number,value.column_number,value.page_path]
+    );
+    if (rows[0]) console.warn("[client-error-event]", JSON.stringify({
+      id: rows[0].id, userId: user.id, type: value.error_type, page: value.page_path,
+      source: value.source_file, line: value.line_number, column: value.column_number
+    }));
+    return erpJson({ record: rows[0] || null }, 202);
+  }
+  if (method === "GET" && !id) {
+    if (user.role !== "owner") return erpError(403, "OWNER_REQUIRED", "Solo el propietario puede consultar errores técnicos.");
+    const rows = await sql.query(
+      "SELECT e.id,e.error_type,e.error_message,e.source_file,e.line_number,e.column_number,e.page_path,e.created_at," +
+      "u.display_name AS actor_name FROM erp_client_errors e JOIN app_users u ON u.id=e.user_id " +
+      "ORDER BY e.created_at DESC LIMIT 100"
+    );
+    return erpJson({ records: rows });
+  }
+  return erpError(405, "METHOD_NOT_ALLOWED", "La operación de monitoreo no está disponible.");
+}
+
 function canAccess(user, roles) {
   // Every request is checked against the granular policy before reaching a handler.
   return Boolean(user && (user._permissionValidated === true || roles.includes(user.role)));
@@ -649,10 +798,27 @@ async function changePurchaseOrderStatus(sql,user,id,body) {
   const status=String(body.status||"").trim();
   const allowed=["Enviada","Confirmada","Cancelada"];
   if(!allowed.includes(status)) return erpError(400,"INVALID_PURCHASE_ORDER_STATUS","Estado de orden no permitido.");
+  if(status==="Confirmada") {
+    const current=await sql.query("SELECT created_by FROM purchase_orders WHERE id=$1::uuid LIMIT 1",[id]);
+    if(!current[0]) return erpError(404,"PURCHASE_ORDER_NOT_FOUND","No se encontró la orden de compra.");
+    if(!canApprovePurchaseOrder(user.id,current[0].created_by)) {
+      return erpError(403,"PURCHASE_ORDER_SELF_APPROVAL_BLOCKED","Quien creó la orden no puede aprobarla. Solicita la aprobación de otro usuario autorizado.");
+    }
+  }
   const rows=await sql.query(
-    "WITH changed AS (UPDATE purchase_orders SET status=$2,close_reason=CASE WHEN $2='Cancelada' THEN NULLIF(LEFT(BTRIM($3),300),'') ELSE close_reason END,updated_at=NOW() "+
-    "WHERE id=$1::uuid AND ((status='Borrador' AND $2 IN ('Enviada','Cancelada')) OR (status='Enviada' AND $2 IN ('Confirmada','Cancelada'))) RETURNING *),"+
-    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $4,'status_change','purchase_order',id::text,jsonb_build_object('status',status,'close_reason',close_reason) FROM changed RETURNING id) SELECT * FROM changed",
+    "WITH locked AS MATERIALIZED (SELECT id,status,created_by FROM purchase_orders WHERE id=$1::uuid FOR UPDATE),"+
+    "changed AS (UPDATE purchase_orders po SET status=$2,"+
+    "close_reason=CASE WHEN $2='Cancelada' THEN NULLIF(LEFT(BTRIM($3),300),'') ELSE po.close_reason END,"+
+    "approved_by=CASE WHEN $2='Confirmada' THEN $4::uuid ELSE po.approved_by END,"+
+    "approved_at=CASE WHEN $2='Confirmada' THEN NOW() ELSE po.approved_at END,updated_at=NOW() "+
+    "FROM locked WHERE po.id=locked.id AND "+
+    "((locked.status='Borrador' AND $2 IN ('Enviada','Cancelada')) OR (locked.status='Enviada' AND $2 IN ('Confirmada','Cancelada'))) "+
+    "AND ($2<>'Confirmada' OR locked.created_by IS DISTINCT FROM $4::uuid) RETURNING po.*),"+
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) "+
+    "SELECT $4,'status_change','purchase_order',changed.id::text,"+
+    "jsonb_build_object('previous_status',(SELECT status FROM locked),'status',changed.status,"+
+    "'approved_by',changed.approved_by,'approved_at',changed.approved_at,'close_reason',changed.close_reason) "+
+    "FROM changed RETURNING id) SELECT * FROM changed",
     [id,status,body.reason||"",user.id]
   );
   if(!rows[0]) return erpError(409,"PURCHASE_ORDER_TRANSITION_INVALID","La orden no existe o su estado actual no permite esa transición.");
@@ -1624,6 +1790,40 @@ export async function handleERPRequest(request, env, user, sql) {
     const movement = String(requestBody?.movement_type || requestBody?.type || requestBody?.direction || "").toLowerCase();
     if (["devolucion", "devolución", "return", "reversion", "reversión", "reversal"].includes(movement)) {
       return erpError(400, "INVALID_MOVEMENT", "Las devoluciones y reversiones requieren un documento de origen y no se registran como movimientos manuales.");
+    }
+  }
+
+  if (resource === "notifications") {
+    if (!hasAnyModuleAccess(permissionContext)) return erpError(403,"FORBIDDEN","Tu cuenta no tiene acceso a módulos del ERP.");
+    if (request.method === "GET" && !id) {
+      try { return await syncAndListNotifications(sql,user,permissionContext); }
+      catch(error) {
+        console.error("[notifications] Inbox failed:",error?.message||"database error");
+        return erpError(503,"NOTIFICATIONS_UNAVAILABLE","No se pudieron cargar las notificaciones.");
+      }
+    }
+    if (request.method === "PATCH" && id === "read-all") {
+      await sql.query("UPDATE erp_notifications SET read_at=COALESCE(read_at,NOW()),updated_at=NOW() WHERE recipient_user_id=$1 AND resolved_at IS NULL AND read_at IS NULL",[user.id]);
+      return erpJson({updated:true});
+    }
+    if (request.method === "PATCH" && parts[4] === "read" && /^[0-9a-f-]{36}$/i.test(id)) {
+      const rows=await sql.query(
+        "UPDATE erp_notifications SET read_at=COALESCE(read_at,NOW()),updated_at=NOW() " +
+        "WHERE id=$1::uuid AND recipient_user_id=$2 AND resolved_at IS NULL RETURNING id",
+        [id,user.id]
+      );
+      if(!rows[0]) return erpError(404,"NOTIFICATION_NOT_FOUND","La notificación no existe o no te pertenece.");
+      return erpJson({updated:true});
+    }
+    return erpError(405,"METHOD_NOT_ALLOWED","La operación de notificaciones no está disponible.");
+  }
+
+  if (resource === "client-errors") {
+    try {
+      return await handleClientErrors(sql,user,request.method,id,requestBody||{});
+    } catch(error) {
+      console.error("[client-errors] Telemetry route failed:",error?.message||"database error");
+      return erpError(503,"CLIENT_ERROR_MONITOR_UNAVAILABLE","No se pudo registrar o consultar el evento técnico.");
     }
   }
 

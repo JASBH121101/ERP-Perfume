@@ -5,7 +5,9 @@ import {
   createPurchaseReceipt,
   createSupplierInvoice,
   addSupplierInvoicePayment,
-  resolveRoutePermission
+  resolveRoutePermission,
+  canApprovePurchaseOrder,
+  normalizeClientErrorInput
 } from "../worker/src/erp.js";
 
 const actor = { id: "00000000-0000-0000-0000-000000000099", role: "owner" };
@@ -319,4 +321,28 @@ test("supplier invoice payment rejects voided invoices without creating a paymen
   assert.match(paymentStatement,/invoice_status<>'Anulada'/);
   assert.match(paymentStatement,/INSERT INTO supplier_invoice_payments/);
   assert.match(paymentStatement,/INSERT INTO cash_entries/);
+});
+
+
+test("purchase order approval requires a different user from its creator", () => {
+  assert.equal(canApprovePurchaseOrder(actor.id, actor.id), false);
+  assert.equal(canApprovePurchaseOrder(actor.id, "00000000-0000-0000-0000-000000000098"), true);
+  assert.equal(canApprovePurchaseOrder(actor.id, null), true);
+});
+
+test("client error telemetry redacts contact details and strips query strings", () => {
+  const result = normalizeClientErrorInput({
+    error_type: "javascript_error",
+    error_message: "Request failed for user person@example.com, phone +505 8888 1111",
+    page_path: "/products?token=private",
+    source_file: "https://erp.example/assets/app.js?secret=private",
+    line_number: 45,
+    column_number: 7
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.value.page_path, "/products");
+  assert.equal(result.value.source_file, "https://erp.example/assets/app.js");
+  assert.equal(result.value.error_message.includes("person@example.com"), false);
+  assert.equal(result.value.error_message.includes("8888 1111"), false);
+  assert.equal(normalizeClientErrorInput({ error_type: "api_error", error_message: "x" }).error.code, "INVALID_CLIENT_ERROR_TYPE");
 });
