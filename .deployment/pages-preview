@@ -17,3 +17,5 @@ Preview source commit: 5ca51729242441649eaeeb407ed5fe553519a686.
 Preview release: corrected server-side employee email and phone validation, including Nicaragua E.164 normalization.
 Preview source commit: ac9e7da2a28e802e116fb12978348c67287c4335.
 Visual system refresh · 2026-11-06 · commit 4b8c4f702e177d4c07789709087e0f85b3131482
+Preview release: Inventory lookup-first UX, compact mobile filters/actions and permission-scoped stock details.
+Preview source commit: 067dda1ca85079b7f218837e2c6edccc4cdcf64d.
