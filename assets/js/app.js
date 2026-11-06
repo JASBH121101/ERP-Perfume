@@ -465,6 +465,8 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         department: e.department || "", salaryNio: Number(e.salary_nio || 0), status: e.status || "Activo",
         hireDate: e.hire_date || null, phone: e.phone || "", email: e.email || "", notes: e.notes || "",
         commissionEnabled:e.commission_enabled===true, commissionRate:Number(e.commission_rate||0),
+        contractType:e.contract_type||'Por definir', workSchedule:e.work_schedule||'Por definir',
+        contractStartDate:e.contract_start_date||e.hire_date||null, contractEndDate:e.contract_end_date||null,
         linkedUserId:e.linked_user_id||null, linkedAccountStatus:e.linked_account_status||null, accountActive:e.account_active===true
       }));
       employeeHistory = (data.employee_history || []).map(item => ({
@@ -473,7 +475,12 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         fromSalaryNio:item.from_salary_nio==null?null:Number(item.from_salary_nio), toSalaryNio:item.to_salary_nio==null?null:Number(item.to_salary_nio),
         fromCommissionEnabled:item.from_commission_enabled, toCommissionEnabled:item.to_commission_enabled,
         fromCommissionRate:item.from_commission_rate==null?null:Number(item.from_commission_rate), toCommissionRate:item.to_commission_rate==null?null:Number(item.to_commission_rate),
-        fromStatus:item.from_status, toStatus:item.to_status, reason:item.reason||"", createdAt:item.created_at
+        fromStatus:item.from_status, toStatus:item.to_status,
+        fromContractType:item.from_contract_type, toContractType:item.to_contract_type,
+        fromWorkSchedule:item.from_work_schedule, toWorkSchedule:item.to_work_schedule,
+        fromContractStartDate:item.from_contract_start_date||null, toContractStartDate:item.to_contract_start_date||null,
+        fromContractEndDate:item.from_contract_end_date||null, toContractEndDate:item.to_contract_end_date||null,
+        reason:item.reason||"", createdAt:item.created_at
       }));
       employeeDocuments = (data.employee_documents || []).map(item => ({
         id:item.id, employeeId:item.employee_id, documentType:item.document_type, fileName:item.file_name,
@@ -1463,6 +1470,12 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const employee=recordId?employees.find(item=>String(item.id)===String(recordId)):null;
       const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
       const selectedCommission=employee?.commissionEnabled===true;
+      const contractType=employee?.contractType||'Por definir';
+      const workSchedule=employee?.workSchedule||'Por definir';
+      const contractTypeOptions=['Por definir','Indefinido','Temporal'].map(value=>'<option value="'+value+'" '+(contractType===value?'selected':'')+'>'+value+'</option>').join('');
+      const workScheduleOptions=['Por definir','Completa','Parcial'].map(value=>'<option value="'+value+'" '+(workSchedule===value?'selected':'')+'>'+value+'</option>').join('');
+      const contractStartDate=employee?.contractStartDate||employee?.hireDate||today;
+      const contractEndDate=employee?.contractEndDate||'';
       const commissionOptions='<option value="false" '+(!selectedCommission?'selected':'')+'>No</option><option value="true" '+(selectedCommission?'selected':'')+'>Sí</option>';
       const statusOptions=['Activo','Inactivo','Suspendido'].map(status=>'<option value="'+status+'" '+((employee?.status||'Activo')===status?'selected':'')+'>'+status+'</option>').join('');
       body=(employee?'<div class="employee-code-banner"><span>CÓDIGO DE EMPLEADO</span><strong>'+esc(employee.employeeCode||'Código pendiente')+'</strong><small>Identificador permanente. No cambia con ascensos ni traslados.</small></div>':'<div class="employee-code-banner"><span>CÓDIGO DE EMPLEADO</span><strong>Asignación automática</strong><small>Se genera en PostgreSQL al guardar el registro.</small></div>')+
@@ -1473,6 +1486,10 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         formField('Cargo','position','text',true,'maxlength="80" value="'+esc(employee?.position||'')+'"')+
         formField('Departamento','department','text',false,'maxlength="60" value="'+esc(employee?.department||'')+'"')+
         (employee?'<div class="detail-field"><span>Fecha original de ingreso</span><strong>'+dateText(employee.hireDate)+'</strong><small>La antigüedad total se conserva aunque cambie de puesto.</small></div>':formField('Fecha de ingreso','hireDate','date',true,'value="'+today+'"'))+
+        selectField('Tipo de contrato','contractType',contractTypeOptions,true)+
+        selectField('Jornada laboral','workSchedule',workScheduleOptions,true)+
+        formField('Inicio del contrato','contractStartDate','date',true,'value="'+esc(contractStartDate)+'"')+
+        '<div id="employee-contract-end-field" class="full-field" '+(contractType!=='Temporal'?'hidden':'')+'>'+formField('Fin del contrato','contractEndDate','date',contractType==='Temporal','min="'+esc(contractStartDate)+'" value="'+esc(contractEndDate)+'"')+'</div>'+
         formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01" value="'+Number(employee?.salaryNio||0)+'"')+
         selectField('¿Gana comisión?','commissionEnabled',commissionOptions,true)+
         '<div id="employee-commission-rate-field" class="full-field" '+(!selectedCommission?'hidden':'')+'>'+formField('Porcentaje de comisión (%)','commissionRate','number',false,'min="0.01" max="100" step="0.01" value="'+(selectedCommission?Number(employee.commissionRate).toFixed(2):'3')+'"')+'</div>'+
@@ -1481,7 +1498,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         (employee?formField('Motivo del cambio','changeReason','text',false,'maxlength="300" placeholder="Ascenso, traslado, ajuste salarial, baja..."'):'')+
         '</div>'+
         '<p class="form-helper">Correo y celular son opcionales; puedes completarlos después.</p>'+
-        '<p class="form-helper">Los cambios de cargo, salario, comisión y estado se registran con fecha efectiva y motivo.</p>'+
+        '<p class="form-helper">Los cambios de cargo, salario, comisión, contrato y jornada se registran con fecha efectiva y motivo.</p>'+
         '<p class="form-helper">La fecha original de ingreso no se modifica al ascender o trasladar al colaborador.</p>'+
         '<p class="form-helper">Las nóminas cerradas conservan sus importes históricos.</p>';
     }
@@ -1491,10 +1508,12 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       if(!employee){toast('No se encontró el colaborador.');return;}
       const history=employeeHistory.filter(item=>String(item.employeeId)===String(employee.id)).sort((a,b)=>String(b.effectiveDate||'').localeCompare(String(a.effectiveDate||''))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
       const historyRows=history.map(item=>{
-        const label=item.eventType==='position'?'Cambio de puesto / departamento':item.eventType==='compensation'?'Cambio salarial o de comisión':item.eventType==='status'?'Cambio de estado':'Alta inicial';
+        const label=item.eventType==='position'?'Cambio de puesto / departamento':item.eventType==='compensation'?'Cambio salarial o de comisión':item.eventType==='status'?'Cambio de estado':item.eventType==='contract'?'Cambio de contrato / jornada':'Alta inicial';
         const detail=item.eventType==='position'?'De '+(item.fromPosition||'—')+' a '+(item.toPosition||'—')+' · '+(item.toDepartment||'Sin departamento'):
           item.eventType==='compensation'?'Salario: '+moneyInCurrency(item.fromSalaryNio||0,'NIO')+' → '+moneyInCurrency(item.toSalaryNio||0,'NIO')+' · Comisión: '+Number(item.toCommissionRate||0).toFixed(2)+'%':
-          item.eventType==='status'?'Estado: '+(item.fromStatus||'—')+' → '+(item.toStatus||'—'):'Registro inicial del colaborador';
+          item.eventType==='status'?'Estado: '+(item.fromStatus||'—')+' → '+(item.toStatus||'—)':
+          item.eventType==='contract'?'Contrato: '+(item.fromContractType||'—')+' → '+(item.toContractType||'—')+' · Jornada: '+(item.fromWorkSchedule||'—')+' → '+(item.toWorkSchedule||'—')+' · Vigencia: '+dateText(item.toContractStartDate)+' – '+(item.toContractEndDate?dateText(item.toContractEndDate):'Sin fecha de finalización'):
+          'Registro inicial del colaborador';
         return '<div class="employee-history-item"><div class="employee-history-date">'+dateText(item.effectiveDate)+'</div><div><strong>'+label+'</strong><p>'+esc(detail)+'</p><small>'+esc(item.reason||'Sin observaciones')+'</small></div></div>';
       }).join('');
       const documentRows=employeeDocuments.filter(item=>String(item.employeeId)===String(employee.id)).map(item=>
@@ -1763,6 +1782,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         })});
       } else if(type==='employee'){
         const salary=num('salaryNio'),commissionEnabled=get('commissionEnabled')==='true',commissionRate=commissionEnabled?num('commissionRate'):0;
+        const contractType=get('contractType')||'Por definir',workSchedule=get('workSchedule')||'Por definir';
         const email=get('email').trim().toLowerCase(),rawPhone=get('phone').trim(),phoneDigits=rawPhone.replace(/\D/g,'');
         let phone='';
         if(rawPhone){
@@ -1775,14 +1795,22 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduce un correo electrónico válido.');
         if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0||
           (commissionEnabled&&(!Number.isFinite(commissionRate)||commissionRate<=0||commissionRate>100)))throw new Error('Revisa nombre, cargo, salario y porcentaje de comisión.');
+        if(!['Por definir','Indefinido','Temporal'].includes(contractType)||!['Por definir','Completa','Parcial'].includes(workSchedule))throw new Error('Selecciona un tipo de contrato y una jornada válidos.');
         const employeeId=businessForm.dataset.recordId||'';
+        const original=employeeId?employees.find(item=>String(item.id)===String(employeeId)):null;
+        const contractStartDate=get('contractStartDate')||(original?.contractStartDate||original?.hireDate||get('hireDate'))||null;
+        const contractEndDate=contractType==='Temporal'?(get('contractEndDate')||null):null;
+        if(!contractStartDate)throw new Error('Selecciona la fecha de inicio del contrato.');
+        if(contractType==='Temporal'&&(!contractEndDate||contractEndDate<contractStartDate))throw new Error('Un contrato temporal necesita una fecha de finalización igual o posterior al inicio.');
         const payload={name:get('name'),email:email||null,phone:phone||null,position:get('position'),department:get('department')||null,
-          salary_nio:salary,status:get('status')||'Activo',commission_enabled:commissionEnabled,commission_rate:commissionRate};
+          salary_nio:salary,status:get('status')||'Activo',commission_enabled:commissionEnabled,commission_rate:commissionRate,
+          contract_type:contractType,work_schedule:workSchedule,contract_start_date:contractStartDate,contract_end_date:contractEndDate};
         if(employeeId){
-          const original=employees.find(item=>String(item.id)===String(employeeId));
           const materialChange=original&&(original.position!==payload.position||original.department!==payload.department||
             Number(original.salaryNio)!==salary||original.commissionEnabled!==commissionEnabled||
-            Number(original.commissionRate)!==commissionRate||original.status!==payload.status);
+            Number(original.commissionRate)!==commissionRate||original.status!==payload.status||
+            original.contractType!==contractType||original.workSchedule!==workSchedule||
+            original.contractStartDate!==contractStartDate||original.contractEndDate!==contractEndDate);
           if(materialChange&&!get('effectiveDate'))throw new Error('Selecciona la fecha efectiva del cambio.');
           payload.effective_date=get('effectiveDate');
           payload.change_reason=get('changeReason')||'Actualización de datos personales';
@@ -1986,7 +2014,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       actions='<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>';
       const rows=employees.map(e=>{
         const tenure=calculateTenure(e.hireDate,today).label;
-        return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Código pendiente')+' · '+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Antigüedad">'+esc(tenure)+'</td><td data-label="Comisión">'+(e.commissionEnabled?'<span class="status-chip status-success">'+Number(e.commissionRate).toFixed(2)+'%</span>':'<span class="status-chip status-muted">No aplica</span>')+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td><td data-label="Acciones"><div class="hr-row-actions"><button type="button" class="button button-quiet button-small" data-action="view-employee" data-id="'+esc(e.id)+'">Historial</button><button type="button" class="button button-quiet button-small" data-action="edit-employee" data-id="'+esc(e.id)+'">Editar</button></div></td></tr>';
+        return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Código pendiente')+' · '+esc(e.department||'Sin departamento')+'</small><small class="table-secondary">'+esc(e.contractType||'Por definir')+' · Jornada '+esc(e.workSchedule||'Por definir')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Antigüedad">'+esc(tenure)+'</td><td data-label="Comisión">'+(e.commissionEnabled?'<span class="status-chip status-success">'+Number(e.commissionRate).toFixed(2)+'%</span>':'<span class="status-chip status-muted">No aplica</span>')+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td><td data-label="Acciones"><div class="hr-row-actions"><button type="button" class="button button-quiet button-small" data-action="view-employee" data-id="'+esc(e.id)+'">Historial</button><button type="button" class="button button-quiet button-small" data-action="edit-employee" data-id="'+esc(e.id)+'">Editar</button></div></td></tr>';
       }).join('');
       content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR / CÓDIGO</th><th>CARGO</th><th>ANTIGÜEDAD</th><th>COMISIÓN</th><th>SALARIO MENSUAL</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
     } else if(state.hrTab==='attendance'){
@@ -3230,6 +3258,18 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
   stockForm.elements.type.addEventListener('change',updateStockQuantityMode);
   businessForm.addEventListener('change',function(event){
     if(event.target.name==='currency')refreshCashAccountOptions(businessForm,event.target.value);
+    if(businessForm.dataset.recordType==='employee'&&event.target.name==='contractType'){
+      const isTemporary=event.target.value==='Temporal';
+      const wrapper=businessForm.querySelector('#employee-contract-end-field');
+      const endDate=businessForm.querySelector('[name="contractEndDate"]');
+      const startDate=businessForm.querySelector('[name="contractStartDate"]');
+      if(wrapper)wrapper.hidden=!isTemporary;
+      if(endDate){endDate.required=isTemporary;if(!isTemporary)endDate.value='';if(startDate)endDate.min=startDate.value||'';}
+    }
+    if(businessForm.dataset.recordType==='employee'&&event.target.name==='contractStartDate'){
+      const endDate=businessForm.querySelector('[name="contractEndDate"]');
+      if(endDate)endDate.min=event.target.value||'';
+    }
     if(businessForm.dataset.recordType==='payroll-item'&&event.target.name==='payrollPeriodId'){
       const periodType=event.target.selectedOptions?.[0]?.getAttribute('data-period-type');
       const salary=businessForm.querySelector('[name="baseSalaryNio"]');

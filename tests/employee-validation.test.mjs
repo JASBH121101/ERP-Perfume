@@ -90,3 +90,54 @@ test("commission rate is validated when commission is enabled", () => {
     commission_rate: 101
   }).error.code, "INVALID_EMPLOYEE_COMMISSION");
 });
+
+
+test("employee creation accepts contract type, schedule and fixed-term dates", () => {
+  const result = normalizeEmployeeCreateInput({
+    name: "Colaborador",
+    contract_type: "Temporal",
+    work_schedule: "Parcial",
+    contract_start_date: "2026-11-06",
+    contract_end_date: "2027-05-06"
+  });
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.value.contract_type, "Temporal");
+  assert.equal(result.value.work_schedule, "Parcial");
+  assert.equal(result.value.contract_start_date, "2026-11-06");
+  assert.equal(result.value.contract_end_date, "2027-05-06");
+});
+
+test("employee contract validation rejects unsupported values and invalid dates", () => {
+  assert.equal(normalizeEmployeeCreateInput({ contract_type: "Por horas" }).error.code, "INVALID_EMPLOYEE_CONTRACT_TYPE");
+  assert.equal(normalizeEmployeeCreateInput({ work_schedule: "Flexible" }).error.code, "INVALID_EMPLOYEE_WORK_SCHEDULE");
+  assert.equal(normalizeEmployeeCreateInput({
+    contract_type: "Temporal",
+    contract_start_date: "2026-11-06",
+    contract_end_date: null
+  }).error.code, "TEMPORARY_CONTRACT_DATES_REQUIRED");
+  assert.equal(normalizeEmployeeCreateInput({
+    contract_type: "Indefinido",
+    contract_start_date: "2026-11-06",
+    contract_end_date: "2027-01-01"
+  }).error.code, "UNEXPECTED_CONTRACT_END_DATE");
+  assert.equal(normalizeEmployeeCreateInput({
+    contract_type: "Temporal",
+    contract_start_date: "2026-11-06",
+    contract_end_date: "2026-10-31"
+  }).error.code, "INVALID_EMPLOYEE_CONTRACT_RANGE");
+  assert.equal(normalizeEmployeeCreateInput({
+    contract_type: "Temporal",
+    contract_start_date: "2026-02-30",
+    contract_end_date: "2026-03-01"
+  }).error.code, "INVALID_EMPLOYEE_CONTRACT_START_DATE");
+});
+
+test("partial employee updates preserve contract terms not included in the payload", () => {
+  const result = normalizeEmployeeCreateInput({ position: "Asesor de ventas" }, { partial: true });
+  assert.equal(result.error, undefined);
+  assert.equal(Object.hasOwn(result.value, "contract_type"), false);
+  assert.equal(Object.hasOwn(result.value, "work_schedule"), false);
+  assert.equal(Object.hasOwn(result.value, "contract_start_date"), false);
+  assert.equal(Object.hasOwn(result.value, "contract_end_date"), false);
+});

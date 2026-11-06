@@ -26,3 +26,5 @@ Source commit: cba4f72aadf638b49bd7d0c546e1f6741ba2f679.
 Preview release: Inventory lookup-only workflow, generated OC number on creation, larger notifications, and aligned permission and purchase-order layouts.
 Preview source commit: 5cd2fec2cd89e46d8398bc9ffccb717ce8573658.
 Preview release: sync current validated main revision through Wrangler to Preview only; keep Pages Production untouched and use Neon Development.
+
+Preview release: HR employee contract type, work schedule, fixed-term dates and change history.
