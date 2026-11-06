@@ -128,3 +128,16 @@ export function calculateCommission({
     commissionNio
   };
 }
+
+export function convertCommissionForPayroll(commissionUsd, exchangeRate) {
+  const usd = Number(commissionUsd);
+  const rate = Number(exchangeRate);
+  if (!Number.isFinite(usd) || usd < 0 || !Number.isFinite(rate) || rate <= 0) {
+    throw new RangeError("La comisión USD y la tasa de nómina deben ser valores válidos.");
+  }
+  return {
+    commissionUsd: Number(usd.toFixed(2)),
+    exchangeRate: Number(rate.toFixed(4)),
+    commissionNio: Math.round(usd * rate * 100) / 100
+  };
+}
