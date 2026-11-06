@@ -37,8 +37,23 @@ test("employee contact normalization preserves an international E.164 phone", ()
   assert.equal(result.value.phone, "+14155552671");
 });
 
-test("employee creation rejects missing or invalid recovery contacts", () => {
-  assert.equal(normalizeEmployeeCreateInput({}).error.code, "EMPLOYEE_CONTACT_REQUIRED");
+test("employee creation allows contact details to be completed later", () => {
+  const result = normalizeEmployeeCreateInput({ name: "Colaborador", commission_enabled: false });
+  assert.equal(result.error, undefined);
+  assert.equal(result.value.email, null);
+  assert.equal(result.value.phone, null);
+  assert.equal(result.value.commission_rate, 0);
+});
+
+test("partial employee updates preserve contact fields that were not submitted", () => {
+  const result = normalizeEmployeeCreateInput({ position: "Asesor de ventas" }, { partial: true });
+  assert.equal(result.error, undefined);
+  assert.equal(Object.hasOwn(result.value, "email"), false);
+  assert.equal(Object.hasOwn(result.value, "phone"), false);
+  assert.equal(result.value.position, "Asesor de ventas");
+});
+
+test("employee creation rejects invalid optional contacts when supplied", () => {
   assert.equal(normalizeEmployeeCreateInput({ email: "correo-invalido" }).error.code, "INVALID_EMPLOYEE_EMAIL");
   assert.equal(normalizeEmployeeCreateInput({ phone: "123" }).error.code, "INVALID_EMPLOYEE_PHONE");
 });

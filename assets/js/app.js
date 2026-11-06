@@ -106,6 +106,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
   let invoices = [];
   let invoiceDraftItems = [];
   let employees = [];
+  let employeeHistory = [];
   let attendanceRecords = [];
   let leaveRequests = [];
   let payrollPeriods = [];
@@ -465,6 +466,14 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         commissionEnabled:e.commission_enabled===true, commissionRate:Number(e.commission_rate||0),
         linkedUserId:e.linked_user_id||null, linkedAccountStatus:e.linked_account_status||null, accountActive:e.account_active===true
       }));
+      employeeHistory = (data.employee_history || []).map(item => ({
+        id:item.id, employeeId:item.employee_id, eventType:item.event_type, effectiveDate:item.effective_date,
+        fromPosition:item.from_position, toPosition:item.to_position, fromDepartment:item.from_department, toDepartment:item.to_department,
+        fromSalaryNio:item.from_salary_nio==null?null:Number(item.from_salary_nio), toSalaryNio:item.to_salary_nio==null?null:Number(item.to_salary_nio),
+        fromCommissionEnabled:item.from_commission_enabled, toCommissionEnabled:item.to_commission_enabled,
+        fromCommissionRate:item.from_commission_rate==null?null:Number(item.from_commission_rate), toCommissionRate:item.to_commission_rate==null?null:Number(item.to_commission_rate),
+        fromStatus:item.from_status, toStatus:item.to_status, reason:item.reason||"", createdAt:item.created_at
+      }));
       attendanceRecords = (data.hr_attendance || []).map(e => ({
         id:e.id, employeeId:e.employee_id, workDate:e.work_date, checkIn:e.check_in, checkOut:e.check_out,
         breakMinutes:Number(e.break_minutes||0), status:e.status, notes:e.notes||""
@@ -601,6 +610,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     "new-supplier": ["suppliers.records.create"],
     "new-expense": ["expenses.records.create"], "new-cash": ["cash.entries.create"],
     "new-cash-account": ["cash.entries.create"], "new-employee": ["hr.employees.create"],
+    "view-employee": ["hr.employees.view"], "edit-employee": ["hr.employees.edit"],
     "new-attendance": ["hr.attendance.create"], "new-leave": ["hr.leave.create"],
     "approve-leave": ["hr.leave.approve"], "reject-leave": ["hr.leave.reject"],
     "new-payroll-period": ["hr.payroll.create"], "new-payroll-item": ["hr.payroll.create"],
@@ -1418,7 +1428,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     if(typeof previewDialog.showModal==='function')previewDialog.showModal();
   }
   function openBusinessDialog(type,recordId){
-    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra','supplier-invoice':'Registrar factura de proveedor','supplier-invoice-payment':'Registrar pago a proveedor',expense:'Registrar gasto',cash:'Registrar recibo o pago','cash-account':'Nueva cuenta de caja o banco',invoice:'Nueva factura',payment:'Registrar abono',employee:'Agregar colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
+    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra','supplier-invoice':'Registrar factura de proveedor','supplier-invoice-payment':'Registrar pago a proveedor',expense:'Registrar gasto',cash:'Registrar recibo o pago','cash-account':'Nueva cuenta de caja o banco',invoice:'Nueva factura',payment:'Registrar abono',employee:recordId?'Editar colaborador':'Agregar colaborador','employee-history':'Historial del colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
     let body='';
     if(type==='customer')body='<div class="form-grid">'+formField('Nombre del cliente','name','text',true,'maxlength="80"')+formField('Teléfono o contacto','contact','text',false,'maxlength="40"')+'</div>';
     if(type==='supplier')body='<div class="form-grid">'+formField('Nombre del proveedor','name','text',true,'maxlength="80"')+formField('Contacto','contact','text',false,'maxlength="80"')+formField('Teléfono','phone','tel',false,'maxlength="40"')+formField('Correo','email','email',false,'maxlength="120"')+currencyField('USD')+'</div>';
@@ -1493,8 +1503,46 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       body='<div class="form-grid"><div class="detail-field full-field"><span>Saldo pendiente</span><strong>'+money(balance)+'</strong></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account',cashAccountOptions(),true)+'</div>';
     }
     if(type==='employee'){
+      const employee=recordId?employees.find(item=>String(item.id)===String(recordId)):null;
       const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
-      body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80" autocomplete="name"')+formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email"')+formField('Número de celular','phone','tel',false,'maxlength="40" autocomplete="tel" inputmode="tel"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Fecha de ingreso','hireDate','date',true,'value="'+today+'"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+selectField('¿Gana comisión?','commissionEnabled','<option value="false" selected>No</option><option value="true">Sí</option>',true)+'<div id="employee-commission-rate-field" class="full-field" hidden>'+formField('Porcentaje de comisión (%)','commissionRate','number',false,'min="0.01" max="100" step="0.01" value="3"')+'</div></div><p class="form-helper">Registra al menos un medio de contacto. El correo y el celular se usan para recuperación cuando estén vinculados y verificados en la cuenta de acceso.</p><p class="form-helper">El sistema calcula antigüedad y prestaciones desde la fecha de ingreso. El porcentaje solo se solicita y guarda cuando la comisión está activada.</p><p class="form-helper">La recuperación por correo ya admite código OTP. La recuperación por SMS requiere verificación del número y un proveedor SMS configurado.</p><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
+      const selectedCommission=employee?.commissionEnabled===true;
+      const commissionOptions='<option value="false" '+(!selectedCommission?'selected':'')+'>No</option><option value="true" '+(selectedCommission?'selected':'')+'>Sí</option>';
+      const statusOptions=['Activo','Inactivo','Suspendido'].map(status=>'<option value="'+status+'" '+((employee?.status||'Activo')===status?'selected':'')+'>'+status+'</option>').join('');
+      body=(employee?'<div class="employee-code-banner"><span>CÓDIGO DE EMPLEADO</span><strong>'+esc(employee.employeeCode||'Código pendiente')+'</strong><small>Identificador permanente. No cambia con ascensos ni traslados.</small></div>':'<div class="employee-code-banner"><span>CÓDIGO DE EMPLEADO</span><strong>Asignación automática</strong><small>Se genera en PostgreSQL al guardar el registro.</small></div>')+
+        '<div class="form-grid">'+
+        formField('Nombre del colaborador','name','text',true,'maxlength="80" autocomplete="name" value="'+esc(employee?.name||'')+'"')+
+        formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email" value="'+esc(employee?.email||'')+'"')+
+        formField('Número de celular','phone','tel',false,'maxlength="40" autocomplete="tel" inputmode="tel" value="'+esc(employee?.phone||'')+'"')+
+        formField('Cargo','position','text',true,'maxlength="80" value="'+esc(employee?.position||'')+'"')+
+        formField('Departamento','department','text',false,'maxlength="60" value="'+esc(employee?.department||'')+'"')+
+        (employee?'<div class="detail-field"><span>Fecha original de ingreso</span><strong>'+dateText(employee.hireDate)+'</strong><small>La antigüedad total se conserva aunque cambie de puesto.</small></div>':formField('Fecha de ingreso','hireDate','date',true,'value="'+today+'"'))+
+        formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01" value="'+Number(employee?.salaryNio||0)+'"')+
+        selectField('¿Gana comisión?','commissionEnabled',commissionOptions,true)+
+        '<div id="employee-commission-rate-field" class="full-field" '+(!selectedCommission?'hidden':'')+'>'+formField('Porcentaje de comisión (%)','commissionRate','number',false,'min="0.01" max="100" step="0.01" value="'+(selectedCommission?Number(employee.commissionRate).toFixed(2):'3')+'"')+'</div>'+
+        (employee?selectField('Estado laboral','status',statusOptions,true):'<input type="hidden" name="status" value="Activo">')+
+        (employee?formField('Fecha efectiva del cambio','effectiveDate','date',true,'value="'+today+'"'):'')+
+        (employee?formField('Motivo del cambio','changeReason','text',false,'maxlength="300" placeholder="Ascenso, traslado, ajuste salarial, baja..."'):'')+
+        '</div>'+
+        '<p class="form-helper">Correo y celular son opcionales; puedes completarlos después.</p>'+
+        '<p class="form-helper">Los cambios de cargo, salario, comisión y estado se registran con fecha efectiva y motivo.</p>'+
+        '<p class="form-helper">La fecha original de ingreso no se modifica al ascender o trasladar al colaborador.</p>'+
+        '<p class="form-helper">Las nóminas cerradas conservan sus importes históricos.</p>';
+    }
+    if(type==='employee-history'){
+      const employee=employees.find(item=>String(item.id)===String(recordId));
+      if(!employee){toast('No se encontró el colaborador.');return;}
+      const history=employeeHistory.filter(item=>String(item.employeeId)===String(employee.id)).sort((a,b)=>String(b.effectiveDate||'').localeCompare(String(a.effectiveDate||''))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+      const historyRows=history.map(item=>{
+        const label=item.eventType==='position'?'Cambio de puesto / departamento':item.eventType==='compensation'?'Cambio salarial o de comisión':item.eventType==='status'?'Cambio de estado':'Alta inicial';
+        const detail=item.eventType==='position'?'De '+(item.fromPosition||'—')+' a '+(item.toPosition||'—')+' · '+(item.toDepartment||'Sin departamento'):
+          item.eventType==='compensation'?'Salario: '+moneyInCurrency(item.fromSalaryNio||0,'NIO')+' → '+moneyInCurrency(item.toSalaryNio||0,'NIO')+' · Comisión: '+Number(item.toCommissionRate||0).toFixed(2)+'%':
+          item.eventType==='status'?'Estado: '+(item.fromStatus||'—')+' → '+(item.toStatus||'—'):'Registro inicial del colaborador';
+        return '<div class="employee-history-item"><div class="employee-history-date">'+dateText(item.effectiveDate)+'</div><div><strong>'+label+'</strong><p>'+esc(detail)+'</p><small>'+esc(item.reason||'Sin observaciones')+'</small></div></div>';
+      }).join('');
+      body='<div class="employee-profile-summary"><div><span>COLABORADOR</span><strong>'+esc(employee.name)+'</strong><small>'+esc(employee.employeeCode||'Código pendiente')+' · '+esc(employee.position)+'</small></div><div><span>ANTIGÜEDAD TOTAL</span><strong>'+esc(calculateTenure(employee.hireDate,today).label)+'</strong></div></div>'+
+        '<div class="employee-history-section"><h3>Historial laboral</h3>'+(historyRows||'<p class="form-helper">Todavía no hay movimientos históricos registrados.</p>')+'</div>'+
+        '<p class="form-helper">El tiempo de servicio se calcula desde la fecha original de ingreso. El tiempo en el cargo actual se puede obtener del último movimiento de puesto.</p>'+
+        '<div class="employee-history-actions"><button type="button" class="button button-quiet" data-action="edit-employee" data-id="'+esc(employee.id)+'">Editar colaborador</button></div>';
     }
     if(type==='attendance'){
       if(!employees.some(e=>e.status==='Activo')){toast('Primero agrega un colaborador activo en RRHH > Personal.');return;}
@@ -1533,7 +1581,8 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
     const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
     document.querySelector('#business-dialog .eyebrow').textContent=window.JBAuth?.profile?'GESTIÓN · NEON DEVELOPMENT':'ACCESO REQUERIDO';
-    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon')));
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':(type==='employee-history'?'Cerrar':(recordId&&type==='employee'?'Guardar cambios':'Guardar en Neon')))));
+    document.getElementById('business-save').hidden=type==='employee-history';
     if(type==='employee'){
       const commissionSelect=businessForm.querySelector('[name="commissionEnabled"]');
       const commissionField=businessForm.querySelector('#employee-commission-rate-field');
@@ -1751,23 +1800,35 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         })});
       } else if(type==='employee'){
         const salary=num('salaryNio'),commissionEnabled=get('commissionEnabled')==='true',commissionRate=commissionEnabled?num('commissionRate'):0;
-         const email=get('email').trim().toLowerCase(),rawPhone=get('phone').trim(),phoneDigits=rawPhone.replace(/\D/g,'');
-         let phone='';
-         if(rawPhone){
-           if(rawPhone.startsWith('+')&&phoneDigits.length>=8&&phoneDigits.length<=15)phone='+'+phoneDigits;
-           else if(phoneDigits.startsWith('00')&&phoneDigits.length>=10&&phoneDigits.length<=17)phone='+'+phoneDigits.slice(2);
-           else if(phoneDigits.startsWith('505')&&phoneDigits.length===11)phone='+'+phoneDigits;
-           else if(phoneDigits.length===8)phone='+505'+phoneDigits;
-           else throw new Error('Introduce un celular nicaragüense de 8 dígitos o un número internacional con código de país (por ejemplo, +505 8888 8888).');
-         }
-         if(!email&&!phone)throw new Error('Registra un correo electrónico o un número de celular para que el colaborador tenga un medio de recuperación.');
-         if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduce un correo electrónico válido.');
-         if(!get('name')||!get('position')||!get('hireDate')||!Number.isFinite(salary)||salary<0||
-           (commissionEnabled&&(!Number.isFinite(commissionRate)||commissionRate<=0||commissionRate>100)))throw new Error('Revisa nombre, cargo, fecha de ingreso, salario y porcentaje de comisión.');
-         await erpApi('employees',{method:'POST',body:JSON.stringify({
-           name:get('name'),email:email||null,phone:phone||null,position:get('position'),department:get('department')||null,
-           hire_date:get('hireDate'),salary_nio:salary,status:'Activo',commission_enabled:commissionEnabled,commission_rate:commissionRate
-         })});
+        const email=get('email').trim().toLowerCase(),rawPhone=get('phone').trim(),phoneDigits=rawPhone.replace(/\D/g,'');
+        let phone='';
+        if(rawPhone){
+          if(rawPhone.startsWith('+')&&phoneDigits.length>=8&&phoneDigits.length<=15)phone='+'+phoneDigits;
+          else if(phoneDigits.startsWith('00')&&phoneDigits.length>=10&&phoneDigits.length<=17)phone='+'+phoneDigits.slice(2);
+          else if(phoneDigits.startsWith('505')&&phoneDigits.length===11)phone='+'+phoneDigits;
+          else if(phoneDigits.length===8)phone='+505'+phoneDigits;
+          else throw new Error('Introduce un celular nicaragüense de 8 dígitos o un número internacional con código de país (por ejemplo, +505 8888 8888).');
+        }
+        if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduce un correo electrónico válido.');
+        if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0||
+          (commissionEnabled&&(!Number.isFinite(commissionRate)||commissionRate<=0||commissionRate>100)))throw new Error('Revisa nombre, cargo, salario y porcentaje de comisión.');
+        const employeeId=businessForm.dataset.recordId||'';
+        const payload={name:get('name'),email:email||null,phone:phone||null,position:get('position'),department:get('department')||null,
+          salary_nio:salary,status:get('status')||'Activo',commission_enabled:commissionEnabled,commission_rate:commissionRate};
+        if(employeeId){
+          const original=employees.find(item=>String(item.id)===String(employeeId));
+          const materialChange=original&&(original.position!==payload.position||original.department!==payload.department||
+            Number(original.salaryNio)!==salary||original.commissionEnabled!==commissionEnabled||
+            Number(original.commissionRate)!==commissionRate||original.status!==payload.status);
+          if(materialChange&&!get('effectiveDate'))throw new Error('Selecciona la fecha efectiva del cambio.');
+          payload.effective_date=get('effectiveDate');
+          payload.change_reason=get('changeReason')||'Actualización de datos personales';
+          await erpApi('employees/'+encodeURIComponent(employeeId),{method:'PATCH',body:JSON.stringify(payload)});
+        }else{
+          if(!get('hireDate'))throw new Error('Selecciona la fecha de ingreso.');
+          payload.hire_date=get('hireDate');
+          await erpApi('employees',{method:'POST',body:JSON.stringify(payload)});
+        }
         hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
       } else if(type==='attendance'){
         const employeeId=get('employeeId'),workDate=get('workDate'),status=get('status'),breakMinutes=num('breakMinutes');
@@ -1965,9 +2026,9 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       actions='<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>';
       const rows=employees.map(e=>{
         const tenure=calculateTenure(e.hireDate,today).label;
-        return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Sin código')+' · '+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Antigüedad">'+esc(tenure)+'</td><td data-label="Comisión">'+(e.commissionEnabled?'<span class="status-chip status-success">'+Number(e.commissionRate).toFixed(2)+'%</span>':'<span class="status-chip status-muted">No aplica</span>')+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td></tr>';
+        return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Código pendiente')+' · '+esc(e.department||'Sin departamento')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Antigüedad">'+esc(tenure)+'</td><td data-label="Comisión">'+(e.commissionEnabled?'<span class="status-chip status-success">'+Number(e.commissionRate).toFixed(2)+'%</span>':'<span class="status-chip status-muted">No aplica</span>')+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td><td data-label="Acciones"><div class="hr-row-actions"><button type="button" class="button button-quiet button-small" data-action="view-employee" data-id="'+esc(e.id)+'">Historial</button><button type="button" class="button button-quiet button-small" data-action="edit-employee" data-id="'+esc(e.id)+'">Editar</button></div></td></tr>';
       }).join('');
-      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>CARGO</th><th>ANTIGÜEDAD</th><th>COMISIÓN</th><th>SALARIO MENSUAL</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR / CÓDIGO</th><th>CARGO</th><th>ANTIGÜEDAD</th><th>COMISIÓN</th><th>SALARIO MENSUAL</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
     } else if(state.hrTab==='attendance'){
       actions=activeEmployees.length?'<button class="button button-primary" data-action="new-attendance">'+svg('plus')+' Registrar asistencia</button>':'';
       const employeeName=id=>employees.find(e=>e.id===id)?.name||'Colaborador';
@@ -3279,6 +3340,8 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const tab=action.getAttribute('data-tab');
       if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
     } else if(types[name])openBusinessDialog(types[name]);
+    else if(name==='view-employee')openBusinessDialog('employee-history',action.getAttribute('data-id'));
+    else if(name==='edit-employee')openBusinessDialog('employee',action.getAttribute('data-id'));
     else if(name==='go-hr-employees'){state.hrTab='employees';renderView();}
     else if(name==='export-dgi-book')exportDgiBook();
     else if(name==='reload-dgi-documents'){dgiDocumentsLoadAttempted=false;dgiDocumentsLoaded=false;loadDgiSupportDocuments(true);}

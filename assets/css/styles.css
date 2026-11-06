@@ -1595,3 +1595,58 @@ hr, .divider { border-color: var(--line); }
   .inventory-summary-strip .summary-mini { padding:8px; }
   .inventory-summary-strip .summary-mini span { font-size:8px; }
 }
+
+
+/* Legibility pass: raise dense labels, tables and controls while keeping the brand hierarchy. */
+html, body { font-size:15px; }
+.nav-item { font-size:13px; }
+.nav-caption { font-size:10px; }
+.breadcrumb { font-size:11px; }
+.breadcrumb strong { font-size:12px; }
+.button { font-size:11px; }
+.period-select, .filter-select { font-size:11px; }
+.eyebrow { font-size:10px; }
+.page-date { font-size:11px; }
+.page-heading p { font-size:12px; }
+.metric-label { font-size:11px; }
+.metric-foot { font-size:10px; }
+.panel-heading p { font-size:10px; }
+.panel-link, .section-link { font-size:10px; }
+.data-table th { font-size:9px; }
+.data-table td { font-size:11px; }
+.table-secondary { font-size:9px; }
+.status-chip { font-size:9px; }
+.form-field { font-size:12px; }
+.form-field small, .form-helper { font-size:11px; }
+.modal-heading h2 { font-size:23px; }
+.hr-row-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.hr-row-actions .button { min-height:32px; padding-inline:9px; }
+.employee-code-banner {
+  display:flex; flex-direction:column; gap:4px; margin:12px 0; padding:13px 15px;
+  border:1px solid #eadfc9; border-radius:11px; background:#faf5eb;
+}
+.employee-code-banner span { color:#96856c; font-size:10px; font-weight:700; letter-spacing:1px; }
+.employee-code-banner strong { color:#624b2d; font-size:17px; letter-spacing:.4px; }
+.employee-code-banner small { color:#8e8679; font-size:11px; }
+.employee-profile-summary {
+  display:grid; grid-template-columns:1.4fr 1fr; gap:12px; margin:12px 0; padding:14px;
+  border:1px solid #eee5d8; border-radius:12px; background:#faf7f1;
+}
+.employee-profile-summary > div { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.employee-profile-summary span { color:#96856c; font-size:10px; font-weight:700; letter-spacing:1px; }
+.employee-profile-summary strong { color:#332d23; font-size:16px; }
+.employee-profile-summary small { color:#8e8679; font-size:11px; }
+.employee-history-section { margin:12px 0; padding:13px 0; border-top:1px solid #eee8de; }
+.employee-history-section h3 { margin:0 0 12px; color:#514536; font-size:14px; }
+.employee-history-item { display:grid; grid-template-columns:105px minmax(0,1fr); gap:12px; padding:11px 0; border-bottom:1px solid #f0ece4; }
+.employee-history-date { color:#9a7848; font-size:11px; font-weight:700; }
+.employee-history-item strong { color:#514536; font-size:12px; }
+.employee-history-item p { margin:4px 0; color:#686155; font-size:11px; line-height:1.45; }
+.employee-history-item small { color:#999083; font-size:10px; }
+.employee-history-actions { display:flex; justify-content:flex-end; padding-top:12px; }
+@media(max-width:720px) {
+  .data-table td { font-size:11px; }
+  .employee-profile-summary { grid-template-columns:1fr; }
+  .employee-history-item { grid-template-columns:1fr; gap:4px; }
+  .hr-row-actions { min-width:150px; }
+}
