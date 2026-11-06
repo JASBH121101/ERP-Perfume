@@ -1840,11 +1840,11 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     };
     const pendingCommissionFor=(employeeId)=>activeCommissions
       .filter(c=>String(c.employeeId)===String(employeeId))
-      .reduce((sum,c)=>sum+Number(c.commissionNio||0),0);
+      .reduce((sum,c)=>sum+Number(c.commissionUsd||0)*Number(exchangeRate||36.6),0);
     const inssFor=(employee)=>calculateInss({
       baseSalaryNio:employee.salaryNio,
       commissionsNio:activeCommissions.filter(c=>String(c.employeeId)===String(employee.id)&&c.status==='Pendiente')
-        .reduce((sum,c)=>sum+Number(c.commissionNio||0),0),
+        .reduce((sum,c)=>sum+Number(c.commissionUsd||0)*Number(exchangeRate||36.6),0),
       employeeRate:Number(hrInssSettings.employee_rate||7),
       employerRate:Number(hrInssSettings.employer_rate||21.5)
     });
@@ -1926,7 +1926,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>COMISIONES USD / C$</th><th>AGUINALDO</th><th>INSS PATRONAL</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel hr-payroll-note">'+svg('warning')+'<div><strong>Antes de pagar</strong><p>El ERP calcula automáticamente comisiones e INSS en la nómina ordinaria. Para el treceavo mes crea un período de tipo Aguinaldo: el sistema calcula el proporcional y no aplica cotizaciones ni deducciones ordinarias al aguinaldo.</p></div></div>';
     }
     return '<section class="hr-view">'+heading(views.hr,actions)+
-      '<div class="summary-strip hr-summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Comisiones pendientes</span><strong>'+moneyInCurrency(activeCommissions.reduce((s,c)=>s+Number(c.commissionNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
+      '<div class="summary-strip hr-summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Comisiones pendientes</span><strong>'+money(activeCommissions.reduce((s,c)=>s+Number(c.commissionUsd||0),0))+' USD</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
       tabsHtml+'<div class="hr-content">'+content+'</div></section>';
   }
   function renderAnalytics(){
