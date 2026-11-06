@@ -1510,9 +1510,8 @@ hr, .divider { border-color: var(--line); }
   margin:-8px 0 14px;
 }
 .inventory-page-actions .export-actions { order:0; }
-.inventory-page-actions > .button { order:1; }
+.inventory-page-actions > .button { order:1; min-height:36px; }
 .inventory-page-actions .export-trigger { min-height:36px; }
-.inventory-page-actions > .button { min-height:36px; }
 .inventory-summary-strip {
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;
