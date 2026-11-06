@@ -1007,3 +1007,20 @@ body.auth-locked .app-shell {
 
 /* Preserve native permission and conditional visibility for styled buttons. */
 button[hidden] { display: none !important; }
+
+/* RR. HH. — prestaciones, comisiones y modalidad de cotización */
+.hr-view .hr-inss-settings{display:grid;gap:12px;padding:12px 0}
+.hr-view .hr-inss-settings .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.hr-view .hr-inss-settings label{display:grid;gap:6px;color:var(--muted,#777);font-size:11px;font-weight:650}
+.hr-view .hr-inss-settings select{width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--line,#e7e2d9);border-radius:9px;background:var(--surface,#fff);color:var(--text,#25231f);font:inherit}
+.hr-view .hr-inss-settings .detail-field{display:grid;gap:6px;align-content:center}
+.hr-view .hr-inss-settings .detail-field span{font-size:11px;color:var(--muted,#777)}
+.hr-view .hr-inss-settings .detail-field strong{font-size:14px;color:var(--text,#25231f)}
+.hr-view .hr-benefit-settings{margin-top:12px;padding:12px 16px}
+.hr-view .hr-benefit-settings .panel-heading{margin-bottom:6px}
+.hr-view .hr-benefit-summary{margin-bottom:10px}
+.hr-view .hr-content td small{display:block;margin-top:3px;font-size:10px;color:var(--muted,#777);font-weight:400}
+@media(max-width:720px){
+ .hr-view .hr-inss-settings .form-grid{grid-template-columns:1fr}
+ .hr-view .hr-benefit-settings{padding:10px 12px}
+}
