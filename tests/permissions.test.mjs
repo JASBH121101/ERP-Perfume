@@ -79,6 +79,11 @@ test("API route permissions separate manual stock out from receipts", () => {
     "inventory.adjustments.adjust");
   assert.equal(resolveRoutePermission("inventory-movements", "POST", "", [], { movement_type: "Reversion" }), null);
   assert.equal(resolveRoutePermission("inventory-movements", "POST", "", [], {}), null);
+  assert.equal(resolveRoutePermission("inventory-movements", "PATCH", "movement-1", [], {}), null);
+  assert.equal(resolveRoutePermission("inventory-movements", "DELETE", "movement-1", [], null), null);
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", "movement-1",
+    ["api","erp","inventory-movements","movement-1","reverse"], { reason: "Entrada duplicada" }),
+    "inventory.movements.reverse");
 });
 
 test("dedicated business routes map to their own permissions", () => {
