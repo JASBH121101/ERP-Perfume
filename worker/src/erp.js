@@ -44,7 +44,7 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
 }
 
 async function readBootstrap(sql, user, permissionContext) {
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
+  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings, employeeHistory] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
@@ -71,7 +71,8 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM hr_leave_requests ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`,
       tx`SELECT * FROM hr_payroll_items ORDER BY created_at DESC LIMIT 5000`,
-      tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`
+      tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`,
+      tx`SELECT * FROM employee_history ORDER BY effective_date DESC, created_at DESC LIMIT 5000`
     ]);
 
   const result = {};
@@ -126,7 +127,10 @@ async function readBootstrap(sql, user, permissionContext) {
     result.cash_accounts = cashAccounts;
     result.cash_entries = cashEntries;
   }
-  if (hasPermission(permissionContext, "hr.employees.view")) result.employees = employees;
+  if (hasPermission(permissionContext, "hr.employees.view")) {
+    result.employees = employees;
+    result.employee_history = employeeHistory;
+  }
   if (hasPermission(permissionContext, "hr.attendance.view")) result.hr_attendance = attendance;
   if (hasPermission(permissionContext, "hr.leave.view")) result.hr_leave_requests = leaveRequests;
   if (hasPermission(permissionContext, "hr.payroll.view")) {
@@ -148,9 +152,14 @@ function safeFields(def, body) {
   return { keys, values };
 }
 
-export function normalizeEmployeeCreateInput(input = {}) {
-  const email = String(input.email || "").trim().toLowerCase();
-  const rawPhone = String(input.phone || "").trim();
+export function normalizeEmployeeCreateInput(input = {}, options = {}) {
+  const partial = options.partial === true;
+  const hasEmail = Object.prototype.hasOwnProperty.call(input, "email");
+  const hasPhone = Object.prototype.hasOwnProperty.call(input, "phone");
+  const hasCommissionFlag = Object.prototype.hasOwnProperty.call(input, "commission_enabled");
+  const hasCommissionRate = Object.prototype.hasOwnProperty.call(input, "commission_rate");
+  const email = hasEmail ? String(input.email || "").trim().toLowerCase() : "";
+  const rawPhone = hasPhone ? String(input.phone || "").trim() : "";
   const digits = rawPhone.replace(/\D/g, "");
   let phone = null;
 
@@ -161,29 +170,25 @@ export function normalizeEmployeeCreateInput(input = {}) {
     else if (digits.length === 8) phone = "+505" + digits;
     else return { error: { code: "INVALID_EMPLOYEE_PHONE", message: "El celular debe tener 8 dígitos de Nicaragua o formato internacional con código de país." } };
   }
-
-  if (!email && !phone) {
-    return { error: { code: "EMPLOYEE_CONTACT_REQUIRED", message: "Registra un correo electrónico o celular para recuperación de cuenta." } };
-  }
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (email && (email.length > 180 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
     return { error: { code: "INVALID_EMPLOYEE_EMAIL", message: "El correo electrónico del colaborador no es válido." } };
   }
 
-  const commissionEnabled = input.commission_enabled === true || String(input.commission_enabled).toLowerCase() === "true";
-  const commissionRate = commissionEnabled ? Number(input.commission_rate) : 0;
-  if (commissionEnabled && (!Number.isFinite(commissionRate) || commissionRate <= 0 || commissionRate > 100)) {
+  const commissionEnabled = hasCommissionFlag
+    ? (input.commission_enabled === true || String(input.commission_enabled).toLowerCase() === "true")
+    : (partial ? undefined : false);
+  const commissionRate = commissionEnabled === false ? 0
+    : hasCommissionRate ? Number(input.commission_rate)
+    : (partial ? undefined : 0);
+  if (commissionEnabled === true && (!Number.isFinite(commissionRate) || commissionRate <= 0 || commissionRate > 100)) {
     return { error: { code: "INVALID_EMPLOYEE_COMMISSION", message: "La comisión debe estar entre 0.01 y 100 cuando está habilitada." } };
   }
-
-  return {
-    value: {
-      ...input,
-      email: email || null,
-      phone,
-      commission_enabled: commissionEnabled,
-      commission_rate: commissionRate
-    }
-  };
+  const value = { ...input };
+  if (hasEmail || !partial) value.email = email || null;
+  if (hasPhone || !partial) value.phone = phone;
+  if (commissionEnabled !== undefined) value.commission_enabled = commissionEnabled;
+  if (commissionRate !== undefined) value.commission_rate = commissionRate;
+  return { value };
 }
 
 async function createGeneric(sql, user, resource, def, body) {
@@ -192,6 +197,7 @@ async function createGeneric(sql, user, resource, def, body) {
     const normalized = normalizeEmployeeCreateInput(input);
     if (normalized.error) return erpError(400, normalized.error.code, normalized.error.message);
     input = normalized.value;
+    delete input.employee_code; // PostgreSQL assigns a permanent unique employee identifier.
   }
   const { keys, values } = safeFields(def, input);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
@@ -221,7 +227,55 @@ async function createGeneric(sql, user, resource, def, body) {
   }
 }
 
+async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
+  const input = { ...(body || {}) };
+  const effectiveDate = String(input.effective_date || new Date().toISOString().slice(0, 10));
+  const changeReason = String(input.change_reason || '').trim();
+  delete input.effective_date; delete input.change_reason; delete input.employee_code; delete input.hire_date;
+  if (!/^[0-9a-f-]{36}$/i.test(String(id || ''))) return erpError(400, 'INVALID_EMPLOYEE_ID', 'La referencia del colaborador no es válida.');
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(effectiveDate) || Number.isNaN(Date.parse(effectiveDate + 'T00:00:00Z'))) return erpError(400, 'INVALID_EFFECTIVE_DATE', 'La fecha efectiva del cambio no es válida.');
+  const normalized = normalizeEmployeeCreateInput(input, { partial: true });
+  if (normalized.error) return erpError(400, normalized.error.code, normalized.error.message);
+  const safe = safeFields(def, normalized.value), keys = safe.keys, values = safe.values;
+  if (!keys.length) return erpError(400, 'NO_VALID_FIELDS', 'Incluye al menos un campo válido.');
+  if (keys.some(key => ['created_by','created_at','employee_code','hire_date'].includes(key))) return erpError(400, 'INVALID_FIELD', 'El código y la fecha original de ingreso no se pueden modificar.');
+  const statusIndex=keys.indexOf('status');
+  if(statusIndex>=0&&!['Activo','Inactivo','Suspendido'].includes(String(values[statusIndex])))return erpError(400,'INVALID_EMPLOYEE_STATUS','Selecciona un estado laboral válido.');
+  const salaryIndex=keys.indexOf('salary_nio');
+  if(salaryIndex>=0&&(!Number.isFinite(Number(values[salaryIndex]))||Number(values[salaryIndex])<0))return erpError(400,'INVALID_SALARY','El salario mensual debe ser válido y no negativo.');
+  const requiresReason=keys.some(key=>['position','department','salary_nio','commission_enabled','commission_rate','status'].includes(key));
+  if(requiresReason&&!changeReason)return erpError(400,'EMPLOYEE_CHANGE_REASON_REQUIRED','Indica el motivo del cambio laboral, salarial o de estado.');
+  if(changeReason.length>300)return erpError(400,'EMPLOYEE_CHANGE_REASON_TOO_LONG','El motivo no puede superar 300 caracteres.');
+  keys.push('updated_at');values.push(new Date().toISOString());
+  const assignments=keys.map((key,index)=>'"'+key+'" = $'+(index+1)).join(', ');
+  const idIndex=values.length+1,dateIndex=values.length+2,reasonIndex=values.length+3,actorIndex=values.length+4;
+  const query=
+    'WITH old AS MATERIALIZED (SELECT * FROM employees WHERE id=$'+idIndex+'::uuid FOR UPDATE), '+
+    'changed AS (UPDATE employees AS e SET '+assignments+' FROM old o WHERE e.id=o.id RETURNING e.*), '+
+    'position_event AS (INSERT INTO employee_history(employee_id,event_type,effective_date,from_position,to_position,from_department,to_department,reason,changed_by) '+
+    'SELECT n.id,\'position\',$'+dateIndex+'::date,o.position,n.position,o.department,n.department,$'+reasonIndex+',$'+actorIndex+' FROM old o JOIN changed n ON n.id=o.id '+
+    'WHERE o.position IS DISTINCT FROM n.position OR o.department IS DISTINCT FROM n.department RETURNING id), '+
+    'comp_event AS (INSERT INTO employee_history(employee_id,event_type,effective_date,from_salary_nio,to_salary_nio,from_commission_enabled,to_commission_enabled,from_commission_rate,to_commission_rate,reason,changed_by) '+
+    'SELECT n.id,\'compensation\',$'+dateIndex+'::date,o.salary_nio,n.salary_nio,o.commission_enabled,n.commission_enabled,o.commission_rate,n.commission_rate,$'+reasonIndex+',$'+actorIndex+' FROM old o JOIN changed n ON n.id=o.id '+
+    'WHERE o.salary_nio IS DISTINCT FROM n.salary_nio OR o.commission_enabled IS DISTINCT FROM n.commission_enabled OR o.commission_rate IS DISTINCT FROM n.commission_rate RETURNING id), '+
+    'status_event AS (INSERT INTO employee_history(employee_id,event_type,effective_date,from_status,to_status,reason,changed_by) '+
+    'SELECT n.id,\'status\',$'+dateIndex+'::date,o.status,n.status,$'+reasonIndex+',$'+actorIndex+' FROM old o JOIN changed n ON n.id=o.id '+
+    'WHERE o.status IS DISTINCT FROM n.status RETURNING id), '+
+    'logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $'+actorIndex+',\'update\',\'employee\',n.id::text,jsonb_build_object(\'effective_date\',$'+dateIndex+'::date,\'reason\',$'+reasonIndex+',\'record\',to_jsonb(n)) FROM changed n RETURNING id) '+
+    'SELECT * FROM changed';
+  try {
+    const rows=await sql.query(query,[...values,id,effectiveDate,changeReason||'Actualización de datos',user.id]);
+    if(!rows[0])return erpError(404,'RECORD_NOT_FOUND','No se encontró el colaborador solicitado.');
+    return erpJson({record:rows[0]});
+  } catch(error) {
+    if(error?.code==='23505')return erpError(409,'DUPLICATE_RECORD','El código o dato único ya está en uso.');
+    if(error?.code==='23514'||error?.code==='22P02')return erpError(400,'INVALID_EMPLOYEE','Los datos del colaborador no cumplen las reglas del sistema.');
+    console.error('[hr] Employee update failed:',error?.message||'database error');
+    return erpError(503,'EMPLOYEE_UPDATE_FAILED','No se pudo actualizar el colaborador y su historial.');
+  }
+}
 async function updateGeneric(sql, user, resource, def, id, body) {
+  if (def.table === "employees") return updateEmployeeGeneric(sql, user, resource, def, id, body);
   const { keys, values } = safeFields(def, body);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
   if (keys.includes("created_by") || keys.includes("created_at")) return erpError(400, "INVALID_FIELD", "No se permite modificar la autoría ni la fecha de creación.");
