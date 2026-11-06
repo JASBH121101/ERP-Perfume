@@ -71,3 +71,13 @@ ALTER TABLE public.hr_payroll_periods
 ALTER TABLE public.hr_payroll_periods
   ADD CONSTRAINT hr_payroll_periods_period_type_check
   CHECK (period_type IN ('Ordinaria','Aguinaldo'));
+
+-- Preserve the USD commission amount and the exact FX rate used in each payroll.
+ALTER TABLE public.hr_payroll_items
+  ADD COLUMN IF NOT EXISTS commissions_usd NUMERIC(14,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS commission_exchange_rate NUMERIC(14,4) NOT NULL DEFAULT 1;
+ALTER TABLE public.hr_payroll_items
+  DROP CONSTRAINT IF EXISTS hr_payroll_items_commission_exchange_rate_check;
+ALTER TABLE public.hr_payroll_items
+  ADD CONSTRAINT hr_payroll_items_commission_exchange_rate_check
+  CHECK (commission_exchange_rate > 0);
