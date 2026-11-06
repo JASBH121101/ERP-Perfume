@@ -1394,6 +1394,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const customerOptions=customers.map(item=>'<option value="'+esc(item.name)+'"></option>').join('');
       body='<div class="form-grid invoice-form-grid">'+
         selectField('Origen de venta','saleSource','<option value="store" selected>Tienda física / venta directa</option><option value="web">Pedido de página web</option><option value="manual">Venta manual</option>',true)+
+        selectField('Vendedor que realizó la venta','salespersonEmployeeId','<option value="">Sin comisión asignada</option>'+employees.filter(e=>e.status==='Activo'&&e.commissionEnabled&&e.commissionRate>0).map(e=>'<option value="'+esc(e.id)+'">'+esc(e.name)+' · '+Number(e.commissionRate).toFixed(2)+'%</option>').join(''),false)+
         '<div id="invoice-order-field" class="full-field" hidden>'+searchableField('Buscar pedido web (número o cliente)','orderId','order',false)+'</div>'+
         formField('Nombre del cliente','customerName','text',true,'list="invoice-customer-options" maxlength="100" autocomplete="off"')+
         selectField('Tipo de cliente','customerType','<option value="particular" selected>Particular · precio normal</option><option value="business">Negocio · precio mayorista si existe</option>',true)+
@@ -1416,7 +1417,10 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const balance=Math.max(0,Number(invoice.totalUsd)-Number(invoice.paidUsd||0));
       body='<div class="form-grid"><div class="detail-field full-field"><span>Saldo pendiente</span><strong>'+money(balance)+'</strong></div>'+formField('Importe del abono','amount','number',true,'min="0.01" step="0.01"')+currencyField('USD')+selectField('Cuenta','account',cashAccountOptions(),true)+'</div>';
     }
-    if(type==='employee')body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80" autocomplete="name"')+formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+'</div><p class="form-helper">El correo permite vincular la identidad de Neon Auth con esta ficha cuando la persona se registre. La cuenta ERP se prepara desde esta ficha después de verificar su identidad.</p><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
+    if(type==='employee'){
+      const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+      body='<div class="form-grid">'+formField('Nombre del colaborador','name','text',true,'maxlength="80" autocomplete="name"')+formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email"')+formField('Cargo','position','text',true,'maxlength="80"')+formField('Departamento','department','text',false,'maxlength="60"')+formField('Fecha de ingreso','hireDate','date',true,'value="'+today+'"')+formField('Salario mensual (C$)','salaryNio','number',true,'min="0" step="0.01"')+selectField('¿Gana comisión?','commissionEnabled','<option value="false" selected>No</option><option value="true">Sí</option>',true)+formField('Porcentaje de comisión (%)','commissionRate','number',false,'min="0.01" max="100" step="0.01" value="3"')+'</div><p class="form-helper">El sistema calcula antigüedad y prestaciones desde la fecha de ingreso. Activa comisión solo para quienes corresponda y configura el porcentaje pactado.</p><p class="form-helper">La nómina se administra en córdobas; no se ofrece selector de moneda.</p>';
+    }
     if(type==='attendance'){
       if(!employees.some(e=>e.status==='Activo')){toast('Primero agrega un colaborador activo en RRHH > Personal.');return;}
       const options=employees.filter(e=>e.status==='Activo').map(e=>'<option value="'+e.id+'">'+esc(e.name)+' · '+esc(e.position)+'</option>').join('');
@@ -1647,13 +1651,16 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
           currency,exchange_rate:rate,subtotal_usd:totals.subtotalUsd,discount_usd:totals.discountUsd,
           delivery_fee_usd:totals.deliveryFeeUsd,total_usd:totals.totalUsd,paid_usd:paidUsd,
           payment_method:get('paymentMethod')||'Pendiente / crédito',notes:'',
+          salesperson_employee_id:get('salespersonEmployeeId')||null,
           items,original_payment_amount:received,account_name:paidUsd>0?account:null
         })});
       } else if(type==='employee'){
-        const salary=num('salaryNio');
-        if(!get('name')||!get('position')||!Number.isFinite(salary)||salary<0)throw new Error('Revisa los datos y el salario.');
+        const salary=num('salaryNio'),commissionEnabled=get('commissionEnabled')==='true',commissionRate=commissionEnabled?num('commissionRate'):0;
+        if(!get('name')||!get('position')||!get('hireDate')||!Number.isFinite(salary)||salary<0||
+          (commissionEnabled&&(!Number.isFinite(commissionRate)||commissionRate<=0||commissionRate>100)))throw new Error('Revisa los datos, fecha de ingreso, salario y porcentaje de comisión.');
         await erpApi('employees',{method:'POST',body:JSON.stringify({
-          name:get('name'),email:get('email')||null,position:get('position'),department:get('department')||null,salary_nio:salary,status:'Activo'
+          name:get('name'),email:get('email')||null,position:get('position'),department:get('department')||null,
+          hire_date:get('hireDate'),salary_nio:salary,status:'Activo',commission_enabled:commissionEnabled,commission_rate:commissionRate
         })});
         hrRecordsLoaded=true;hrLoadAttempted=true;hrLoadError='';
       } else if(type==='attendance'){
@@ -1682,7 +1689,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       } else if(type==='payroll-item'){
         const periodId=get('payrollPeriodId'),employeeId=get('employeeId');
         const base=num('baseSalaryNio'),bonus=num('bonusesNio'),deductions=num('deductionsNio');
-        if(!periodId||!employeeId||![base,bonus,deductions].every(Number.isFinite)||base<0||bonus<0||deductions<0||deductions>base+bonus)throw new Error('Revisa período, colaborador, salario, bonos y deducciones.');
+        if(!periodId||!employeeId||![base,bonus,deductions].every(Number.isFinite)||base<0||bonus<0||deductions<0)throw new Error('Revisa período, colaborador, salario, bonos y deducciones.');
         await erpApi('hr-payroll-items',{method:'POST',body:JSON.stringify({
           payroll_period_id:periodId,employee_id:employeeId,base_salary_nio:base,
           bonuses_nio:bonus,deductions_nio:deductions,notes:get('notes')||null
