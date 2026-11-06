@@ -914,21 +914,37 @@ async function createPayrollItem(sql,user,body) {
     if(![employeeRate,employerRate].every(Number.isFinite)||employeeRate<0||employeeRate>100||employerRate<0||employerRate>100)
       return erpError(409,"INVALID_INSS_SETTINGS","Configura tasas válidas de INSS antes de crear la nómina.");
     const rows=await sql.query(
-      "WITH period AS (SELECT id,status,period_start,period_end FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), " +
-      "employee AS (SELECT id FROM employees WHERE id=$2::uuid AND status='Activo'), " +
+      "WITH period AS (SELECT id,status,period_start,period_end,period_type FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), " +
+      "employee AS (SELECT id,hire_date,salary_nio,commission_enabled FROM employees WHERE id=$2::uuid AND status='Activo'), " +
+      "cycle AS (SELECT make_date(EXTRACT(YEAR FROM p.period_start)::int-1,12,1) AS cycle_start, " +
+        "make_date(EXTRACT(YEAR FROM p.period_start)::int,11,30) AS cycle_end, LEAST(p.period_end,CURRENT_DATE) AS as_of " +
+        "FROM period p), " +
+      "monthly_ordinary AS (SELECT date_trunc('month',pp.period_end)::date AS month_start, " +
+        "SUM(pi.base_salary_nio+pi.bonuses_nio+pi.commissions_nio)::numeric(14,2) AS ordinary_salary " +
+        "FROM hr_payroll_items pi JOIN hr_payroll_periods pp ON pp.id=pi.payroll_period_id " +
+        "WHERE pi.employee_id=$2::uuid AND pp.status='Pagada' AND pp.period_type='Ordinaria' " +
+        "AND pp.period_end>=(CURRENT_DATE-INTERVAL '6 months')::date AND pp.period_end<=CURRENT_DATE " +
+        "GROUP BY date_trunc('month',pp.period_end)), " +
+      "variable_basis AS (SELECT MAX(ordinary_salary)::numeric(14,2) AS highest_salary FROM monthly_ordinary), " +
+      "aguinaldo_calc AS (SELECT CASE WHEN p.period_type='Aguinaldo' AND e.hire_date IS NOT NULL AND c.as_of>=GREATEST(e.hire_date,c.cycle_start) " +
+        "THEN ROUND((CASE WHEN e.commission_enabled THEN COALESCE(v.highest_salary,e.salary_nio) ELSE e.salary_nio END) * " +
+        "((LEAST(c.as_of,c.cycle_end)-GREATEST(e.hire_date,c.cycle_start)+1)::numeric / NULLIF((c.cycle_end-c.cycle_start+1),0)),2) " +
+        "ELSE 0 END AS aguinaldo_nio FROM period p CROSS JOIN employee e CROSS JOIN cycle c CROSS JOIN variable_basis v), " +
       "selected_commissions AS (SELECT ec.id,ec.commission_nio FROM employee_commissions ec CROSS JOIN period p " +
-        "WHERE ec.employee_id=$2::uuid AND ec.status='Pendiente' AND ec.sale_date BETWEEN p.period_start AND p.period_end " +
-        "ORDER BY ec.id FOR UPDATE OF ec), " +
+        "WHERE p.period_type='Ordinaria' AND ec.employee_id=$2::uuid AND ec.status='Pendiente' " +
+        "AND ec.sale_date BETWEEN p.period_start AND p.period_end ORDER BY ec.id FOR UPDATE OF ec), " +
       "commission_totals AS (SELECT COALESCE(SUM(commission_nio),0)::numeric(14,2) AS commission_nio FROM selected_commissions), " +
-      "contribution AS (SELECT ROUND(($3+$4+commission_totals.commission_nio)*$7/100,2) AS employee_inss, " +
-        "ROUND(($3+$4+commission_totals.commission_nio)*$8/100,2) AS employer_inss FROM commission_totals), " +
+      "contribution AS (SELECT CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$7/100,2) END AS employee_inss, " +
+        "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$8/100,2) END AS employer_inss " +
+        "FROM period p CROSS JOIN commission_totals ct), " +
       "created AS (INSERT INTO hr_payroll_items(payroll_period_id,employee_id,base_salary_nio,bonuses_nio,deductions_nio, " +
-        "commissions_nio,inss_employee_nio,inss_employer_nio,net_salary_nio,notes) " +
-        "SELECT period.id,employee.id,$3,$4,$5,commission_totals.commission_nio,contribution.employee_inss, " +
-        "contribution.employer_inss,ROUND($3+$4+commission_totals.commission_nio-$5-contribution.employee_inss,2),$6 " +
-        "FROM period CROSS JOIN employee CROSS JOIN commission_totals CROSS JOIN contribution " +
-        "WHERE period.status='Borrador' AND $5<=($3+$4+commission_totals.commission_nio-contribution.employee_inss) " +
-        "RETURNING *), " +
+        "commissions_nio,inss_employee_nio,inss_employer_nio,aguinaldo_nio,net_salary_nio,notes) " +
+        "SELECT p.id,e.id,$3,$4,$5,ct.commission_nio,contribution.employee_inss,contribution.employer_inss,ac.aguinaldo_nio, " +
+        "ROUND($3+$4+ct.commission_nio+ac.aguinaldo_nio-$5-contribution.employee_inss,2),$6 " +
+        "FROM period p CROSS JOIN employee e CROSS JOIN commission_totals ct CROSS JOIN contribution CROSS JOIN aguinaldo_calc ac " +
+        "WHERE p.status='Borrador' AND " +
+        "((p.period_type='Ordinaria' AND $5<=($3+$4+ct.commission_nio-contribution.employee_inss)) OR " +
+        "(p.period_type='Aguinaldo' AND $3=0 AND $4=0 AND $5=0 AND ac.aguinaldo_nio>0)) RETURNING *), " +
       "assigned AS (UPDATE employee_commissions ec SET status='Asignada',payroll_period_id=$1::uuid " +
         "FROM selected_commissions selected WHERE ec.id=selected.id AND EXISTS(SELECT 1 FROM created) RETURNING ec.id), " +
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
@@ -937,11 +953,12 @@ async function createPayrollItem(sql,user,body) {
       [periodId,employeeId,base,bonus,deductions,body.notes||null,employeeRate,employerRate,user.id]
     );
     if(!rows[0]){
-      const period=await sql.query("SELECT status FROM hr_payroll_periods WHERE id=$1::uuid",[periodId]);
+      const period=await sql.query("SELECT status,period_type FROM hr_payroll_periods WHERE id=$1::uuid",[periodId]);
       if(!period[0])return erpError(404,"PAYROLL_PERIOD_NOT_FOUND","No existe el período de nómina.");
       if(period[0].status!=="Borrador")return erpError(409,"PAYROLL_PERIOD_LOCKED","Solo se pueden agregar partidas a un período en borrador.");
       const employee=await sql.query("SELECT id FROM employees WHERE id=$1::uuid AND status='Activo'",[employeeId]);
       if(!employee[0])return erpError(404,"ACTIVE_EMPLOYEE_NOT_FOUND","El colaborador no existe o está inactivo.");
+      if(period[0].period_type==="Aguinaldo")return erpError(400,"AGUINALDO_ITEM_INVALID","El período de aguinaldo calcula el treceavo mes automáticamente y no admite salario, bonos ni deducciones adicionales.");
       return erpError(400,"PAYROLL_DEDUCTIONS_TOO_HIGH","Las deducciones superan el neto disponible después del INSS y las comisiones.");
     }
     return erpJson({record:rows[0]},201);
