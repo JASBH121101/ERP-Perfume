@@ -588,6 +588,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     "toggle-product": ["products.catalog.edit"], "import-products": ["products.catalog.create"],
     "stock-new": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "stock-product": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
+    "inventory-view-product": ["inventory.stock.view"],
     "export-inventory": ["inventory.stock.view"], "new-purchase": ["purchases.receipts.receive"],
     "submit-purchase-order": ["purchases.purchase_orders.submit"],
     "approve-purchase-order": ["purchases.approvals.approve"],
@@ -757,7 +758,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       const costs = costSummary(product), inactive = product.active === false;
       const productStatus = inactive ? '<span class="status-chip status-muted">Desactivado</span>' : status(product.stock, product.minStock);
       const actions =
-        '<button class="table-action" type="button" data-action="preview-product" data-id="' + product.id + '" aria-label="Ver ' + esc(product.name) + '" title="Ver ficha">' + svg('eye') + '</button>' +
+        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Ver ' + esc(product.name) + '" title="Ver ficha">' + svg('eye') + '</button>' +
         '<button class="table-action" type="button" data-action="edit-product" data-id="' + product.id + '" aria-label="Editar ' + esc(product.name) + '" title="Editar">' + svg('edit') + '</button>' +
         '<button class="table-action" type="button" data-action="toggle-product" data-id="' + product.id + '" aria-label="' + (inactive ? 'Activar ' : 'Desactivar ') + esc(product.name) + '" title="' + (inactive ? 'Activar' : 'Desactivar') + '">' + (inactive ? '↻' : '⏸') + '</button>' +
         '<button class="table-action table-action-danger" type="button" data-action="delete-product" data-id="' + product.id + '" aria-label="Eliminar ' + esc(product.name) + '" title="Eliminar">×</button>';
@@ -858,7 +859,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     const filtered = filteredInventoryProducts();
     const rows = filtered.map(function (product) {
       const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consultar"><button class="table-action" type="button" data-action="preview-product" data-id="' + product.id + '" aria-label="Ver ficha de ' + esc(product.name) + '" title="Consultar ficha">' + svg('eye') + '</button></td></tr>';
+      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consultar"><button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button></td></tr>';
     }).join('');
     const count = document.getElementById('inventory-product-count');
     const body = document.getElementById('inventory-product-body');
@@ -873,7 +874,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     }).join('');
     const rows = filteredInventoryProducts().map(function (product) {
       const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consultar"><button class="table-action" type="button" data-action="preview-product" data-id="' + product.id + '" aria-label="Ver ficha de ' + esc(product.name) + '" title="Consultar ficha">' + svg('eye') + '</button></td></tr>';
+      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consultar"><button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button></td></tr>';
     }).join('');
     return heading(views.inventory, '') +
       '<div class="inventory-page-actions"><button class="button button-quiet button-small" type="button" data-action="stock-new">' + svg('plus') + ' Registrar movimiento</button></div>' +
@@ -882,9 +883,32 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       (["inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted) ? renderInventoryLedger() : "") +
       '<div class="notice-panel"><span>' + svg('warning') + '</span><div><strong>Stock mínimo configurable por producto · Kardex conectado</strong><p>El sistema valida que las salidas no dejen existencias negativas. Cada movimiento conserva stock anterior, variación y stock resultante. Cada operación se registra en Neon y conserva su trazabilidad.</p></div></div>';
   }
+  function showInventoryProductDetails(productId) {
+    const product = products.find(function (item) { return String(item.id) === String(productId); });
+    if (!product) return;
+    const fields = [
+      ['SKU / Código', product.sku],
+      ['Categoría', product.category],
+      ['Existencia actual', Number(product.stock || 0) + ' unidades'],
+      ['Stock mínimo', Number(product.minStock ?? 3) + ' unidades'],
+      ['Estado', product.stock === 0 ? 'Agotado' : (needsRestock(product) ? 'Stock bajo' : 'Disponible')],
+      ['Ubicación', product.location]
+    ];
+    document.getElementById('product-detail-title').textContent = product.name;
+    document.getElementById('product-detail-content').innerHTML =
+      '<div class="detail-grid inventory-detail-grid">' + fields.map(function (field) {
+        return '<div class="detail-field"><span>' + esc(field[0]) + '</span><strong>' + esc(field[1] || '—') + '</strong></div>';
+      }).join('') + '</div>' +
+      '<p class="detail-notes">Consulta de existencias. Los movimientos se registran desde una operación autorizada.</p>';
+    const editButton = document.getElementById('edit-detail-product');
+    if (editButton) editButton.hidden = true;
+    if (typeof detailDialog.showModal === 'function') detailDialog.showModal();
+  }
   function showProductDetails(productId) {
     const product = products.find(function (item) { return String(item.id) === String(productId); });
     if (!product) return;
+    const editButton = document.getElementById('edit-detail-product');
+    if (editButton) editButton.hidden = false;
     const costs = costSummary(product);
     const fields = [
       ['Marca', product.brand], ['SKU', product.sku], ['Categoría', product.category],
@@ -2850,6 +2874,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       else if (name === 'new-product') openProductModal();
       else if (name === 'edit-product') openProductModal(action.getAttribute('data-id'));
       else if (name === 'preview-product') showProductDetails(action.getAttribute('data-id'));
+      else if (name === 'inventory-view-product') showInventoryProductDetails(action.getAttribute('data-id'));
       else if (name === 'edit-from-detail') { const productId = action.getAttribute('data-id'); detailDialog.close(); openProductModal(productId); }
       else if (name === 'toggle-product') {
         const product=products.find(item=>String(item.id)===action.getAttribute('data-id'));
