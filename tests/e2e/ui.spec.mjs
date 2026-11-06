@@ -237,7 +237,7 @@ test('inventory is a read-only workspace: product lookup, details and kardex do 
   await expect(page.locator('[data-action="stock-product"]')).toHaveCount(0);
   await expect(page.locator('[data-action="inventory-view-product"]')).toHaveCount(3);
   await expect(page.getByRole('button', { name: /Registrar movimiento/ })).toHaveCount(0);
-  await expect(page.locator('#inventory-page-actions')).toHaveCount(0);
+  await expect(page.locator('.inventory-page-actions')).toHaveCount(1);
   await expect(page.locator('.inventory-page-actions [data-action="toggle-export-menu"]')).toBeVisible();
   await expect(page.locator('#inventory-movement-body tr').first()).toBeVisible();
 
