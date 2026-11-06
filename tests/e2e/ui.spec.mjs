@@ -226,6 +226,34 @@ test('inventory products search by SKU and filter category and stock status', as
   await expect(rows).toHaveCount(1);
   await expect(rows).toContainText('QA Low Stock Perfume');
 });
+  
+test('inventory is a read-only workspace: product lookup, details and kardex do not expose manual stock shortcuts', async ({ page }) => {
+  const api = await installStatefulInventoryApi(page);
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+
+  await expect(page.locator('[data-action="stock-new"]')).toHaveCount(0);
+  await expect(page.locator('[data-action="stock-product"]')).toHaveCount(0);
+  await expect(page.locator('[data-action="inventory-view-product"]')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: /Registrar movimiento/ })).toHaveCount(0);
+  await expect(page.locator('.inventory-page-actions')).toHaveCount(1);
+  await expect(page.locator('.inventory-page-actions [data-action="toggle-export-menu"]')).toBeVisible();
+  await expect(page.locator('#inventory-movement-body tr').first()).toBeVisible();
+
+  const fixtureId = '00000000-0000-0000-0000-000000000101';
+  await page.locator('[data-action="inventory-view-product"][data-id="' + fixtureId + '"]').click();
+  await expect(page.locator('#product-detail-dialog')).toBeVisible();
+  await expect(page.locator('#product-detail-content')).toContainText('Existencia actual');
+  await expect(page.locator('#product-detail-content')).toContainText('Stock mínimo');
+  await expect(page.locator('#edit-detail-product')).toBeHidden();
+  await expect(page.locator('#product-detail-content')).not.toContainText('Costo unitario');
+  await page.locator('#detail-cancel').click();
+
+  expect(api.requests.filter(item =>
+    item.pathname.endsWith('/inventory-movements') && item.method === 'POST'
+  )).toHaveLength(0);
+});
+
 
 
 test('exports the active catalog filters to CSV and offers Excel and printable PDF', async ({ page }) => {
@@ -244,6 +272,10 @@ test('exports the active catalog filters to CSV and offers Excel and printable P
   const csvDownloadPromise = page.waitForEvent('download');
   await page.locator('[data-action="export-current-view"][data-format="csv"]').click();
   const csvDownload = await csvDownloadPromise;
+  const toast = page.locator('#toast-region .toast').last();
+  await expect(toast).toBeVisible();
+  const toastFontSize = await toast.evaluate(node => Number.parseFloat(getComputedStyle(node).fontSize));
+  expect(toastFontSize).toBeGreaterThanOrEqual(12);
   expect(csvDownload.suggestedFilename()).toMatch(/products.*\.csv$/);
   const csvPath = await csvDownload.path();
   const csv = await readFile(csvPath, 'utf8');
@@ -593,83 +625,21 @@ test('product creation saves its opening balance and writes the first kardex ent
   )).toBe(true);
 });
 
-test('inventory records receipts, issues and physical-count adjustments in the kardex', async ({ page }) => {
-  const api = await installStatefulInventoryApi(page);
+test('purchase order form omits the generated code field and keeps payment terms aligned', async ({ page }) => {
   await page.goto('/');
-  await navigateToView(page, 'inventory');
+  await navigateToView(page, 'purchaseOrders');
 
-  const productId = '00000000-0000-0000-0000-000000000101';
-  const register = async (type, quantity, note, expectedStock) => {
-    await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
-    const form = page.locator('#stock-form');
-    await expect(page.locator('#stock-dialog')).toBeVisible();
-    await form.locator('[name="type"]').selectOption(type);
-    await form.locator('[name="quantity"]').fill(String(quantity));
-    await form.locator('[name="note"]').fill(note);
-    const response = page.waitForResponse(item =>
-      item.url().endsWith('/api/erp/inventory-movements') && item.request().method() === 'POST'
-    );
-    await form.locator('button[type="submit"]').click();
-    expect((await response).status()).toBe(201);
-    await expect(page.locator('#stock-dialog')).not.toBeVisible();
-    await expect(page.locator('#inventory-product-body')).toContainText(expectedStock + ' unidades');
-    await expect(page.locator('#inventory-movement-body tr').first()).toContainText(note);
-  };
+  const form = page.locator('#purchase-order-form');
+  await expect(form).toBeVisible();
+  await expect(form.getByText('Código de orden')).toHaveCount(0);
+  await expect(form.locator('input[value="Se asigna al generar"]')).toHaveCount(0);
+  await expect(form.locator('[name="supplier_id"]')).toBeVisible();
+  await expect(form.locator('[name="payment_terms"]').locator('..')).toHaveClass(/purchase-order-full-field/);
 
-  await register('entry', 3, 'Entrada QA proveedor', 8);
-  await register('exit', 2, 'Salida QA venta', 6);
-  await register('adjustment', 4, 'Conteo físico QA', 4);
-
-  const product = api.data.products.find(item => item.id === productId);
-  expect(product.stock).toBe(4);
-  const qaNotes = new Set(['Entrada QA proveedor', 'Salida QA venta', 'Conteo físico QA']);
-  const qaMovements = api.data.inventory_movements.filter(item => qaNotes.has(item.note));
-  expect(qaMovements.map(item => item.quantity_delta)).toEqual([-2, -2, 3]);
-  expect(qaMovements.map(item => item.new_stock)).toEqual([4, 6, 8]);
+  const gridColumn = await form.locator('.purchase-order-full-field').evaluate(node => getComputedStyle(node).gridColumn);
+  expect(gridColumn).toContain('1 / -1');
 });
 
-test('inventory prevents an issue larger than available stock before sending it to the API', async ({ page }) => {
-  const api = await installStatefulInventoryApi(page);
-  await page.goto('/');
-  await navigateToView(page, 'inventory');
-
-  const productId = '00000000-0000-0000-0000-000000000103';
-  await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
-  const form = page.locator('#stock-form');
-  await form.locator('[name="type"]').selectOption('exit');
-  await form.locator('[name="quantity"]').fill('1');
-  await form.locator('[name="note"]').fill('Salida que no debe existir');
-  await form.locator('button[type="submit"]').click();
-
-  await expect(page.locator('#toast-region')).toContainText('Stock insuficiente');
-  await expect(page.locator('#stock-dialog')).toBeVisible();
-  expect(api.requests.filter(item =>
-    item.pathname.endsWith('/inventory-movements') && item.method === 'POST'
-  )).toHaveLength(0);
-  expect(api.data.products.find(item => item.id === productId).stock).toBe(0);
-});
-
-test('a committed stock movement is not repeated when the following data refresh fails', async ({ page }) => {
-  const api = await installStatefulInventoryApi(page, { failBootstrapAfterMutation: true });
-  await page.goto('/');
-  await navigateToView(page, 'inventory');
-
-  const productId = '00000000-0000-0000-0000-000000000101';
-  await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
-  const form = page.locator('#stock-form');
-  await form.locator('[name="type"]').selectOption('entry');
-  await form.locator('[name="quantity"]').fill('2');
-  await form.locator('[name="note"]').fill('Entrada comprometida QA');
-  await form.locator('button[type="submit"]').click();
-
-  await expect(page.locator('#stock-dialog')).not.toBeVisible();
-  await expect(page.locator('#inventory-product-body')).toContainText('7 unidades');
-  await expect(page.locator('#toast-region')).toContainText('Movimiento guardado en Neon');
-  expect(api.requests.filter(item =>
-    item.pathname.endsWith('/inventory-movements') && item.method === 'POST'
-  )).toHaveLength(1);
-  expect(api.data.products.find(item => item.id === productId).stock).toBe(7);
-});
 
 test('inventory and catalog stay usable at mobile, tablet and desktop widths', async ({ page }, testInfo) => {
   await installStatefulInventoryApi(page);
@@ -685,29 +655,25 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     await navigateToView(page, 'inventory');
     await expect(page.getByRole('heading', { name: 'Inventario' })).toBeVisible();
     await expect(page.locator('#inventory-product-search')).toBeVisible();
-    await expect(page.locator('.inventory-page-actions [data-action="stock-new"]')).toBeVisible();
     await expect(page.locator('.inventory-page-actions [data-action="toggle-export-menu"]')).toBeVisible();
+    await expect(page.locator('[data-action="stock-new"], [data-action="stock-product"]')).toHaveCount(0);
     const actionLayout = await page.evaluate(() => {
       const actions = document.querySelector('.inventory-page-actions').getBoundingClientRect();
       const exportButton = document.querySelector('.inventory-page-actions [data-action="toggle-export-menu"]').getBoundingClientRect();
-      const movementButton = document.querySelector('.inventory-page-actions [data-action="stock-new"]').getBoundingClientRect();
       const summaryColumns = getComputedStyle(document.querySelector('.inventory-summary-strip')).gridTemplateColumns.split(' ').length;
       const filterColumns = getComputedStyle(document.querySelector('.inventory-products-toolbar .toolbar-right')).gridTemplateColumns.split(' ').length;
       return {
         actionsTop: actions.top,
         exportBottom: exportButton.bottom,
-        movementBottom: movementButton.bottom,
-        overlap: exportButton.right > movementButton.left && movementButton.right > exportButton.left &&
-          exportButton.bottom > movementButton.top && movementButton.bottom > exportButton.top,
+        exportRight: exportButton.right,
         summaryColumns,
         filterColumns,
         documentWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth
       };
     });
-    expect(actionLayout.overlap, 'inventory actions must not overlap').toBe(false);
     expect(actionLayout.exportBottom).toBeGreaterThan(0);
-    expect(actionLayout.movementBottom).toBeGreaterThan(0);
+    expect(actionLayout.exportRight).toBeLessThanOrEqual(viewport.width);
     expect(actionLayout.summaryColumns).toBe(3);
     if (viewport.width <= 720) expect(actionLayout.filterColumns).toBe(2);
     const fixtureId = '00000000-0000-0000-0000-000000000101';

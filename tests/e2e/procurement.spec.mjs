@@ -299,7 +299,8 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await navigateToView(page, 'purchaseOrders');
   const orderForm = page.locator('#purchase-order-form');
   await expect(orderForm).toBeVisible();
-  await expect(orderForm.locator('input[readonly]')).toHaveValue('Se asigna al generar');
+  await expect(orderForm.getByText('Código de orden')).toHaveCount(0);
+  await expect(orderForm.locator('input[value="Se asigna al generar"]')).toHaveCount(0);
   await orderForm.locator('[name="supplier_id"]').selectOption(ids.supplier);
   await orderForm.locator('[name="currency"]').selectOption('NIO');
   await orderForm.locator('[name="exchange_rate"]').fill('36.6');
