@@ -3,6 +3,7 @@ import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financi
 import { profileHasPermission } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
 import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss } from './hr-calculations.mjs';
+import { getContractReminders } from './hr-contract-reminders.mjs';
 
 'use strict';
 
@@ -1566,6 +1567,28 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':(type==='employee-history'?'Cerrar':(recordId&&type==='employee'?'Guardar cambios':'Guardar en Neon')))));
     document.getElementById('business-save').hidden=type==='employee-history';
     if(type==='employee'){
+      const contractSelect=businessForm.querySelector('[name="contractType"]');
+      const contractStartInput=businessForm.querySelector('[name="contractStartDate"]');
+      const contractEndField=businessForm.querySelector('#employee-contract-end-field');
+      const contractEndInput=businessForm.querySelector('[name="contractEndDate"]');
+      const syncContractFields=()=>{
+        const temporary=contractSelect?.value==='Temporal';
+        if(contractEndField)contractEndField.hidden=!temporary;
+        if(contractEndInput){
+          contractEndInput.disabled=!temporary;
+          contractEndInput.required=temporary;
+          contractEndInput.min=contractStartInput?.value||'';
+          if(!temporary)contractEndInput.value='';
+        }
+      };
+      contractSelect?.addEventListener('change',syncContractFields);
+      contractStartInput?.addEventListener('change',()=>{
+        if(contractEndInput){
+          contractEndInput.min=contractStartInput.value||'';
+          if(contractEndInput.value&&contractEndInput.value<contractStartInput.value)contractEndInput.value='';
+        }
+      });
+      syncContractFields();
       const commissionSelect=businessForm.querySelector('[name="commissionEnabled"]');
       const commissionField=businessForm.querySelector('#employee-commission-rate-field');
       const commissionInput=businessForm.querySelector('[name="commissionRate"]');
@@ -2012,11 +2035,17 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     let actions='',content='';
     if(state.hrTab==='employees'){
       actions='<button class="button button-primary" data-action="new-employee">'+svg('plus')+' Agregar colaborador</button>';
+      const contractReminders=getContractReminders(activeEmployees,today);
+      const reminderPanel=contractReminders.length
+        ? '<article class="contract-reminders" aria-label="Recordatorios de contratos"><div class="contract-reminders-heading"><div><strong>Contratos por vencer</strong><small>Alertas de vigencia · 30 y 15 días</small></div><span class="status-chip status-pending">'+contractReminders.length+' alertas</span></div>'+
+          contractReminders.map(item=>'<div class="contract-reminder-row"><div><strong>'+esc(item.employeeName)+'</strong><small>Contrato temporal · vence '+dateText(item.contractEndDate)+'</small></div><span class="status-chip '+(item.daysRemaining<0?'status-danger':(item.daysRemaining<=15?'status-pending':'status-muted'))+'">'+(item.daysRemaining<0?'Vencido hace '+Math.abs(item.daysRemaining)+' días':(item.daysRemaining===0?'Vence hoy':'Vence en '+item.daysRemaining+' días'))+'</span><button type="button" class="button button-quiet button-small" data-action="edit-employee" data-id="'+esc(item.employeeId)+'">Revisar</button></div>').join('')+
+          '</article>'
+        : '';
       const rows=employees.map(e=>{
         const tenure=calculateTenure(e.hireDate,today).label;
         return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(e.employeeCode||'Código pendiente')+' · '+esc(e.department||'Sin departamento')+'</small><small class="table-secondary">'+esc(e.contractType||'Por definir')+' · Jornada '+esc(e.workSchedule||'Por definir')+'</small></td><td data-label="Cargo">'+esc(e.position)+'</td><td data-label="Antigüedad">'+esc(tenure)+'</td><td data-label="Comisión">'+(e.commissionEnabled?'<span class="status-chip status-success">'+Number(e.commissionRate).toFixed(2)+'%</span>':'<span class="status-chip status-muted">No aplica</span>')+'</td><td data-label="Salario mensual" class="table-primary">'+moneyInCurrency(e.salaryNio,'NIO')+'</td><td data-label="Estado"><span class="status-chip '+(e.status==='Activo'?'status-success':'status-muted')+'">'+esc(e.status||'Activo')+'</span></td><td data-label="Acciones"><div class="hr-row-actions"><button type="button" class="button button-quiet button-small" data-action="view-employee" data-id="'+esc(e.id)+'">Historial</button><button type="button" class="button button-quiet button-small" data-action="edit-employee" data-id="'+esc(e.id)+'">Editar</button></div></td></tr>';
       }).join('');
-      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR / CÓDIGO</th><th>CARGO</th><th>ANTIGÜEDAD</th><th>COMISIÓN</th><th>SALARIO MENSUAL</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
+      content=reminderPanel+'<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR / CÓDIGO</th><th>CARGO</th><th>ANTIGÜEDAD</th><th>COMISIÓN</th><th>SALARIO MENSUAL</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay colaboradores registrados.</td></tr>')+'</tbody></table></div></article>';
     } else if(state.hrTab==='attendance'){
       actions=activeEmployees.length?'<button class="button button-primary" data-action="new-attendance">'+svg('plus')+' Registrar asistencia</button>':'';
       const employeeName=id=>employees.find(e=>e.id===id)?.name||'Colaborador';
@@ -2798,7 +2827,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
   }
   function openCatalogImport() {
     const dialog=document.createElement('dialog');
-    dialog.className='modal';dialog.id='catalog-import-dialog';
+    dialog.className='modal catalog-import-dialog';dialog.id='catalog-import-dialog';
     dialog.innerHTML='<form method="dialog" class="modal-card" style="width:min(1080px,96vw);max-height:90vh;overflow:auto"><div class="modal-heading"><div><span class="eyebrow">CATÁLOGO · IMPORTACIÓN</span><h2>Importar productos</h2></div><button type="button" class="icon-button modal-close" data-import-close aria-label="Cerrar">×</button></div><p class="modal-note">Admite CSV, PDF, PNG, JPG y JPEG. CSV conserva las columnas; PDF e imágenes usan lectura de texto y OCR local. Revisa y corrige los datos antes de guardarlos en Neon.</p><div class="form-grid"><label class="form-field full-field"><span>Seleccionar archivo</span><input id="catalog-import-file" type="file" accept=".csv,.pdf,.png,.jpg,.jpeg,text/csv,application/pdf,image/png,image/jpeg" required></label><label class="form-field full-field"><span>Importe detectado en PDF / imagen</span><select id="catalog-import-amount"><option value="none">No asignar automáticamente</option><option value="price">Asignar a precio de venta (USD)</option><option value="cost">Asignar a costo de compra (USD)</option></select><small class="form-helper">No se supondrá si una cifra detectada es costo o precio. En PDF e imágenes la detección es preliminar.</small></label></div><p id="catalog-import-status" class="form-helper" role="status">Selecciona un archivo para comenzar.</p><div id="catalog-import-preview" class="table-wrap" style="max-height:42vh;overflow:auto"></div><div class="modal-actions"><button type="button" class="button button-quiet" data-import-close>Cancelar</button><button type="button" class="button button-primary" id="catalog-import-save" disabled>Importar productos a Neon</button></div></form>';
     document.body.appendChild(dialog);
     let records=[];

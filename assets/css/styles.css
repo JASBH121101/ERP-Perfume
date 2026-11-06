@@ -1658,3 +1658,64 @@ html, body { font-size:15px; }
 .employee-document-upload .form-field { min-width:0; }
 .employee-document-upload .button { min-height:42px; }
 @media(max-width:720px) { .employee-document-upload { grid-template-columns:1fr; } .employee-document-upload .button { width:100%; } }
+
+
+/* Catalog import dialog: the dialog itself must be wide enough for its inner form. */
+dialog.catalog-import-dialog {
+  box-sizing:border-box;
+  width:min(1080px,calc(100vw - 28px));
+  max-width:1080px;
+  max-height:calc(100dvh - 28px);
+  overflow:hidden;
+}
+.catalog-import-dialog > .modal-card {
+  box-sizing:border-box;
+  width:100% !important;
+  min-width:0;
+  max-height:calc(100dvh - 28px);
+  overflow:auto;
+}
+.catalog-import-dialog .modal-heading,
+.catalog-import-dialog .modal-note,
+.catalog-import-dialog .form-grid,
+.catalog-import-dialog .modal-actions { min-width:0; }
+.catalog-import-dialog #catalog-import-preview {
+  max-width:100%;
+  min-width:0;
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.catalog-import-dialog #catalog-import-preview table { min-width:760px; }
+@media(max-width:720px) {
+  dialog.catalog-import-dialog { width:calc(100vw - 20px); max-width:calc(100vw - 20px); }
+  .catalog-import-dialog > .modal-card { padding:16px 12px; }
+  .catalog-import-dialog .modal-actions { display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:8px; }
+  .catalog-import-dialog .modal-actions .button { min-width:0; white-space:normal; }
+}
+
+/* Contract expiry reminders in HR > Personal. */
+.contract-reminders {
+  margin:0 0 14px;
+  padding:14px 16px;
+  border:1px solid #eadfc9;
+  border-radius:12px;
+  background:linear-gradient(145deg,#fffdf8,#faf5eb);
+}
+.contract-reminders-heading,.contract-reminder-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.contract-reminders-heading { margin-bottom:8px; }
+.contract-reminders-heading > div,.contract-reminder-row > div { display:grid; gap:4px; min-width:0; }
+.contract-reminders-heading strong,.contract-reminder-row strong { color:#514536; font-size:12px; }
+.contract-reminders-heading small,.contract-reminder-row small { color:#918776; font-size:10px; }
+.contract-reminder-row { padding:10px 0; border-top:1px solid #eee6d8; }
+.contract-reminder-row > div { flex:1 1 auto; }
+.contract-reminder-row .button { flex:0 0 auto; }
+@media(max-width:560px) {
+  .contract-reminder-row { align-items:flex-start; flex-wrap:wrap; }
+  .contract-reminder-row > div { flex-basis:calc(100% - 100px); }
+  .contract-reminder-row .button { margin-left:auto; }
+}
