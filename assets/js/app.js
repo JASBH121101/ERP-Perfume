@@ -571,7 +571,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       if (action === "hr-tab") {
         const tabPermission = {
           employees: "hr.employees.view", attendance: "hr.attendance.view",
-          leaves: "hr.leave.view", payroll: "hr.payroll.view", contracts: "hr.contracts.view"
+          leaves: "hr.leave.view", benefits: "hr.payroll.view", commissions: "hr.payroll.view", payroll: "hr.payroll.view", contracts: "hr.contracts.view"
         }[button.getAttribute("data-tab")];
         if (tabPermission) button.hidden = !permissionGranted(tabPermission);
         return;
@@ -3441,6 +3441,31 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
   document.addEventListener('submit',function(event){
     if(event.target?.id==='dgi-settings-form'){event.preventDefault();saveDgiSettings(event);}
     else if(event.target?.id==='dgi-document-form'){event.preventDefault();uploadDgiDocument(event);}
+  });
+  document.addEventListener('submit',async function(event){
+    const form=event.target;
+    if(form?.id!=='hr-inss-settings-form')return;
+    event.preventDefault();
+    if(!permissionGranted('settings.general.manage')){toast('Tu cuenta no puede modificar la modalidad de INSS.');return;}
+    const preset=String(new FormData(form).get('preset')||'integral:under_50');
+    const presets={
+      'integral:under_50':{regime:'integral',employer_band:'under_50',employee_rate:7,employer_rate:21.5},
+      'integral:fifty_plus':{regime:'integral',employer_band:'fifty_plus',employee_rate:7,employer_rate:22.5},
+      'ivm_rp:under_50':{regime:'ivm_rp',employer_band:'under_50',employee_rate:5,employer_rate:15.5},
+      'ivm_rp:fifty_plus':{regime:'ivm_rp',employer_band:'fifty_plus',employee_rate:5,employer_rate:16.5}
+    };
+    const setting=presets[preset];
+    if(!setting){toast('Selecciona una modalidad INSS válida.');return;}
+    const button=form.querySelector('[type="submit"]');
+    if(button){button.disabled=true;button.textContent='Guardando…';}
+    try{
+      await erpApi('settings',{method:'PATCH',body:JSON.stringify({setting_key:'hr_inss_settings',setting_value:setting})});
+      hrInssSettings={...setting};
+      await loadERPFromNeon(true);
+      renderView();
+      toast('Modalidad INSS actualizada. Los períodos ya pagados conservan sus importes.');
+    }catch(error){toast(error?.message||'No se pudo guardar la modalidad INSS.');}
+    finally{if(button){button.disabled=false;button.textContent='Guardar modalidad INSS';}}
   });
   document.addEventListener('submit',async function(event){
     if(!event.target||event.target.id!=='exchange-rate-form')return;
