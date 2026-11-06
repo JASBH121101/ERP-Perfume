@@ -431,12 +431,13 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       }));
       payrollPeriods = (data.hr_payroll_periods || []).map(e => ({
         id:e.id, periodStart:e.period_start, periodEnd:e.period_end, paymentDate:e.payment_date||"",
-        status:e.status, periodType:e.period_type||"Ordinaria", notes:e.notes||"", createdAt:e.created_at
+        status:e.status, periodType:e.period_type||"Ordinaria", commissionExchangeRate:Number(e.commission_exchange_rate||exchangeRate), notes:e.notes||"", createdAt:e.created_at
       }));
       payrollItems = (data.hr_payroll_items || []).map(e => ({
         id:e.id, payrollPeriodId:e.payroll_period_id, employeeId:e.employee_id,
         baseSalaryNio:Number(e.base_salary_nio||0), bonusesNio:Number(e.bonuses_nio||0),
-        commissionsNio:Number(e.commissions_nio||0), inssEmployeeNio:Number(e.inss_employee_nio||0),
+        commissionsUsd:Number(e.commissions_usd||0), commissionsNio:Number(e.commissions_nio||0),
+        commissionExchangeRate:Number(e.commission_exchange_rate||exchangeRate), inssEmployeeNio:Number(e.inss_employee_nio||0),
         inssEmployerNio:Number(e.inss_employer_nio||0), aguinaldoNio:Number(e.aguinaldo_nio||0),
         deductionsNio:Number(e.deductions_nio||0), netSalaryNio:Number(e.net_salary_nio||0), notes:e.notes||""
       }));
@@ -1434,7 +1435,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
       body='<div class="form-grid">'+selectField('Colaborador','employeeId',options,true)+selectField('Tipo','leaveType','<option>Vacaciones</option><option>Permiso</option><option>Incapacidad</option><option>Otro</option>',true)+formField('Fecha inicial','startDate','date',true,'')+formField('Fecha final','endDate','date',true,'')+formField('Días solicitados','days','number',true,'min="0.5" step="0.5"')+formField('Motivo','reason','text',false,'maxlength="300"')+'</div>';
     }
     if(type==='payroll-period'){
-      body='<div class="form-grid">'+selectField('Tipo de período','periodType','<option value="Ordinaria" selected>Nómina ordinaria</option><option value="Aguinaldo">Aguinaldo · decimotercer mes</option>',true)+formField('Inicio del período','periodStart','date',true,'')+formField('Fin del período','periodEnd','date',true,'')+formField('Fecha prevista de pago','paymentDate','date',false,'')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">El período se crea en estado Borrador. En nómina ordinaria se calculan comisiones e INSS. En Aguinaldo, el sistema calcula el proporcional del decimotercer mes por separado.</p>';
+      body='<div class="form-grid">'+selectField('Tipo de período','periodType','<option value="Ordinaria" selected>Nómina ordinaria</option><option value="Aguinaldo">Aguinaldo · decimotercer mes</option>',true)+formField('Inicio del período','periodStart','date',true,'')+formField('Fin del período','periodEnd','date',true,'')+formField('Fecha prevista de pago','paymentDate','date',false,'')+formField('Tasa USD/NIO para comisiones','commissionExchangeRate','number',true,'min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">El período se crea en estado Borrador. En nómina ordinaria se calculan comisiones e INSS. En Aguinaldo, el sistema calcula el proporcional del decimotercer mes por separado.</p>';
     }
     if(type==='payroll-payment'){
       const period=payrollPeriods.find(p=>String(p.id)===String(recordId));
@@ -1686,9 +1687,9 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         })});
       } else if(type==='payroll-period'){
         const startDate=get('periodStart'),endDate=get('periodEnd'),paymentDate=get('paymentDate');
-        if(!startDate||!endDate||endDate<startDate)throw new Error('El período requiere fechas válidas y el fin no puede ser anterior al inicio.');
+        if(!startDate||!endDate||endDate<startDate||!Number.isFinite(num('commissionExchangeRate'))||num('commissionExchangeRate')<=0)throw new Error('Revisa las fechas y la tasa USD/NIO para comisiones.');
         await erpApi('hr_payroll_periods',{method:'POST',body:JSON.stringify({
-          period_start:startDate,period_end:endDate,period_type:get('periodType')==='Aguinaldo'?'Aguinaldo':'Ordinaria',payment_date:paymentDate||null,status:'Borrador',notes:get('notes')||null
+          period_start:startDate,period_end:endDate,period_type:get('periodType')==='Aguinaldo'?'Aguinaldo':'Ordinaria',payment_date:paymentDate||null,commission_exchange_rate:num('commissionExchangeRate'),status:'Borrador',notes:get('notes')||null
         })});
       } else if(type==='payroll-item'){
         const periodId=get('payrollPeriodId'),employeeId=get('employeeId');
