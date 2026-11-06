@@ -62,3 +62,12 @@ VALUES (
   '{"regime":"integral","employer_band":"under_50","employee_rate":7.0,"employer_rate":21.5}'::jsonb
 )
 ON CONFLICT (setting_key) DO NOTHING;
+
+-- Payroll periods can explicitly represent the annual 13th-month payment.
+ALTER TABLE public.hr_payroll_periods
+  ADD COLUMN IF NOT EXISTS period_type TEXT NOT NULL DEFAULT 'Ordinaria';
+ALTER TABLE public.hr_payroll_periods
+  DROP CONSTRAINT IF EXISTS hr_payroll_periods_period_type_check;
+ALTER TABLE public.hr_payroll_periods
+  ADD CONSTRAINT hr_payroll_periods_period_type_check
+  CHECK (period_type IN ('Ordinaria','Aguinaldo'));
