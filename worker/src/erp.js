@@ -14,7 +14,7 @@ const RESOURCE_DEFS = {
   employees: { table: "employees", roles: ["owner", "admin", "hr"], fields: ["employee_code","name","position","department","salary_nio","status","hire_date","phone","email","notes","commission_enabled","commission_rate"], order: "name ASC" },
   hr_attendance: { table: "hr_attendance", roles: ["owner", "admin", "hr"], fields: ["employee_id","work_date","check_in","check_out","break_minutes","status","notes"], order: "work_date DESC" },
   hr_leave_requests: { table: "hr_leave_requests", roles: ["owner", "admin", "hr"], fields: ["employee_id","leave_type","start_date","end_date","days","reason","status"], order: "created_at DESC" },
-  hr_payroll_periods: { table: "hr_payroll_periods", roles: ["owner", "admin", "hr", "finance"], fields: ["period_start","period_end","payment_date","status","notes"], order: "period_start DESC" },
+  hr_payroll_periods: { table: "hr_payroll_periods", roles: ["owner", "admin", "hr", "finance"], fields: ["period_start","period_end","payment_date","period_type","status","notes"], order: "period_start DESC" },
   hr_payroll_items: { table: "hr_payroll_items", roles: ["owner", "admin", "hr", "finance"], fields: ["payroll_period_id","employee_id","base_salary_nio","bonuses_nio","deductions_nio","net_salary_nio","notes"], order: "created_at DESC" },
   dgi_support_documents: { table: "dgi_support_documents", roles: ["owner", "admin", "finance"], fields: ["document_date","document_type","issuer","reference_number","description","fiscal_period","currency","original_amount","amount_nio","formal_invoice","file_key","file_name","file_type","file_size","notes"], order: "document_date DESC, created_at DESC" },
   inventory_movements: { table: "inventory_movements", roles: ["owner", "admin", "inventory"], fields: ["product_id","movement_type","quantity","quantity_delta","previous_stock","new_stock","note","reference_type","reference_id"], order: "created_at DESC" }
@@ -1677,9 +1677,23 @@ export async function handleERPRequest(request, env, user, sql) {
   if (resource === "settings" && request.method === "PATCH") {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     const key = String(body.setting_key || "");
-    if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
+    if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance","hr_inss_settings"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
     const value = body.setting_value;
     if (key === "default_exchange_rate" && (!Number.isFinite(Number(value?.value)) || Number(value.value) <= 0 || Number(value.value) > 100000)) return erpError(400, "INVALID_EXCHANGE_RATE", "El tipo de cambio debe ser mayor que cero.");
+    if (key === "hr_inss_settings") {
+      const allowed = new Set(["regime","employer_band","employee_rate","employer_rate"]);
+      if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((field) => !allowed.has(field))) {
+        return erpError(400,"INVALID_INSS_SETTINGS","La configuración de INSS contiene campos no permitidos.");
+      }
+      const regimes = {
+        integral: { under_50:{employee:7,employer:21.5}, fifty_plus:{employee:7,employer:22.5} },
+        ivm_rp: { under_50:{employee:5,employer:15.5}, fifty_plus:{employee:5,employer:16.5} }
+      };
+      const expected = regimes[value.regime]?.[value.employer_band];
+      if (!expected || Number(value.employee_rate)!==expected.employee || Number(value.employer_rate)!==expected.employer) {
+        return erpError(400,"INVALID_INSS_RATE_COMBINATION","Selecciona una modalidad INSS y tamaño de empresa con sus tasas oficiales.");
+      }
+    }
     if (key === "dgi_compliance") {
       const allowed = new Set(["taxpayer_name","ruc","business_address","regime_status","regime_confirmation_reference","quota_fixed_amount_nio","certificate_available","certificate_displayed","computerized_invoicing_status","dgi_confirmation_date","computerized_invoicing_authorization_number","computerized_invoicing_confirmation_reference"]);
       if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((field) => !allowed.has(field))) {
