@@ -228,6 +228,33 @@ test('inventory products search by SKU and filter category and stock status', as
 });
 
 
+test('inventory is a lookup-only screen with no manual movement shortcuts', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+
+  await expect(page.locator('[data-action="stock-new"]')).toHaveCount(0);
+  await expect(page.locator('[data-action="stock-product"]')).toHaveCount(0);
+  await expect(page.locator('[data-action="inventory-view-product"]')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: /Registrar movimiento/ })).toHaveCount(0);
+});
+
+
+test('purchase order number is generated on creation instead of occupying a form field', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'purchaseOrders');
+
+  const form = page.locator('#purchase-order-form');
+  await expect(form).toBeVisible();
+  await expect(form.getByText('Código de orden')).toHaveCount(0);
+  await expect(form.locator('input[value="Se asigna al generar"]')).toHaveCount(0);
+  await expect(form.locator('[name="supplier_id"]')).toBeVisible();
+  await expect(form.locator('[name="payment_terms"]').locator('..')).toHaveClass(/purchase-order-full-field/);
+
+  const gridColumn = await form.locator('.purchase-order-full-field').evaluate(node => getComputedStyle(node).gridColumn);
+  expect(gridColumn).toContain('1 / -1');
+});
+
+
 test('exports the active catalog filters to CSV and offers Excel and printable PDF', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'products');
@@ -244,6 +271,10 @@ test('exports the active catalog filters to CSV and offers Excel and printable P
   const csvDownloadPromise = page.waitForEvent('download');
   await page.locator('[data-action="export-current-view"][data-format="csv"]').click();
   const csvDownload = await csvDownloadPromise;
+  const toast = page.locator('#toast-region .toast').last();
+  await expect(toast).toBeVisible();
+  const toastFontSize = await toast.evaluate(node => Number.parseFloat(getComputedStyle(node).fontSize));
+  expect(toastFontSize).toBeGreaterThanOrEqual(12);
   expect(csvDownload.suggestedFilename()).toMatch(/products.*\.csv$/);
   const csvPath = await csvDownload.path();
   const csv = await readFile(csvPath, 'utf8');
