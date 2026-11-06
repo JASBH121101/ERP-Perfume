@@ -1808,7 +1808,8 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     const activeEmployees=employees.filter(e=>e.status==='Activo');
     const activeCommissions=hrCommissions.filter(c=>['Pendiente','Asignada'].includes(c.status));
     const totalPayroll=payrollItems.reduce((sum,item)=>sum+Number(item.netSalaryNio||0),0);
-    const today=new Date();
+    const now=new Date();
+    const today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
     const monthlyOrdinarySalaries=(employeeId)=>{
       const totals=new Map();
       payrollItems.filter(item=>String(item.employeeId)===String(employeeId)).forEach(item=>{
