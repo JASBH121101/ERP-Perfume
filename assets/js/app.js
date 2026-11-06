@@ -1535,6 +1535,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         '<p class="form-helper">Las nóminas cerradas conservan sus importes históricos.</p>';
     }
     if(type==='employee-history'){
+      const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
       const employee=employees.find(item=>String(item.id)===String(recordId));
       if(!employee){toast('No se encontró el colaborador.');return;}
       const history=employeeHistory.filter(item=>String(item.employeeId)===String(employee.id)).sort((a,b)=>String(b.effectiveDate||'').localeCompare(String(a.effectiveDate||''))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));

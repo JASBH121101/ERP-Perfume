@@ -50,6 +50,7 @@ const fixture = {
   purchases: [], purchase_items: [], invoices: [], invoice_items: [], invoice_payments: [],
   expenses: [], cash_accounts: [], cash_entries: [], employees: [], hr_attendance: [],
   hr_leave_requests: [], hr_payroll_periods: [], hr_payroll_items: [],
+  employee_history: [], employee_documents: [],
   settings: [{ setting_key: 'default_exchange_rate', setting_value: { value: 36.6 } }]
 };
 
@@ -91,6 +92,64 @@ async function navigateToView(page, view) {
     await page.locator('#menu-toggle').click();
   }
   await sidebar.locator('button[data-view="' + view + '"]').click();
+}
+
+async function installHRFixtureApi(page) {
+  await page.unroute(workerPattern);
+  const data=structuredClone(fixture);
+  const employeeId='00000000-0000-0000-0000-000000000201';
+  data.employees=[{
+    id:employeeId,employee_code:'JB-EMP-0002',name:'Colaborador QA',position:'Asistente',
+    department:'Operaciones',salary_nio:10000,status:'Activo',hire_date:'2023-01-01',
+    phone:null,email:null,commission_enabled:false,commission_rate:0,notes:null
+  }];
+  data.employee_history=[
+    {id:'history-hire',employee_id:employeeId,event_type:'hire',effective_date:'2023-01-01',to_position:'Asistente',to_department:'Operaciones',reason:'Alta inicial'},
+    {id:'history-comp',employee_id:employeeId,event_type:'compensation',effective_date:'2023-01-01',to_salary_nio:10000,to_commission_enabled:false,to_commission_rate:0,reason:'Condiciones iniciales'}
+  ];
+  data.employee_documents=[];
+  const requests=[];
+  await page.route(workerPattern,async route=>{
+    const request=route.request(),url=new URL(request.url()),pathname=url.pathname,method=request.method();
+    if(pathname.endsWith('/bootstrap')&&method==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data})});
+    if(pathname==='/api/erp/employees/'+employeeId&&method==='PATCH'){
+      const payload=request.postDataJSON();requests.push({method,path:pathname,payload});
+      const row=data.employees[0];
+      const old={...row};
+      Object.assign(row,{
+        name:payload.name,phone:payload.phone,email:payload.email,position:payload.position,
+        department:payload.department,salary_nio:payload.salary_nio,status:payload.status,
+        commission_enabled:payload.commission_enabled,commission_rate:payload.commission_rate
+      });
+      if(old.position!==row.position||old.department!==row.department)data.employee_history.unshift({
+        id:'history-position-new',employee_id:employeeId,event_type:'position',effective_date:payload.effective_date,
+        from_position:old.position,to_position:row.position,from_department:old.department,to_department:row.department,
+        reason:payload.change_reason
+      });
+      if(Number(old.salary_nio)!==Number(row.salary_nio))data.employee_history.unshift({
+        id:'history-salary-new',employee_id:employeeId,event_type:'compensation',effective_date:payload.effective_date,
+        from_salary_nio:old.salary_nio,to_salary_nio:row.salary_nio,from_commission_enabled:old.commission_enabled,
+        to_commission_enabled:row.commission_enabled,from_commission_rate:old.commission_rate,to_commission_rate:row.commission_rate,
+        reason:payload.change_reason
+      });
+      return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({record:row})});
+    }
+    if(pathname==='/api/erp/employee-documents'&&method==='POST'){
+      const document={
+        id:'00000000-0000-0000-0000-000000000301',employee_id:employeeId,document_type:'Contrato',
+        file_name:'contrato-qa.pdf',file_type:'application/pdf',file_size:12,created_at:'2026-11-06T16:00:00.000Z'
+      };
+      data.employee_documents.unshift(document);
+      requests.push({method,path:pathname,contentType:request.headers()['content-type']});
+      return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({document})});
+    }
+    if(pathname==='/api/erp/employee-documents/00000000-0000-0000-0000-000000000301/file'&&method==='GET'){
+      requests.push({method,path:pathname});
+      return route.fulfill({status:200,contentType:'application/pdf',headers:{'content-disposition':'attachment; filename="contrato-qa.pdf"'},body:Buffer.from('%PDF-1.4 QA')});
+    }
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({records:[],data})});
+  });
+  return {data,requests,employeeId};
 }
 
 async function installStatefulInventoryApi(page, options = {}) {
@@ -368,6 +427,52 @@ test('new order allows registering a customer inline without a prior customer re
   expect(payload.customer_name).toBe('Cliente nuevo QA');
   expect(payload.new_customer.name).toBe('Cliente nuevo QA');
   expect(payload.items).toHaveLength(1);
+});
+
+test('employee edit preserves hire date and records a promotion reason', async ({ page }) => {
+  const hr=await installHRFixtureApi(page);
+  await page.goto('/');
+  await navigateToView(page,'hr');
+  await page.locator('[data-action="edit-employee"]').click();
+  const dialog=page.locator('#business-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[name="name"]')).toHaveValue('Colaborador QA');
+  await expect(dialog.locator('[name="hireDate"]')).toHaveCount(0);
+  await expect(dialog.getByText('Fecha original de ingreso')).toBeVisible();
+  await dialog.locator('[name="position"]').fill('Supervisor de operaciones');
+  await dialog.locator('[name="salaryNio"]').fill('12500');
+  await dialog.locator('[name="changeReason"]').fill('Ascenso por desempeño');
+  const patch=page.waitForRequest(request=>request.url().endsWith('/api/erp/employees/'+hr.employeeId)&&request.method()==='PATCH');
+  await dialog.locator('#business-save').click();
+  const request=await patch,payload=request.postDataJSON();
+  expect(payload.effective_date).toMatch(/^\\d{4}-\\d{2}-\\d{2}$/);
+  expect(payload.change_reason).toBe('Ascenso por desempeño');
+  expect(payload.hire_date).toBeUndefined();
+  await expect(dialog).toBeHidden();
+});
+
+test('employee history attaches and downloads private personnel documents', async ({ page }) => {
+  const hr=await installHRFixtureApi(page);
+  await page.goto('/');
+  await navigateToView(page,'hr');
+  await page.locator('[data-action="view-employee"]').click();
+  const dialog=page.locator('#business-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Historial laboral')).toBeVisible();
+  await expect(dialog.getByText('Alta inicial')).toBeVisible();
+  await dialog.locator('#employee-document-file').setInputFiles({
+    name:'contrato-qa.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 QA')
+  });
+  const upload=page.waitForRequest(request=>request.url().endsWith('/api/erp/employee-documents')&&request.method()==='POST');
+  await dialog.locator('[data-action="upload-employee-document"]').click();
+  const uploadRequest=await upload;
+  expect(uploadRequest.headers()['content-type']).toContain('multipart/form-data');
+  await expect(dialog.getByText('contrato-qa.pdf')).toBeVisible();
+  const download=page.waitForEvent('download');
+  await dialog.locator('[data-action="download-employee-document"]').click();
+  const file=await download;
+  expect(file.suggestedFilename()).toBe('documento-personal');
+  expect(hr.data.employee_documents).toHaveLength(1);
 });
 
 test('HR permissions tab explains how to add the first collaborator', async ({ page }) => {
