@@ -1650,3 +1650,12 @@ html, body { font-size:15px; }
   .employee-history-item { grid-template-columns:1fr; gap:4px; }
   .hr-row-actions { min-width:150px; }
 }
+
+.employee-document-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid #f0ece4; }
+.employee-document-row > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.employee-document-row strong { overflow-wrap:anywhere; color:#514536; font-size:11px; }
+.employee-document-row small { color:#928a7d; font-size:10px; }
+.employee-document-upload { display:grid; grid-template-columns:minmax(130px,.7fr) minmax(180px,1.3fr) auto; align-items:end; gap:10px; padding-top:12px; }
+.employee-document-upload .form-field { min-width:0; }
+.employee-document-upload .button { min-height:42px; }
+@media(max-width:720px) { .employee-document-upload { grid-template-columns:1fr; } .employee-document-upload .button { width:100%; } }

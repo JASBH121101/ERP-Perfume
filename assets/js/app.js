@@ -107,6 +107,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
   let invoiceDraftItems = [];
   let employees = [];
   let employeeHistory = [];
+  let employeeDocuments = [];
   let attendanceRecords = [];
   let leaveRequests = [];
   let payrollPeriods = [];
@@ -474,6 +475,10 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         fromCommissionRate:item.from_commission_rate==null?null:Number(item.from_commission_rate), toCommissionRate:item.to_commission_rate==null?null:Number(item.to_commission_rate),
         fromStatus:item.from_status, toStatus:item.to_status, reason:item.reason||"", createdAt:item.created_at
       }));
+      employeeDocuments = (data.employee_documents || []).map(item => ({
+        id:item.id, employeeId:item.employee_id, documentType:item.document_type, fileName:item.file_name,
+        fileType:item.file_type, fileSize:Number(item.file_size||0), createdAt:item.created_at
+      }));
       attendanceRecords = (data.hr_attendance || []).map(e => ({
         id:e.id, employeeId:e.employee_id, workDate:e.work_date, checkIn:e.check_in, checkOut:e.check_out,
         breakMinutes:Number(e.break_minutes||0), status:e.status, notes:e.notes||""
@@ -611,6 +616,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     "new-expense": ["expenses.records.create"], "new-cash": ["cash.entries.create"],
     "new-cash-account": ["cash.entries.create"], "new-employee": ["hr.employees.create"],
     "view-employee": ["hr.employees.view"], "edit-employee": ["hr.employees.edit"],
+    "upload-employee-document": ["hr.employees.edit"], "download-employee-document": ["hr.employees.view"],
     "new-attendance": ["hr.attendance.create"], "new-leave": ["hr.leave.create"],
     "approve-leave": ["hr.leave.approve"], "reject-leave": ["hr.leave.reject"],
     "new-payroll-period": ["hr.payroll.create"], "new-payroll-item": ["hr.payroll.create"],
@@ -1539,9 +1545,14 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
           item.eventType==='status'?'Estado: '+(item.fromStatus||'—')+' → '+(item.toStatus||'—'):'Registro inicial del colaborador';
         return '<div class="employee-history-item"><div class="employee-history-date">'+dateText(item.effectiveDate)+'</div><div><strong>'+label+'</strong><p>'+esc(detail)+'</p><small>'+esc(item.reason||'Sin observaciones')+'</small></div></div>';
       }).join('');
+      const documentRows=employeeDocuments.filter(item=>String(item.employeeId)===String(employee.id)).map(item=>
+        '<div class="employee-document-row"><div><strong>'+esc(item.fileName)+'</strong><small>'+esc(item.documentType)+' · '+(item.fileSize/1024).toFixed(0)+' KB · '+dateText(item.createdAt)+'</small></div><button type="button" class="button button-quiet button-small" data-action="download-employee-document" data-id="'+esc(item.id)+'">Descargar</button></div>'
+      ).join('');
       body='<div class="employee-profile-summary"><div><span>COLABORADOR</span><strong>'+esc(employee.name)+'</strong><small>'+esc(employee.employeeCode||'Código pendiente')+' · '+esc(employee.position)+'</small></div><div><span>ANTIGÜEDAD TOTAL</span><strong>'+esc(calculateTenure(employee.hireDate,today).label)+'</strong></div></div>'+
         '<div class="employee-history-section"><h3>Historial laboral</h3>'+(historyRows||'<p class="form-helper">Todavía no hay movimientos históricos registrados.</p>')+'</div>'+
-        '<p class="form-helper">El tiempo de servicio se calcula desde la fecha original de ingreso. El tiempo en el cargo actual se puede obtener del último movimiento de puesto.</p>'+
+        '<div class="employee-history-section"><h3>Expediente digital</h3>'+(documentRows||'<p class="form-helper">Todavía no hay documentos adjuntos.</p>')+
+        '<div class="employee-document-upload"><label class="form-field"><span>Tipo de documento</span><select id="employee-document-type"><option>Contrato</option><option>Identificación</option><option>Constancia</option><option>Otro</option></select></label><label class="form-field"><span>Archivo PDF, JPG o PNG (máximo 5 MB)</span><input id="employee-document-file" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label><button type="button" class="button button-primary" data-action="upload-employee-document" data-id="'+esc(employee.id)+'">Adjuntar documento</button></div></div>'+
+        '<p class="form-helper">Los archivos se guardan en almacenamiento privado. Solo personal con permisos de RR. HH. puede consultarlos.</p>'+
         '<div class="employee-history-actions"><button type="button" class="button button-quiet" data-action="edit-employee" data-id="'+esc(employee.id)+'">Editar colaborador</button></div>';
     }
     if(type==='attendance'){
@@ -3332,6 +3343,54 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     if(event.key==='Escape'){closeLookupResults(input.closest('[data-search-field]'));return;}
     if(event.key==='Enter'){const first=input.closest('[data-search-field]').querySelector('[data-lookup-select]');if(first){event.preventDefault();first.click();}}
   });
+  async function uploadEmployeeDocument(button) {
+    const employeeId=button?.getAttribute('data-id')||'';
+    const fileInput=document.getElementById('employee-document-file');
+    const typeInput=document.getElementById('employee-document-type');
+    const file=fileInput?.files?.[0];
+    if(!employeeId||!file){toast('Selecciona un documento antes de adjuntarlo.');return;}
+    const supported=new Set(['application/pdf','image/jpeg','image/png']);
+    if(!supported.has(String(file.type||'').toLowerCase())){toast('El expediente admite únicamente PDF, JPG y PNG.');return;}
+    if(file.size<1||file.size>5*1024*1024){toast('El archivo debe pesar como máximo 5 MB.');return;}
+    const formData=new FormData();
+    formData.append('employee_id',employeeId);
+    formData.append('document_type',typeInput?.value||'Otro');
+    formData.append('file',file);
+    const originalText=button.textContent;
+    button.disabled=true;button.textContent='Subiendo…';
+    try{
+      const token=await window.JBAuth.getToken();
+      const response=await fetch(window.JBAuth.apiUrl('/api/erp/employee-documents'),{
+        method:'POST',headers:{authorization:'Bearer '+token},body:formData,cache:'no-store'
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload?.error?.message||'No se pudo adjuntar el documento.');
+      await loadERPFromNeon(true);
+      businessDialog.close();
+      openBusinessDialog('employee-history',employeeId);
+      toast('Documento adjuntado al expediente.');
+    }catch(error){toast(error?.message||'No se pudo adjuntar el documento.');}
+    finally{button.disabled=false;button.textContent=originalText;}
+  }
+
+  async function downloadEmployeeDocument(documentId,button) {
+    if(!documentId)throw new Error('La referencia del documento no es válida.');
+    const originalText=button?.textContent;
+    if(button){button.disabled=true;button.textContent='Descargando…';}
+    try{
+      const token=await window.JBAuth.getToken();
+      const response=await fetch(window.JBAuth.apiUrl('/api/erp/employee-documents/'+encodeURIComponent(documentId)+'/file'),{
+        headers:{authorization:'Bearer '+token},cache:'no-store'
+      });
+      if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload?.error?.message||'No se pudo descargar el documento.');}
+      const blob=await response.blob();
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a');
+      link.href=url;link.download='documento-personal';document.body.appendChild(link);link.click();link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }finally{if(button){button.disabled=false;button.textContent=originalText;}}
+  }
+
   document.addEventListener('click',function(event){
     const action=event.target.closest('[data-action]');
     if(!action){if(event.target.closest('#business-close')||event.target.closest('#business-cancel'))businessDialog.close();return;}
@@ -3346,6 +3405,8 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     else if(name==='export-dgi-book')exportDgiBook();
     else if(name==='reload-dgi-documents'){dgiDocumentsLoadAttempted=false;dgiDocumentsLoaded=false;loadDgiSupportDocuments(true);}
     else if(name==='download-dgi-document')downloadDgiDocument(action.getAttribute('data-id'),action);
+    else if(name==='upload-employee-document')uploadEmployeeDocument(action);
+    else if(name==='download-employee-document')downloadEmployeeDocument(action.getAttribute('data-id'),action).catch(error=>toast(error?.message||'No se pudo descargar el documento.'));
     else if(name==='pay-payroll')openBusinessDialog('payroll-payment',action.getAttribute('data-id'));
     else if(name==='remove-product-image'){
       const productId=action.getAttribute('data-product-id'),key=action.getAttribute('data-key');
