@@ -87,11 +87,24 @@ jobs:
           pg_dump --format=custom --no-owner --no-acl --file="$dump_file" "$NEON_DATABASE_URL"
           test -s "$dump_file"
 
+          source_digest="$(sha256sum "$dump_file" | awk '{print $1}')"
           printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" |
             gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
               --symmetric --cipher-algo AES256 --output "$encrypted_file" "$dump_file"
-          rm -f "$dump_file"
           test -s "$encrypted_file"
+
+          verify_dump="$tmpdir/verified_restore_candidate.dump"
+          printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" |
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+              --decrypt --output "$verify_dump" "$encrypted_file"
+          test -s "$verify_dump"
+          verify_digest="$(sha256sum "$verify_dump" | awk '{print $1}')"
+          if [[ "$verify_digest" != "$source_digest" ]]; then
+            echo "::error::Encrypted backup verification did not match the original database dump."
+            exit 1
+          fi
+          pg_restore --list "$verify_dump" >/dev/null
+          rm -f "$dump_file" "$verify_dump"
 
           digest="$(sha256sum "$encrypted_file" | awk '{print $1}')"
           export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"

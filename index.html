@@ -102,7 +102,13 @@
             <button type="button" id="font-increase" aria-label="Aumentar tamaño de letra" title="Aumentar letra">A+</button>
           </div>
           <button class="button button-quiet button-small auth-control" id="auth-control" type="button" hidden>Iniciar sesión</button><span class="demo-pill" id="connection-pill"><i></i> NEON · DESARROLLO</span>
-          <button class="icon-button notification-button" type="button" aria-label="Notificaciones: sin alertas"><span data-icon="bell"></span><i hidden></i></button>
+          <div class="notification-wrap">
+            <button class="icon-button notification-button" type="button" aria-label="Notificaciones: sin alertas" aria-expanded="false" aria-controls="notification-panel"><span data-icon="bell"></span><span id="notification-count" class="notification-count" hidden>0</span></button>
+            <section id="notification-panel" class="notification-panel" aria-label="Centro de notificaciones" hidden>
+              <header class="notification-panel-header"><div><strong>Notificaciones</strong><small>Solicitudes y alertas operativas</small></div><button type="button" id="notification-mark-all" class="button button-quiet button-small">Marcar todas leídas</button></header>
+              <div id="notification-list" class="notification-list"><p class="notification-empty">Las notificaciones aparecerán aquí.</p></div>
+            </section>
+          </div>
           <span class="topbar-divider"></span>
           <button class="top-avatar" type="button" aria-label="Perfil del administrador">JB</button>
         </div>

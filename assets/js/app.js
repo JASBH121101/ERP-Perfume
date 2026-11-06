@@ -121,9 +121,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", regime_confirmation_reference:"", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"", computerized_invoicing_authorization_number:"", computerized_invoicing_confirmation_reference:"" };
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
+  let notificationRecords = [], notificationUnreadCount = 0, notificationsLoading = false;
+  let clientErrorReportThrottle = 0;
   const accessManager = {
     attempted:false, loading:false, loaded:false, error:"",
-    users:[], pendingIdentities:[], roles:[], permissions:[], grants:[], audit:[]
+    users:[], pendingIdentities:[], roles:[], permissions:[], grants:[], audit:[], clientErrors:[]
   };
   let accessSelectedRole = "";
 
@@ -143,6 +145,33 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (!response.ok) throw new Error(body?.error?.message || "La operación no se pudo completar (HTTP " + response.status + ").");
     return body;
   }
+
+  function reportClientError(errorType, message, sourceFile, lineNumber, columnNumber) {
+    const now = Date.now();
+    if (now - clientErrorReportThrottle < 2500 || !window.JBAuth?.profile) return;
+    clientErrorReportThrottle = now;
+    const safeSource = String(sourceFile || "").split(/[?#]/)[0].slice(0,300);
+    const payload = {
+      error_type: errorType,
+      error_message: String(message || "Error sin mensaje").slice(0,600),
+      source_file: safeSource,
+      line_number: Number(lineNumber || 0),
+      column_number: Number(columnNumber || 0),
+      page_path: window.location.pathname
+    };
+    erpApi("client-errors", { method:"POST", body:JSON.stringify(payload) }).catch(() => {});
+  }
+
+  window.addEventListener("error", function(event) {
+    if (!event?.error) return;
+    reportClientError("javascript_error", event.message || event.error.message, event.filename, event.lineno, event.colno);
+  });
+  window.addEventListener("unhandledrejection", function(event) {
+    const reason = event?.reason;
+    const message = reason instanceof Error ? reason.message : String(reason || "Promesa rechazada sin detalle");
+    reportClientError("unhandled_rejection", message, "", 0, 0);
+  });
+
   const productAssetUrlCache=new Map();
   async function productAssetUrl(key){
     if(productAssetUrlCache.has(key))return productAssetUrlCache.get(key);
@@ -415,6 +444,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         currency:order.currency, exchangeRate:Number(order.exchange_rate||1), subtotalUsd:Number(order.subtotal_usd||0),
         discountUsd:Number(order.discount_usd||0), freightUsd:Number(order.estimated_freight_usd||0),
         taxesUsd:Number(order.estimated_taxes_usd||0), totalUsd:Number(order.total_usd||0), status:order.status,
+        createdBy:order.created_by||null, approvedBy:order.approved_by||null, approvedAt:order.approved_at||null,
         expectedDate:order.expected_delivery_date, paymentTerms:order.payment_terms||"", notes:order.notes||"", createdAt:order.created_at
       }));
       purchaseOrderItems = data.purchase_order_items || [];
@@ -527,6 +557,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       }
 
       erpDataLoaded = true;
+      void loadNotifications({ silent:true });
       hrRecordsLoaded = Array.isArray(data.employees);
       hrLoadAttempted = true;
       const dbStatus=document.getElementById('db-connection-status');
@@ -2174,12 +2205,15 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const lines=linesByOrder.get(String(order.id))||[];
       const itemSummary=lines.map(line=>esc(line.product_name)+' × '+Number(line.ordered_quantity)+' <small class="table-secondary">('+Number(line.received_quantity||0)+' recibidas)</small>').join('<br>');
       const actions=[];
+      const currentUserId=window.JBAuth?.profile?.id||"";
+      const createdByCurrentUser=Boolean(order.createdBy&&currentUserId&&String(order.createdBy)===String(currentUserId));
       if(order.status==="Borrador"&&permissionGranted("purchases.purchase_orders.submit"))actions.push('<button class="button button-quiet button-small" data-action="submit-purchase-order" data-id="'+esc(order.id)+'">Enviar</button>');
-      if(order.status==="Enviada"&&permissionGranted("purchases.approvals.approve"))actions.push('<button class="button button-quiet button-small" data-action="approve-purchase-order" data-id="'+esc(order.id)+'">Aprobar</button>');
+      if(order.status==="Enviada"&&permissionGranted("purchases.approvals.approve")&&!createdByCurrentUser)actions.push('<button class="button button-quiet button-small" data-action="approve-purchase-order" data-id="'+esc(order.id)+'">Aprobar</button>');
+      else if(order.status==="Enviada"&&createdByCurrentUser)actions.push('<small class="table-secondary">Requiere otro aprobador</small>');
       if(["Borrador","Enviada"].includes(order.status)&&permissionGranted("purchases.purchase_orders.cancel"))actions.push('<button class="button button-quiet button-small" data-action="cancel-purchase-order" data-id="'+esc(order.id)+'">Cancelar</button>');
       const remaining=lines.reduce((sum,line)=>sum+Math.max(0,Number(line.ordered_quantity||0)-Number(line.received_quantity||0)),0);
       if(["Confirmada","Recepción parcial"].includes(order.status)&&remaining>0&&permissionGranted("purchases.receipts.receive")&&permissionGranted("inventory.receipts.receive"))actions.push('<button class="button button-primary button-small" data-action="receive-purchase-order" data-id="'+esc(order.id)+'">Recibir ('+remaining+')</button>');
-      return '<tr><td data-label="Orden" class="table-primary"><strong>'+esc(order.orderNumber)+'</strong><small class="table-secondary">'+dateText(order.createdAt)+'</small></td><td data-label="Proveedor">'+esc(order.supplier)+'</td><td data-label="Productos">'+(itemSummary||'—')+'</td><td data-label="Entrega estimada">'+(order.expectedDate?dateText(order.expectedDate):'—')+'</td><td data-label="Total">'+money(order.totalUsd)+'</td><td data-label="Recepciones">'+(receiptCounts.get(String(order.id))||0)+'</td><td data-label="Estado"><span class="status-chip '+(order.status==="Recibida"?'status-success':order.status==="Cancelada"?'status-muted':'status-pending')+'">'+esc(order.status)+'</span></td><td data-label="Acciones">'+(actions.join(' ')||'—')+'</td></tr>';
+      return '<tr><td data-label="Orden" class="table-primary"><strong>'+esc(order.orderNumber)+'</strong><small class="table-secondary">'+dateText(order.createdAt)+'</small></td><td data-label="Proveedor">'+esc(order.supplier)+'</td><td data-label="Productos">'+(itemSummary||'—')+'</td><td data-label="Entrega estimada">'+(order.expectedDate?dateText(order.expectedDate):'—')+'</td><td data-label="Total">'+money(order.totalUsd)+'</td><td data-label="Recepciones">'+(receiptCounts.get(String(order.id))||0)+'</td><td data-label="Estado"><span class="status-chip '+(order.status==="Recibida"?'status-success':order.status==="Cancelada"?'status-muted':'status-pending')+'">'+esc(order.status)+'</span>'+(order.approvedAt?'<small class="table-secondary">Aprobada · '+dateText(order.approvedAt)+'</small>':'')+'</td><td data-label="Acciones">'+(actions.join(' ')||'—')+'</td></tr>';
     }).join('');
     const supplierOptions=suppliers.filter(supplier=>supplier.active!==false).map(supplier=>'<option value="'+esc(supplier.id)+'">'+esc(supplier.name)+'</option>').join('');
     const canCreate=permissionGranted("purchases.purchase_orders.create")&&permissionGranted("products.catalog.view")&&permissionGranted("suppliers.records.view");
@@ -2470,8 +2504,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     accessManager.loading = true;
     accessManager.error = "";
     try {
-      const [users, roles, audit] = await Promise.all([
-        erpApi("users"), erpApi("roles"), erpApi("audit")
+      const [users, roles, audit, clientErrors] = await Promise.all([
+        erpApi("users"), erpApi("roles"), erpApi("audit"), erpApi("client-errors")
       ]);
       accessManager.users = users.users || [];
       accessManager.pendingIdentities = users.pendingIdentities || [];
@@ -2479,6 +2513,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       accessManager.permissions = roles.permissions || [];
       accessManager.grants = roles.grants || [];
       accessManager.audit = audit.records || [];
+      accessManager.clientErrors = clientErrors.records || [];
       if (!accessSelectedRole || !accessManager.roles.some(role => role.role_key === accessSelectedRole)) {
         accessSelectedRole = accessManager.roles.find(role => role.role_key !== "owner")?.role_key || "";
       }
@@ -2561,6 +2596,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const auditRows = accessManager.audit.slice(0,100).map(record =>
       '<tr><td>'+esc(new Date(record.created_at).toLocaleString("es-NI"))+'</td><td>'+esc(record.actor_name||"Sistema")+'</td><td>'+esc(record.action)+'</td><td>'+esc(record.entity_type)+(record.entity_id?' · '+esc(record.entity_id):'')+'</td></tr>'
     ).join("");
+    const clientErrorRows = accessManager.clientErrors.slice(0,100).map(error =>
+      '<tr><td>'+esc(new Date(error.created_at).toLocaleString("es-NI"))+'</td><td>'+esc(error.actor_name||"Usuario")+'</td><td><span class="status-chip status-warning">'+esc(error.error_type)+'</span></td><td>'+esc(error.error_message)+'</td><td>'+esc(error.page_path||"/")+(error.source_file?' · '+esc(error.source_file):'')+(error.line_number?' :'+Number(error.line_number):'')+'</td></tr>'
+    ).join("");
 
     return '<section class="access-manager-section">'+
       '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
@@ -2573,20 +2611,89 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       (selectedRole ? '<form id="role-permissions-form" data-role-key="'+esc(accessSelectedRole)+'"><div class="permission-editor-grid">'+permissionGroups+'</div><div class="modal-actions"><button class="button button-primary" type="submit">Guardar permisos de plantilla</button></div></form>' : '<p>No hay plantillas editables disponibles.</p>')+
       '<form id="role-create-form" class="rate-form"><label class="form-field"><span>Clave nueva</span><input name="role_key" maxlength="32" pattern="[a-z][a-z0-9_-]{2,31}" placeholder="supervisor" required></label><label class="form-field"><span>Nombre</span><input name="name" maxlength="80" placeholder="Supervisor de tienda" required></label><label class="form-field"><span>Descripción</span><input name="description" maxlength="240" placeholder="Responsabilidades del puesto"></label><button class="button button-quiet" type="submit">Crear plantilla vacía</button></form></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Auditoría reciente</h3><p>Últimos 100 cambios registrados.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>ACTOR</th><th>ACCIÓN</th><th>REGISTRO</th></tr></thead><tbody>'+(auditRows||'<tr><td colspan="4">Todavía no hay eventos de auditoría.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Monitoreo de errores del navegador</h3><p>Últimos 100 errores reportados por sesiones autenticadas. Los datos sensibles se filtran antes de guardarse.</p><span class="ledger-count">'+accessManager.clientErrors.length+' eventos</span></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>USUARIO</th><th>TIPO</th><th>ERROR</th><th>ORIGEN</th></tr></thead><tbody>'+(clientErrorRows||'<tr><td colspan="5">No se han reportado errores técnicos del navegador.</td></tr>')+'</tbody></table></div></article>'+
       '</section>';
   }
 
-  function updateNotificationIndicator(){
-    const dot=document.querySelector('.notification-button i');
+  function closeNotificationPanel() {
+    const panel=document.getElementById('notification-panel');
     const button=document.querySelector('.notification-button');
-    if(!dot||!button)return;
-    const lowStock=products.some(p=>p.active!==false&&needsRestock(p));
-    const receivable=invoices.some(i=>Number(i.totalUsd||0)-Number(i.paidUsd||0)>0.001);
-    const payable=purchases.some(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001);
-    const hasAlerts=lowStock||receivable||payable;
-    dot.hidden=!hasAlerts;
-    button.setAttribute('aria-label',hasAlerts?'Notificaciones: hay alertas operativas':'Notificaciones: sin alertas');
+    if(panel)panel.hidden=true;
+    if(button)button.setAttribute('aria-expanded','false');
   }
+  function renderNotificationPanel() {
+    const panel=document.getElementById('notification-panel');
+    const list=document.getElementById('notification-list');
+    if(!panel||!list)return;
+    if(notificationsLoading&&!notificationRecords.length){
+      list.innerHTML='<p class="notification-empty">Cargando notificaciones…</p>';
+      return;
+    }
+    if(!notificationRecords.length){
+      list.innerHTML='<p class="notification-empty">No hay notificaciones pendientes. Las nuevas solicitudes y alertas aparecerán aquí.</p>';
+      return;
+    }
+    list.innerHTML=notificationRecords.map(item=>{
+      const timestamp=item.created_at?new Date(item.created_at).toLocaleString('es-NI',{dateStyle:'short',timeStyle:'short'}):'';
+      const severity=item.severity==='critical'?'Crítica':item.severity==='warning'?'Importante':'Informativa';
+      return '<button type="button" class="notification-item '+(item.read_at?'is-read':'is-unread')+'" data-notification-open data-id="'+esc(item.id)+'" data-view="'+esc(item.target_view||'dashboard')+'">'+
+        '<span class="notification-item-top"><strong>'+esc(item.title)+'</strong><span class="notification-severity severity-'+esc(item.severity)+'">'+severity+'</span></span>'+
+        '<span class="notification-item-message">'+esc(item.message)+'</span><span class="notification-item-time">'+esc(timestamp)+(item.read_at?' · Leída':' · Nueva')+'</span></button>';
+    }).join('');
+  }
+  function updateNotificationIndicator() {
+    const button=document.querySelector('.notification-button');
+    const count=document.getElementById('notification-count');
+    const unread=Math.max(0,Number(notificationUnreadCount||0));
+    if(count){count.textContent=unread>99?'99+':String(unread);count.hidden=unread===0;}
+    if(button)button.setAttribute('aria-label',unread?('Notificaciones: '+unread+' sin leer'):'Notificaciones: sin alertas nuevas');
+  }
+  async function loadNotifications(options={}) {
+    if(notificationsLoading)return;
+    notificationsLoading=true;
+    renderNotificationPanel();
+    try{
+      const response=await erpApi('notifications');
+      notificationRecords=Array.isArray(response.notifications)?response.notifications:[];
+      notificationUnreadCount=Number(response.unread_count||0);
+      updateNotificationIndicator();
+      renderNotificationPanel();
+      return true;
+    }catch(error){
+      if(!options.silent){
+        const list=document.getElementById('notification-list');
+        if(list)list.innerHTML='<p class="notification-error">'+esc(error?.message||'No se pudo cargar el centro de notificaciones.')+'</p>';
+      }
+      return false;
+    }finally{notificationsLoading=false;}
+  }
+  async function markAllNotificationsRead() {
+    const button=document.getElementById('notification-mark-all');
+    if(button)button.disabled=true;
+    try{
+      await erpApi('notifications/read-all',{method:'PATCH',body:JSON.stringify({})});
+      await loadNotifications({silent:true});
+    }catch(error){toast(error?.message||'No se pudieron marcar las notificaciones como leídas.');}
+    finally{if(button)button.disabled=false;}
+  }
+  async function openNotification(button) {
+    const id=button.getAttribute('data-id');
+    const targetView=button.getAttribute('data-view');
+    if(!id)return;
+    button.disabled=true;
+    try{
+      await erpApi('notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH',body:JSON.stringify({})});
+      notificationRecords=notificationRecords.map(item=>String(item.id)===String(id)?{...item,read_at:item.read_at||new Date().toISOString()}:item);
+      notificationUnreadCount=Math.max(0,notificationUnreadCount-(notificationRecords.find(item=>String(item.id)===String(id))?.read_at?1:0));
+      await loadNotifications({silent:true});
+      closeNotificationPanel();
+      if(targetView)goToView(targetView);
+    }catch(error){toast(error?.message||'No se pudo abrir la notificación.');}
+    finally{button.disabled=false;}
+  }
+  window.setInterval(function(){
+    if(document.visibilityState==='visible'&&window.JBAuth?.profile)loadNotifications({silent:true});
+  },60000);
   function renderView() {
     if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
     const meta = views[state.view] || views.dashboard;
@@ -2716,9 +2823,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   const fontLevels = [
     { value: 'normal', label: '100%' },
     { value: 'large', label: '110%' },
-    { value: 'larger', label: '120%' }
+    { value: 'larger', label: '120%' },
+    { value: 'largest', label: '130%' },
+    { value: 'huge', label: '140%' },
+    { value: 'extra', label: '150%' }
   ];
-  let fontLevelIndex = 1;
+  let fontLevelIndex = 2;
   function setFontLevel(index, persist) {
     fontLevelIndex = Math.max(0, Math.min(fontLevels.length - 1, index));
     const level = fontLevels[fontLevelIndex];
@@ -2736,6 +2846,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         // Font controls still work for the current browser session.
       }
     }
+  }
+  try {
+    const savedFontLevel = window.localStorage.getItem('jbparfums-font-level');
+    if (savedFontLevel !== null && Number.isInteger(Number(savedFontLevel))) {
+      setFontLevel(Number(savedFontLevel), false);
+    } else {
+      setFontLevel(fontLevelIndex, false);
+    }
+  } catch (error) {
+    setFontLevel(fontLevelIndex, false);
   }
   function closeMobileMenu() {
     document.getElementById('sidebar').classList.remove('open');
@@ -2910,6 +3030,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
 
   document.addEventListener('click', async function (event) {
+    if(!event.target.closest('.notification-wrap'))closeNotificationPanel();
+    if(event.target.closest('.notification-button')){
+      const panel=document.getElementById('notification-panel');
+      const button=event.target.closest('.notification-button');
+      if(panel){const open=panel.hidden;panel.hidden=!open;button.setAttribute('aria-expanded',String(open));if(open)await loadNotifications({silent:false});}
+      return;
+    }
+    if(event.target.closest('#notification-mark-all')){await markAllNotificationsRead();return;}
+    const notificationButton=event.target.closest('[data-notification-open]');
+    if(notificationButton){await openNotification(notificationButton);return;}
     if(!event.target.closest('.export-actions')){
       const openMenu=document.getElementById('current-export-menu');
       if(openMenu&&!openMenu.hidden){openMenu.hidden=true;const trigger=root.querySelector('[data-action="toggle-export-menu"]');if(trigger)trigger.setAttribute('aria-expanded','false');}
