@@ -23,3 +23,5 @@ Preview update: preserve item-scoped stock movement as a secondary control besid
 Preview source commit: 284f8c215b4bfa0cb82fa3943fc3f6b8f759fcbd.
 Preview follow-up: E2E stock movement actions now target the intended product by ID.
 Source commit: cba4f72aadf638b49bd7d0c546e1f6741ba2f679.
+Preview release: Inventory lookup-only workflow, generated OC number on creation, larger notifications, and aligned permission and purchase-order layouts.
+Preview source commit: 5cd2fec2cd89e46d8398bc9ffccb717ce8573658.
