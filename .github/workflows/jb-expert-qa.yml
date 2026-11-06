@@ -101,6 +101,19 @@ jobs:
           test -s "$RUNNER_TEMP/jb-expert-qa-report/report.json"
           test -s "$RUNNER_TEMP/jb-expert-qa-report/report.md"
 
+      - name: Print JB Expert QA findings
+        if: always()
+        shell: bash
+        run: |
+          report="$RUNNER_TEMP/jb-expert-qa-report/report.md"
+          if [ -s "$report" ]; then
+            echo "===== JB EXPERT QA FINDINGS ====="
+            cat "$report"
+            echo "===== END JB EXPERT QA FINDINGS ====="
+          else
+            echo "JB Expert QA report was not generated."
+          fi
+
       - name: Enforce completeness, critical findings and score
         env:
           REPORT_PATH: ${{ runner.temp }}/jb-expert-qa-report/report.json
