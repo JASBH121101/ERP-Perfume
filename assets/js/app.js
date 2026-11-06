@@ -1810,25 +1810,33 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
     const totalPayroll=payrollItems.reduce((sum,item)=>sum+Number(item.netSalaryNio||0),0);
     const now=new Date();
     const today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
-    const monthlyOrdinarySalaries=(employeeId)=>{
+    const monthlyOrdinarySalaries=(employeeId,cycleEnd)=>{
       const totals=new Map();
+      const cycleEndDate=cycleEnd?new Date(cycleEnd+'T00:00:00Z'):null;
+      const cutoff=cycleEndDate?new Date(cycleEndDate):null;
+      if(cutoff){cutoff.setUTCMonth(cutoff.getUTCMonth()-6);cutoff.setUTCDate(cutoff.getUTCDate()+1);}
+      const cutoffText=cutoff?cutoff.toISOString().slice(0,10):'0000-01-01';
       payrollItems.filter(item=>String(item.employeeId)===String(employeeId)).forEach(item=>{
         const period=payrollPeriods.find(p=>String(p.id)===String(item.payrollPeriodId));
-        if(!period||period.status!=='Pagada'||period.periodType!=='Ordinaria'||!period.periodEnd)return;
+        if(!period||period.status!=='Pagada'||period.periodType!=='Ordinaria'||!period.periodEnd||
+           String(period.periodEnd)<cutoffText||String(period.periodEnd)>String(cycleEnd||'9999-12-31'))return;
         const month=String(period.periodEnd).slice(0,7);
         const value=Number(item.baseSalaryNio||0)+Number(item.bonusesNio||0)+Number(item.commissionsNio||0);
         totals.set(month,(totals.get(month)||0)+value);
       });
-      return [...totals.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([,value])=>Number(value.toFixed(2)));
+      return [...totals.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([,value])=>Number(value.toFixed(2)));
     };
     const vacationFor=(employee)=>calculateVacationBalance({
       hireDate:employee.hireDate,leaveRequests,employeeId:employee.id,asOf:today
     });
-    const aguinaldoFor=(employee)=>calculateAguinaldoEstimate({
-      hireDate:employee.hireDate,salaryNio:employee.salaryNio,
-      commissionEnabled:employee.commissionEnabled,
-      monthlyOrdinarySalaries:monthlyOrdinarySalaries(employee.id),asOf:today
-    });
+    const aguinaldoFor=(employee)=>{
+      const cycle=calculateAguinaldoEstimate({hireDate:employee.hireDate,salaryNio:employee.salaryNio,asOf:today});
+      return calculateAguinaldoEstimate({
+        hireDate:employee.hireDate,salaryNio:employee.salaryNio,
+        commissionEnabled:employee.commissionEnabled,
+        monthlyOrdinarySalaries:monthlyOrdinarySalaries(employee.id,cycle.cycleEnd),asOf:today
+      });
+    };
     const pendingCommissionFor=(employeeId)=>activeCommissions
       .filter(c=>String(c.employeeId)===String(employeeId))
       .reduce((sum,c)=>sum+Number(c.commissionNio||0),0);
@@ -1876,7 +1884,7 @@ import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, 
         const aguinaldo=aguinaldoFor(e);
         const inss=inssFor(e);
         const salaryBasisNote=e.commissionEnabled
-          ? (monthlyOrdinarySalaries(e.id).length?'<small class="table-secondary">Mayor salario ordinario de los últimos meses registrados</small>':'<small class="table-secondary">Sin historial suficiente; se usa el salario fijo actual</small>')
+          ? (monthlyOrdinarySalaries(e.id,aguinaldo.cycleEnd).length?'<small class="table-secondary">Mayor salario ordinario de los últimos meses registrados</small>':'<small class="table-secondary">Sin historial suficiente; se usa el salario fijo actual</small>')
           : '<small class="table-secondary">Último salario mensual fijo registrado</small>';
         return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(tenure.label)+'</small></td><td data-label="Vacaciones"><strong>'+vacation.balanceDays.toFixed(2)+' días</strong><small class="table-secondary">'+vacation.accruedDays.toFixed(2)+' acumulados · '+vacation.usedDays.toFixed(2)+' usados</small></td><td data-label="Aguinaldo estimado"><strong>'+moneyInCurrency(aguinaldo.amountNio,'NIO')+'</strong>'+salaryBasisNote+'</td><td data-label="INSS trabajador">'+moneyInCurrency(inss.employeeInssNio,'NIO')+'</td><td data-label="INSS patronal">'+moneyInCurrency(inss.employerInssNio,'NIO')+'</td></tr>';
       }).join('');
