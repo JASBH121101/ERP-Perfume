@@ -21,3 +21,5 @@ Preview release: Inventory lookup-first UX, compact mobile filters/actions and p
 Preview source commit: 067dda1ca85079b7f218837e2c6edccc4cdcf64d.
 Preview update: preserve item-scoped stock movement as a secondary control beside stock-only product lookup.
 Preview source commit: 284f8c215b4bfa0cb82fa3943fc3f6b8f759fcbd.
+Preview follow-up: E2E stock movement actions now target the intended product by ID.
+Source commit: cba4f72aadf638b49bd7d0c546e1f6741ba2f679.
