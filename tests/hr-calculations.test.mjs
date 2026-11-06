@@ -7,7 +7,7 @@ import {
 
 test("tenure renders complete years, months and days", () => {
   assert.deepEqual(calculateTenure("2024-01-15", "2026-04-27"), {
-    years: 2, months: 3, days: 12, totalDays: 832, label: "2 años, 3 meses, 12 días"
+    years: 2, months: 3, days: 12, totalDays: 833, label: "2 años, 3 meses, 12 días"
   });
   assert.equal(calculateTenure("2026-11-05", "2026-11-05").label, "0 días");
   assert.equal(calculateTenure("2026-11-06", "2026-11-05").label, "Fecha de ingreso pendiente");
@@ -30,7 +30,7 @@ test("aguinaldo estimate prorates the Dec-to-Nov work cycle", () => {
   const result = calculateAguinaldoEstimate({ hireDate: "2026-06-01", salaryNio: 12000, asOf: "2026-11-30" });
   assert.equal(result.cycleStart, "2025-12-01");
   assert.equal(result.cycleEnd, "2026-11-30");
-  assert.equal(result.amountNio, 6000);
+  assert.equal(result.amountNio, 6016.44);
 });
 
 test("commission-based aguinaldo basis uses the highest supplied recent monthly ordinary salary", () => {
