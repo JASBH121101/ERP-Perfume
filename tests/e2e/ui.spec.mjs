@@ -600,7 +600,7 @@ test('inventory records receipts, issues and physical-count adjustments in the k
 
   const productId = '00000000-0000-0000-0000-000000000101';
   const register = async (type, quantity, note, expectedStock) => {
-    await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
+    await page.locator('[data-action="stock-new"]').click();
     const form = page.locator('#stock-form');
     await expect(page.locator('#stock-dialog')).toBeVisible();
     await form.locator('[name="type"]').selectOption(type);
@@ -634,7 +634,7 @@ test('inventory prevents an issue larger than available stock before sending it 
   await navigateToView(page, 'inventory');
 
   const productId = '00000000-0000-0000-0000-000000000103';
-  await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
+  await page.locator('[data-action="stock-new"]').click();
   const form = page.locator('#stock-form');
   await form.locator('[name="type"]').selectOption('exit');
   await form.locator('[name="quantity"]').fill('1');
@@ -655,7 +655,7 @@ test('a committed stock movement is not repeated when the following data refresh
   await navigateToView(page, 'inventory');
 
   const productId = '00000000-0000-0000-0000-000000000101';
-  await page.locator('[data-action="stock-product"][data-id="' + productId + '"]').click();
+  await page.locator('[data-action="stock-new"]').click();
   const form = page.locator('#stock-form');
   await form.locator('[name="type"]').selectOption('entry');
   await form.locator('[name="quantity"]').fill('2');
@@ -685,6 +685,37 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     await navigateToView(page, 'inventory');
     await expect(page.getByRole('heading', { name: 'Inventario' })).toBeVisible();
     await expect(page.locator('#inventory-product-search')).toBeVisible();
+    await expect(page.locator('.inventory-page-actions [data-action="stock-new"]')).toBeVisible();
+    await expect(page.locator('.inventory-page-actions [data-action="toggle-export-menu"]')).toBeVisible();
+    const actionLayout = await page.evaluate(() => {
+      const actions = document.querySelector('.inventory-page-actions').getBoundingClientRect();
+      const exportButton = document.querySelector('.inventory-page-actions [data-action="toggle-export-menu"]').getBoundingClientRect();
+      const movementButton = document.querySelector('.inventory-page-actions [data-action="stock-new"]').getBoundingClientRect();
+      const summaryColumns = getComputedStyle(document.querySelector('.inventory-summary-strip')).gridTemplateColumns.split(' ').length;
+      const filterColumns = getComputedStyle(document.querySelector('.inventory-products-toolbar .toolbar-right')).gridTemplateColumns.split(' ').length;
+      return {
+        actionsTop: actions.top,
+        exportBottom: exportButton.bottom,
+        movementBottom: movementButton.bottom,
+        overlap: exportButton.right > movementButton.left && movementButton.right > exportButton.left &&
+          exportButton.bottom > movementButton.top && movementButton.bottom > exportButton.top,
+        summaryColumns,
+        filterColumns,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth
+      };
+    });
+    expect(actionLayout.overlap, 'inventory actions must not overlap').toBe(false);
+    expect(actionLayout.exportBottom).toBeGreaterThan(0);
+    expect(actionLayout.movementBottom).toBeGreaterThan(0);
+    expect(actionLayout.summaryColumns).toBe(3);
+    if (viewport.width <= 720) expect(actionLayout.filterColumns).toBe(2);
+    const fixtureId = '00000000-0000-0000-0000-000000000101';
+    const detailTrigger = page.locator('[data-action="preview-product"][data-id="' + fixtureId + '"]');
+    await expect(detailTrigger).toBeVisible();
+    await detailTrigger.click();
+    await expect(page.locator('#product-detail-dialog')).toBeVisible();
+    await page.locator('#detail-cancel').click();
     const layout = await page.evaluate(() => {
       const sidebar = document.getElementById('sidebar');
       const main = document.querySelector('.main-panel');
