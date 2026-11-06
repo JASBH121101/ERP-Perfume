@@ -1024,3 +1024,7 @@ button[hidden] { display: none !important; }
  .hr-view .hr-inss-settings .form-grid{grid-template-columns:1fr}
  .hr-view .hr-benefit-settings{padding:10px 12px}
 }
+
+/* Keep conditionally hidden form fields hidden even when layout classes define display. */
+.business-modal .full-field[hidden],
+.form-grid [hidden] { display: none !important; }
