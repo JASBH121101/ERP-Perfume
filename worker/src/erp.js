@@ -149,7 +149,37 @@ function safeFields(def, body) {
 }
 
 async function createGeneric(sql, user, resource, def, body) {
-  const { keys, values } = safeFields(def, body);
+  let input = body || {};
+  if (def.table === "employees") {
+    const email = String(input.email || "").trim().toLowerCase();
+    const rawPhone = String(input.phone || "").trim();
+    const digits = rawPhone.replace(/\\D/g, "");
+    let phone = null;
+    if (rawPhone) {
+      if (rawPhone.startsWith("+") && digits.length >= 8 && digits.length <= 15) phone = "+" + digits;
+      else if (digits.startsWith("00") && digits.length >= 10 && digits.length <= 17) phone = "+" + digits.slice(2);
+      else if (digits.startsWith("505") && digits.length === 11) phone = "+" + digits;
+      else if (digits.length === 8) phone = "+505" + digits;
+      else return erpError(400, "INVALID_EMPLOYEE_PHONE", "El celular debe tener 8 dígitos de Nicaragua o formato internacional con código de país.");
+    }
+    if (!email && !phone) return erpError(400, "EMPLOYEE_CONTACT_REQUIRED", "Registra un correo electrónico o celular para recuperación de cuenta.");
+    if (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      return erpError(400, "INVALID_EMPLOYEE_EMAIL", "El correo electrónico del colaborador no es válido.");
+    }
+    const commissionEnabled = input.commission_enabled === true || String(input.commission_enabled).toLowerCase() === "true";
+    const commissionRate = commissionEnabled ? Number(input.commission_rate) : 0;
+    if (commissionEnabled && (!Number.isFinite(commissionRate) || commissionRate <= 0 || commissionRate > 100)) {
+      return erpError(400, "INVALID_EMPLOYEE_COMMISSION", "La comisión debe estar entre 0.01 y 100 cuando está habilitada.");
+    }
+    input = {
+      ...input,
+      email: email || null,
+      phone,
+      commission_enabled: commissionEnabled,
+      commission_rate: commissionRate
+    };
+  }
+  const { keys, values } = safeFields(def, input);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
   if (keys.includes("created_by")) return erpError(400, "INVALID_FIELD", "created_by se asigna automáticamente.");
   if (def.fields.includes("created_by")) {
