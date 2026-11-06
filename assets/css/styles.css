@@ -1660,26 +1660,46 @@ html, body { font-size:15px; }
 @media(max-width:720px) { .employee-document-upload { grid-template-columns:1fr; } .employee-document-upload .button { width:100%; } }
 
 
-/* Catalog import dialog: the dialog itself must be wide enough for its inner form. */
+/* Catalog import dialog: constrain the dialog and let only the preview table scroll horizontally. */
 dialog.catalog-import-dialog {
+  display:block;
   box-sizing:border-box;
-  width:min(1080px,calc(100vw - 28px));
-  max-width:1080px;
-  max-height:calc(100dvh - 28px);
+  width:min(1080px,calc(100vw - 32px));
+  min-width:0;
+  max-width:calc(100vw - 32px);
+  max-height:calc(100dvh - 32px);
+  margin:auto;
+  padding:0;
   overflow:hidden;
 }
-.catalog-import-dialog > .modal-card {
+dialog.catalog-import-dialog[open] {
+  position:fixed;
+  inset:50% auto auto 50%;
+  transform:translate(-50%,-50%);
+}
+.catalog-import-dialog > .catalog-import-card {
+  display:block;
   box-sizing:border-box;
-  width:100% !important;
+  width:100%;
   min-width:0;
-  max-height:calc(100dvh - 28px);
+  max-width:100%;
+  max-height:calc(100dvh - 32px);
+  margin:0;
+  padding:22px;
   overflow:auto;
+  overscroll-behavior:contain;
 }
 .catalog-import-dialog .modal-heading,
 .catalog-import-dialog .modal-note,
 .catalog-import-dialog .form-grid,
+.catalog-import-dialog .form-field,
 .catalog-import-dialog .modal-actions { min-width:0; }
+.catalog-import-dialog .form-grid { grid-template-columns:minmax(0,1fr); }
+.catalog-import-dialog .form-field input,
+.catalog-import-dialog .form-field select { box-sizing:border-box; max-width:100%; min-width:0; }
 .catalog-import-dialog #catalog-import-preview {
+  box-sizing:border-box;
+  width:100%;
   max-width:100%;
   min-width:0;
   overflow:auto;
@@ -1687,10 +1707,29 @@ dialog.catalog-import-dialog {
 }
 .catalog-import-dialog #catalog-import-preview table { min-width:760px; }
 @media(max-width:720px) {
-  dialog.catalog-import-dialog { width:calc(100vw - 20px); max-width:calc(100vw - 20px); }
-  .catalog-import-dialog > .modal-card { padding:16px 12px; }
-  .catalog-import-dialog .modal-actions { display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:8px; }
-  .catalog-import-dialog .modal-actions .button { min-width:0; white-space:normal; }
+  dialog.catalog-import-dialog {
+    width:calc(100vw - 20px);
+    max-width:calc(100vw - 20px);
+    max-height:calc(100dvh - 20px);
+  }
+  .catalog-import-dialog > .catalog-import-card {
+    max-height:calc(100dvh - 20px);
+    padding:16px 12px;
+  }
+  .catalog-import-dialog .modal-actions {
+    position:sticky;
+    bottom:-16px;
+    display:grid;
+    grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);
+    gap:8px;
+    padding:12px 0 2px;
+    background:rgba(255,254,250,.97);
+  }
+  .catalog-import-dialog .modal-actions .button {
+    min-width:0;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
 }
 
 /* Contract expiry reminders in HR > Personal. */
