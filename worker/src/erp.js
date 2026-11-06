@@ -927,8 +927,8 @@ async function createPayrollItem(sql,user,body) {
       "monthly_ordinary AS (SELECT date_trunc('month',pp.period_end)::date AS month_start, " +
         "SUM(pi.base_salary_nio+pi.bonuses_nio+pi.commissions_nio)::numeric(14,2) AS ordinary_salary " +
         "FROM hr_payroll_items pi JOIN hr_payroll_periods pp ON pp.id=pi.payroll_period_id " +
-        "WHERE pi.employee_id=$2::uuid AND pp.status='Pagada' AND pp.period_type='Ordinaria' " +
-        "AND pp.period_end>=(CURRENT_DATE-INTERVAL '6 months')::date AND pp.period_end<=CURRENT_DATE " +
+        "CROSS JOIN cycle c WHERE pi.employee_id=$2::uuid AND pp.status='Pagada' AND pp.period_type='Ordinaria' " +
+        "AND pp.period_end>=(c.cycle_end-INTERVAL '6 months'+INTERVAL '1 day')::date AND pp.period_end<=c.cycle_end " +
         "GROUP BY date_trunc('month',pp.period_end)), " +
       "variable_basis AS (SELECT MAX(ordinary_salary)::numeric(14,2) AS highest_salary FROM monthly_ordinary), " +
       "aguinaldo_calc AS (SELECT CASE WHEN p.period_type='Aguinaldo' AND e.hire_date IS NOT NULL AND e.hire_date+INTERVAL '1 month'<=c.as_of AND c.as_of>=GREATEST(e.hire_date,c.cycle_start) " +
