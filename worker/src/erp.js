@@ -151,7 +151,7 @@ function safeFields(def, body) {
 export function normalizeEmployeeCreateInput(input = {}) {
   const email = String(input.email || "").trim().toLowerCase();
   const rawPhone = String(input.phone || "").trim();
-  const digits = rawPhone.replace(/\\D/g, "");
+  const digits = rawPhone.replace(/\D/g, "");
   let phone = null;
 
   if (rawPhone) {
@@ -165,7 +165,7 @@ export function normalizeEmployeeCreateInput(input = {}) {
   if (!email && !phone) {
     return { error: { code: "EMPLOYEE_CONTACT_REQUIRED", message: "Registra un correo electrónico o celular para recuperación de cuenta." } };
   }
-  if (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { error: { code: "INVALID_EMPLOYEE_EMAIL", message: "El correo electrónico del colaborador no es válido." } };
   }
 
