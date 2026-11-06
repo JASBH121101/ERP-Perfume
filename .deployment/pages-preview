@@ -7,3 +7,6 @@ Preview release: mobile export dropdown positioned against the viewport and boun
 Validation: ERP quality gate and JB Expert QA passed on commit 73aa38fd6aa6fae7185c26e1729e2f14062dc7cd.
 Preview release: latest main frontend including HR benefits, vacation, aguinaldo, INSS and commission modules.
 Validation: API Worker deployed successfully to Development; Neon, Neon Auth and R2 health checks passed on commit 5c6c7cfd0a8e18cf7c6a7fc0945a52450bc849d0.
+Preview release: conditional employee commission percentage field and employee mobile phone capture for future verified recovery channels.
+Recovery design: email one-time link and SMS 6-digit OTP (5-minute expiry, max 5 attempts); no provider or SMS reset flow enabled until secure shared storage, provider adapters and Neon Auth phone identity integration are implemented.
+Source commit: af62896f44ce2df437fc4ca4b658d1ba637d3845.
