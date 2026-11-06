@@ -346,6 +346,88 @@ test('HR permissions tab explains how to add the first collaborator', async ({ p
   await expect(page.getByText('Primero registra al colaborador')).toBeVisible();
 });
 
+test('employee commission rate is disabled and saved as zero when commission is No', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await navigateToView(page, 'hr');
+  await page.getByRole('button', { name: /Agregar colaborador/ }).click();
+
+  const dialog = page.locator('#business-dialog');
+  await expect(dialog).toBeVisible();
+  const commissionSelect = dialog.locator('[name="commissionEnabled"]');
+  const commissionWrap = dialog.locator('#employee-commission-rate-field');
+  const commissionRate = dialog.locator('[name="commissionRate"]');
+  await expect(commissionSelect).toHaveValue('false');
+  await expect(commissionWrap).toBeHidden();
+  await expect(commissionRate).toBeDisabled();
+
+  await dialog.locator('[name="name"]').fill('Colaborador QA sin comisión');
+  await dialog.locator('[name="position"]').fill('Asistente');
+  await dialog.locator('[name="salaryNio"]').fill('10000');
+  await dialog.locator('[name="phone"]').fill('8888-8888');
+
+  const post = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/employees') && request.method() === 'POST'
+  );
+  await dialog.locator('#business-save').click();
+  const request = await post;
+  const payload = request.postDataJSON();
+
+  expect(payload.phone).toBe('+50588888888');
+  expect(payload.email).toBeNull();
+  expect(payload.commission_enabled).toBe(false);
+  expect(payload.commission_rate).toBe(0);
+});
+
+test('employee commission rate is required and enabled only when commission is Yes', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'hr');
+  await page.getByRole('button', { name: /Agregar colaborador/ }).click();
+
+  const dialog = page.locator('#business-dialog');
+  const commissionSelect = dialog.locator('[name="commissionEnabled"]');
+  const commissionWrap = dialog.locator('#employee-commission-rate-field');
+  const commissionRate = dialog.locator('[name="commissionRate"]');
+  await commissionSelect.selectOption('true');
+  await expect(commissionWrap).toBeVisible();
+  await expect(commissionRate).toBeEnabled();
+  await expect(commissionRate).toHaveValue('3');
+  await expect(commissionRate).toHaveAttribute('required', '');
+
+  await dialog.locator('[name="name"]').fill('Vendedor QA con comisión');
+  await dialog.locator('[name="email"]').fill('vendedor.qa@example.test');
+  await dialog.locator('[name="position"]').fill('Vendedor');
+  await dialog.locator('[name="salaryNio"]').fill('12000');
+  await commissionRate.fill('5.5');
+
+  const post = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/employees') && request.method() === 'POST'
+  );
+  await dialog.locator('#business-save').click();
+  const request = await post;
+  const payload = request.postDataJSON();
+
+  expect(payload.email).toBe('vendedor.qa@example.test');
+  expect(payload.phone).toBeNull();
+  expect(payload.commission_enabled).toBe(true);
+  expect(payload.commission_rate).toBe(5.5);
+});
+
+test('employee registration requires at least one recovery contact', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'hr');
+  await page.getByRole('button', { name: /Agregar colaborador/ }).click();
+
+  const dialog = page.locator('#business-dialog');
+  await dialog.locator('[name="name"]').fill('Colaborador sin contacto');
+  await dialog.locator('[name="position"]').fill('Asistente');
+  await dialog.locator('[name="salaryNio"]').fill('8000');
+
+  await dialog.locator('#business-save').click();
+  await expect(page.locator('#toast-region')).toContainText('Registra un correo electrónico o un número de celular');
+  await expect(dialog).toBeVisible();
+});
+
 test('custom role can open DGI but cannot export reports without the explicit export permission', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
