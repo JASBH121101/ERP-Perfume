@@ -197,9 +197,26 @@
         <div class="form-field full-field search-field" data-search-field><label for="stock-product-search">Producto <span class="required-mark" aria-hidden="true">*</span></label><input id="stock-product-search" type="search" data-lookup="product" data-target="productId" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="stock-product-results" required><input type="hidden" name="productId"><div class="search-results" id="stock-product-results" role="listbox" hidden></div></div>
         <label class="form-field full-field"><span>Tipo de movimiento <span class="required-mark" aria-hidden="true">*</span></span><select name="type" id="stock-movement-type" required><option value="entry">Entrada</option><option value="exit">Salida</option><option value="adjustment">Ajuste de inventario</option></select></label>
         <label class="form-field full-field"><span><span id="stock-quantity-label">Cantidad (unidades)</span> <span class="required-mark" aria-hidden="true">*</span></span><input name="quantity" id="stock-quantity" type="number" min="1" step="1" required></label>
-        <label class="form-field full-field"><span>Nota / referencia</span><input name="note" maxlength="120"></label>
+        <label class="form-field full-field"><span>Motivo / referencia <span class="required-mark" aria-hidden="true">*</span></span><input name="note" minlength="3" maxlength="120" required placeholder="Describe el motivo del movimiento"></label>
       </div>
       <div class="modal-actions"><button type="button" class="button button-quiet" id="stock-cancel">Cancelar</button><button type="submit" class="button button-primary">Guardar movimiento</button></div>
+    </form>
+  </dialog>
+  <dialog class="modal" id="inventory-reversal-dialog" aria-labelledby="inventory-reversal-title">
+    <form id="inventory-reversal-form" class="modal-card">
+      <div class="modal-heading">
+        <div><span class="eyebrow">INVENTARIO · TRAZABILIDAD</span><h2 id="inventory-reversal-title">Revertir movimiento</h2></div>
+        <button type="button" class="icon-button modal-close" id="inventory-reversal-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="modal-note">La reversión agrega un nuevo registro opuesto. El movimiento original no se borra ni se modifica. Esta acción solo está disponible para movimientos manuales.</p>
+      <div class="form-grid">
+        <div class="form-field full-field"><span>Movimiento seleccionado</span><strong id="inventory-reversal-summary">Movimiento de inventario</strong></div>
+        <label class="form-field full-field"><span>Motivo de la reversión <span class="required-mark" aria-hidden="true">*</span></span><textarea name="reason" rows="3" minlength="3" maxlength="240" required placeholder="Explica por qué debe corregirse este movimiento"></textarea></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button button-quiet" id="inventory-reversal-cancel">Cancelar</button>
+        <button type="submit" class="button button-primary">Registrar reversión</button>
+      </div>
     </form>
   </dialog>
   <dialog class="modal detail-modal" id="product-detail-dialog" aria-labelledby="product-detail-title">
