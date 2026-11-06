@@ -81,3 +81,12 @@ ALTER TABLE public.hr_payroll_items
 ALTER TABLE public.hr_payroll_items
   ADD CONSTRAINT hr_payroll_items_commission_exchange_rate_check
   CHECK (commission_exchange_rate > 0);
+
+-- One frozen USD/NIO rate per payroll period keeps all employee commissions consistent.
+ALTER TABLE public.hr_payroll_periods
+  ADD COLUMN IF NOT EXISTS commission_exchange_rate NUMERIC(14,4) NOT NULL DEFAULT 36.6000;
+ALTER TABLE public.hr_payroll_periods
+  DROP CONSTRAINT IF EXISTS hr_payroll_periods_commission_exchange_rate_check;
+ALTER TABLE public.hr_payroll_periods
+  ADD CONSTRAINT hr_payroll_periods_commission_exchange_rate_check
+  CHECK (commission_exchange_rate > 0);
