@@ -83,6 +83,7 @@ export function calculateAguinaldoEstimate({
   const eligibleStart = start > cycleStart ? start : cycleStart;
   const eligibleEnd = end < cycleEnd ? end : cycleEnd;
   const eligibleDays = Math.max(0, Math.floor((eligibleEnd.getTime() - eligibleStart.getTime()) / DAY_MS) + 1);
+  const serviceMonthCompleted = addMonthsClamped(start, 1) <= end;
   const cycleDays = Math.floor((cycleEnd.getTime() - cycleStart.getTime()) / DAY_MS) + 1;
   const priorSixMonths = monthlyOrdinarySalaries
     .map(Number)
@@ -90,7 +91,7 @@ export function calculateAguinaldoEstimate({
   const monthlyBasisNio = commissionEnabled && priorSixMonths.length
     ? Math.max(...priorSixMonths)
     : Math.max(0, Number(salaryNio) || 0);
-  const amountNio = Math.round(monthlyBasisNio * eligibleDays / cycleDays * 100) / 100;
+  const amountNio = serviceMonthCompleted ? Math.round(monthlyBasisNio * eligibleDays / cycleDays * 100) / 100 : 0;
   return { amountNio, monthlyBasisNio, cycleStart: cycleStart.toISOString().slice(0, 10), cycleEnd: cycleEnd.toISOString().slice(0, 10), eligibleDays, cycleDays };
 }
 
