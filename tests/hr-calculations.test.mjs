@@ -33,6 +33,14 @@ test("aguinaldo estimate prorates the Dec-to-Nov work cycle", () => {
   assert.equal(result.amountNio, 6016.44);
 });
 
+test("aguinaldo is not accrued before one month of service and December 1-10 closes the prior cycle", () => {
+  const recentHire = calculateAguinaldoEstimate({ hireDate: "2026-11-20", salaryNio: 10000, asOf: "2026-12-05" });
+  assert.equal(recentHire.amountNio, 0);
+  const cycle = calculateAguinaldoEstimate({ hireDate: "2025-12-01", salaryNio: 10000, asOf: "2026-12-05" });
+  assert.equal(cycle.cycleStart, "2025-12-01");
+  assert.equal(cycle.cycleEnd, "2026-11-30");
+});
+
 test("commission-based aguinaldo basis uses the highest supplied recent monthly ordinary salary", () => {
   const result = calculateAguinaldoEstimate({
     hireDate: "2025-12-01", salaryNio: 10000, commissionEnabled: true,
