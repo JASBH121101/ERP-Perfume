@@ -445,7 +445,7 @@ test('employee edit preserves hire date and records a promotion reason', async (
   const patch=page.waitForRequest(request=>request.url().endsWith('/api/erp/employees/'+hr.employeeId)&&request.method()==='PATCH');
   await dialog.locator('#business-save').click();
   const request=await patch,payload=request.postDataJSON();
-  expect(payload.effective_date).toMatch(/^\\d{4}-\\d{2}-\\d{2}$/);
+  expect(payload.effective_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   expect(payload.change_reason).toBe('Ascenso por desempeño');
   expect(payload.hire_date).toBeUndefined();
   await expect(dialog).toBeHidden();
