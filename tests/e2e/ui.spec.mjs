@@ -867,3 +867,90 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     expect(catalogLayout.document).toBeLessThanOrEqual(catalogLayout.viewport + 1);
   }
 });
+
+
+test('notification center displays unread alerts and marks them as read', async ({ page }) => {
+  let notifications = [{
+    id: 'qa-notification-1',
+    category: 'approval',
+    severity: 'warning',
+    title: 'Orden de compra por aprobar',
+    message: 'OC JB-OC-2026-000001 · Proveedor QA',
+    entity_type: 'purchase_order',
+    entity_id: 'qa-purchase-order-1',
+    target_view: 'purchaseOrders',
+    created_at: '2026-11-06T20:00:00.000Z',
+    read_at: null
+  }];
+  let unreadCount = 1;
+
+  await page.route('**/api/erp/notifications**', async route => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith('/read-all') && request.method() === 'PATCH') {
+      notifications = notifications.map(item => ({ ...item, read_at: '2026-11-06T20:05:00.000Z' }));
+      unreadCount = 0;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ updated: true })
+      });
+    }
+    if (pathname.endsWith('/notifications') && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ notifications, unread_count: unreadCount })
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/');
+  const trigger = page.locator('.notification-button');
+  const panel = page.locator('#notification-panel');
+  const badge = page.locator('#notification-count');
+
+  await expect(trigger).toHaveAttribute('aria-label', 'Notificaciones: 1 sin leer');
+  await expect(badge).toHaveText('1');
+  await trigger.click();
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText('Orden de compra por aprobar');
+  await expect(panel).toContainText('OC JB-OC-2026-000001');
+
+  await page.locator('#notification-mark-all').click();
+  await expect(badge).toBeHidden();
+  await expect(panel).toContainText('Leída');
+
+  await trigger.click();
+  await expect(panel).toBeHidden();
+});
+
+test('all six font scale levels apply and enforce their boundaries', async ({ page }) => {
+  await page.goto('/');
+  const levels = [
+    ['normal', '100%'],
+    ['large', '110%'],
+    ['larger', '120%'],
+    ['largest', '130%'],
+    ['huge', '140%'],
+    ['extra', '150%']
+  ];
+  const decrease = page.locator('#font-decrease');
+  const increase = page.locator('#font-increase');
+
+  await decrease.click();
+  await decrease.click();
+
+  for (let index = 0; index < levels.length; index++) {
+    const [value, label] = levels[index];
+    await expect(page.locator('#font-scale-label')).toHaveText(label);
+    await expect(page.locator('body')).toHaveAttribute('data-font-scale', value);
+    if (index < levels.length - 1) await increase.click();
+  }
+
+  await expect(increase).toBeDisabled();
+  for (let index = levels.length - 1; index > 0; index--) await decrease.click();
+  await expect(decrease).toBeDisabled();
+  await expect(page.locator('#font-scale-label')).toHaveText('100%');
+});
