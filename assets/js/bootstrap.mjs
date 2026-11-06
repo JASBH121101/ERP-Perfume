@@ -116,17 +116,43 @@ async function refreshProfile() {
 function setAuthMode(mode, email = "") {
   if (!authForm) return;
   const verifying = mode === "verify";
-  authForm.dataset.mode = verifying ? "verify" : "signin";
+  const recoveryRequest = mode === "recovery-request";
+  const recoveryReset = mode === "recovery-reset";
+  const signingIn = !verifying && !recoveryRequest && !recoveryReset;
+  authForm.dataset.mode = mode;
   $("#auth-name-field")?.setAttribute("hidden", "");
-  $("#auth-password-field").hidden = verifying;
-  $("#auth-password").required = !verifying;
-  $("#auth-otp-field").hidden = !verifying;
-  $("#auth-otp").required = verifying;
-  $("#auth-resend-code").hidden = !verifying;
-  $("#auth-email").readOnly = verifying;
+  $("#auth-password-field").hidden = !signingIn;
+  $("#auth-password").required = signingIn;
+  $("#auth-otp-field").hidden = !(verifying || recoveryReset);
+  $("#auth-otp").required = verifying || recoveryReset;
+  $("#auth-new-password-field").hidden = !recoveryReset;
+  $("#auth-new-password").required = recoveryReset;
+  $("#auth-confirm-password-field").hidden = !recoveryReset;
+  $("#auth-confirm-password").required = recoveryReset;
+  $("#auth-resend-code").hidden = !(verifying || recoveryReset);
+  $("#auth-email").readOnly = verifying || recoveryReset;
+  $("#auth-forgot-password").hidden = !signingIn;
+  $("#auth-back-to-signin").hidden = signingIn;
+  const recoveryNote = $("#auth-recovery-note");
+  if (recoveryNote) {
+    recoveryNote.hidden = !(recoveryRequest || recoveryReset);
+    recoveryNote.textContent = recoveryReset
+      ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña. El SMS aún no está habilitado: requiere verificar el celular y conectar un proveedor de mensajes."
+      : "Por ahora puedes recibir el código de recuperación en tu correo. El celular se guarda en RR. HH., pero todavía no está vinculado y verificado en Neon Auth para restablecer contraseñas por SMS.";
+  }
   if (email) $("#auth-email").value = email;
-  if (!verifying) $("#auth-otp").value = "";
-  $("#auth-submit").textContent = verifying ? "Verificar correo" : "Iniciar sesión";
+  if (!verifying && !recoveryReset) $("#auth-otp").value = "";
+  if (!recoveryReset) {
+    $("#auth-new-password").value = "";
+    $("#auth-confirm-password").value = "";
+  }
+  $("#auth-submit").textContent = verifying
+    ? "Verificar correo"
+    : recoveryRequest
+      ? "Enviar código"
+      : recoveryReset
+        ? "Cambiar contraseña"
+        : "Iniciar sesión";
   if (authFeedback) authFeedback.textContent = "";
 }
 
@@ -273,6 +299,20 @@ async function initialize() {
       if (result?.error) throw new Error(result.error.message || "No se pudo enviar el código.");
       return result;
     },
+    async sendPasswordRecoveryCode(email) {
+      const method = authClient?.forgetPassword?.emailOtp;
+      if (typeof method !== "function") throw new Error("Neon Auth no tiene disponible la recuperación de contraseña por correo OTP.");
+      const result = await method({ email });
+      if (result?.error) throw new Error(result.error.message || "No se pudo solicitar el código de recuperación.");
+      return result;
+    },
+    async resetPasswordWithEmailOtp(email, otp, password) {
+      const method = authClient?.emailOtp?.resetPassword;
+      if (typeof method !== "function") throw new Error("Neon Auth no tiene disponible el cambio de contraseña por OTP.");
+      const result = await method({ email, otp, password });
+      if (result?.error) throw new Error(result.error.message || "El código no es válido o ya expiró.");
+      return result;
+    },
     async verifyEmail(email, otp) {
       const method = authClient?.emailOtp?.verifyEmail;
       if (typeof method !== "function") throw new Error("Neon Auth no expone la verificación OTP en esta configuración.");
@@ -352,6 +392,20 @@ async function initialize() {
           setAuthMode("signin", email);
           setAuthFeedback("Correo verificado. Inicia sesión para validar tu perfil del ERP.");
         }
+      } else if (mode === "recovery-request") {
+        await window.JBAuth.sendPasswordRecoveryCode(email);
+        setAuthMode("recovery-reset", email);
+        setAuthFeedback("Si existe una cuenta con ese correo, enviamos un código de seis dígitos. Revisa también la carpeta de spam.");
+      } else if (mode === "recovery-reset") {
+        const otp = String(data.get("otp") || "").trim();
+        const password = String(data.get("newPassword") || "");
+        const confirmation = String(data.get("confirmPassword") || "");
+        if (password.length < 8) throw new Error("La nueva contraseña debe tener al menos 8 caracteres.");
+        if (password !== confirmation) throw new Error("Las contraseñas no coinciden.");
+        await window.JBAuth.resetPasswordWithEmailOtp(email, otp, password);
+        setAuthMode("signin", email);
+        $("#auth-password").value = "";
+        setAuthFeedback("Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña.");
       } else {
         await window.JBAuth.signIn(email, String(data.get("password") || ""));
         if (erpProfile) {
@@ -362,22 +416,41 @@ async function initialize() {
         }
       }
     } catch (error) {
-      setAuthFeedback(error?.message || "No se pudo completar la operación.", true);
+      const message = mode === "recovery-request"
+        ? "No pudimos iniciar la recuperación. Comprueba el correo e inténtalo nuevamente."
+        : (error?.message || "No se pudo completar la operación.");
+      setAuthFeedback(message, true);
     } finally {
       submit.disabled = false;
     }
   });
 
+  $("#auth-forgot-password")?.addEventListener("click", () => {
+    const email = String($("#auth-email")?.value || "").trim();
+    setAuthMode("recovery-request", email);
+  });
+
+  $("#auth-back-to-signin")?.addEventListener("click", () => {
+    const email = String($("#auth-email")?.value || "").trim();
+    setAuthMode("signin", email);
+  });
+
   $("#auth-resend-code")?.addEventListener("click", async () => {
     const email = String($("#auth-email")?.value || "").trim();
     const resend = $("#auth-resend-code");
-    if (!email || !authClient || authForm?.dataset.mode !== "verify") return;
+    const mode = authForm?.dataset.mode;
+    if (!email || !authClient || !["verify", "recovery-reset"].includes(mode)) return;
 
     resend.disabled = true;
     setAuthFeedback("Enviando código…");
     try {
-      await window.JBAuth.sendVerificationCode(email);
-      setAuthFeedback("Código enviado. Revisa tu bandeja de entrada y la carpeta de spam.");
+      if (mode === "recovery-reset") {
+        await window.JBAuth.sendPasswordRecoveryCode(email);
+        setAuthFeedback("Si existe una cuenta con ese correo, enviamos un nuevo código.");
+      } else {
+        await window.JBAuth.sendVerificationCode(email);
+        setAuthFeedback("Código enviado. Revisa tu bandeja de entrada y la carpeta de spam.");
+      }
     } catch (error) {
       setAuthFeedback(error?.message || "No se pudo enviar el código.", true);
     } finally {
