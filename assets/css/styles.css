@@ -1472,3 +1472,19 @@ hr, .divider { border-color: var(--line); }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* Drag-and-drop feedback on existing file fields */
+.form-field.is-file-dragover {
+  border-color: #a9824c;
+  background: linear-gradient(135deg,#f7eedf,#fffaf1);
+  box-shadow: 0 0 0 3px rgba(179,141,84,.16), inset 0 0 0 1px rgba(179,141,84,.12);
+}
+.form-field.is-file-dragover input[type="file"] {
+  border-color: #a9824c;
+  background: rgba(255,254,250,.85);
+}
+.form-field input[type="file"]::file-selector-button:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
