@@ -927,6 +927,8 @@ test('notification center displays unread alerts and marks them as read', async 
 });
 
 test('all six font scale levels apply and enforce their boundaries', async ({ page }) => {
+  // Start from 120% regardless of any browser preference left by another test.
+  await page.addInitScript(() => window.localStorage.setItem('jbparfums-font-level', '2'));
   await page.goto('/');
   const levels = [
     ['normal', '100%'],
