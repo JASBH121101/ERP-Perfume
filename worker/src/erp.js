@@ -132,6 +132,7 @@ async function readBootstrap(sql, user, permissionContext) {
   if (hasPermission(permissionContext, "hr.payroll.view")) {
     result.hr_payroll_periods = payrollPeriods;
     result.hr_payroll_items = payrollItems;
+    result.hr_inss_settings = settings.find((setting) => setting.setting_key === "hr_inss_settings")?.setting_value || { regime:"integral", employer_band:"under_50", employee_rate:7, employer_rate:21.5 };
     result.hr_commissions = await sql.query(
       "SELECT ec.*, e.name AS employee_name, i.invoice_number FROM employee_commissions ec " +
       "JOIN employees e ON e.id=ec.employee_id JOIN invoices i ON i.id=ec.invoice_id " +
