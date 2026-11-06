@@ -77,7 +77,7 @@ export function calculateAguinaldoEstimate({
   const end = utcDate(asOf);
   if (!start || !end || start > end) return { amountNio: 0, monthlyBasisNio: 0, cycleStart: null, cycleEnd: null, eligibleDays: 0, cycleDays: 0 };
 
-  const year = end.getUTCMonth() >= 11 ? end.getUTCFullYear() : end.getUTCFullYear() - 1;
+  const year = end.getUTCMonth() === 11 && end.getUTCDate() > 10 ? end.getUTCFullYear() : end.getUTCFullYear() - 1;
   const cycleStart = new Date(Date.UTC(year, 11, 1));
   const cycleEnd = new Date(Date.UTC(year + 1, 10, 30));
   const eligibleStart = start > cycleStart ? start : cycleStart;
