@@ -67,6 +67,15 @@ jobs:
       - name: Install pinned ERP dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Capture the resolved ERP npm lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: erp-npm-package-lock
+          path: package-lock.json
+          retention-days: 3
+          if-no-files-found: ignore
+
       - name: Install pinned JB Expert QA dependencies
         run: npm --prefix .jb-expert-qa install --ignore-scripts --no-audit --no-fund --package-lock=false
 
