@@ -187,7 +187,7 @@ async function installStatefulInventoryApi(page, options = {}) {
       return fulfill(route, { record }, 201);
     }
 
-    const reversalMatch = pathname.match(/\\/api\\/erp\\/inventory-movements\\/([0-9a-f-]+)\\/reverse$/i);
+    const reversalMatch = pathname.match(new RegExp('/api/erp/inventory-movements/([0-9a-f-]+)/reverse$', 'i'));
     if (reversalMatch && method === 'POST') {
       const original = data.inventory_movements.find(item => item.id === reversalMatch[1]);
       if (!original) return fulfill(route, { error: { message: 'Movimiento no encontrado.' } }, 404);
@@ -297,7 +297,6 @@ test('kardex shows responsible user and origin, and reverses a manual movement w
   await expect(ledger).toContainText('Origen: Movimiento manual');
 
   const originalId = 'qa-movement-1';
-  const originalRow = ledger.locator('tr').filter({ has: page.locator('[data-action="reverse-inventory-movement"][data-id="' + originalId + '"]') });
   const reverseButton = page.locator('[data-action="reverse-inventory-movement"][data-id="' + originalId + '"]');
   await expect(reverseButton).toBeVisible();
   await reverseButton.click();
