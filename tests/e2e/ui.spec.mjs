@@ -711,10 +711,14 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     expect(actionLayout.summaryColumns).toBe(3);
     if (viewport.width <= 720) expect(actionLayout.filterColumns).toBe(2);
     const fixtureId = '00000000-0000-0000-0000-000000000101';
-    const detailTrigger = page.locator('[data-action="preview-product"][data-id="' + fixtureId + '"]');
+    const detailTrigger = page.locator('[data-action="inventory-view-product"][data-id="' + fixtureId + '"]');
     await expect(detailTrigger).toBeVisible();
     await detailTrigger.click();
     await expect(page.locator('#product-detail-dialog')).toBeVisible();
+    await expect(page.locator('#product-detail-content')).toContainText('Existencia actual');
+    await expect(page.locator('#product-detail-content')).toContainText('Stock mínimo');
+    await expect(page.locator('#edit-detail-product')).toBeHidden();
+    await expect(page.locator('#product-detail-content')).not.toContainText('Costo unitario');
     await page.locator('#detail-cancel').click();
     const layout = await page.evaluate(() => {
       const sidebar = document.getElementById('sidebar');
