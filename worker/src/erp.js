@@ -81,13 +81,15 @@ async function readBootstrap(sql, user, permissionContext) {
     );
   }
   if (hasPermission(permissionContext, "products.catalog.view")) result.products = products;
+  const canReverseMovements = hasPermission(permissionContext, "inventory.movements.reverse");
   const canViewInbound = hasPermission(permissionContext, "inventory.receipts.view") ||
-    hasPermission(permissionContext, "purchases.receipts.view");
-  const canViewOutbound = hasPermission(permissionContext, "inventory.manual_out.view");
-  const canViewAdjustments = hasPermission(permissionContext, "inventory.adjustments.view");
+    hasPermission(permissionContext, "purchases.receipts.view") || canReverseMovements;
+  const canViewOutbound = hasPermission(permissionContext, "inventory.manual_out.view") || canReverseMovements;
+  const canViewAdjustments = hasPermission(permissionContext, "inventory.adjustments.view") || canReverseMovements;
   if (canViewInbound || canViewOutbound || canViewAdjustments) {
     result.inventory_movements = movements.filter((movement) => {
       const delta = Number(movement.quantity_delta ?? movement.quantity ?? 0);
+      if (movement.movement_type === "Ajuste" || movement.movement_type === "Reversion") return canViewAdjustments;
       if (delta < 0) return canViewOutbound;
       if (delta > 0) return canViewInbound;
       return canViewAdjustments;
