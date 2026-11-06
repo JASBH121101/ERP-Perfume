@@ -47,7 +47,7 @@ async function readBootstrap(sql, user, permissionContext) {
   const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
-      tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
+      tx`SELECT m.*,u.display_name AS created_by_name FROM inventory_movements m LEFT JOIN app_users u ON u.id=m.created_by ORDER BY m.created_at DESC LIMIT 5000`,
       tx`SELECT * FROM customers ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM suppliers ORDER BY name ASC LIMIT 1000`,
       tx`SELECT * FROM orders ORDER BY created_at DESC LIMIT 2000`,
@@ -355,7 +355,7 @@ export async function createProduct(sql, user, body) {
   }
   values.unit_cost_usd = Math.round((purchaseCost + additionalCost) * 100) / 100;
   const result = await sql.query(
-    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_name,wholesale_price_usd,tone,notes,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',$25 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $25,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
+    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_name,wholesale_price_usd,tone,notes,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',id::text,$25 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $25,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
     [sku,name,values.brand||null,values.category||null,values.concentration||null,values.gender||null,values.family||null,values.size_ml||null,values.presentation||null,values.purchase_cost_usd||0,values.additional_cost_usd||0,values.unit_cost_usd||0,values.price_usd||0,stock,values.min_stock||0,values.location||null,values.active!==false,values.barcode||null,values.description||null,values.supplier_name||null,values.wholesale_price_usd||null,values.tone||null,values.notes||null,JSON.stringify(values.images||[]),user.id]
   );
   return erpJson({record:result[0]},201);
@@ -455,7 +455,7 @@ export async function createInventoryMovement(sql, user, body) {
   const note = body.note == null ? "" : String(body.note).trim();
   if (!body.product_id || !["Entrada","Salida","Ajuste"].includes(type) ||
       !Number.isInteger(quantity) || quantity < 0 || quantity > 2147483647 ||
-      (type !== "Ajuste" && quantity < 1) || note.length > 120) {
+      (type !== "Ajuste" && quantity < 1) || note.length < 3 || note.length > 120) {
     return erpError(400, "INVALID_MOVEMENT", "Los movimientos manuales solo permiten Entrada, Salida o Ajuste; revisa producto, cantidad y nota.");
   }
   try {
@@ -471,6 +471,72 @@ export async function createInventoryMovement(sql, user, body) {
     if (error?.code === "23514" || error?.code === "22003") return erpError(400, "INVALID_MOVEMENT", "La cantidad o los datos del movimiento no cumplen las reglas del inventario.");
     console.error("[erp] Inventory movement failed:",error?.message || "database error");
     return erpError(503, "MOVEMENT_SAVE_FAILED", "No se pudo guardar el movimiento en Neon.");
+  }
+}
+
+
+export async function reverseInventoryMovement(sql, user, movementId, body = {}) {
+  const id = String(movementId || "").trim();
+  const reason = String(body.reason || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(id) || reason.length < 3 || reason.length > 240) {
+    return erpError(400, "INVALID_MOVEMENT_REVERSAL", "Indica un movimiento válido y un motivo de reversión de 3 a 240 caracteres.");
+  }
+
+  try {
+    const rows = await sql.query(
+      "WITH input AS MATERIALIZED (SELECT $1::uuid AS movement_id,$2::uuid AS actor,$3::text AS reason)," +
+      "original AS MATERIALIZED (SELECT m.* FROM inventory_movements m CROSS JOIN input i WHERE m.id=i.movement_id FOR UPDATE OF m)," +
+      "locked_product AS MATERIALIZED (SELECT p.id,p.stock FROM products p JOIN original o ON o.product_id=p.id FOR UPDATE OF p)," +
+      "state AS MATERIALIZED (" +
+        "SELECT EXISTS(SELECT 1 FROM original) AS movement_exists," +
+        "EXISTS(SELECT 1 FROM original WHERE movement_type='Reversion' OR reference_type='reversal') AS is_reversal," +
+        "EXISTS(SELECT 1 FROM original WHERE reference_type='manual' AND movement_type IN ('Entrada','Salida','Ajuste')) AS is_manual," +
+        "EXISTS(SELECT 1 FROM inventory_movements r CROSS JOIN input i WHERE r.reference_type='reversal' AND r.reference_id=i.movement_id::text) AS already_reversed," +
+        "(SELECT stock FROM locked_product) AS current_stock," +
+        "(SELECT quantity_delta FROM original) AS original_delta" +
+      ")," +
+      "updated AS (" +
+        "UPDATE products p SET stock=p.stock-o.quantity_delta,updated_at=NOW() " +
+        "FROM original o JOIN locked_product lp ON lp.id=o.product_id CROSS JOIN state st " +
+        "WHERE p.id=lp.id AND st.movement_exists AND NOT st.is_reversal AND st.is_manual AND NOT st.already_reversed " +
+        "AND p.stock-o.quantity_delta>=0 " +
+        "RETURNING p.id,p.stock AS new_stock,lp.stock AS previous_stock" +
+      ")," +
+      "reversal AS (" +
+        "INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) " +
+        "SELECT o.product_id,'Reversion',ABS(o.quantity_delta),-o.quantity_delta,u.previous_stock,u.new_stock," +
+        "'Reversión de movimiento '||o.id::text||': '||i.reason,'reversal',o.id::text,i.actor " +
+        "FROM original o JOIN updated u ON u.id=o.product_id CROSS JOIN input i RETURNING *" +
+      ")," +
+      "logged AS (" +
+        "INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
+        "SELECT i.actor,'reverse','inventory_movement',o.id::text," +
+        "jsonb_build_object('reversal_id',r.id,'product_id',o.product_id,'original_type',o.movement_type," +
+        "'original_delta',o.quantity_delta,'previous_stock',r.previous_stock,'new_stock',r.new_stock,'reason',i.reason) " +
+        "FROM input i CROSS JOIN original o CROSS JOIN reversal r RETURNING id" +
+      ") " +
+      "SELECT st.*,r.id AS reversal_id,r.product_id,r.previous_stock,r.new_stock,r.created_at AS reversed_at " +
+      "FROM state st LEFT JOIN reversal r ON TRUE",
+      [id,user.id,reason]
+    );
+    const result = rows[0] || {};
+    if (!result.movement_exists) return erpError(404,"MOVEMENT_NOT_FOUND","No se encontró el movimiento que intentas revertir.");
+    if (result.is_reversal) return erpError(409,"REVERSAL_NOT_ALLOWED","Una reversión no puede revertirse desde este flujo.");
+    if (!result.is_manual) return erpError(409,"SOURCE_REVERSAL_REQUIRED","Este movimiento proviene de una operación vinculada. Debe corregirse desde su documento de origen.");
+    if (result.already_reversed) return erpError(409,"MOVEMENT_ALREADY_REVERSED","Este movimiento ya tiene una reversión registrada.");
+    if (!result.reversal_id) {
+      if (Number(result.current_stock) - Number(result.original_delta) < 0) {
+        return erpError(409,"REVERSAL_STOCK_CONFLICT","No se puede revertir el movimiento porque dejaría existencias negativas.");
+      }
+      return erpError(409,"REVERSAL_CONFLICT","No se pudo completar la reversión. Actualiza el Kardex e inténtalo de nuevo.");
+    }
+    return erpJson({ record: result },201);
+  } catch (error) {
+    if (error?.code === "22P02") return erpError(400,"INVALID_MOVEMENT_ID","El identificador del movimiento no es válido.");
+    if (error?.code === "23505") return erpError(409,"MOVEMENT_ALREADY_REVERSED","Este movimiento ya tiene una reversión registrada.");
+    if (error?.code === "23514" || error?.code === "22003") return erpError(400,"INVALID_MOVEMENT_REVERSAL","Los datos de la reversión no cumplen las reglas del Kardex.");
+    console.error("[erp] Inventory movement reversal failed:",error?.message||"database error");
+    return erpError(503,"MOVEMENT_REVERSAL_FAILED","No se pudo registrar la reversión en Neon.");
   }
 }
 
@@ -1330,7 +1396,7 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
   }
   if (resource === "inventory-movements") {
     if (method === "GET") return "inventory.stock.view";
-    if (method === "PATCH" || method === "DELETE") return "inventory.stock.view";
+    if (method === "POST" && id && parts[4] === "reverse") return "inventory.movements.reverse";
     if (method !== "POST") return null;
     const movement = String(body?.movement_type || body?.type || body?.direction || "").toLowerCase();
     if (["salida", "out", "egreso"].includes(movement)) return "inventory.manual_out.create";
@@ -1823,8 +1889,16 @@ export async function handleERPRequest(request, env, user, sql) {
       return erpError(503,"PRODUCT_SAVE_FAILED","No se pudo guardar el producto.");
     }
   }
-  if (resource === "inventory-movements" && request.method === "POST") {
-    if (!canAccess(user, RESOURCE_DEFS.inventory_movements.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para modificar existencias.");
+  if (resource === "inventory-movements" && id && parts[4] === "reverse" && request.method === "POST") {
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return reverseInventoryMovement(sql,user,id,body);
+  }
+  if (resource === "inventory-movements" && request.method === "POST" && !id) {
+    if (!hasPermission(permissionContext,"inventory.receipts.receive") &&
+        !hasPermission(permissionContext,"inventory.manual_out.create") &&
+        !hasPermission(permissionContext,"inventory.adjustments.adjust")) {
+      return erpError(403, "FORBIDDEN", "No tienes permiso para modificar existencias.");
+    }
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createInventoryMovement(sql, user, body);
   }
