@@ -36,3 +36,4 @@ Preview release: catalog import modal width guard; contract expiry reminders (30
 Preview release: persistent notification center, role-filtered OC approvals, temporary contract and low-stock alerts; six-level readable typography and owner-only browser error telemetry.
 Preview release: fix the full 100%-150% font scale, style the notification drawer as a responsive dropdown, refresh on tab focus and poll every 120 seconds to reduce unnecessary Neon compute wakeups. Migration audit and additive foreign-key index migration are documented; no SQL is run by this deployment.
 Preview release: verify full font-scale regression checks and notification drawer layout on the latest main revision.
+Preview release: refreshed ERP visual system (graphite-blue navigation, clearer tables and controls, larger typography, consistent surfaces and mobile refinements). Source commit: b5a7d9c078879343e9c63253c4cae4ecbac42c04.
