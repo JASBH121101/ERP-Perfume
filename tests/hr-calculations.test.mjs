@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate,
-  calculateInss, calculateCommission
+  calculateInss, calculateCommission, convertCommissionForPayroll
 } from "../assets/js/hr-calculations.mjs";
 
 test("tenure renders complete years, months and days", () => {
@@ -66,4 +66,12 @@ test("commission is calculated on positive gross profit after a pro-rata discoun
     grossProfitUsd: 25, commissionUsd: 0.75, commissionNio: 27.45
   });
   assert.equal(calculateCommission({ lineTotalUsd: 50, unitCostUsd: 55, ratePercent: 3 }).commissionUsd, 0);
+});
+
+test("payroll converts USD commission using the frozen payroll exchange rate", () => {
+  assert.deepEqual(convertCommissionForPayroll(12.5, 36.6), {
+    commissionUsd: 12.5, exchangeRate: 36.6, commissionNio: 457.5
+  });
+  assert.throws(() => convertCommissionForPayroll(-1, 36.6), RangeError);
+  assert.throws(() => convertCommissionForPayroll(10, 0), RangeError);
 });
