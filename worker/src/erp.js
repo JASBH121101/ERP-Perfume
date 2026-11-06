@@ -918,12 +918,9 @@ async function createPayrollItem(sql,user,body) {
     const employerRate=Number(inss.employer_rate??21.5);
     if(![employeeRate,employerRate].every(Number.isFinite)||employeeRate<0||employeeRate>100||employerRate<0||employerRate>100)
       return erpError(409,"INVALID_INSS_SETTINGS","Configura tasas válidas de INSS antes de crear la nómina.");
-    const fxRows=await sql.query("SELECT setting_value->>'value' AS value FROM app_settings WHERE setting_key='default_exchange_rate' LIMIT 1");
-    const payrollExchangeRate=Number(fxRows[0]?.value||36.6);
-    if(!Number.isFinite(payrollExchangeRate)||payrollExchangeRate<=0||payrollExchangeRate>100000)
-      return erpError(409,"PAYROLL_EXCHANGE_RATE_INVALID","Configura un tipo de cambio USD/NIO válido antes de calcular las comisiones.");
+    // The exchange rate is frozen on the payroll period, not read again per employee.
     const rows=await sql.query(
-      "WITH period AS (SELECT id,status,period_start,period_end,period_type FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), " +
+      "WITH period AS (SELECT id,status,period_start,period_end,period_type,commission_exchange_rate FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), " +
       "employee AS (SELECT id,hire_date,salary_nio,commission_enabled FROM employees WHERE id=$2::uuid AND status='Activo'), " +
       "cycle AS (SELECT make_date(EXTRACT(YEAR FROM p.period_start)::int-1,12,1) AS cycle_start, " +
         "make_date(EXTRACT(YEAR FROM p.period_start)::int,11,30) AS cycle_end, LEAST(p.period_end,CURRENT_DATE) AS as_of " +
@@ -939,16 +936,16 @@ async function createPayrollItem(sql,user,body) {
         "THEN ROUND((CASE WHEN e.commission_enabled THEN COALESCE(v.highest_salary,e.salary_nio) ELSE e.salary_nio END) * " +
         "((LEAST(c.as_of,c.cycle_end)-GREATEST(e.hire_date,c.cycle_start)+1)::numeric / NULLIF((c.cycle_end-c.cycle_start+1),0)),2) " +
         "ELSE 0 END AS aguinaldo_nio FROM period p CROSS JOIN employee e CROSS JOIN cycle c CROSS JOIN variable_basis v), " +
-      "selected_commissions AS (SELECT ec.id,ec.commission_usd FROM employee_commissions ec CROSS JOIN period p " +
+      "selected_commissions AS (SELECT ec.id,ec.commission_usd,p.commission_exchange_rate FROM employee_commissions ec CROSS JOIN period p " +
         "WHERE p.period_type='Ordinaria' AND ec.employee_id=$2::uuid AND ec.status='Pendiente' " +
         "AND ec.sale_date BETWEEN p.period_start AND p.period_end ORDER BY ec.id FOR UPDATE OF ec), " +
-      "commission_totals AS (SELECT COALESCE(SUM(commission_usd),0)::numeric(14,2) AS commission_usd, ROUND(COALESCE(SUM(commission_usd),0)*$10,2)::numeric(14,2) AS commission_nio FROM selected_commissions), " +
+      "commission_totals AS (SELECT COALESCE(SUM(sc.commission_usd),0)::numeric(14,2) AS commission_usd, ROUND(COALESCE(SUM(sc.commission_usd),0)*p.commission_exchange_rate,2)::numeric(14,2) AS commission_nio, p.commission_exchange_rate FROM period p LEFT JOIN selected_commissions sc ON TRUE GROUP BY p.commission_exchange_rate), " +
       "contribution AS (SELECT CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$7/100,2) END AS employee_inss, " +
         "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$8/100,2) END AS employer_inss " +
         "FROM period p CROSS JOIN commission_totals ct), " +
       "created AS (INSERT INTO hr_payroll_items(payroll_period_id,employee_id,base_salary_nio,bonuses_nio,deductions_nio, " +
         "commissions_usd,commissions_nio,commission_exchange_rate,inss_employee_nio,inss_employer_nio,aguinaldo_nio,net_salary_nio,notes) " +
-        "SELECT p.id,e.id,$3,$4,$5,ct.commission_usd,ct.commission_nio,$10,contribution.employee_inss,contribution.employer_inss,ac.aguinaldo_nio, " +
+        "SELECT p.id,e.id,$3,$4,$5,ct.commission_usd,ct.commission_nio,ct.commission_exchange_rate,contribution.employee_inss,contribution.employer_inss,ac.aguinaldo_nio, " +
         "ROUND($3+$4+ct.commission_nio+ac.aguinaldo_nio-$5-contribution.employee_inss,2),$6 " +
         "FROM period p CROSS JOIN employee e CROSS JOIN commission_totals ct CROSS JOIN contribution CROSS JOIN aguinaldo_calc ac " +
         "WHERE p.status='Borrador' AND " +
@@ -959,7 +956,7 @@ async function createPayrollItem(sql,user,body) {
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
         "SELECT $9,'create','hr_payroll_item',created.id::text,to_jsonb(created) FROM created) " +
       "SELECT created.* FROM created",
-      [periodId,employeeId,base,bonus,deductions,body.notes||null,employeeRate,employerRate,user.id,payrollExchangeRate]
+      [periodId,employeeId,base,bonus,deductions,body.notes||null,employeeRate,employerRate,user.id]
     );
     if(!rows[0]){
       const period=await sql.query("SELECT status,period_type FROM hr_payroll_periods WHERE id=$1::uuid",[periodId]);
