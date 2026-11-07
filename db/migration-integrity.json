@@ -60,7 +60,7 @@
         "status": "applied_historical_source_recovered",
         "ledgerChecksum": "074ce79f6a8be69c58ae70e8f51a438b133a9571",
         "appliedAt": "2026-11-04T02:19:40.496841Z",
-        "note": "The 40-character ledger checksum does not match the current Git blob SHA-1 or recoverable source bytes; exact applied source remains unresolved.",
+        "note": "Exact historical SQL recovered from commit dba793412a40340d7809b52c0d6274099bfbb98c. The archived source and the file at that commit are byte-for-byte identical; their Git blob SHA-1 matches the Development ledger checksum. The 8 named schema effects pass the live read-only object audit.",
         "historicalSource": {
           "archivePath": "db/migration-history/0002-ledger-matched-source.sql",
           "archiveSha256": "5808fafecc277bfe38a294ae63c61e17620fd9f299b84ce8b7fb02b197abeec8",
@@ -80,7 +80,7 @@
         "status": "applied_historical_source_recovered",
         "ledgerChecksum": "fd84c81e13faa4dc8d761b341098175208430919",
         "appliedAt": "2026-11-04T02:22:08.357498Z",
-        "note": "The 40-character ledger checksum does not match either committed source revision currently recoverable from Git; exact applied source remains unresolved.",
+        "note": "Exact historical SQL recovered from commit 7347b46fe7d345bda34564cae92cb4ed0db38d5e. The archived source and the file at that commit are byte-for-byte identical; their Git blob SHA-1 matches the Development ledger checksum. The 14 named schema effects pass the live read-only object audit.",
         "historicalSource": {
           "archivePath": "db/migration-history/0003-ledger-matched-source.sql",
           "archiveSha256": "c707797d180d72b5fb93fba86e39d158cca46d3dd14a24be4e9e8a5044e5ab72",
@@ -100,7 +100,7 @@
         "status": "applied_historical_source_recovered",
         "ledgerChecksum": "e4eecebff2d3566b4c4edd0460f6a1449d9253f3",
         "appliedAt": "2026-11-04T11:07:18.723349Z",
-        "note": "Legacy 40-character checksum. Historical checksum algorithm/source provenance is not standardized.",
+        "note": "Exact historical source recovered from commit 55095a98d599850078b42bb2fd0c8320f959e94d. The archived source and the file at that commit are byte-for-byte identical; their Git blob SHA-1 matches the Development ledger checksum.",
         "historicalSource": {
           "archivePath": "db/migration-history/0004-ledger-matched-source.sql",
           "archiveSha256": "97e4d6b5289d3c9b3931ffdb91cd4ea085d7dd89a166fcfe2abd182554f5df9c",
