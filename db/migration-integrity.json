@@ -57,10 +57,19 @@
       "version": "0002",
       "sha256": "2942a2cd332be3398b3a25c64ab2169380edbcfb76a25e4b88a064eff0dca57a",
       "database": {
-        "status": "applied_legacy_unverified",
+        "status": "applied_historical_source_recovered",
         "ledgerChecksum": "074ce79f6a8be69c58ae70e8f51a438b133a9571",
         "appliedAt": "2026-11-04T02:19:40.496841Z",
-        "note": "The 40-character ledger checksum does not match the current Git blob SHA-1 or recoverable source bytes; exact applied source remains unresolved."
+        "note": "The 40-character ledger checksum does not match the current Git blob SHA-1 or recoverable source bytes; exact applied source remains unresolved.",
+        "historicalSource": {
+          "archivePath": "db/migration-history/0002-ledger-matched-source.sql",
+          "archiveSha256": "5808fafecc277bfe38a294ae63c61e17620fd9f299b84ce8b7fb02b197abeec8",
+          "gitBlobSha1": "074ce79f6a8be69c58ae70e8f51a438b133a9571",
+          "sourceCommit": "dba793412a40340d7809b52c0d6274099bfbb98c",
+          "originalPath": "db/migrations/0002_procurement_finance_extensions.sql",
+          "executable": true,
+          "note": "Exact historical SQL recovered from Git; Git blob SHA-1 equals the Development ledger checksum. The 8 named schema effects pass the live read-only Development object audit."
+        }
       }
     },
     {
@@ -68,10 +77,19 @@
       "version": "0003",
       "sha256": "50bc66549aa2cc068338dfb6d95722a318979d2eece48686a29a8105a0c66f89",
       "database": {
-        "status": "applied_legacy_unverified",
+        "status": "applied_historical_source_recovered",
         "ledgerChecksum": "fd84c81e13faa4dc8d761b341098175208430919",
         "appliedAt": "2026-11-04T02:22:08.357498Z",
-        "note": "The 40-character ledger checksum does not match either committed source revision currently recoverable from Git; exact applied source remains unresolved."
+        "note": "The 40-character ledger checksum does not match either committed source revision currently recoverable from Git; exact applied source remains unresolved.",
+        "historicalSource": {
+          "archivePath": "db/migration-history/0003-ledger-matched-source.sql",
+          "archiveSha256": "c707797d180d72b5fb93fba86e39d158cca46d3dd14a24be4e9e8a5044e5ab72",
+          "gitBlobSha1": "fd84c81e13faa4dc8d761b341098175208430919",
+          "sourceCommit": "7347b46fe7d345bda34564cae92cb4ed0db38d5e",
+          "originalPath": "db/migrations/0003_catalog_metadata.sql",
+          "executable": true,
+          "note": "Exact historical SQL recovered from Git; Git blob SHA-1 equals the Development ledger checksum. The 14 named schema effects pass the live read-only Development object audit."
+        }
       }
     },
     {

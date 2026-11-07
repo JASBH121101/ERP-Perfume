@@ -33,9 +33,7 @@ The checks cover named tables, columns, constraints, indexes, the employee code 
 
 ## Remaining source-lineage exceptions
 
-The audit does **not** clear the historical provenance blockers:
-
-- `0002`, `0003`: recoverable Git revisions are reconstructions and their blob checksums do not match the Development ledger.
+The audit does **not** clear all historical provenance blockers. Exact executable sources for `0002` and `0003` were recovered from Git on 2026-11-07 and archived separately; their Git blob SHA-1 values match the Development ledger exactly. The current clean-install source files were not overwritten. The remaining issues are:
 - `0006`: the Git blob matching the ledger checksum is malformed SQL. The corrected source's schema effects exist, but the exact successfully executed SQL remains unproven.
 - `0008`, `0009`: source files are explicitly documented schema-equivalent reconstructions, not original byte-for-byte scripts.
 - `0012`–`0014`: all named objects exist, but no corresponding ledger rows exist. No rows were inserted or fabricated.
