@@ -86,7 +86,7 @@ FROM pg_constraint
 WHERE connamespace = 'public'::regnamespace
   AND contype = 'f'
   AND NOT convalidated
-ORDER BY table_name::text, constraint_name;
+ORDER BY conrelid::regclass::text, conname;
 
 SELECT
   n.nspname AS schema_name,

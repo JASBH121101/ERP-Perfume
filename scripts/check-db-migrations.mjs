@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_MIGRATIONS_DIR = resolve(REPO_ROOT, "db/migrations");
 const DEFAULT_MANIFEST_PATH = resolve(REPO_ROOT, "db/migration-integrity.json");
-const FILE_PATTERN = /^(\\d{4})_[a-z0-9][a-z0-9_-]*\\.sql$/;
+const FILE_PATTERN = /^(\d{4})_[a-z0-9][a-z0-9_-]*\.sql$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const LEGACY_HASH_PATTERN = /^[a-f0-9]{40}$/;
 
