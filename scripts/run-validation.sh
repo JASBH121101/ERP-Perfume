@@ -19,6 +19,27 @@ node --check scripts/validate-ai-patch.mjs
 bash -n scripts/run-validation.sh
 
 echo
+echo "=== Dependency remediation gate ==="
+node --input-type=module <<'NODE'
+import { readFileSync } from "node:fs";
+const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+const packages = lock.packages || {};
+const renderer = packages["node_modules/@react-email/render"];
+const htmlToText = Object.entries(packages).find(([path]) => /(^|\/)node_modules\/html-to-text$/.test(path));
+const vulnerable = Object.keys(packages).filter((path) => /(^|\/)node_modules\/deepmerge$/.test(path));
+if (renderer?.version !== "2.2.0") {
+  throw new Error("Expected @react-email/render 2.2.0 in the resolved package lock.");
+}
+if (!htmlToText || Number(htmlToText[1]?.version?.split(".")[0]) < 10) {
+  throw new Error("Expected html-to-text v10 or newer in the resolved package lock.");
+}
+if (vulnerable.length) {
+  throw new Error("Vulnerable deepmerge package remains in the resolved package lock: " + vulnerable.join(", "));
+}
+console.log("PASS: @react-email/render 2.2.0; html-to-text v10+; no deepmerge package.");
+NODE
+
+echo
 echo "=== Build Cloudflare Pages output ==="
 npm run build
 

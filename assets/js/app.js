@@ -1200,16 +1200,15 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   function renderInventoryProductRows() {
     const filtered = filteredInventoryProducts();
-    const rows = filtered.map(function (product) {
-      const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
-        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
-        '</div></td></tr>';
-    }).join('');
     const count = document.getElementById('inventory-product-count');
     const body = document.getElementById('inventory-product-body');
     if (count) count.textContent = filtered.length + ' de ' + products.filter(function (product) { return product.active !== false; }).length + ' productos';
-    if (body) body.innerHTML = rows || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>';
+    if (body) body.innerHTML = filtered.map(function (product) {
+      const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
+      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + Number(product.minStock ?? 3) + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + Number(product.stock || 0) + ' unidades</td><td data-label="Estado">' + status(Number(product.stock || 0), Number(product.minStock ?? 3)) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
+        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + esc(product.id) + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
+        '</div></td></tr>';
+    }).join('') || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>';
   }
   function renderInventory() {
     const activeProducts = products.filter(function (product) { return product.active !== false; });
@@ -3252,8 +3251,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const status=message=>{statusNode.textContent=message;};
     const renderPreview=()=>{
       if(!records.length){previewNode.innerHTML='';saveButton.disabled=true;return;}
-      const rows=records.map((record,index)=>'<tr><td><input class="filter-select" style="min-width:120px" data-import-index="'+index+'" data-import-field="sku" value="'+esc(record.sku)+'" aria-label="SKU"></td><td><input class="filter-select" style="min-width:180px" data-import-index="'+index+'" data-import-field="name" value="'+esc(record.name)+'" aria-label="Producto"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="brand" value="'+esc(record.brand||'')+'" aria-label="Marca"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="price_usd" type="number" min="0" step="0.01" value="'+Number(record.price_usd||0)+'" aria-label="Precio"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="purchase_cost_usd" type="number" min="0" step="0.01" value="'+Number(record.purchase_cost_usd||0)+'" aria-label="Costo"></td><td><input class="filter-select" style="min-width:75px" data-import-index="'+index+'" data-import-field="stock" type="number" min="0" step="1" value="'+Number(record.stock||0)+'" aria-label="Stock"></td><td><button type="button" class="table-action table-action-danger" data-import-remove="'+index+'" aria-label="Quitar fila">×</button></td></tr>').join('');
-      previewNode.innerHTML='<table class="data-table"><thead><tr><th>SKU</th><th>PRODUCTO</th><th>MARCA</th><th>PRECIO USD</th><th>COSTO USD</th><th>STOCK</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+      previewNode.innerHTML = '<table class="data-table"><thead><tr><th>SKU</th><th>PRODUCTO</th><th>MARCA</th><th>PRECIO USD</th><th>COSTO USD</th><th>STOCK</th><th></th></tr></thead><tbody>' +
+        records.map((record, index) =>
+          '<tr><td><input class="filter-select" style="min-width:120px" data-import-index="' + index + '" data-import-field="sku" value="' + esc(record.sku) + '" aria-label="SKU"></td>' +
+          '<td><input class="filter-select" style="min-width:180px" data-import-index="' + index + '" data-import-field="name" value="' + esc(record.name) + '" aria-label="Producto"></td>' +
+          '<td><input class="filter-select" style="min-width:110px" data-import-index="' + index + '" data-import-field="brand" value="' + esc(record.brand || '') + '" aria-label="Marca"></td>' +
+          '<td><input class="filter-select" style="min-width:110px" data-import-index="' + index + '" data-import-field="price_usd" type="number" min="0" step="0.01" value="' + Number(record.price_usd || 0) + '" aria-label="Precio"></td>' +
+          '<td><input class="filter-select" style="min-width:110px" data-import-index="' + index + '" data-import-field="purchase_cost_usd" type="number" min="0" step="0.01" value="' + Number(record.purchase_cost_usd || 0) + '" aria-label="Costo"></td>' +
+          '<td><input class="filter-select" style="min-width:75px" data-import-index="' + index + '" data-import-field="stock" type="number" min="0" step="1" value="' + Number(record.stock || 0) + '" aria-label="Stock"></td>' +
+          '<td><button type="button" class="table-action table-action-danger" data-import-remove="' + index + '" aria-label="Quitar fila">×</button></td></tr>'
+        ).join('') + '</tbody></table>';
       saveButton.disabled=false;saveButton.textContent='Importar '+records.length+' productos a Neon';
     };
     fileInput.addEventListener('change',async()=>{
