@@ -8,6 +8,7 @@ import {
   verifyLedgerChecksum,
   verifyPostApplyLedger,
   validateConnectionTarget,
+  validateDatabaseIdentity,
   validateOperatorApproval,
   validateHistoricalBaselineAudit,
   EXPECTED_HISTORICAL_AUDIT_OBJECTS
@@ -373,4 +374,32 @@ test("historical baseline rejects missing objects, nonzero invariants, duplicate
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:[...checks,checks[0]]}}),/exactly 47/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[]}),/ledger does not exactly match/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[{version:"0001"},{version:"0012"}]}),/ledger does not exactly match/i);
+});
+
+
+test("migration runner pins the exact Development database and DDL owner role", () => {
+  assert.deepEqual(validateDatabaseIdentity({
+    database_name: "erp_perfume",
+    role_name: "erp_owner",
+    server_version_num: 180006
+  }), {
+    database_name: "erp_perfume",
+    role_name: "erp_owner",
+    server_version_num: 180006
+  });
+  assert.throws(() => validateDatabaseIdentity({
+    database_name: "postgres", role_name: "erp_owner", server_version_num: 180006
+  }), /expected erp_perfume/i);
+  assert.throws(() => validateDatabaseIdentity({
+    database_name: "erp_perfume", role_name: "neondb_owner", server_version_num: 180006
+  }), /expected migration owner erp_owner/i);
+});
+
+test("migration runner rejects unsupported or malformed PostgreSQL versions", () => {
+  assert.throws(() => validateDatabaseIdentity({
+    database_name: "erp_perfume", role_name: "erp_owner", server_version_num: 140011
+  }), /PostgreSQL 15 or later/i);
+  assert.throws(() => validateDatabaseIdentity({
+    database_name: "erp_perfume", role_name: "erp_owner", server_version_num: null
+  }), /PostgreSQL 15 or later/i);
 });
