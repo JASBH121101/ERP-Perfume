@@ -386,11 +386,12 @@ async function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(arg => !["--apply", "--check", "--reconcile-development-baseline"].includes(arg));
   if (unknown.length) throw new Error("Unknown argument(s): " + unknown.join(", "));
-  if (args.includes("--apply") && args.includes("--check")) {
-    throw new Error("Choose either --check or --apply, not both.");
+  if (["--apply", "--check", "--reconcile-development-baseline"].filter(flag => args.includes(flag)).length > 1) {
+    throw new Error("Choose exactly one of --check, --apply, or --reconcile-development-baseline.");
   }
 
-  const apply = args.includes("--apply");\n  const reconcileBaseline = args.includes("--reconcile-development-baseline");
+  const apply = args.includes("--apply");
+  const reconcileBaseline = args.includes("--reconcile-development-baseline");
   const { manifest, summary, migrations } = await loadMigrationSources();
 
   // Pin branch identity and direct endpoint before opening any database socket.
