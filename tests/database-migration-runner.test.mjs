@@ -7,7 +7,8 @@ import {
   verifyLedgerChecksum,
   verifyPostApplyLedger,
   validateConnectionTarget,
-  validateOperatorApproval
+  validateOperatorApproval,
+  validateHistoricalBaselineAudit
 } from "../scripts/migrate-db.mjs";
 import { createHash } from "node:crypto";
 
