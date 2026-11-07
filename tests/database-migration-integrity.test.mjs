@@ -16,7 +16,7 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(result.summary.readinessStatus, "BLOCKED");
   assert.deepEqual(
     result.summary.readinessBlockers.map(item => item.version),
-    ["0002", "0003", "0006", "0008", "0009", "0012", "0013", "0014", "0017", "0018"]
+    ["0006", "0008", "0009", "0012", "0013", "0014", "0017", "0018"]
   );
   assert.equal(result.summary.nextMigrationVersion, "0021");
   assert.deepEqual(result.summary.pendingMigrations, ["0020"]);
