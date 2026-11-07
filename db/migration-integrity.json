@@ -298,5 +298,37 @@
         "note": "Forward-only schema reconciliation from a read-only comparison of the 0001–0019 clean-install branch against Neon Development on 2026-11-07. Adds invoice-line unit cost, preserves six-decimal purchase-order exchange rates, aligns notification target values, and replaces the incomplete rejection audit check. Not yet applied to Development."
       }
     }
-  ]
+  ],
+  "baselineReconciliation": {
+    "schemaVersion": 1,
+    "status": "approved",
+    "scope": "development-only; never applies to clean installs or Production",
+    "branch": "development",
+    "branchId": "br-nameless-surf-bezeav6n",
+    "database": "erp_perfume",
+    "approvedAt": "2026-11-07T20:13:39Z",
+    "approvedBy": "repository owner (explicit authorization in conversation)",
+    "approvalReference": "Explicit authorization to reconcile the Development migration baseline and remove the migration gate, 2026-11-07T20:13:39Z.",
+    "ledgerExceptions": [
+      "0006",
+      "0008",
+      "0009",
+      "0017",
+      "0018"
+    ],
+    "schemaSatisfiedWithoutLedger": [
+      "0012",
+      "0013",
+      "0014"
+    ],
+    "auditObjectCount": 55,
+    "auditMigrationCount": 11,
+    "auditInvariants": [
+      "employees_missing_initial_history=0",
+      "unvalidated_constraints=0",
+      "invalid_or_unready_indexes=0"
+    ],
+    "requiresLiveAuditBeforeApply": true,
+    "policy": "Preserve every observed ledger checksum and applied_at. Never fabricate historical ledger rows or replay a schema-present migration. Fresh installs must execute every pinned SQL migration in order."
+  }
 }
