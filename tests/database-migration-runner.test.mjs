@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildMigrationPlan,
   classifyDatabaseState,
+  classifyLedgerLineage,
   verifyLedgerChecksum
 } from "../scripts/migrate-db.mjs";
 import { createHash } from "node:crypto";
@@ -104,4 +105,46 @@ test("checksum verifier recognizes only explicit source provenance strategies", 
     ledgerChecksum: "wrong",
     currentBytes: bytes
   }), false);
+});
+
+
+test("a clean-install SHA-256 ledger is resumable as a contiguous prefix", () => {
+  const migrations = [
+    { version: "0001", filename: "0001_initial.sql", sha256: "hash-a", database: { status: "pending" } },
+    { version: "0002", filename: "0002_next.sql", sha256: "hash-b", database: { status: "pending" } }
+  ];
+  const result = classifyLedgerLineage({
+    manifest: { snapshot: { ledgerVersions: ["0001"] }, migrations: [] },
+    migrations,
+    ledgerRows: [{ version: "0001", filename: "0001_initial.sql", checksum: "hash-a" }]
+  });
+  assert.equal(result.type, "clean-install");
+  assert.deepEqual(result.blockers, []);
+});
+
+test("the existing Development snapshot remains blocked by unresolved history", () => {
+  const migrations = [{ version: "0001", filename: "0001_initial.sql", sha256: "hash-a" }];
+  const result = classifyLedgerLineage({
+    manifest: {
+      snapshot: { ledgerVersions: ["0001"] },
+      migrations: [{
+        version: "0001",
+        database: { status: "applied_legacy_unverified" }
+      }]
+    },
+    migrations,
+    ledgerRows: [{ version: "0001", filename: "0001_initial.sql", checksum: "old-hash" }]
+  });
+  assert.equal(result.type, "development-snapshot");
+  assert.equal(result.blockers.length, 1);
+});
+
+test("an unrelated ledger is rejected rather than guessed", () => {
+  const result = classifyLedgerLineage({
+    manifest: { snapshot: { ledgerVersions: ["0001"] }, migrations: [] },
+    migrations: [{ version: "0001", filename: "0001_initial.sql", sha256: "hash-a" }],
+    ledgerRows: [{ version: "0002", filename: "0002_other.sql", checksum: "hash-b" }]
+  });
+  assert.equal(result.type, "unrecognized");
+  assert.equal(result.blockers.length, 1);
 });

@@ -109,21 +109,41 @@ export function verifyLedgerChecksum({ migration, ledgerChecksum, currentBytes, 
   return false;
 }
 
-function readOnlyBlockers(manifest, summary, ledgerRows) {
-  const blockers = [];
-  if (summary?.readinessStatus === "BLOCKED") {
-    for (const item of summary.readinessBlockers || []) {
-      blockers.push("Historical migration " + item.version + " remains " + item.status + ".");
-    }
+export function classifyLedgerLineage({ manifest, migrations, ledgerRows }) {
+  const actualVersions = ledgerRows.map(row => String(row.version)).sort(compareVersions);
+  const snapshotVersions = [...(manifest.snapshot?.ledgerVersions || [])].sort(compareVersions);
+
+  if (JSON.stringify(actualVersions) === JSON.stringify(snapshotVersions)) {
+    return {
+      type: "development-snapshot",
+      blockers: (manifest.migrations || [])
+        .filter(item => BLOCKING_HISTORICAL_STATES.has(item?.database?.status))
+        .map(item => ({ version: item.version, status: item.database.status }))
+        .sort((a, b) => compareVersions(a.version, b.version))
+    };
   }
 
-  const expected = [...(manifest.snapshot?.ledgerVersions || [])].sort(compareVersions);
-  const actual = ledgerRows.map(row => String(row.version)).sort(compareVersions);
-  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
-    blockers.push("Live migration ledger versions do not match the reviewed Development snapshot.");
-  }
+  // A clean install uses the current pinned SHA-256 sources. A contiguous
+  // prefix permits safe resume after a failed, transactionally rolled-back step.
+  const orderedSources = [...migrations].sort((a, b) => compareVersions(a.version, b.version));
+  const sourceByVersion = new Map(orderedSources.map(item => [item.version, item]));
+  const rowsByVersion = new Map(ledgerRows.map(row => [String(row.version), row]));
+  const cleanPrefix = ledgerRows.length <= orderedSources.length &&
+    actualVersions.every((version, index) => {
+      const source = sourceByVersion.get(version);
+      const row = rowsByVersion.get(version);
+      return source &&
+        orderedSources[index]?.version === version &&
+        row.filename === source.filename &&
+        row.checksum === source.sha256;
+    });
 
-  return blockers;
+  if (cleanPrefix) return { type: "clean-install", blockers: [] };
+
+  return {
+    type: "unrecognized",
+    blockers: ["Live ledger is neither the reviewed Development snapshot nor a verified SHA-256 clean-install prefix."]
+  };
 }
 
 async function loadMigrationSources() {
@@ -190,14 +210,28 @@ function validateOperatorApproval(apply) {
   }
 }
 
-async function verifyAppliedRows({ client, manifest, summary, migrations, ledgerRows }) {
-  const blockers = readOnlyBlockers(manifest, summary, ledgerRows);
-  if (blockers.length) throw new Error("Existing Development database is not migration-ready:\n" + blockers.map(x => "- " + x).join("\n"));
+async function verifyAppliedRows({ manifest, migrations, ledgerRows }) {
+  const lineage = classifyLedgerLineage({ manifest, migrations, ledgerRows });
+  if (lineage.blockers.length) {
+    throw new Error("Existing database migration lineage is not safe to extend:\n" +
+      lineage.blockers.map(item =>
+        "- " + (item.version ? item.version + ": " : "") + (item.status || item)
+      ).join("\n"));
+  }
 
   const byVersion = new Map(migrations.map(migration => [migration.version, migration]));
   for (const row of ledgerRows) {
     const migration = byVersion.get(String(row.version));
-    const history = migration?.database?.historicalSource;
+    if (!migration) throw new Error("Ledger version " + row.version + " has no reviewed source.");
+
+    if (lineage.type === "clean-install") {
+      if (row.filename !== migration.filename || row.checksum !== migration.sha256) {
+        throw new Error("Clean-install source checksum or filename mismatch for migration " + row.version + ".");
+      }
+      continue;
+    }
+
+    const history = migration.database?.historicalSource;
     let historicalBytes = null;
     if (history?.archivePath) {
       historicalBytes = await readFile(resolve(ROOT, ...history.archivePath.split("/")));
@@ -211,6 +245,8 @@ async function verifyAppliedRows({ client, manifest, summary, migrations, ledger
       throw new Error("Ledger checksum for migration " + row.version + " cannot be proven from the reviewed source.");
     }
   }
+
+  return lineage.type;
 }
 
 async function main() {
@@ -282,15 +318,18 @@ async function main() {
       freshInstall: databaseState === "fresh"
     });
 
+    let lineageType = "fresh-install";
     if (databaseState === "existing") {
-      await verifyAppliedRows({ client, manifest, summary, migrations, ledgerRows });
+      lineageType = await verifyAppliedRows({ manifest, migrations, ledgerRows });
     }
+    const initialLedgerCount = ledgerRows.length;
 
     console.log("Database migration preflight");
     console.log("- Database: " + target.database_name);
     console.log("- Endpoint host: " + connectionUrl.hostname);
     console.log("- Environment: development");
     console.log("- Target state: " + databaseState);
+    console.log("- Ledger lineage: " + lineageType);
     console.log("- Public application tables: " + tables.rows.length);
     console.log("- Ledger rows: " + ledgerRows.length);
     console.log("- New migrations: " + plan.length);
@@ -344,8 +383,9 @@ async function main() {
     const finalRows = await client.query(
       "SELECT version,filename,checksum FROM public.app_schema_migrations ORDER BY version"
     );
-    if (finalRows.rows.length !== migrations.length) {
-      throw new Error("Post-apply ledger count mismatch: expected " + migrations.length + ", got " + finalRows.rows.length + ".");
+    const expectedLedgerCount = initialLedgerCount + plan.length;
+    if (finalRows.rows.length !== expectedLedgerCount) {
+      throw new Error("Post-apply ledger count mismatch: expected " + expectedLedgerCount + ", got " + finalRows.rows.length + ".");
     }
     console.log("SUCCESS: all source migrations are recorded in app_schema_migrations.");
   } finally {
