@@ -280,9 +280,10 @@ test("migration apply requires explicit approval even on the pinned Development 
 });
 
 
+
 test("historical audit SQL exactly mirrors the 47 pinned object keys and binds objects to their owning relations", async () => {
   const sql = await readFile(new URL("../db/diagnostics/historical-migration-object-audit.sql", import.meta.url), "utf8");
-  const rows = [...sql.matchAll(/^\\s*\\('([^']+)','(\\d{4})','([^']+)'\\),?$/gm)];
+  const rows = [...sql.matchAll(/^\s*\('([^']+)','(\d{4})','([^']+)'\),?$/gm)];
   const sqlKeys = new Set(rows.map(([, kind, migration, object]) => migration + "|" + kind + "|" + object));
   assert.equal(rows.length, EXPECTED_HISTORICAL_AUDIT_OBJECTS.size);
   assert.deepEqual([...sqlKeys].sort(), [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].sort());
@@ -291,7 +292,7 @@ test("historical audit SQL exactly mirrors the 47 pinned object keys and binds o
   const checkedStart = sql.indexOf("checked AS (", ownersStart);
   assert.ok(ownersStart >= 0 && checkedStart > ownersStart, "expected owner mapping CTE must exist");
   const ownersSql = sql.slice(ownersStart, checkedStart);
-  const ownerRows = [...ownersSql.matchAll(/^\\s*\\('(index|constraint|trigger)','([^']+)','([^']+)'\\),?$/gm)]
+  const ownerRows = [...ownersSql.matchAll(/^\s*\('(index|constraint|trigger)','([^']+)','([^']+)'\),?$/gm)]
     .map(([, kind, object, relation]) => kind + "|" + object + "|" + relation);
   const expectedOwners = [
     "index|purchase_orders_supplier_date_idx|purchase_orders",
@@ -320,11 +321,11 @@ test("historical audit SQL exactly mirrors the 47 pinned object keys and binds o
   ];
   assert.equal(ownerRows.length, expectedOwners.length);
   assert.deepEqual([...ownerRows].sort(), [...expectedOwners].sort());
-  assert.match(sql, /t\\.tgtype = 5/);
-  assert.match(sql, /t\\.tgenabled IN \\('O','A'\\)/);
-  assert.match(sql, /p\\.pronargs = 0/);
-  assert.match(sql, /p\\.prorettype = 'trigger'::regtype/);
-  assert.match(sql, /i\\.indrelid = to_regclass/);
+  assert.match(sql, /t\.tgtype = 5/);
+  assert.match(sql, /t\.tgenabled IN \('O','A'\)/);
+  assert.match(sql, /p\.pronargs = 0/);
+  assert.match(sql, /p\.prorettype = 'trigger'::regtype/);
+  assert.match(sql, /i\.indrelid = to_regclass/);
 });
 
 test("historical Development baseline requires all 47 checks and clean invariants", () => {
