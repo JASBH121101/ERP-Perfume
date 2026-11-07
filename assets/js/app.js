@@ -116,6 +116,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let hrCommissions = [];
   let hrInssSettings = { regime:'integral', employer_band:'under_50', employee_rate:7, employer_rate:21.5 };
   let inventoryMovements = [];
+  let inventorySummary = null;
+  let inventoryStockPageRows = null, inventoryStockTotal = null, inventoryStockPageError = "";
+  let inventoryMovementPageRows = null, inventoryMovementTotal = null, inventoryMovementPageError = "";
+  let inventoryStockRequestId = 0, inventoryMovementRequestId = 0;
+  let inventoryStockSearchTimer = null, inventoryMovementSearchTimer = null;
   let dgiSupportDocuments = [];
   let dgiDocumentsLoaded = false, dgiDocumentsLoading = false, dgiDocumentsLoadAttempted = false, dgiDocumentsError = "";
   let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", regime_confirmation_reference:"", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"", computerized_invoicing_authorization_number:"", computerized_invoicing_confirmation_reference:"" };
@@ -598,7 +603,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', catalogCategory: 'all', catalogShowPrices: true };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, catalogCategory: 'all', catalogShowPrices: true };
   const permissionViews = {
     dashboard: ["dashboard.view"], products: ["products.catalog.view"], catalog: ["products.catalog.view"], resources: [],
     inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"],
@@ -1122,50 +1127,68 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="notice-panel resource-monitor-note"><span>' + svg('warning') + '</span><div><strong>Cómo leer estas barras</strong><p>Los umbrales de 512 MB para Neon y 2 GB para R2 son referencias preventivas internas configurables; no representan el límite de tu plan ni generan cargos por sí mismos. La lectura R2 puede indicarse como parcial si el bucket supera 10.000 objetos.</p></div></div>';
   }
   function renderInventoryMovementResults() {
-    const query = String(state.inventoryMovementQuery || '').trim().toLocaleLowerCase('es');
-    const startDate = state.inventoryMovementStartDate || '';
-    const endDate = state.inventoryMovementEndDate || '';
-    const ordered = inventoryMovements.slice().sort(function (a, b) {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
-    });
-    const filtered = ordered.filter(function (movement) {
-      const searchable = [movement.productName, movement.sku, movement.note, movement.type, movement.sourceId]
-        .filter(Boolean).join(' ').toLocaleLowerCase('es');
-      if (query && !searchable.includes(query)) return false;
-      if (state.inventoryMovementType !== 'all' && String(movement.type || '') !== state.inventoryMovementType) return false;
-      const date = new Date(movement.createdAt);
-      const dateKey = Number.isNaN(date.getTime()) ? '' :
-        date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-      if (startDate && (!dateKey || dateKey < startDate)) return false;
-      if (endDate && (!dateKey || dateKey > endDate)) return false;
+    const query=String(state.inventoryMovementQuery||'').trim().toLocaleLowerCase('es');
+    const startDate=state.inventoryMovementStartDate||'',endDate=state.inventoryMovementEndDate||'';
+    const ordered=inventoryMovements.slice().sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+    const localFiltered=ordered.filter(m=>{
+      const searchable=[m.productName,m.sku,m.note,m.type,m.sourceId].filter(Boolean).join(' ').toLocaleLowerCase('es');
+      if(query&&!searchable.includes(query))return false;
+      if(state.inventoryMovementType!=='all'&&String(m.type||'')!==state.inventoryMovementType)return false;
+      const date=new Date(m.createdAt),key=Number.isNaN(date.getTime())?'':date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+      if(startDate&&(!key||key<startDate))return false;
+      if(endDate&&(!key||key>endDate))return false;
       return true;
     });
-    const pageSize = 25;
-    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-    state.inventoryMovementPage = Math.min(Math.max(1, Number(state.inventoryMovementPage) || 1), totalPages);
-    const offset = (state.inventoryMovementPage - 1) * pageSize;
-    const pageRows = filtered.slice(offset, offset + pageSize).map(function (movement) {
-      const date = new Date(movement.createdAt);
-      const dateLabel = Number.isNaN(date.getTime()) ? 'Fecha no disponible' : date.toLocaleString('es-NI', { dateStyle: 'short', timeStyle: 'short' });
-      const delta = Number(movement.delta || 0);
-      const deltaLabel = delta > 0 ? '+' + delta : String(delta);
-      return '<tr><td data-label="Fecha">' + esc(dateLabel) + '</td><td data-label="Perfume"><span class="table-primary">' + esc(movement.productName) + '</span><small class="table-secondary">' + esc(movement.sku || '') + '</small></td><td data-label="Tipo">' + esc(movement.type) + '</td><td data-label="Variación" class="table-primary">' + deltaLabel + ' uds.</td><td data-label="Stock resultante">' + Number(movement.previousStock || 0) + ' → ' + Number(movement.newStock || 0) + '</td><td data-label="Nota">' + esc(movement.note || '—') + '</td></tr>';
+    const serverPage=Array.isArray(inventoryMovementPageRows);
+    const filtered=serverPage?inventoryMovementPageRows:localFiltered;
+    const total=serverPage?Number(inventoryMovementTotal||0):localFiltered.length;
+    const pageSize=state.inventoryMovementPageSize,totalPages=Math.max(1,Math.ceil(total/pageSize));
+    state.inventoryMovementPage=Math.min(Math.max(1,Number(state.inventoryMovementPage)||1),totalPages);
+    const offset=(state.inventoryMovementPage-1)*pageSize;
+    const pageRows=(serverPage?filtered:filtered.slice(offset,offset+pageSize)).map(m=>{
+      const date=new Date(m.createdAt),dateLabel=Number.isNaN(date.getTime())?'Fecha no disponible':date.toLocaleString('es-NI',{dateStyle:'short',timeStyle:'short'});
+      const delta=Number(m.delta||0),deltaLabel=delta>0?'+'+delta:String(delta);
+      return '<tr><td data-label="Fecha">'+esc(dateLabel)+'</td><td data-label="Perfume"><span class="table-primary">'+esc(m.productName)+'</span><small class="table-secondary">'+esc(m.sku||'')+'</small></td><td data-label="Tipo">'+esc(m.type)+'</td><td data-label="Variación" class="table-primary">'+deltaLabel+' uds.</td><td data-label="Stock resultante">'+Number(m.previousStock||0)+' → '+Number(m.newStock||0)+'</td><td data-label="Nota">'+esc(m.note||'—')+'</td></tr>';
     }).join('');
-    const rangeStart = filtered.length ? offset + 1 : 0;
-    const rangeEnd = Math.min(offset + pageSize, filtered.length);
-    const emptyMessage = inventoryMovements.length ? 'No hay movimientos que coincidan con los filtros.' : 'Todavía no hay movimientos registrados.';
-    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">' +
-      (pageRows || '<tr><td colspan="6"><div class="empty-state">' + emptyMessage + '</div></td></tr>') + '</tbody></table></div>' +
-      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando ' + rangeStart + '–' + rangeEnd + ' de ' + filtered.length + ' movimientos</span>' +
-      '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" ' + (state.inventoryMovementPage <= 1 ? 'disabled' : '') + '>Anterior</button>' +
-      '<span class="ledger-count">Página ' + state.inventoryMovementPage + ' de ' + totalPages + '</span>' +
-      '<button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="next" ' + (state.inventoryMovementPage >= totalPages ? 'disabled' : '') + '>Siguiente</button></div></div>';
+    const rangeStart=total?offset+1:0,rangeEnd=Math.min(offset+pageSize,total);
+    const empty=inventoryMovementPageError||(total?'No hay movimientos que coincidan con los filtros.':'Todavía no hay movimientos registrados.');
+    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||'<tr><td colspan="6"><div class="empty-state">'+esc(empty)+'</div></td></tr>')+'</tbody></table></div>'+
+      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos'+(serverPage?' · consultados en Neon':' · vista inicial')+'</span>'+
+      '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" '+(state.inventoryMovementPage<=1?'disabled':'')+'>Anterior</button>'+
+      '<span class="ledger-count">Página '+state.inventoryMovementPage+' de '+totalPages+'</span>'+
+      '<button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="next" '+(state.inventoryMovementPage>=totalPages?'disabled':'')+'>Siguiente</button></div></div>';
   }
   function refreshInventoryMovementResults() {
-    const container = document.getElementById('inventory-movement-results');
-    if (container) container.innerHTML = renderInventoryMovementResults();
+    const container=document.getElementById('inventory-movement-results');
+    if(container)container.innerHTML=renderInventoryMovementResults();
+  }
+  async function loadInventoryMovementPage() {
+    if(state.view!=='inventory')return;
+    const requestId=++inventoryMovementRequestId;
+    const params=new URLSearchParams({
+      page:String(state.inventoryMovementPage),page_size:String(state.inventoryMovementPageSize),
+      search:state.inventoryMovementQuery,type:state.inventoryMovementType,
+      from:state.inventoryMovementStartDate,to:state.inventoryMovementEndDate
+    });
+    inventoryMovementPageError='';
+    try{
+      const data=await erpApi('inventory-movements?'+params.toString());
+      if(requestId!==inventoryMovementRequestId||state.view!=='inventory')return;
+      const total=Number(data.total||0),totalPages=Math.max(1,Number(data.totalPages||1));
+      if(state.inventoryMovementPage>totalPages){state.inventoryMovementPage=totalPages;return loadInventoryMovementPage();}
+      inventoryMovementPageRows=(data.records||[]).map(m=>({
+        id:m.id,productId:m.product_id,productName:m.product_name,sku:m.sku,type:m.movement_type,
+        quantity:Number(m.quantity||0),delta:Number(m.quantity_delta||0),
+        previousStock:Number(m.previous_stock||0),newStock:Number(m.new_stock||0),
+        note:m.note||'',sourceType:m.reference_type||'',sourceId:m.reference_id||'',createdAt:m.created_at
+      }));
+      inventoryMovementTotal=total;
+      refreshInventoryMovementResults();
+    }catch(error){
+      if(requestId!==inventoryMovementRequestId)return;
+      inventoryMovementPageError=error?.message||'No se pudo consultar el historial en Neon.';
+      refreshInventoryMovementResults();
+    }
   }
   function renderInventoryLedger() {
     const types = [['all', 'Todos los movimientos'], ['Entrada', 'Entradas'], ['Salida', 'Salidas'], ['Ajuste', 'Ajustes'], ['Devolucion', 'Devoluciones'], ['Reversion', 'Reversiones']];
