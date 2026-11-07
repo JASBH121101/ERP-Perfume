@@ -88,6 +88,19 @@ function compareVersions(a, b) {
   return String(a).localeCompare(String(b));
 }
 
+export function validateDatabaseIdentity({ database_name, role_name, server_version_num }) {
+  if (database_name !== EXPECTED_DATABASE_DEFAULT) {
+    throw new Error("Connected database is " + database_name + "; expected " + EXPECTED_DATABASE_DEFAULT + ".");
+  }
+  if (role_name !== EXPECTED_ROLE_DEFAULT) {
+    throw new Error("Connected role is " + role_name + "; expected migration owner " + EXPECTED_ROLE_DEFAULT + ".");
+  }
+  if (!Number.isInteger(server_version_num) || server_version_num < 150000) {
+    throw new Error("PostgreSQL 15 or later is required for this migration chain.");
+  }
+  return { database_name, role_name, server_version_num };
+}
+
 export function classifyDatabaseState({ ledgerExists, ledgerRows, applicationTableCount }) {
   if (!Number.isInteger(applicationTableCount) || applicationTableCount < 0) {
     throw new Error("applicationTableCount must be a non-negative integer.");
@@ -454,8 +467,6 @@ async function main() {
   const connectionString = process.env.MIGRATION_DATABASE_URL;
   if (!connectionString) throw new Error("MIGRATION_DATABASE_URL is required.");
   const connectionUrl = validateConnectionTarget(connectionString, manifest);
-  const expectedDatabase = process.env.ERP_EXPECTED_DATABASE_NAME || EXPECTED_DATABASE_DEFAULT;
-  const expectedRole = process.env.ERP_EXPECTED_DATABASE_ROLE || EXPECTED_ROLE_DEFAULT;
 
   const pool = new Pool({
     connectionString,
@@ -471,16 +482,7 @@ async function main() {
     const identity = await client.query(
       "SELECT current_database() AS database_name, current_user AS role_name, current_setting('server_version_num')::int AS server_version_num"
     );
-    const target = identity.rows[0];
-    if (target.database_name !== expectedDatabase) {
-      throw new Error("Connected database is " + target.database_name + "; expected " + expectedDatabase + ".");
-    }
-    if (target.role_name !== expectedRole) {
-      throw new Error("Connected role is " + target.role_name + "; expected migration owner " + expectedRole + ".");
-    }
-    if (target.server_version_num < 150000) {
-      throw new Error("PostgreSQL 15 or later is required for this migration chain.");
-    }
+    const target = validateDatabaseIdentity(identity.rows[0]);
 
     await client.query("SELECT pg_advisory_lock(hashtext($1))", [LOCK_NAME]);
     locked = true;
