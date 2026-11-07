@@ -62,11 +62,51 @@ WITH expected(kind, migration, object_name) AS (
 
     ('column','0018','purchase_orders.rejection_reason')
 ),
+expected_owners(kind, object_name, relation_name) AS (
+  VALUES
+    ('index','purchase_orders_supplier_date_idx','purchase_orders'),
+    ('index','purchase_orders_status_idx','purchase_orders'),
+    ('index','purchase_order_items_order_idx','purchase_order_items'),
+    ('index','purchase_receipts_order_idx','purchase_receipts'),
+    ('constraint','products_images_array_check','products'),
+    ('constraint','products_wholesale_price_usd_check','products'),
+    ('constraint','customers_customer_type_check','customers'),
+    ('index','products_barcode_nonempty_uq','products'),
+    ('index','products_active_category_idx','products'),
+    ('index','customers_active_name_idx','customers'),
+    ('index','dgi_support_documents_date_idx','dgi_support_documents'),
+    ('index','dgi_support_documents_type_period_idx','dgi_support_documents'),
+    ('constraint','app_users_employee_id_fkey','app_users'),
+    ('index','app_users_employee_id_unique_idx','app_users'),
+    ('index','supplier_invoices_supplier_date_idx','supplier_invoices'),
+    ('index','supplier_invoice_payments_invoice_idx','supplier_invoice_payments'),
+    ('index','employee_history_employee_date_idx','employee_history'),
+    ('index','employee_documents_employee_date_idx','employee_documents'),
+    ('index','employee_history_changed_by_idx','employee_history'),
+    ('index','employee_documents_uploaded_by_idx','employee_documents'),
+    ('constraint','purchase_orders_status_check','purchase_orders'),
+    ('constraint','purchase_orders_rejection_audit_check','purchase_orders'),
+    ('trigger','employees_seed_history_after_insert','employees')
+),
 checked AS (
   SELECT e.*,
     CASE e.kind
-      WHEN 'table' THEN to_regclass('public.' || e.object_name) IS NOT NULL
-      WHEN 'sequence' THEN to_regclass('public.' || e.object_name) IS NOT NULL
+      WHEN 'table' THEN EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname = e.object_name
+          AND c.relkind IN ('r','p')
+      )
+      WHEN 'sequence' THEN EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname = e.object_name
+          AND c.relkind = 'S'
+      )
       WHEN 'column' THEN EXISTS (
         SELECT 1 FROM information_schema.columns c
         WHERE c.table_schema = 'public'
@@ -76,6 +116,7 @@ checked AS (
         SELECT 1 FROM pg_constraint c
         WHERE c.connamespace = 'public'::regnamespace
           AND c.conname = e.object_name
+          AND c.conrelid = to_regclass('public.' || o.relation_name)
       )
       WHEN 'index' THEN EXISTS (
         SELECT 1
@@ -84,22 +125,39 @@ checked AS (
         JOIN pg_namespace n ON n.oid = x.relnamespace
         WHERE n.nspname = 'public'
           AND x.relname = e.object_name
+          AND i.indrelid = to_regclass('public.' || o.relation_name)
           AND i.indisvalid
           AND i.indisready
+          AND i.indislive
       )
       WHEN 'trigger' THEN EXISTS (
         SELECT 1
         FROM pg_trigger t
         JOIN pg_class c ON c.oid = t.tgrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        JOIN pg_namespace pn ON pn.oid = p.pronamespace
         WHERE n.nspname = 'public'
+          AND c.relname = o.relation_name
           AND t.tgname = e.object_name
+          AND t.tgrelid = to_regclass('public.' || o.relation_name)
+          AND t.tgtype = 5
+          AND t.tgenabled IN ('O','A')
+          AND pn.nspname = 'public'
+          AND p.proname = 'seed_employee_history'
+          AND p.pronargs = 0
+          AND p.prorettype = 'trigger'::regtype
+          AND p.prokind = 'f'
           AND NOT t.tgisinternal
       )
       WHEN 'function' THEN EXISTS (
         SELECT 1 FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'public' AND p.proname = e.object_name
+        WHERE n.nspname = 'public'
+          AND p.proname = e.object_name
+          AND p.pronargs = 0
+          AND p.prorettype = 'trigger'::regtype
+          AND p.prokind = 'f'
       )
       WHEN 'setting' THEN EXISTS (
         SELECT 1 FROM public.app_settings s
@@ -108,6 +166,7 @@ checked AS (
       ELSE false
     END AS present
   FROM expected e
+  LEFT JOIN expected_owners o ON o.kind = e.kind AND o.object_name = e.object_name
 ),
 summary AS (
   SELECT migration,
