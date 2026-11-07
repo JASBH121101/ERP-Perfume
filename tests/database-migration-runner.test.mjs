@@ -364,7 +364,7 @@ test("historical Development baseline requires all 55 checks and clean invariant
 });
 
 test("historical baseline rejects missing objects, nonzero invariants, duplicate checks and ledger drift", () => {
-  const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1]];
+  const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1],["0019",8]];
   const checks = [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].map(key => {
     const [migration,kind,object] = key.split("|");
     return {migration,kind,object,present:true};
