@@ -14,7 +14,7 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(result.summary.schemaPresentWithoutLedger, 4);
   assert.equal(result.summary.historicalSourcesVerified, 3);
   assert.equal(result.summary.readinessStatus, "READY_WITH_APPROVED_BASELINE_EXCEPTIONS");
-  assert.equal(result.summary.approvedBaselineExceptions, 8);
+  assert.equal(result.summary.approvedBaselineExceptions, 9);
   assert.deepEqual(result.summary.readinessBlockers, []);
   assert.equal(result.summary.nextMigrationVersion, "0021");
   assert.deepEqual(result.summary.pendingMigrations, []);
