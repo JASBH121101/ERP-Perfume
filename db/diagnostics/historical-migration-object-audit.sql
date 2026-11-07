@@ -60,7 +60,16 @@ WITH expected(kind, migration, object_name) AS (
     ('constraint','0017','purchase_orders_status_check'),
     ('constraint','0017','purchase_orders_rejection_audit_check'),
 
-    ('column','0018','purchase_orders.rejection_reason')
+    ('column','0018','purchase_orders.rejection_reason'),
+
+    ('index','0019','dgi_support_documents_created_by_idx'),
+    ('index','0019','erp_roles_created_by_idx'),
+    ('index','0019','permission_catalog_parent_idx'),
+    ('index','0019','role_template_permissions_permission_idx'),
+    ('index','0019','user_permission_overrides_permission_idx'),
+    ('index','0019','user_permission_overrides_updated_by_idx'),
+    ('index','0019','supplier_invoices_created_by_idx'),
+    ('index','0019','supplier_invoice_payments_created_by_idx')
 ),
 expected_owners(kind, object_name, relation_name) AS (
   VALUES
@@ -86,7 +95,15 @@ expected_owners(kind, object_name, relation_name) AS (
     ('index','employee_documents_uploaded_by_idx','employee_documents'),
     ('constraint','purchase_orders_status_check','purchase_orders'),
     ('constraint','purchase_orders_rejection_audit_check','purchase_orders'),
-    ('trigger','employees_seed_history_after_insert','employees')
+    ('trigger','employees_seed_history_after_insert','employees'),
+    ('index','dgi_support_documents_created_by_idx','dgi_support_documents'),
+    ('index','erp_roles_created_by_idx','erp_roles'),
+    ('index','permission_catalog_parent_idx','permission_catalog'),
+    ('index','role_template_permissions_permission_idx','role_template_permissions'),
+    ('index','user_permission_overrides_permission_idx','user_permission_overrides'),
+    ('index','user_permission_overrides_updated_by_idx','user_permission_overrides'),
+    ('index','supplier_invoices_created_by_idx','supplier_invoices'),
+    ('index','supplier_invoice_payments_created_by_idx','supplier_invoice_payments')
 ),
 checked AS (
   SELECT e.*,
@@ -207,6 +224,12 @@ SELECT jsonb_build_object(
       SELECT 1 FROM public.employee_history h
       WHERE h.employee_id = e.id AND h.event_type = 'compensation'
     )
+  ),
+  'ledger_key_constraints', (
+    SELECT count(*)
+    FROM pg_constraint
+    WHERE conrelid = 'public.app_schema_migrations'::regclass
+      AND contype IN ('p','u')
   ),
   'unvalidated_constraints', (
     SELECT count(*)
