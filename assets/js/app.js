@@ -1499,12 +1499,67 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<button type="button" role="menuitem" data-action="export-current-view" data-format="pdf">PDF / Imprimir <small>Vista A4 para guardar como PDF</small></button>'+
       '</div></div>';
   }
-  function exportCurrentView(format){
+  async function fetchAllInventoryPages(resource,filterParams) {
+    const pageSize=100,maxRows=25000;
+    const params=new URLSearchParams(filterParams||{});
+    params.set('page','1');params.set('page_size',String(pageSize));
+    const first=await erpApi(resource+'?'+params.toString());
+    const total=Number(first.total||0),totalPages=Math.max(1,Math.ceil(total/pageSize));
+    if(total>maxRows)throw new Error('La consulta contiene '+total.toLocaleString('es-NI')+' registros. Reduce los filtros a 25,000 o menos para generar una exportación completa.');
+    const records=Array.isArray(first.records)?first.records.slice():[];
+    for(let start=2;start<=totalPages;start+=5){
+      const pages=Array.from({length:Math.min(5,totalPages-start+1)},(_,index)=>start+index);
+      const responses=await Promise.all(pages.map(async page=>{
+        const pageParams=new URLSearchParams(params);pageParams.set('page',String(page));
+        return erpApi(resource+'?'+pageParams.toString());
+      }));
+      for(const response of responses){
+        if(Number(response.total||0)!==total)throw new Error('Los datos cambiaron mientras se preparaba la exportación. Vuelve a intentarlo para obtener un archivo consistente.');
+        records.push(...(Array.isArray(response.records)?response.records:[]));
+      }
+    }
+    if(records.length!==total)throw new Error('La exportación no recibió todos los registros de Neon; no se generó un archivo parcial.');
+    return records;
+  }
+  async function buildInventoryExportDataset() {
+    const stockParams=new URLSearchParams({
+      search:state.inventoryProductQuery,
+      category:state.inventoryProductCategory==='all'?'':state.inventoryProductCategory,
+      status:state.inventoryProductStock
+    });
+    const movementParams=new URLSearchParams({
+      search:state.inventoryMovementQuery,
+      type:state.inventoryMovementType,
+      from:state.inventoryMovementStartDate,
+      to:state.inventoryMovementEndDate
+    });
+    const stockRecords=await fetchAllInventoryPages('inventory-stock',stockParams);
+    let movementRecords=[];
+    if(["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted)){
+      movementRecords=await fetchAllInventoryPages('inventory-movements',movementParams);
+    }
+    const headers=['Tipo de registro','SKU','Producto','Categoría / tipo','Fecha','Variación / stock','Stock mínimo / anterior','Estado / stock nuevo','Ubicación / nota'];
+    const rows=stockRecords.map(p=>{
+      const stock=Number(p.stock||0),minimum=Number(p.min_stock??0);
+      const statusLabel=stock===0?'Agotado':(stock<=minimum?'Stock bajo':'Disponible');
+      return ['Existencia',p.sku,p.name,p.category,'',stock,minimum,statusLabel,p.location||''];
+    });
+    movementRecords.forEach(m=>rows.push([
+      'Movimiento',m.sku,m.product_name,m.movement_type,dateText(m.created_at),
+      Number(m.quantity_delta||0),Number(m.previous_stock||0),Number(m.new_stock||0),m.note||''
+    ]));
+    return {
+      title:'Inventario · Existencias y kardex',
+      fileBase:'jb-parfums-inventory',
+      headers,rows
+    };
+  }
+  async function exportCurrentView(format){
     if(!canExportERPView(state.view)){toast('Tu cuenta no tiene permiso para exportar esta sección.');return;}
-    const dataset=buildCurrentExportDataset();
-    if(!dataset.headers.length){toast('Esta sección todavía no tiene una estructura de exportación.');return;}
-    if(!dataset.rows.length){toast('No hay registros disponibles para exportar en esta sección.');return;}
     try{
+      const dataset=state.view==='inventory'?await buildInventoryExportDataset():buildCurrentExportDataset();
+      if(!dataset.headers.length){toast('Esta sección todavía no tiene una estructura de exportación.');return;}
+      if(!dataset.rows.length){toast('No hay registros disponibles para exportar con los filtros actuales.');return;}
       if(format==='pdf'){
         if(!openPrintExport(dataset)){toast('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes para este sitio e inténtalo de nuevo.');return;}
         toast('Documento preparado. Selecciona “Guardar como PDF” en el diálogo de impresión.');
@@ -1514,7 +1569,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       }
     }catch(error){toast(error?.message||'No se pudo generar la exportación.');}
   }
-  function renderInventoryCsv(){exportCurrentView('csv');}
+  async function renderInventoryCsv(){return exportCurrentView('csv');}
   function showOrderDetails(orderId) {
     const order = orders.find(function (item) { return String(item.id) === String(orderId); });
     if (!order) { toast('No se encontró el pedido seleccionado.'); return; }
@@ -3480,7 +3535,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if(menu){menu.hidden=true;menu.removeAttribute('style');}
         const trigger=root.querySelector('[data-action="toggle-export-menu"]');
         if(trigger)trigger.setAttribute('aria-expanded','false');
-        exportCurrentView(action.getAttribute('data-format')||'csv');
+        await exportCurrentView(action.getAttribute('data-format')||'csv');
         return;
       } else if (name === 'reload-erp') {
         action.disabled=true;
