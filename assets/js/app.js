@@ -1190,6 +1190,62 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       refreshInventoryMovementResults();
     }
   }
+  async function loadInventorySummary() {
+    if(state.view!=='inventory')return;
+    try{
+      const data=await erpApi('inventory-summary');
+      if(state.view!=='inventory')return;
+      inventorySummary=data.summary||null;
+      const active=document.getElementById('inventory-summary-active');
+      const units=document.getElementById('inventory-summary-units');
+      const restock=document.getElementById('inventory-summary-restock');
+      const out=document.getElementById('inventory-summary-out');
+      if(active)active.textContent=Number(inventorySummary?.activeProducts||0).toLocaleString('es-NI');
+      if(units)units.textContent=Number(inventorySummary?.totalUnits||0).toLocaleString('es-NI');
+      if(restock)restock.textContent=(Number(inventorySummary?.lowStock||0)+Number(inventorySummary?.outOfStock||0)).toLocaleString('es-NI');
+      if(out)out.textContent=Number(inventorySummary?.outOfStock||0).toLocaleString('es-NI');
+      refreshInventoryCategoryOptions(data.categories||[]);
+    }catch(error){
+      const note=document.getElementById('inventory-summary-error');
+      if(note)note.textContent=error?.message||'No se pudo actualizar el resumen desde Neon.';
+    }
+  }
+  function refreshInventoryCategoryOptions(serverCategories) {
+    const select=document.getElementById('inventory-product-category');
+    if(!select)return;
+    const categories=Array.from(new Set([...(serverCategories||[]),...products.map(p=>p.category).filter(Boolean)]))
+      .filter(Boolean).sort((a,b)=>String(a).localeCompare(String(b),'es'));
+    select.innerHTML='<option value="all">Todas las categorías</option>'+categories.map(category=>
+      '<option value="'+esc(category)+'"'+(state.inventoryProductCategory===category?' selected':'')+'>'+esc(category)+'</option>'
+    ).join('');
+  }
+  async function loadInventoryStockPage() {
+    if(state.view!=='inventory')return;
+    const requestId=++inventoryStockRequestId;
+    const params=new URLSearchParams({
+      page:String(state.inventoryStockPage),page_size:String(state.inventoryStockPageSize),
+      search:state.inventoryProductQuery,category:state.inventoryProductCategory==='all'?'':state.inventoryProductCategory,
+      status:state.inventoryProductStock
+    });
+    inventoryStockPageError='';
+    try{
+      const data=await erpApi('inventory-stock?'+params.toString());
+      if(requestId!==inventoryStockRequestId||state.view!=='inventory')return;
+      const total=Number(data.total||0),totalPages=Math.max(1,Number(data.totalPages||1));
+      if(state.inventoryStockPage>totalPages){state.inventoryStockPage=totalPages;return loadInventoryStockPage();}
+      inventoryStockPageRows=(data.records||[]).map(p=>({
+        id:p.id,name:p.name,sku:p.sku,brand:p.brand||'',category:p.category||'',stock:Number(p.stock||0),
+        minStock:Number(p.min_stock??3),location:p.location||'',barcode:p.barcode||'',tone:p.tone||'',
+        active:p.active!==false
+      }));
+      inventoryStockTotal=total;
+      renderInventoryProductRows();
+    }catch(error){
+      if(requestId!==inventoryStockRequestId)return;
+      inventoryStockPageError=error?.message||'No se pudieron consultar las existencias.';
+      renderInventoryProductRows();
+    }
+  }
   function renderInventoryLedger() {
     const types = [['all', 'Todos los movimientos'], ['Entrada', 'Entradas'], ['Salida', 'Salidas'], ['Ajuste', 'Ajustes'], ['Devolucion', 'Devoluciones'], ['Reversion', 'Reversiones']];
     const typeOptions = types.map(function (item) {
@@ -1222,16 +1278,20 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     });
   }
   function renderInventoryProductRows() {
-    const filtered = filteredInventoryProducts();
-    const count = document.getElementById('inventory-product-count');
-    const body = document.getElementById('inventory-product-body');
-    if (count) count.textContent = filtered.length + ' de ' + products.filter(function (product) { return product.active !== false; }).length + ' productos';
-    if (body) body.innerHTML = filtered.map(function (product) {
-      const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + Number(product.minStock ?? 3) + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + Number(product.stock || 0) + ' unidades</td><td data-label="Estado">' + status(Number(product.stock || 0), Number(product.minStock ?? 3)) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
-        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + esc(product.id) + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
-        '</div></td></tr>';
-    }).join('') || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>';
+    const filtered=Array.isArray(inventoryStockPageRows)?inventoryStockPageRows:filteredInventoryProducts();
+    const total=inventoryStockTotal==null?products.filter(p=>p.active!==false).length:Number(inventoryStockTotal);
+    const count=document.getElementById('inventory-product-count');
+    const body=document.getElementById('inventory-product-body');
+    const pagination=document.getElementById('inventory-stock-pagination');
+    const pages=Math.max(1,Math.ceil(total/state.inventoryStockPageSize));
+    const start=total?(state.inventoryStockPage-1)*state.inventoryStockPageSize+1:0;
+    const end=Math.min(state.inventoryStockPage*state.inventoryStockPageSize,total);
+    if(count)count.textContent='Mostrando '+start+'–'+end+' de '+total+' productos';
+    if(body)body.innerHTML=filtered.map(product=>{
+      const suggestion=Number(product.stock)===0?'Reposición urgente':(needsRestock(product)?'Revisar reposición':'Nivel estable');
+      return '<tr><td data-label="Perfume"><div class="product-cell">'+art(product.tone)+'<span><span class="table-primary">'+esc(product.name)+'</span><small class="table-secondary">'+esc(product.sku)+' · Mín. '+Number(product.minStock??3)+'</small></span></div></td><td data-label="Categoría">'+esc(product.category||'—')+'</td><td data-label="Stock actual" class="table-primary">'+Number(product.stock||0)+' unidades</td><td data-label="Estado">'+status(Number(product.stock||0),Number(product.minStock??3))+'</td><td data-label="Reposición"><span class="table-secondary">'+suggestion+'</span></td><td data-label="Consulta"><div class="table-actions"><button class="table-action" type="button" data-action="inventory-view-product" data-id="'+esc(product.id)+'" aria-label="Consultar existencias de '+esc(product.name)+'" title="Consultar existencias">'+svg('eye')+'</button></div></td></tr>';
+    }).join('')||'<tr><td colspan="6"><div class="empty-state">'+esc(inventoryStockPageError||'No hay productos que coincidan con los filtros.')+'</div></td></tr>';
+    if(pagination)pagination.innerHTML='<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Página '+state.inventoryStockPage+' de '+pages+'</span><div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="previous" '+(state.inventoryStockPage<=1?'disabled':'')+'>Anterior</button><span class="ledger-count">'+start+'–'+end+' / '+total+'</span><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="next" '+(state.inventoryStockPage>=pages?'disabled':'')+'>Siguiente</button></div></div>';
   }
   function renderInventory() {
     const activeProducts = products.filter(function (product) { return product.active !== false; });
