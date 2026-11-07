@@ -9,7 +9,7 @@ import { verifyMigrationSources } from "../scripts/check-db-migrations.mjs";
 test("repository migration sources match the reviewed integrity baseline", async () => {
   const result = await verifyMigrationSources();
   assert.deepEqual(result.errors, [], result.errors.join("\n"));
-  assert.equal(result.summary.sourceFiles, 19);
+  assert.equal(result.summary.sourceFiles, 20);
   assert.equal(result.summary.appliedLedgerRows, 16);
   assert.equal(result.summary.schemaPresentWithoutLedger, 3);
   assert.equal(result.summary.historicalSourcesVerified, 1);
@@ -18,7 +18,8 @@ test("repository migration sources match the reviewed integrity baseline", async
     result.summary.readinessBlockers.map(item => item.version),
     ["0002", "0003", "0006", "0008", "0009", "0012", "0013", "0014", "0017", "0018"]
   );
-  assert.equal(result.summary.nextMigrationVersion, "0020");
+  assert.equal(result.summary.nextMigrationVersion, "0021");
+  assert.deepEqual(result.summary.pendingMigrations, ["0020"]);
 });
 
 async function createFixture(t, namesAndContents) {

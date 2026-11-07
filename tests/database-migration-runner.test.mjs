@@ -114,7 +114,7 @@ test("a clean-install SHA-256 ledger is resumable as a contiguous prefix", () =>
     { version: "0002", filename: "0002_next.sql", sha256: "hash-b", database: { status: "pending" } }
   ];
   const result = classifyLedgerLineage({
-    manifest: { snapshot: { ledgerVersions: ["0001"] }, migrations: [] },
+    manifest: { snapshot: { ledgerVersions: ["0001", "0002"] }, migrations: [] },
     migrations,
     ledgerRows: [{ version: "0001", filename: "0001_initial.sql", checksum: "hash-a" }]
   });
