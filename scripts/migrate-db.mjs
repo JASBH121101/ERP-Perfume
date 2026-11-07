@@ -175,7 +175,7 @@ async function loadMigrationSources() {
   return { manifest, summary: sourceCheck.summary, migrations };
 }
 
-function validateConnectionTarget(connectionString) {
+export function validateConnectionTarget(connectionString, manifest, environment = process.env) {
   let url;
   try {
     url = new URL(connectionString);
@@ -191,21 +191,37 @@ function validateConnectionTarget(connectionString) {
   if (url.hostname.includes("-pooler.")) {
     throw new Error("Migrations require a direct Neon connection, not a pooled -pooler endpoint.");
   }
-  const expectedHost = process.env.ERP_EXPECTED_NEON_ENDPOINT_HOST;
-  if (!expectedHost || expectedHost.toLowerCase() !== url.hostname.toLowerCase()) {
-    throw new Error("Set ERP_EXPECTED_NEON_ENDPOINT_HOST to the exact Development endpoint host shown in Neon Console.");
+
+  const pinnedDevelopmentHost = manifest?.snapshot?.developmentEndpointHost;
+  const protectedProductionHost = manifest?.snapshot?.productionEndpointHost;
+  const configuredHost = environment.ERP_EXPECTED_NEON_ENDPOINT_HOST;
+  const actualHost = url.hostname.toLowerCase();
+
+  if (protectedProductionHost && actualHost === protectedProductionHost.toLowerCase()) {
+    throw new Error("Production Neon endpoint is explicitly blocked by the migration runner.");
+  }
+  if (!pinnedDevelopmentHost ||
+      !configuredHost ||
+      configuredHost.toLowerCase() !== pinnedDevelopmentHost.toLowerCase() ||
+      actualHost !== pinnedDevelopmentHost.toLowerCase()) {
+    throw new Error("Connection host must exactly match the pinned Neon Development endpoint in db/migration-integrity.json and ERP_EXPECTED_NEON_ENDPOINT_HOST.");
   }
   return url;
 }
 
-function validateOperatorApproval(apply) {
-  if (process.env.ERP_ENVIRONMENT !== "development") {
+export function validateOperatorApproval(apply, manifest, environment = process.env) {
+  if (environment.ERP_ENVIRONMENT !== "development") {
     throw new Error("ERP_ENVIRONMENT must be explicitly set to development.");
   }
-  if (process.env.ERP_MIGRATION_BRANCH !== "development") {
-    throw new Error("ERP_MIGRATION_BRANCH must be explicitly set to development.");
+  if (environment.ERP_MIGRATION_BRANCH !== "development" ||
+      environment.ERP_MIGRATION_BRANCH !== manifest?.snapshot?.branch) {
+    throw new Error("ERP_MIGRATION_BRANCH must match the pinned Development branch.");
   }
-  if (apply && process.env.ERP_MIGRATIONS_APPROVED !== "YES") {
+  if (!manifest?.snapshot?.branchId ||
+      environment.ERP_MIGRATION_BRANCH_ID !== manifest.snapshot.branchId) {
+    throw new Error("ERP_MIGRATION_BRANCH_ID must exactly match the pinned Neon Development branch ID in db/migration-integrity.json.");
+  }
+  if (apply && environment.ERP_MIGRATIONS_APPROVED !== "YES") {
     throw new Error("Applying requires --apply and ERP_MIGRATIONS_APPROVED=YES.");
   }
 }
@@ -258,13 +274,13 @@ async function main() {
   }
 
   const apply = args.includes("--apply");
-  validateOperatorApproval(apply);
+  const { manifest, summary, migrations } = await loadMigrationSources();
 
+  // Pin branch identity and direct endpoint before opening any database socket.
+  validateOperatorApproval(apply, manifest);
   const connectionString = process.env.MIGRATION_DATABASE_URL;
   if (!connectionString) throw new Error("MIGRATION_DATABASE_URL is required.");
-  const connectionUrl = validateConnectionTarget(connectionString);
-
-  const { manifest, summary, migrations } = await loadMigrationSources();
+  const connectionUrl = validateConnectionTarget(connectionString, manifest);
   const expectedDatabase = process.env.ERP_EXPECTED_DATABASE_NAME || EXPECTED_DATABASE_DEFAULT;
   const expectedRole = process.env.ERP_EXPECTED_DATABASE_ROLE || EXPECTED_ROLE_DEFAULT;
 

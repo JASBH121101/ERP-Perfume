@@ -21,12 +21,12 @@ Set these values only in a trusted local shell or secret store; never commit the
 | `MIGRATION_DATABASE_URL` | Direct (unpooled) Neon connection string for Development |
 | `ERP_EXPECTED_NEON_ENDPOINT_HOST` | Exact hostname from that Development connection string |
 | `ERP_ENVIRONMENT` | `development` |
-| `ERP_MIGRATION_BRANCH` | `development` |
+| `ERP_MIGRATION_BRANCH` | `development` |\n| `ERP_MIGRATION_BRANCH_ID` | Exact branch ID pinned in `db/migration-integrity.json` |
 | `ERP_EXPECTED_DATABASE_NAME` | `erp_perfume` (default) |
 | `ERP_EXPECTED_DATABASE_ROLE` | `erp_owner` (default) |
 | `ERP_MIGRATIONS_APPROVED` | Must be `YES` for `--apply` |
 
-The runner rejects pooled `-pooler` hosts, a hostname that does not exactly match the operator-supplied Development endpoint, another database, a different role, and any environment other than Development. It never prints the connection string or its password.
+The runner rejects pooled `-pooler` hosts, any hostname other than the exact Development endpoint pinned in the manifest, the protected Production endpoint, a mismatched Neon branch ID, another database, a different role, and any environment other than Development. The operator-supplied hostname must match the manifest; it cannot override that pin. The runner never prints the connection string or its password.
 
 ## Operational rules
 

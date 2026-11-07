@@ -33,7 +33,9 @@
     ],
     "productionInspected": false,
     "productionModified": false,
-    "note": "Read-only snapshot. It is evidence from one audit, not a live CI connection or permission to execute migrations."
+    "note": "Read-only snapshot. It is evidence from one audit, not a live CI connection or permission to execute migrations.",
+    "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
+    "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech"
   },
   "migrations": [
     {

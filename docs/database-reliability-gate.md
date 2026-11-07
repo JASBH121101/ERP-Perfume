@@ -43,7 +43,7 @@ Estos casos no se deben “reparar” ejecutando otra vez los SQL ni inventando 
 4. **0017:** el SHA-256 de la fuente actual no coincide con el checksum de la fila aplicada. La procedencia del SQL original aún requiere conciliación.
 5. **0018:** el archivo actual es una reconstrucción equivalente al esquema observado; el checksum registrado corresponde a otra fuente. No se debe volver a aplicar ni sobrescribir el checksum.
 
-Los 19 archivos SQL existentes tienen hashes SHA-256 fijados en `db/migration-integrity.json`. Ese manifiesto protege la fuente que está en Git; no convierte por sí solo las excepciones históricas en verificadas.
+Los 20 archivos SQL existentes tienen hashes SHA-256 fijados en `db/migration-integrity.json`. Ese manifiesto protege la fuente que está en Git; no convierte por sí solo las excepciones históricas en verificadas.
 
 ## Qué valida el gate
 
@@ -55,9 +55,9 @@ Ejecuta `npm run check:db`. El script:
 - calcula SHA-256 sobre los bytes exactos de cada archivo, sin normalizar finales de línea;
 - comprueba que cada excepción histórica tenga estado y evidencia explícitos;
 - exige que las versiones registradas y las no registradas coincidan con la fotografía documentada;
-- comprueba que la siguiente etiqueta de archivo calculada sea `0020`.
+- comprueba que la siguiente etiqueta de archivo calculada sea `0021`; la migración `0020` sigue pendiente de promoción a Development.
 
-Este control **no certifica una conexión viva con Neon** y no autoriza aplicar la versión 0020. La ejecución de una nueva migración queda bloqueada operativamente hasta que se concilien 0012–0014, 0017 y la procedencia histórica de los checksums.
+Este control **no certifica una conexión viva con Neon** y no autoriza aplicar la versión 0020 en Development. La ejecución de una nueva migración queda bloqueada operativamente hasta que se concilien 0012–0014, 0017 y la procedencia histórica de los checksums.
 
 ## Flujo de trabajo obligatorio para migraciones futuras
 
@@ -123,3 +123,26 @@ The runner:
 - never targets Production and never runs as part of the Worker deployment workflow.
 
 A clean install can apply the canonical current source files on an empty database branch. That does not prove the historical SQL byte sequence that originally ran on Development. Development remains blocked until its historical discrepancies are reconciled with evidence.
+
+
+## Live database verification — 2026-11-07
+
+La migración `0020_align_clean_install_schema.sql` se aplicó en dos ramas Neon aisladas, nunca en Development ni Production:
+
+- `qa-db-fresh-migrations-2026-11-07`: rama QA creada desde la rama vacía de Production; contiene la secuencia limpia 0001–0020.
+- `qa-db-reliability-2026-11-07`: clon aislado de Development; conserva las filas históricas existentes y recibe únicamente 0020.
+
+Ambas ramas verificaron el tipo `invoice_items.unit_cost_usd NUMERIC(14,4) NOT NULL`, `purchase_orders.exchange_rate NUMERIC(14,6)`, el destino de notificación `billing`, la regla completa de rechazo y la fila 0020 con su SHA-256 exacto. Tras la migración: 20 filas de ledger en la rama limpia y 17 en el clon de Development; cero claves foráneas sin validar y cero índices inválidos/no listos en ambos.
+
+Las pruebas de datos sintéticos ejecutadas exclusivamente en la rama limpia confirmaron:
+- producto QA creado con SKU único;
+- entrada de inventario +5 y salida -2: existencias finales 3 y dos movimientos de kardex;
+- el índice único rechazó un segundo producto con el mismo SKU;
+- las restricciones rechazaron stock negativo, movimiento con cantidad cero y una referencia a producto inexistente;
+- la restricción de rechazo rechazó una orden marcada como rechazada sin actor y fecha;
+- la transacción que insertó un producto y luego falló por una FK dejó cero filas del producto temporal (rollback confirmado);
+- un empleado sintético disparó tres eventos de historial: alta, compensación y contrato.
+
+La comparación posterior de esquemas ya no mostró diferencias en las tablas, columnas, índices o restricciones de la aplicación entre las dos ramas QA. Las diferencias restantes son de provisión del entorno: el clon de Development contiene el esquema administrado `neon_auth`, ausente en la rama creada desde Production, y conserva permisos SQL del rol runtime que el clon limpio no recibe automáticamente. No se deben convertir esos objetos de identidad/permisos administrados en migraciones de aplicación.
+
+Los registros sintéticos permanecen dentro de las ramas QA aisladas para que el resultado sea auditable. No se han borrado ramas ni se ha limpiado ningún entorno mediante operaciones destructivas.

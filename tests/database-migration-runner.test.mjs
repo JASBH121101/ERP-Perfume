@@ -4,7 +4,9 @@ import {
   buildMigrationPlan,
   classifyDatabaseState,
   classifyLedgerLineage,
-  verifyLedgerChecksum
+  verifyLedgerChecksum,
+  validateConnectionTarget,
+  validateOperatorApproval
 } from "../scripts/migrate-db.mjs";
 import { createHash } from "node:crypto";
 
@@ -147,4 +149,79 @@ test("an unrelated ledger is rejected rather than guessed", () => {
   });
   assert.equal(result.type, "unrecognized");
   assert.equal(result.blockers.length, 1);
+});
+
+
+const migrationManifest = {
+  snapshot: {
+    branch: "development",
+    branchId: "br-development-pinned",
+    developmentEndpointHost: "ep-development-pinned.c-9.us-east-2.aws.neon.tech",
+    productionEndpointHost: "ep-production-protected.c-9.us-east-2.aws.neon.tech"
+  }
+};
+
+function validEnvironment(overrides = {}) {
+  return {
+    ERP_ENVIRONMENT: "development",
+    ERP_MIGRATION_BRANCH: "development",
+    ERP_MIGRATION_BRANCH_ID: "br-development-pinned",
+    ERP_EXPECTED_NEON_ENDPOINT_HOST: "ep-development-pinned.c-9.us-east-2.aws.neon.tech",
+    ERP_MIGRATIONS_APPROVED: "YES",
+    ...overrides
+  };
+}
+
+test("migration target accepts only the exact pinned Development endpoint", () => {
+  const uri = "postgresql://erp_owner:test@ep-development-pinned.c-9.us-east-2.aws.neon.tech/erp_perfume";
+  assert.equal(
+    validateConnectionTarget(uri, migrationManifest, validEnvironment()).hostname,
+    "ep-development-pinned.c-9.us-east-2.aws.neon.tech"
+  );
+});
+
+test("migration target rejects the protected Production endpoint", () => {
+  const uri = "postgresql://erp_owner:test@ep-production-protected.c-9.us-east-2.aws.neon.tech/erp_perfume";
+  assert.throws(
+    () => validateConnectionTarget(uri, migrationManifest, validEnvironment({
+      ERP_EXPECTED_NEON_ENDPOINT_HOST: "ep-production-protected.c-9.us-east-2.aws.neon.tech"
+    })),
+    /Production.*blocked/i
+  );
+});
+
+test("migration target rejects a different Neon endpoint even when it is not a pooler", () => {
+  const uri = "postgresql://erp_owner:test@other-project.c-9.us-east-2.aws.neon.tech/erp_perfume";
+  assert.throws(
+    () => validateConnectionTarget(uri, migrationManifest, validEnvironment()),
+    /exactly match.*Development endpoint/i
+  );
+});
+
+test("migration target rejects pooled endpoints for session advisory locks", () => {
+  const uri = "postgresql://erp_owner:test@ep-development-pinned-pooler.c-9.us-east-2.aws.neon.tech/erp_perfume";
+  assert.throws(
+    () => validateConnectionTarget(uri, migrationManifest, validEnvironment({
+      ERP_EXPECTED_NEON_ENDPOINT_HOST: "ep-development-pinned-pooler.c-9.us-east-2.aws.neon.tech"
+    })),
+    /pooled.*connection/i
+  );
+});
+
+test("migration approval requires the pinned Development branch ID", () => {
+  assert.throws(
+    () => validateOperatorApproval(false, migrationManifest, validEnvironment({
+      ERP_MIGRATION_BRANCH_ID: "br-production"
+    })),
+    /pinned Neon Development branch ID/i
+  );
+});
+
+test("migration apply requires explicit approval even on the pinned Development branch", () => {
+  assert.throws(
+    () => validateOperatorApproval(true, migrationManifest, validEnvironment({
+      ERP_MIGRATIONS_APPROVED: "NO"
+    })),
+    /ERP_MIGRATIONS_APPROVED=YES/i
+  );
 });
