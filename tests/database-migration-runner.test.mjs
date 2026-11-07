@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFile } from "node:fs/promises";
 import {
   buildMigrationPlan,
   classifyDatabaseState,
@@ -276,6 +277,50 @@ test("migration apply requires explicit approval even on the pinned Development 
     })),
     /ERP_MIGRATIONS_APPROVED=YES/i
   );
+});
+
+
+test("historical audit SQL exactly mirrors the 47 pinned object keys and binds objects to their owning relations", async () => {
+  const sql = await readFile(new URL("../db/diagnostics/historical-migration-object-audit.sql", import.meta.url), "utf8");
+  const rows = [...sql.matchAll(/^\\s*\\('([^']+)','(\\d{4})','([^']+)'\\),?$/gm)];
+  const sqlKeys = new Set(rows.map(([, kind, migration, object]) => migration + "|" + kind + "|" + object));
+  assert.equal(rows.length, EXPECTED_HISTORICAL_AUDIT_OBJECTS.size);
+  assert.deepEqual([...sqlKeys].sort(), [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].sort());
+
+  const ownerRows = [...sql.matchAll(/^\\s*\\('(index|constraint|trigger)','([^']+)','([^']+)'\\),?$/gm)]
+    .map(([, kind, object, relation]) => kind + "|" + object + "|" + relation);
+  const expectedOwners = [
+    "index|purchase_orders_supplier_date_idx|purchase_orders",
+    "index|purchase_orders_status_idx|purchase_orders",
+    "index|purchase_order_items_order_idx|purchase_order_items",
+    "index|purchase_receipts_order_idx|purchase_receipts",
+    "constraint|products_images_array_check|products",
+    "constraint|products_wholesale_price_usd_check|products",
+    "constraint|customers_customer_type_check|customers",
+    "index|products_barcode_nonempty_uq|products",
+    "index|products_active_category_idx|products",
+    "index|customers_active_name_idx|customers",
+    "index|dgi_support_documents_date_idx|dgi_support_documents",
+    "index|dgi_support_documents_type_period_idx|dgi_support_documents",
+    "constraint|app_users_employee_id_fkey|app_users",
+    "index|app_users_employee_id_unique_idx|app_users",
+    "index|supplier_invoices_supplier_date_idx|supplier_invoices",
+    "index|supplier_invoice_payments_invoice_idx|supplier_invoice_payments",
+    "index|employee_history_employee_date_idx|employee_history",
+    "index|employee_documents_employee_date_idx|employee_documents",
+    "index|employee_history_changed_by_idx|employee_history",
+    "index|employee_documents_uploaded_by_idx|employee_documents",
+    "constraint|purchase_orders_status_check|purchase_orders",
+    "constraint|purchase_orders_rejection_audit_check|purchase_orders",
+    "trigger|employees_seed_history_after_insert|employees"
+  ];
+  assert.equal(ownerRows.length, expectedOwners.length);
+  assert.deepEqual([...ownerRows].sort(), [...expectedOwners].sort());
+  assert.match(sql, /t\\.tgtype = 5/);
+  assert.match(sql, /t\\.tgenabled IN \\('O','A'\\)/);
+  assert.match(sql, /p\\.pronargs = 0/);
+  assert.match(sql, /p\\.prorettype = 'trigger'::regtype/);
+  assert.match(sql, /i\\.indrelid = to_regclass/);
 });
 
 test("historical Development baseline requires all 47 checks and clean invariants", () => {
