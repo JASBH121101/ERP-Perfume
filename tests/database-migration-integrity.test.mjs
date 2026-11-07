@@ -12,7 +12,7 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(result.summary.sourceFiles, 20);
   assert.equal(result.summary.appliedLedgerRows, 16);
   assert.equal(result.summary.schemaPresentWithoutLedger, 3);
-  assert.equal(result.summary.historicalSourcesVerified, 1);
+  assert.equal(result.summary.historicalSourcesVerified, 3);
   assert.equal(result.summary.readinessStatus, "BLOCKED");
   assert.deepEqual(
     result.summary.readinessBlockers.map(item => item.version),
