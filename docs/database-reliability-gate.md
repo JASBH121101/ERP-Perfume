@@ -206,3 +206,14 @@ GitHub Actions run [42385634657](https://github.com/JASBH121101/ERP-Perfume/acti
 - build, static checks, Worker syntax and the offline migration source-integrity gate passed.
 
 The source-integrity gate correctly continues to report **BLOCKED** for new migrations because eight Development historical lineage issues remain: `0006`, `0008`, `0009`, `0012`, `0013`, `0014`, `0017` and `0018`. Versions `0002` and `0003` are verified historical sources and are no longer blockers. Passing CI does not clear the remaining blockers or certify the live authenticated Worker end to end.
+
+
+## Approved Development baseline reconciliation — 2026-11-07
+
+The repository owner explicitly authorized a Development-only baseline reconciliation. This does not rewrite historical SQL checksums or create ledger rows for 0012–0014. The attestation accepts five ledger-backed historical provenance exceptions (0006, 0008, 0009, 0017, 0018) and three schema-satisfied versions without ledger rows (0012–0014), preserving their exact observed state.
+
+The live historical object audit now covers **55 named objects across 11 migration versions**, including all eight supporting indexes from 0019. Before every normal migration preflight against the approved Development snapshot, the runner re-executes that read-only audit and requires all objects, constraints, indexes and employee-history invariants to pass. It then skips 0012–0014 because their schema effects are already present; it never inserts synthetic ledger rows or replays those SQL files.
+
+The approved exception set is scoped to the exact Neon Development branch ID and database in the manifest. It does not apply to clean-install branches or Production. Fresh installs continue to execute every pinned migration in numeric order, including 0012–0014. Production remains blocked by the runner and must receive the same reviewed migration files through its separate release process.
+
+Readiness is reported as `READY_WITH_APPROVED_BASELINE_EXCEPTIONS`, not as byte-for-byte historical source verification. The eight exceptions remain visible in the manifest and audit report.
