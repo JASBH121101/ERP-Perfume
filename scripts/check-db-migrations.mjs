@@ -123,7 +123,7 @@ export async function verifyMigrationSources({
 
   const baseline = manifest.baselineReconciliation;
   const expectedLedgerExceptions = ["0006", "0008", "0009", "0017", "0018"];
-  const expectedSchemaSatisfied = ["0012", "0013", "0014"];
+  const expectedSchemaSatisfied = ["0012", "0013", "0014", "0020"];
   let baselineApproved = false;
   if (baseline) {
     const sameList = (actual, expected) =>
