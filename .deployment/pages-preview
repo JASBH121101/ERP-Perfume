@@ -38,3 +38,5 @@ Preview release: fix the full 100%-150% font scale, style the notification drawe
 Preview release: verify full font-scale regression checks and notification drawer layout on the latest main revision.
 Preview release: refreshed ERP visual system (graphite-blue navigation, clearer tables and controls, larger typography, consistent surfaces and mobile refinements). Source commit: b5a7d9c078879343e9c63253c4cae4ecbac42c04.
 Preview release: Dashboard inventory doughnut chart with live availability/low-stock/out-of-stock distribution and improved Inventory, Purchases and HR module layouts. Source commit: 9aa4983e46855d6d9f6c3fcff2d42efb48c676fe.
+
+Preview release: Resource Monitor for Neon/R2 measurements, premium on-demand product catalog PDF using existing R2 photos and invoice watermark, and responsive notification/button alignment.

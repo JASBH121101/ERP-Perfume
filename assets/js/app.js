@@ -122,6 +122,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let hrRecordsLoaded = false, hrRecordsLoading = false, hrLoadAttempted = false, hrLoadError = "";
   let erpDataLoaded = false, erpDataLoading = false, erpLoadError = "";
   let notificationRecords = [], notificationUnreadCount = 0, notificationsLoading = false;
+  let catalogSettings = {}, catalogSettingsLoaded = false, catalogSettingsLoading = false, catalogSettingsError = '';
+  let resourceUsage = null, resourceUsageLoadedAt = 0, resourceUsageError = '';
+  const RESOURCE_USAGE_TTL_MS = 5 * 60 * 1000;
+  const NEON_PREVENTIVE_THRESHOLD_BYTES = 512 * 1024 * 1024;
+  const R2_PREVENTIVE_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024;
   let clientErrorReportThrottle = 0;
   const accessManager = {
     attempted:false, loading:false, loaded:false, error:"",
@@ -575,6 +580,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   const views = {
     dashboard: { title: 'Resumen', eyebrow: 'CENTRO DE CONTROL', heading: 'Buenos días', subtitle: 'Una mirada clara al movimiento de tu negocio.' },
     products: { title: 'Productos', eyebrow: 'CATÁLOGO', heading: 'Catálogo de productos', subtitle: 'Administra las fragancias, sus precios y la disponibilidad.' },
+    catalog: { title: 'Catálogo PDF', eyebrow: 'EDITORIAL · JB PARFUMS', heading: 'Catálogo de fragancias', subtitle: 'Selecciona las piezas que quieres presentar y genera un PDF premium para compartir o imprimir.' },
+    resources: { title: 'Resource Monitor', eyebrow: 'CONTROL DE RECURSOS', heading: 'Consumo y servicios', subtitle: 'Supervisa las mediciones disponibles de Neon y Cloudflare R2, sin confundirlas con las cuotas del proveedor.' },
     inventory: { title: 'Inventario', eyebrow: 'CONTROL DE EXISTENCIAS', heading: 'Inventario', subtitle: 'Consulta los niveles de stock y detecta reposiciones.' },
     orders: { title: 'Pedidos', eyebrow: 'OPERACIONES', heading: 'Pedidos y ventas', subtitle: 'Da seguimiento al estado de cada pedido.' },
     customers: { title: 'Clientes', eyebrow: 'RELACIONES', heading: 'Cartera de clientes', subtitle: 'Mantén organizada la información comercial.' },
@@ -591,9 +598,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all' };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', catalogCategory: 'all', catalogShowPrices: true };
   const permissionViews = {
-    dashboard: ["dashboard.view"], products: ["products.catalog.view"],
+    dashboard: ["dashboard.view"], products: ["products.catalog.view"], catalog: ["products.catalog.view"], resources: [],
     inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"],
     orders: ["orders.records.view"], billing: ["billing.invoices.view"],
     receivables: ["receivables.view","billing.payments.view"], customers: ["customers.records.view"],
@@ -610,6 +617,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     return profileHasPermission(profile, key);
   }
   function canViewERPView(view) {
+    if (view === 'resources') return window.JBAuth?.profile?.role === 'owner';
     const keys = permissionViews[view] || [];
     return keys.some(permissionGranted);
   }
@@ -630,6 +638,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const caption = nav.previousElementSibling;
       if (caption?.classList.contains("nav-caption")) caption.hidden = !visible;
     });
+    const resourceLink = document.querySelector('.resource-monitor-link');
+    if (resourceLink) resourceLink.hidden = !canViewERPView('resources');
   }
   const actionPermissions = {
     "new-order": ["orders.records.create"], "preview-order": ["orders.records.view"],
@@ -639,6 +649,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "new-customer": ["customers.records.create"], "new-product": ["products.catalog.create"],
     "edit-product": ["products.catalog.edit"], "delete-product": ["products.catalog.delete"],
     "toggle-product": ["products.catalog.edit"], "import-products": ["products.catalog.create"],
+    "save-catalog-settings": ["products.catalog.edit"], "generate-catalog-pdf": ["products.catalog.view"],
     "stock-new": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "stock-product": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "inventory-view-product": ["inventory.stock.view"],
@@ -842,11 +853,271 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const categoryOptions = categories.map(function (category) {
       return '<option value="' + esc(category) + '"' + (state.category === category ? ' selected' : '') + '>' + esc(category) + '</option>';
     }).join('');
-    return heading(views.products, '<div class="heading-actions-inline"><button class="button button-quiet" data-action="import-products">' + svg('download') + ' Importar catálogo</button><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button></div>') +
+    return heading(views.products, '<div class="heading-actions-inline"><button class="button button-primary" data-action="new-product">' + svg('plus') + ' Nuevo producto</button><button class="button button-quiet" data-action="import-products">' + svg('download') + ' Importar catálogo</button></div>') +
       '<div class="summary-strip"><div class="summary-mini"><span>Productos activos</span><strong>' + activeCount + '</strong></div><div class="summary-mini"><span>Desactivados</span><strong>' + inactiveCount + '</strong></div><div class="summary-mini"><span>Requieren reposición</span><strong>' + products.filter(function (product) { return product.active !== false && needsRestock(product); }).length + '</strong></div></div>' +
       '<div class="toolbar products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="product-status-filter" aria-label="Estado del producto"><option value="active"' + (state.productStatus === 'active' ? ' selected' : '') + '>Activos</option><option value="inactive"' + (state.productStatus === 'inactive' ? ' selected' : '') + '>Desactivados</option><option value="all"' + (state.productStatus === 'all' ? ' selected' : '') + '>Todos</option></select><select class="filter-select" id="category-filter" aria-label="Filtrar por categoría"><option value="all"' + (state.category === 'all' ? ' selected' : '') + '>Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO / COSTO</th><th>EXISTENCIAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody id="product-table-body">' + productTable(filteredProducts()) + '</tbody></table></div></article>' +
       '<div class="notice-panel"><span>' + svg('spark') + '</span><div><strong>Catálogo conectado a Neon Development</strong><p>Las fichas se guardan en PostgreSQL. Las existencias iniciales y los movimientos posteriores quedan registrados en el kardex.</p></div></div>';
+  }
+  function catalogConfigFor(product) {
+    const saved = catalogSettings && catalogSettings[String(product.id)] || {};
+    const minStock = Number(saved.minStock);
+    return {
+      published: saved.published === true,
+      minStock: Number.isInteger(minStock) && minStock >= 0 ? minStock : 5
+    };
+  }
+  async function loadCatalogSettings(force = false) {
+    if (catalogSettingsLoading) return false;
+    if (catalogSettingsLoaded && !force) return true;
+    catalogSettingsLoading = true;
+    catalogSettingsError = '';
+    try {
+      const response = await erpApi('catalog-settings');
+      catalogSettings = response?.settings && typeof response.settings === 'object' && !Array.isArray(response.settings)
+        ? response.settings : {};
+      catalogSettingsLoaded = true;
+      return true;
+    } catch (error) {
+      catalogSettingsError = error?.message || 'No se pudo cargar la configuración del catálogo.';
+      return false;
+    } finally {
+      catalogSettingsLoading = false;
+    }
+  }
+  function renderCatalog() {
+    const canEdit = permissionGranted('products.catalog.edit');
+    if (!catalogSettingsLoaded && !catalogSettingsError) {
+      return heading(views.catalog, '') + '<div class="notice-panel"><span>' + svg('clock') + '</span><div><strong>Preparando catálogo</strong><p>Consultando la configuración de publicación y las fotografías existentes.</p></div></div>';
+    }
+    const active = products.filter(product => product.active !== false);
+    const categories = Array.from(new Set(active.map(product => String(product.category || 'Perfumería')))).sort((a,b) => a.localeCompare(b,'es'));
+    const categoryOptions = categories.map(category =>
+      '<option value="' + esc(category) + '"' + (state.catalogCategory === category ? ' selected' : '') + '>' + esc(category) + '</option>'
+    ).join('');
+    const selected = active.filter(product => state.catalogCategory === 'all' || String(product.category || 'Perfumería') === state.catalogCategory);
+    const rows = selected.map(product => {
+      const config = catalogConfigFor(product);
+      const image = Array.isArray(product.images) && product.images[0]?.key;
+      const stock = Number(product.stock || 0);
+      const availability = stock <= 0 ? 'Sin existencias · No se exporta' : stock <= config.minStock ? 'Últimas unidades' : 'Disponible';
+      return '<article class="catalog-product-row" data-catalog-product-id="' + esc(product.id) + '">' +
+        '<div class="catalog-editor-image" data-product-image-slot="' + esc(product.id) + '">' +
+          (image ? '<span class="catalog-image-loading">Cargando foto</span>' : '<span class="catalog-image-missing">Sin fotografía</span>') +
+        '</div>' +
+        '<div class="catalog-product-copy"><span class="catalog-product-brand">' + esc(product.brand || 'JB PARFUMS') + '</span><strong>' + esc(product.name) + '</strong>' +
+          '<small>' + esc(product.category || 'Perfumería') + (product.presentation ? ' · ' + esc(product.presentation) : '') + '</small>' +
+          '<span class="catalog-stock-status ' + (stock <= 0 ? 'is-muted' : stock <= config.minStock ? 'is-low' : 'is-ready') + '">' + esc(availability) + '</span></div>' +
+        '<div class="catalog-product-config">' +
+          (canEdit
+            ? '<label class="catalog-publish-toggle"><input type="checkbox" data-catalog-publish' + (config.published ? ' checked' : '') + '> <span>Publicar</span></label>' +
+              '<label class="catalog-min-stock"><span>Mínimo para “últimas unidades”</span><input type="number" min="0" max="9999" step="1" value="' + config.minStock + '" data-catalog-min-stock aria-label="Mínimo de existencias para ' + esc(product.name) + '"></label>'
+            : '<span class="catalog-publish-state">' + (config.published ? 'Publicado' : 'No publicado') + '</span><small class="catalog-min-stock-readonly">Mínimo: ' + config.minStock + ' unidades</small>') +
+        '</div></article>';
+    }).join('');
+    const error = catalogSettingsError
+      ? '<div class="notice-panel"><span>' + svg('warning') + '</span><div><strong>No se pudo leer la configuración</strong><p>' + esc(catalogSettingsError) + '</p><button type="button" class="button button-quiet button-small" data-action="reload-catalog-settings">Reintentar</button></div></div>'
+      : '';
+    return heading(views.catalog, '<div class="heading-actions-inline">' +
+      (canEdit ? '<button type="button" class="button button-quiet" data-action="save-catalog-settings">' + svg('download') + ' Guardar selección</button>' : '') +
+      '<button type="button" class="button button-primary" data-action="generate-catalog-pdf">' + svg('download') + ' Generar PDF premium</button></div>') +
+      '<section class="catalog-control-panel"><div><label for="catalog-category-filter">Colección</label><select id="catalog-category-filter" class="filter-select"><option value="all"' + (state.catalogCategory === 'all' ? ' selected' : '') + '>Todas las fragancias</option>' + categoryOptions + '</select></div>' +
+      '<label class="catalog-price-toggle"><input id="catalog-show-prices" type="checkbox"' + (state.catalogShowPrices ? ' checked' : '') + '> Mostrar precios en el PDF</label>' +
+      '<p>El documento utiliza la fotografía principal guardada en Inventario. Solo incluye productos activos, publicados y con existencias; las cantidades exactas nunca aparecen en el PDF.</p></section>' +
+      error +
+      '<div class="catalog-editor-heading"><div><span class="eyebrow">SELECCIÓN EDITORIAL</span><strong>' + selected.length + ' productos en esta vista</strong></div><span>Las existencias se consultan desde el inventario</span></div>' +
+      '<section class="catalog-editor-list">' + (rows || '<div class="empty-state">No hay productos activos para esta categoría.</div>') + '</section>' +
+      '<div class="notice-panel catalog-note"><span>' + svg('spark') + '</span><div><strong>Un solo origen de fotografías</strong><p>Las imágenes se reutilizan desde Cloudflare R2. El catálogo PDF se genera al solicitarlo y no crea copias permanentes de los archivos.</p></div></div>';
+  }
+  function collectCatalogSettings() {
+    const next = { ...(catalogSettings || {}) };
+    root.querySelectorAll('.catalog-product-row[data-catalog-product-id]').forEach(row => {
+      const productId = row.getAttribute('data-catalog-product-id');
+      const previous = next[productId] || {};
+      const publish = row.querySelector('[data-catalog-publish]');
+      const minimum = row.querySelector('[data-catalog-min-stock]');
+      next[productId] = {
+        published: publish ? publish.checked : previous.published === true,
+        minStock: minimum ? Number(minimum.value) : catalogConfigFor({id:productId}).minStock
+      };
+    });
+    return next;
+  }
+  async function saveCatalogSettings(silent = false) {
+    if (!permissionGranted('products.catalog.edit')) {
+      if (!silent) toast('Tu cuenta no tiene permiso para modificar la publicación.');
+      return false;
+    }
+    const settings = collectCatalogSettings();
+    for (const value of Object.values(settings)) {
+      if (!Number.isInteger(value.minStock) || value.minStock < 0 || value.minStock > 9999) {
+        if (!silent) toast('Revisa los mínimos de existencias: usa números enteros entre 0 y 9999.');
+        return false;
+      }
+    }
+    try {
+      const result = await erpApi('catalog-settings', { method:'PATCH', body:JSON.stringify({settings}) });
+      catalogSettings = result?.settings || settings;
+      catalogSettingsLoaded = true;
+      catalogSettingsError = '';
+      if (!silent) {
+        renderView();
+        toast('Selección del catálogo guardada.');
+      }
+      return true;
+    } catch (error) {
+      if (!silent) toast(error?.message || 'No se pudo guardar la selección del catálogo.');
+      else catalogSettingsError = error?.message || 'No se pudo guardar la selección del catálogo.';
+      return false;
+    }
+  }
+  function catalogPrintDocument(items, includePrices) {
+    const generated = new Date().toLocaleDateString('es-NI', { day:'2-digit', month:'long', year:'numeric' });
+    const safeItems = items.map(product => {
+      const detail = [product.brand, product.presentation, product.concentration, product.sizeMl ? product.sizeMl + ' ml' : ''].filter(Boolean).join(' · ');
+      const stock = Number(product.stock || 0);
+      const config = catalogConfigFor(product);
+      const availability = stock <= config.minStock ? 'Últimas unidades' : 'Disponible';
+      const description = String(product.description || product.notes || '').trim();
+      return '<article class="fragrance-card"><div class="fragrance-image">' +
+        (product.printImage ? '<img src="' + esc(product.printImage) + '" alt="' + esc(product.name) + '">' : '<span class="fragrance-image-placeholder">JB</span>') +
+        '</div><div class="fragrance-copy"><span class="fragrance-brand">' + esc(product.brand || 'JB PARFUMS') + '</span>' +
+        '<h2>' + esc(product.name) + '</h2><p class="fragrance-detail">' + esc(detail || product.category || 'Perfumería') + '</p>' +
+        (description ? '<p class="fragrance-description">' + esc(description.slice(0,260)) + '</p>' : '') +
+        (includePrices ? '<strong class="fragrance-price">' + esc(money(product.price)) + '</strong>' : '') +
+        '<span class="fragrance-availability">' + availability + '</span></div></article>';
+    });
+    const sheets = [];
+    for (let index=0; index<safeItems.length; index+=4) {
+      const cards = safeItems.slice(index,index+4).join('');
+      sheets.push('<section class="catalog-sheet"><header class="catalog-sheet-header"><span>JB PARFUMS</span><small>SELECCIÓN DE FRAGANCIAS</small></header><div class="fragrance-grid">' + cards + '</div><footer class="catalog-sheet-footer"><span>JB PARFUMS · FRAGANCIAS CON IDENTIDAD</span><span>CATÁLOGO · ' + generated + '</span></footer></section>');
+    }
+    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JB PARFUMS · Catálogo</title><style>' +
+      '@page{size:A4;margin:12mm}*{box-sizing:border-box}html,body{margin:0;color:#29231c;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{background:#fff}.cover{height:273mm;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;padding:25mm 18mm;background:#171b22;color:#f7f1e7;break-after:page}.cover:before,.catalog-sheet:before{position:absolute;content:"";width:150mm;height:150mm;left:50%;top:48%;transform:translate(-50%,-50%);background:url("/assets/images/jb-parfums-watermark.png") center/contain no-repeat;opacity:.12;pointer-events:none}.cover:after{position:absolute;inset:12mm;border:1px solid #b99a66;content:"";pointer-events:none}.cover>*{position:relative;z-index:1}.cover-brand{font-size:12px;letter-spacing:5px;color:#d7bd91}.cover-monogram{width:28mm;height:28mm;border:1px solid #c9a977;border-radius:50%;display:grid;place-items:center;font:30px Georgia,serif;color:#e4cc9f;margin-top:34mm}.cover h1{font:52px/1.05 Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-1px;margin:16mm 0 8mm;max-width:130mm}.cover p{font:13px/1.8 Arial,sans-serif;letter-spacing:1px;color:#d2c5b1;max-width:105mm}.cover-footer{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #806d4f;padding-top:7mm;color:#c9b58e;font-size:9px;letter-spacing:1.6px}.catalog-sheet{height:273mm;position:relative;isolation:isolate;overflow:hidden;break-after:page;display:flex;flex-direction:column;padding:1mm 0}.catalog-sheet:before{z-index:-1;width:155mm;height:155mm;opacity:.055;top:52%}.catalog-sheet-header{height:12mm;border-bottom:1px solid #e7dfd2;display:flex;align-items:flex-start;justify-content:space-between;color:#725a36;font:11px Georgia,serif;letter-spacing:2px}.catalog-sheet-header small{font:8px Arial,sans-serif;letter-spacing:1.2px;color:#9b8c75}.fragrance-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:8mm 7mm;padding:8mm 1mm}.fragrance-card{min-height:0;display:flex;flex-direction:column;border-bottom:1px solid #e7dfd2;padding:0 0 5mm;break-inside:avoid}.fragrance-image{height:65mm;min-height:65mm;background:linear-gradient(145deg,#f4f0e8,#e8e1d5);display:grid;place-items:center;overflow:hidden}.fragrance-image img{width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply}.fragrance-image-placeholder{font:42px Georgia,serif;color:#bea77e}.fragrance-copy{padding:5mm 2mm 0;display:flex;flex-direction:column;align-items:flex-start}.fragrance-brand{font-size:8px;letter-spacing:2px;color:#9a7946;text-transform:uppercase}.fragrance-copy h2{font:22px/1.1 Georgia,"Times New Roman",serif;font-weight:400;margin:3mm 0 2mm;color:#27231f}.fragrance-detail{font-size:9px;color:#87785f;letter-spacing:.4px;margin:0 0 3mm}.fragrance-description{font-size:9px;line-height:1.5;color:#665d51;margin:0 0 3mm;max-height:25mm;overflow:hidden}.fragrance-price{font:16px Georgia,serif;color:#8b693b;margin:0 0 3mm}.fragrance-availability{margin-top:auto;font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:#59715d;border-top:1px solid #ddd5c8;padding-top:3mm}.catalog-sheet-footer{height:10mm;border-top:1px solid #e7dfd2;display:flex;align-items:flex-end;justify-content:space-between;color:#968a77;font-size:7px;letter-spacing:1.1px}.catalog-sheet:last-child{break-after:auto}@media screen{body{background:#eee7dc}.cover,.catalog-sheet{width:210mm;margin:10mm auto;background-color:#fff;box-shadow:0 12px 36px #30271924}.cover{background-color:#171b22}}' +
+      '</style></head><body><section class="cover"><div><div class="cover-brand">JB PARFUMS</div><div class="cover-monogram">JB</div><h1>El arte de<br>dejar huella.</h1><p>UNA SELECCIÓN DE FRAGANCIAS PARA QUIENES HACEN DE CADA DETALLE UNA FIRMA PERSONAL.</p></div><div class="cover-footer"><span>CATÁLOGO DE FRAGANCIAS</span><span>' + esc(generated.toUpperCase()) + '</span></div></section>' +
+      sheets.join('') + '</body></html>';
+  }
+  async function generateCatalogPDF() {
+    const printWindow = window.open('about:blank', '_blank');
+    if (!printWindow) {
+      toast('El navegador bloqueó la ventana del catálogo. Permite ventanas emergentes para generar el PDF.');
+      return;
+    }
+    printWindow.document.write('<!doctype html><title>Preparando catálogo JB PARFUMS…</title><p style="font:16px Arial;padding:30px">Preparando fotografías y diseño del catálogo…</p>');
+    printWindow.document.close();
+    if (permissionGranted('products.catalog.edit') && !await saveCatalogSettings(true)) {
+      printWindow.close();
+      toast(catalogSettingsError || 'No se pudo guardar la selección antes de generar el PDF.');
+      return;
+    }
+    const eligible = products.filter(product => {
+      const config = catalogConfigFor(product);
+      return product.active !== false && config.published === true && Number(product.stock || 0) > 0 &&
+        (state.catalogCategory === 'all' || String(product.category || 'Perfumería') === state.catalogCategory);
+    });
+    if (!eligible.length) {
+      printWindow.close();
+      toast('No hay productos publicados y con existencias en esta selección.');
+      return;
+    }
+    if (eligible.length > 100) {
+      printWindow.close();
+      toast('La selección supera 100 fragancias. Filtra por categoría para generar un PDF más ligero.');
+      return;
+    }
+    const includePrices = state.catalogShowPrices;
+    const items = await Promise.all(eligible.map(async product => {
+      const image = Array.isArray(product.images) ? product.images[0] : null;
+      let printImage = null;
+      if (image?.key) {
+        try { printImage = await productAssetUrl(image.key); } catch (error) {
+          console.warn('[catalog] Product photo unavailable:', product.sku, error?.message || 'asset error');
+        }
+      }
+      return { ...product, printImage };
+    }));
+    const html = catalogPrintDocument(items, includePrices);
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    try {
+      await Promise.all(Array.from(printWindow.document.images || []).map(image =>
+        image.complete ? Promise.resolve() : new Promise(resolve => {
+          image.addEventListener('load', resolve, { once:true });
+          image.addEventListener('error', resolve, { once:true });
+        })
+      ));
+      if (printWindow.document.fonts?.ready) await printWindow.document.fonts.ready;
+    } catch {}
+    printWindow.focus();
+    printWindow.print();
+    toast('Catálogo listo. En la vista de impresión puedes guardarlo como PDF y compartirlo por WhatsApp.');
+  }
+  function formatResourceBytes(value) {
+    const bytes = Math.max(0, Number(value || 0));
+    if (bytes < 1024) return bytes + ' B';
+    const units = ['KB','MB','GB','TB'];
+    let size = bytes / 1024, index = 0;
+    while (size >= 1024 && index < units.length - 1) { size /= 1024; index += 1; }
+    return size.toFixed(size >= 100 ? 0 : 1) + ' ' + units[index];
+  }
+  function resourcePercent(value, threshold) {
+    return Math.max(0, Math.min(100, Math.round((Number(value || 0) / threshold) * 100)));
+  }
+  function resourceLevel(percent) {
+    return percent >= 95 ? 'is-critical' : percent >= 85 ? 'is-high' : percent >= 70 ? 'is-warning' : 'is-normal';
+  }
+  function updateResourceSidebarMetrics() {
+    if (!resourceUsage) return;
+    const dbBytes = Number(resourceUsage.database?.sizeBytes || 0);
+    const r2Bytes = Number(resourceUsage.storage?.sizeBytes || 0);
+    const dbPercent = resourcePercent(dbBytes, NEON_PREVENTIVE_THRESHOLD_BYTES);
+    const r2Percent = resourcePercent(r2Bytes, R2_PREVENTIVE_THRESHOLD_BYTES);
+    const dbText = document.getElementById('resource-sidebar-db');
+    const r2Text = document.getElementById('resource-sidebar-r2');
+    const dbBar = document.getElementById('resource-sidebar-db-bar');
+    const r2Bar = document.getElementById('resource-sidebar-r2-bar');
+    if (dbText) dbText.textContent = resourceUsage.database ? formatResourceBytes(dbBytes) : 'No disponible';
+    if (r2Text) r2Text.textContent = resourceUsage.storage ? formatResourceBytes(r2Bytes) : 'No disponible';
+    if (dbBar) { dbBar.style.width = dbPercent + '%'; dbBar.className = 'resource-mini-fill ' + resourceLevel(dbPercent); }
+    if (r2Bar) { r2Bar.style.width = r2Percent + '%'; r2Bar.className = 'resource-mini-fill ' + resourceLevel(r2Percent); }
+  }
+  async function loadResourceUsage(force = false) {
+    if (!force && resourceUsage && Date.now() - resourceUsageLoadedAt < RESOURCE_USAGE_TTL_MS) return resourceUsage;
+    resourceUsageError = '';
+    try {
+      resourceUsage = await erpApi('resource-usage');
+      resourceUsageLoadedAt = Date.now();
+      updateResourceSidebarMetrics();
+      return resourceUsage;
+    } catch (error) {
+      resourceUsageError = error?.message || 'No se pudo consultar el consumo.';
+      throw error;
+    }
+  }
+  function renderResourceMetric(title, value, threshold, detail, errorText) {
+    if (value == null) return '<article class="resource-card"><div class="resource-card-heading"><strong>' + title + '</strong><span class="resource-status is-unavailable">No disponible</span></div><p>' + esc(errorText || 'No fue posible obtener esta medición.') + '</p></article>';
+    const percent = resourcePercent(value, threshold);
+    return '<article class="resource-card"><div class="resource-card-heading"><strong>' + title + '</strong><span class="resource-status ' + resourceLevel(percent) + '">' + (percent >= 95 ? 'Crítico' : percent >= 85 ? 'Alto' : percent >= 70 ? 'Vigilar' : 'Estable') + '</span></div>' +
+      '<div class="resource-number">' + formatResourceBytes(value) + '</div><div class="resource-track"><span class="resource-track-fill ' + resourceLevel(percent) + '" style="width:' + percent + '%"></span></div>' +
+      '<div class="resource-card-foot"><span>' + percent + '% del umbral interno</span><span>Umbral: ' + formatResourceBytes(threshold) + '</span></div><p>' + esc(detail) + '</p></article>';
+  }
+  function renderResourceMonitor() {
+    const usage = resourceUsage;
+    const db = usage?.database || null, r2 = usage?.storage || null;
+    const timestamp = usage?.updatedAt ? new Date(usage.updatedAt).toLocaleString('es-NI', {dateStyle:'short',timeStyle:'short'}) : 'Sin consulta todavía';
+    const dbDetail = db ? Number(db.activeConnections || 0) + ' conexiones activas · ' + Number(db.transactionsCommitted || 0).toLocaleString('es-NI') + ' transacciones confirmadas desde el último reinicio de estadísticas.' : 'Las métricas de Neon no están disponibles.';
+    const r2Detail = r2 ? Number(r2.objectCount || 0).toLocaleString('es-NI') + ' objetos contabilizados' + (r2.complete ? ' en el bucket.' : ' · medición parcial: se alcanzó el límite de exploración.') : 'No se pudo listar el contenido del bucket R2.';
+    const error = resourceUsageError ? '<div class="notice-panel"><span>' + svg('warning') + '</span><div><strong>No se pudo actualizar</strong><p>' + esc(resourceUsageError) + '</p></div></div>' : '';
+    return heading(views.resources, '<button type="button" class="button button-primary" data-action="refresh-resource-usage">' + svg('arrow') + ' Actualizar medición</button>') +
+      '<div class="resource-snapshot-meta"><span>Última medición: ' + esc(timestamp) + '</span><span>Consulta manual · sin sondeo continuo</span></div>' + error +
+      '<section class="resource-metric-grid">' +
+        renderResourceMetric('Neon PostgreSQL', db ? db.sizeBytes : null, NEON_PREVENTIVE_THRESHOLD_BYTES, dbDetail, usage?.errors?.database || 'Consulta el monitor para obtener el tamaño actual.') +
+        renderResourceMetric('Cloudflare R2', r2 ? r2.sizeBytes : null, R2_PREVENTIVE_THRESHOLD_BYTES, r2Detail, usage?.errors?.storage || 'Consulta el monitor para obtener el tamaño actual.') +
+      '</section>' +
+      '<section class="resource-secondary-grid"><article class="resource-card resource-service-card"><div class="resource-card-heading"><strong>Cloudflare Workers</strong><span class="resource-status is-normal">API activa</span></div><p>La API responde a esta consulta. Las métricas de solicitudes y CPU no están conectadas a Analytics API; no se muestran estimaciones.</p></article>' +
+      '<article class="resource-card resource-service-card"><div class="resource-card-heading"><strong>GitHub Actions</strong><span class="resource-status is-unavailable">Métricas no conectadas</span></div><p>El historial de workflows está disponible, pero los minutos facturables requieren consultar la API de facturación de GitHub con acceso autorizado.</p><a href="https://github.com/JASBH121101/ERP-Perfume/actions" target="_blank" rel="noopener noreferrer">Abrir ejecuciones de GitHub Actions ↗</a></article></section>' +
+      '<div class="notice-panel resource-monitor-note"><span>' + svg('warning') + '</span><div><strong>Cómo leer estas barras</strong><p>Los umbrales de 512 MB para Neon y 2 GB para R2 son referencias preventivas internas configurables; no representan el límite de tu plan ni generan cargos por sí mismos. La lectura R2 puede indicarse como parcial si el bucket supera 10.000 objetos.</p></div></div>';
   }
   function renderInventoryMovementResults() {
     const query = String(state.inventoryMovementQuery || '').trim().toLocaleLowerCase('es');
@@ -2721,6 +2992,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const renderers = {
       dashboard: renderDashboard,
       products: renderProducts,
+      catalog: renderCatalog,
+      resources: renderResourceMonitor,
       inventory: renderInventory,
       orders: renderOrders,
       customers: renderCustomers,
@@ -2766,6 +3039,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     state.inventoryMovementPage = 1;
     renderView();
     closeMobileMenu();
+    if (view === 'catalog') loadCatalogSettings().then(() => { if (state.view === 'catalog') renderView(); });
+    if (view === 'resources') loadResourceUsage().then(() => { if (state.view === 'resources') renderView(); }).catch(() => { if (state.view === 'resources') renderView(); });
   }
   function toast(message) {
     const region = document.getElementById('toast-region');
@@ -3098,6 +3373,20 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       } else if (name === 'reload-erp') {
         action.disabled=true;
         loadERPFromNeon(true).then(()=>renderView()).catch(error=>toast(error?.message||'No se pudo cargar Neon.')).finally(()=>{action.disabled=false;});
+      } else if (name === 'reload-catalog-settings') {
+        action.disabled=true;
+        loadCatalogSettings(true).then(()=>renderView()).finally(()=>{action.disabled=false;});
+      } else if (name === 'save-catalog-settings') {
+        action.disabled=true;
+        await saveCatalogSettings(false);
+        action.disabled=false;
+      } else if (name === 'generate-catalog-pdf') {
+        action.disabled=true;
+        try { await generateCatalogPDF(); } finally { action.disabled=false; }
+      } else if (name === 'refresh-resource-usage') {
+        action.disabled=true;
+        try { await loadResourceUsage(true); renderView(); } catch (error) { renderView(); toast(error?.message || 'No se pudo actualizar el monitor.'); }
+        finally { action.disabled=false; }
       } else if (name === 'import-products') openCatalogImport();
       else if (name === 'new-product') openProductModal();
       else if (name === 'edit-product') openProductModal(action.getAttribute('data-id'));
@@ -3228,6 +3517,15 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }
   });
   document.addEventListener('change', function (event) {
+    if (event.target && event.target.id === 'catalog-category-filter') {
+      state.catalogCategory = event.target.value;
+      renderView();
+      return;
+    }
+    if (event.target && event.target.id === 'catalog-show-prices') {
+      state.catalogShowPrices = event.target.checked;
+      return;
+    }
     if (event.target && ['inventory-product-category','inventory-product-stock'].includes(event.target.id)) {
       if (event.target.id === 'inventory-product-category') state.inventoryProductCategory = event.target.value;
       if (event.target.id === 'inventory-product-stock') state.inventoryProductStock = event.target.value;

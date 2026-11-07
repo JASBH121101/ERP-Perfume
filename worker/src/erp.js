@@ -1775,6 +1775,140 @@ export async function handleERPRequest(request, env, user, sql) {
     return erpError(405, "IMMUTABLE_TRANSACTION",
       "Este registro forma parte de un historial financiero, de inventario o de nómina. Utiliza el flujo específico de anulación, devolución o pago.");
   }
+  // Lightweight ERP publication settings are stored in app_settings; no schema or database is added.
+  if (resource === "catalog-settings") {
+    if (request.method === "GET") {
+      if (!hasPermission(permissionContext, "products.catalog.view")) {
+        return erpError(403, "FORBIDDEN", "No tienes permiso para consultar el catálogo.");
+      }
+      try {
+        const rows = await sql.query(
+          "SELECT setting_value FROM app_settings WHERE setting_key=$1 LIMIT 1",
+          ["catalog_publication"]
+        );
+        const settings = rows[0]?.setting_value;
+        return erpJson({ settings: settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {} });
+      } catch (error) {
+        console.error("[catalog] Settings read failed:", error?.message || "database error");
+        return erpError(503, "CATALOG_SETTINGS_UNAVAILABLE", "No se pudo cargar la configuración del catálogo.");
+      }
+    }
+    if (request.method === "PATCH") {
+      if (!hasPermission(permissionContext, "products.catalog.edit")) {
+        return erpError(403, "FORBIDDEN", "No tienes permiso para modificar la publicación de productos.");
+      }
+      let body;
+      try { body = await request.json(); } catch {
+        return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido.");
+      }
+      const input = body?.settings;
+      if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 2000) {
+        return erpError(400, "INVALID_CATALOG_SETTINGS", "La configuración del catálogo no es válida.");
+      }
+      const settings = {};
+      for (const [productId, config] of Object.entries(input)) {
+        if (!/^[0-9a-f-]{36}$/i.test(productId) || !config || typeof config !== "object" || Array.isArray(config)) {
+          return erpError(400, "INVALID_CATALOG_SETTINGS", "Hay una referencia de producto o configuración inválida.");
+        }
+        const minStock = Number(config.minStock);
+        if (typeof config.published !== "boolean" || !Number.isInteger(minStock) || minStock < 0 || minStock > 9999) {
+          return erpError(400, "INVALID_CATALOG_SETTINGS", "La publicación y el mínimo de existencias deben ser válidos.");
+        }
+        settings[productId] = { published: config.published, minStock };
+      }
+      try {
+        const rows = await sql.query(
+          "INSERT INTO app_settings(setting_key,setting_value,updated_by,updated_at) " +
+          "VALUES($1,$2::jsonb,$3,NOW()) ON CONFLICT(setting_key) DO UPDATE SET " +
+          "setting_value=EXCLUDED.setting_value,updated_by=EXCLUDED.updated_by,updated_at=NOW() " +
+          "RETURNING setting_value",
+          ["catalog_publication", JSON.stringify(settings), user.id]
+        );
+        await auditQuery(sql, user.id, "update", "app_setting", "catalog_publication", {
+          configuredProducts: Object.keys(settings).length
+        });
+        return erpJson({ settings: rows[0]?.setting_value || settings, saved: true });
+      } catch (error) {
+        console.error("[catalog] Settings write failed:", error?.message || "database error");
+        return erpError(503, "CATALOG_SETTINGS_SAVE_FAILED", "No se pudo guardar la configuración del catálogo.");
+      }
+    }
+    return erpError(405, "METHOD_NOT_ALLOWED", "Método no permitido para la configuración del catálogo.");
+  }
+
+  // Only the owner sees infrastructure measurements. Worker invocation/CPU and
+  // GitHub Actions billing are not exposed by the runtime APIs available here.
+  if (resource === "resource-usage") {
+    if (request.method !== "GET") return erpError(405, "METHOD_NOT_ALLOWED", "Solo se permite consultar el consumo.");
+    if (user.role !== "owner") return erpError(403, "OWNER_REQUIRED", "El monitor de recursos está reservado al propietario.");
+    let database = null;
+    let databaseError = null;
+    try {
+      const rows = await sql.query(
+        "SELECT pg_database_size(current_database())::text AS size_bytes, " +
+        "COALESCE((SELECT numbackends FROM pg_stat_database WHERE datname=current_database()),0)::int AS active_connections, " +
+        "COALESCE((SELECT xact_commit FROM pg_stat_database WHERE datname=current_database()),0)::text AS transactions_committed, " +
+        "COALESCE((SELECT xact_rollback FROM pg_stat_database WHERE datname=current_database()),0)::text AS transactions_rolled_back, " +
+        "(SELECT stats_reset FROM pg_stat_database WHERE datname=current_database()) AS stats_reset"
+      );
+      database = rows[0] || null;
+    } catch (error) {
+      databaseError = "database_metrics_unavailable";
+      console.error("[resource-usage] Neon metrics failed:", error?.message || "database error");
+    }
+
+    let storage = null;
+    let storageError = null;
+    if (env?.ERP_ASSETS) {
+      try {
+        let cursor;
+        let sizeBytes = 0;
+        let objectCount = 0;
+        let complete = true;
+        let scannedPages = 0;
+        do {
+          const page = await env.ERP_ASSETS.list({ limit: 1000, ...(cursor ? { cursor } : {}) });
+          scannedPages += 1;
+          for (const object of page.objects || []) {
+            sizeBytes += Number(object.size || 0);
+            objectCount += 1;
+          }
+          if (!page.truncated) break;
+          if (!page.cursor || scannedPages >= 10) {
+            complete = false;
+            break;
+          }
+          cursor = page.cursor;
+        } while (true);
+        storage = { sizeBytes, objectCount, complete, scannedPages, maxScannedObjects: 10000 };
+      } catch (error) {
+        storageError = "r2_metrics_unavailable";
+        console.error("[resource-usage] R2 listing failed:", error?.message || "storage error");
+      }
+    } else {
+      storageError = "r2_not_configured";
+    }
+
+    return erpJson({
+      updatedAt: new Date().toISOString(),
+      database: database ? {
+        sizeBytes: Number(database.size_bytes || 0),
+        activeConnections: Number(database.active_connections || 0),
+        transactionsCommitted: Number(database.transactions_committed || 0),
+        transactionsRolledBack: Number(database.transactions_rolled_back || 0),
+        statsReset: database.stats_reset || null
+      } : null,
+      storage,
+      errors: { database: databaseError, storage: storageError },
+      metrics: {
+        workerInvocations: "not_connected",
+        workerCpu: "not_connected",
+        githubActionsMinutes: "not_connected"
+      },
+      note: "Neon y R2 son mediciones del proyecto. Las referencias de uso en la interfaz son umbrales preventivos internos, no cuotas del proveedor."
+    });
+  }
+
   const permissionContext = await loadUserPermissions(sql, user);
   const contentType = request.headers?.get?.("content-type") ||
     (typeof request.json === "function" ? "application/json" : "");

@@ -42,6 +42,7 @@
         <button class="nav-item" data-view="billing"><span class="nav-icon" data-icon="receipt"></span><span>Facturación</span></button>
         <button class="nav-item" data-view="receivables"><span class="nav-icon" data-icon="wallet"></span><span>Cuentas por cobrar</span></button>
         <button class="nav-item" data-view="customers"><span class="nav-icon" data-icon="users"></span><span>Clientes</span></button>
+        <button class="nav-item" data-view="catalog"><span class="nav-icon" data-icon="bottle"></span><span>Catálogo PDF</span></button>
       </nav>
 
       <div class="nav-caption nav-caption-spaced">INVENTARIO</div>
@@ -72,13 +73,18 @@
 
       <div class="sidebar-bottom">
         <div class="storage-card">
-          <div class="storage-heading"><span class="tiny-status"></span> SERVICIOS DEL ERP</div>
-          <p>Datos operativos alojados en los servicios conectados.</p>
+          <div class="storage-heading"><span class="tiny-status"></span> RESOURCE MONITOR</div>
+          <p>Consumo medido de la base de datos y almacenamiento.</p>
           <div class="storage-connection-list">
             <div class="storage-connection"><span class="connection-dot is-local"></span><span>Neon PostgreSQL</span><strong id="db-connection-status">Verificando</strong></div>
             <div class="storage-connection"><span class="connection-dot is-pending"></span><span>Cloudflare R2</span><strong id="r2-connection-status">Vinculado</strong></div>
-            <div class="storage-connection"><span class="connection-dot is-local"></span><span>Preferencias de interfaz</span><strong>Local</strong></div>
           </div>
+          <div class="resource-mini-usage">
+            <div class="resource-mini-item"><div><span>Neon DB</span><strong id="resource-sidebar-db">Sin medir</strong></div><div class="resource-mini-track"><i id="resource-sidebar-db-bar" class="resource-mini-fill"></i></div></div>
+            <div class="resource-mini-item"><div><span>R2 Storage</span><strong id="resource-sidebar-r2">Sin medir</strong></div><div class="resource-mini-track"><i id="resource-sidebar-r2-bar" class="resource-mini-fill"></i></div></div>
+          </div>
+          <small class="resource-mini-note">Barras frente a umbrales preventivos internos</small>
+          <button class="resource-monitor-link" type="button" data-view="resources"><span>Ver consumo detallado</span><span aria-hidden="true">↗</span></button>
         </div>
         <button class="profile-button" type="button">
           <span class="avatar">JB</span>
