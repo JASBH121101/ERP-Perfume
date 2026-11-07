@@ -143,6 +143,15 @@ Las pruebas de datos sintéticos ejecutadas exclusivamente en la rama limpia con
 - la transacción que insertó un producto y luego falló por una FK dejó cero filas del producto temporal (rollback confirmado);
 - un empleado sintético disparó tres eventos de historial: alta, compensación y contrato.
 
+También se ejecutaron las sentencias CTE equivalentes a las rutas del Worker:
+- `createProduct` creó un producto con stock inicial 4 y escribió el movimiento inicial y la auditoría en la misma sentencia;
+- una salida de 2 unidades cambió 4 → 2; un ajuste de inventario fijó el saldo en 5 (2 → 5); las tres operaciones mantuvieron tres movimientos y tres registros de auditoría;
+- una salida superior al stock y un ajuste que no cambiaba existencias no produjeron filas ni modificaron el saldo;
+- una línea de factura guardó `unit_cost_usd = 2.3456`; un costo negativo fue rechazado por la restricción;
+- una orden de compra conservó `exchange_rate = 36.666666` sin perder precisión;
+- una orden rechazada con actor, fecha y motivo válido fue aceptada; la variante sin actor/fecha fue rechazada;
+- una notificación con destino `billing` fue aceptada por la restricción actualizada.
+
 La comparación posterior de esquemas ya no mostró diferencias en las tablas, columnas, índices o restricciones de la aplicación entre las dos ramas QA. Las diferencias restantes son de provisión del entorno: el clon de Development contiene el esquema administrado `neon_auth`, ausente en la rama creada desde Production, y conserva permisos SQL del rol runtime que el clon limpio no recibe automáticamente. No se deben convertir esos objetos de identidad/permisos administrados en migraciones de aplicación.
 
 Los registros sintéticos permanecen dentro de las ramas QA aisladas para que el resultado sea auditable. No se han borrado ramas ni se ha limpiado ningún entorno mediante operaciones destructivas.
