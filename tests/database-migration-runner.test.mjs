@@ -347,18 +347,24 @@ test("historical Development baseline requires all 55 checks and clean invariant
   const audit = {
     database:"erp_perfume", role:"erp_owner", checks,
     summary:expected.map(([migration,count])=>({migration,total:count,present:count,missing:0,status:"PASS"})),
-    employees_missing_initial_history:0, unvalidated_constraints:0, invalid_or_unready_indexes:0
+    employees_missing_initial_history:0, unvalidated_constraints:0, invalid_or_unready_indexes:0,
+    development_schema_alignment:{
+      invoice_unit_cost_usd:true,
+      purchase_order_exchange_rate:true,
+      notification_billing_target:true,
+      purchase_order_rejection_reason:true
+    }
   };
   const manifest = {snapshot:{database:"erp_perfume",ledgerVersions:["0001","0002"]},
-    migrations:[{version:"0020",database:{status:"pending"}}]};
+    migrations:[{version:"0020",database:{status:"schema_present_without_ledger"}}]};
   const report = validateHistoricalBaselineAudit({
     audit, manifest,
     ledgerRows:[{version:"0001"},{version:"0002"}]
   });
   assert.equal(report.status,"RECONCILIATION_EVIDENCE_PASSED_REVIEW_REQUIRED");
   assert.equal(report.objectChecks,55);
-  assert.deepEqual(report.schemaPresentWithoutLedger,["0012","0013","0014"]);
-  assert.deepEqual(report.pendingMigrations,["0020"]);
+  assert.deepEqual(report.schemaPresentWithoutLedger,["0012","0013","0014","0020"]);
+  assert.deepEqual(report.pendingMigrations,[]);
   assert.equal(report.readinessStatus,"BLOCKED");
   assert.equal(report.writesPerformed,false);
 });
@@ -372,7 +378,13 @@ test("historical baseline rejects missing objects, nonzero invariants, duplicate
   const audit = {
     database:"erp_perfume", role:"erp_owner", checks,
     summary:expected.map(([migration,count])=>({migration,total:count,present:count,missing:0,status:"PASS"})),
-    employees_missing_initial_history:0, unvalidated_constraints:0, invalid_or_unready_indexes:0
+    employees_missing_initial_history:0, unvalidated_constraints:0, invalid_or_unready_indexes:0,
+    development_schema_alignment:{
+      invoice_unit_cost_usd:true,
+      purchase_order_exchange_rate:true,
+      notification_billing_target:true,
+      purchase_order_rejection_reason:true
+    }
   };
   const manifest={snapshot:{database:"erp_perfume",ledgerVersions:["0001"]},migrations:[]};
   const args={audit,manifest,ledgerRows:[{version:"0001"}]};
@@ -380,6 +392,7 @@ test("historical baseline rejects missing objects, nonzero invariants, duplicate
   const substituted = checks.map((item,index) => index === 0 ? {...item,object:"unexpected_object"} : item);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:substituted}}),/unexpected object check/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,unvalidated_constraints:1}}),/invariant failed/i);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,development_schema_alignment:{...audit.development_schema_alignment,purchase_order_exchange_rate:false}}}),/schema alignment audit failed/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:[...checks,checks[0]]}}),/exactly 55/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[]}),/ledger does not exactly match/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[{version:"0001"},{version:"0012"}]}),/ledger does not exactly match/i);
@@ -420,12 +433,12 @@ test("approved Development baseline skips only audited schema-present versions a
   }));
   const ledgerRows = [];
   assert.deepEqual(
-    buildMigrationPlan({migrations,ledgerRows,freshInstall:false,satisfiedVersions:["0012","0013","0014"]})
+    buildMigrationPlan({migrations,ledgerRows,freshInstall:false,satisfiedVersions:["0012","0013","0014","0020"]})
       .map(item=>item.version),
-    ["0020"]
+    []
   );
   assert.deepEqual(
-    buildMigrationPlan({migrations,ledgerRows,freshInstall:true,satisfiedVersions:["0012","0013","0014"]})
+    buildMigrationPlan({migrations,ledgerRows,freshInstall:true,satisfiedVersions:["0012","0013","0014","0020"]})
       .map(item=>item.version),
     ["0012","0013","0014","0020"]
   );
