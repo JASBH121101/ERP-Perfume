@@ -37,7 +37,7 @@ La versión **0019 sí está aplicada** en Development. La fila observada tiene 
 
 Estos casos no se deben “reparar” ejecutando otra vez los SQL ni inventando filas en el ledger:
 
-1. **0001–0007:** sus checksums registrados son de 40 caracteres y no existe una especificación histórica única del algoritmo/procedencia. Se conservan exactamente como evidencia; no se recalculan ni reemplazan.
+1. **0001–0007:** `0001` y `0005` coinciden con el Git blob SHA-1 de sus fuentes actuales; `0002`, `0003` y `0004` tienen fuentes históricas exactas recuperadas de commits identificados, archivadas y verificadas contra el checksum del ledger; `0007` coincide con SHA-1 de los bytes exactos del SQL actual. **`0006` sigue bloqueada:** el artefacto histórico que coincide con el ledger contiene SQL malformado y no demuestra qué sentencia corregida llegó a ejecutarse. No se debe reejecutar ninguna de estas versiones.
 2. **0008 y 0009:** los archivos del repositorio son reconstrucciones equivalentes al esquema observado, no se afirma que sean los SQL originales byte por byte. Los checksums registrados en Neon son distintos.
 3. **0012–0014:** sus tablas, secuencia, trigger e índices esperados están presentes en Development, pero faltan las tres filas correspondientes en `app_schema_migrations`. No se deben volver a aplicar.
 4. **0017:** el SHA-256 de la fuente actual no coincide con el checksum de la fila aplicada. La procedencia del SQL original aún requiere conciliación.
@@ -205,4 +205,4 @@ GitHub Actions run [42385634657](https://github.com/JASBH121101/ERP-Perfume/acti
 - 32/32 Playwright browser tests passed;
 - build, static checks, Worker syntax and the offline migration source-integrity gate passed.
 
-The source-integrity gate correctly continues to report **BLOCKED** for new migrations because ten Development historical lineage issues remain. Passing CI does not clear these blockers or certify the live authenticated Worker end to end.
+The source-integrity gate correctly continues to report **BLOCKED** for new migrations because eight Development historical lineage issues remain: `0006`, `0008`, `0009`, `0012`, `0013`, `0014`, `0017` and `0018`. Versions `0002` and `0003` are verified historical sources and are no longer blockers. Passing CI does not clear the remaining blockers or certify the live authenticated Worker end to end.
