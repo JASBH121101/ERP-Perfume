@@ -40,3 +40,4 @@ Preview release: refreshed ERP visual system (graphite-blue navigation, clearer 
 Preview release: Dashboard inventory doughnut chart with live availability/low-stock/out-of-stock distribution and improved Inventory, Purchases and HR module layouts. Source commit: 9aa4983e46855d6d9f6c3fcff2d42efb48c676fe.
 
 Preview release: Resource Monitor for Neon/R2 measurements, premium on-demand product catalog PDF using existing R2 photos and invoice watermark, and responsive notification/button alignment.
+Preview release: notification drawer duplicate-handler removal, catalog permission initialization fix, and action-order regression coverage. Source commit: 6f4eff92e8b436fc91b30602e29ae0fbc6624fc0.
