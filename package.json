@@ -12,7 +12,9 @@
     "test:unit": "node --test",
     "test:e2e": "playwright test",
     "check:db": "node scripts/check-db-migrations.mjs",
-    "check:db:ready": "node scripts/check-db-migrations.mjs --require-ready"
+    "check:db:ready": "node scripts/check-db-migrations.mjs --require-ready",
+    "migrate:db": "node scripts/migrate-db.mjs --check",
+    "migrate:db:apply": "node scripts/migrate-db.mjs --apply"
   },
   "dependencies": {
     "@neondatabase/auth": "0.7.0-beta",

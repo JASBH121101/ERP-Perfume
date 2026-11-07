@@ -81,3 +81,45 @@ npm run build
 ```
 
 Para repetir la inspección viva, abrir el SQL de diagnóstico y ejecutarlo en Neon SQL Editor, verificando primero que el selector indique la rama **development** y la base `erp_perfume`. El archivo contiene únicamente consultas `SELECT`.
+
+
+## Clean-install execution and schema parity — 2026-11-07
+
+A disposable Neon branch named `qa-db-clean-install-2026-11-07` was created from the empty Production schema. Production itself was not modified. The current repository migrations `0001`–`0019` all executed successfully on that isolated branch, each migration file in its own transaction. The resulting schema contained 38 public application tables, 68 foreign keys, 133 indexes, zero unvalidated foreign keys and zero invalid/unready indexes.
+
+Synthetic checks on that branch confirmed:
+- Product insert and unique-SKU enforcement.
+- Inventory entry (+5) and exit (-2), with a final stock of 3 and two kardex rows.
+- Employee insert created three history entries through the hire, compensation and contract triggers.
+- Negative product stock, duplicate SKU, nonexistent product foreign key and zero movement quantity were rejected by PostgreSQL constraints.
+- A multi-statement transaction that inserted a test product and then failed on an invalid foreign key rolled back completely; the first insert remained absent.
+
+The fresh-install schema comparison identified real drift that the original 19 files did not reproduce:
+- `invoice_items.unit_cost_usd NUMERIC(14,4)` existed in Development but was absent from a clean install, although the Worker references it.
+- `purchase_orders.exchange_rate` was `NUMERIC(14,6)` in Development but `NUMERIC(14,4)` after the original clean migration chain.
+- Development allows `billing` as an `erp_notifications.target_view`, while a clean install did not.
+- Development enforces the full rejected-order audit rule (status, actor, timestamp and 5–300 character reason). A clean install retained the weaker pair-only check created by 0017 because 0018 used `IF NOT EXISTS` and did not replace the earlier constraint.
+
+Migration `0020_align_clean_install_schema.sql` is added as a forward-only correction for those four differences. It is pinned as **pending**; it has not been executed on Development or Production. Its SQL was separately tested against the disposable clean-install branch after the 0001–0019 baseline.
+
+The Neon managed `neon_auth` schema, its identities, the runtime role grants and the pre-existing migration ledger are environment provisioning concerns rather than app SQL migrations. The migration runner below creates the ledger only for a genuinely empty public application schema; it refuses to fabricate a baseline when app tables already exist.
+
+## Controlled migration runner
+
+`npm run migrate:db` is a connection preflight/check only. It performs no schema changes. Applying requires both:
+
+- command `npm run migrate:db:apply`;
+- explicit environment approval `ERP_MIGRATIONS_APPROVED=YES`.
+
+It also requires `ERP_ENVIRONMENT=development`, `ERP_MIGRATION_BRANCH=development`, a direct (non-`-pooler`) Neon URL in `MIGRATION_DATABASE_URL`, an exact matching `ERP_EXPECTED_NEON_ENDPOINT_HOST`, database `erp_perfume`, and DDL owner role `erp_owner`.
+
+The runner:
+- takes a PostgreSQL advisory lock to serialize concurrent migration processes;
+- validates source SHA-256 against the manifest before opening the database connection;
+- refuses an existing Development database while historical ledger/source exceptions remain unresolved;
+- refuses a non-empty app schema with a missing or empty migration ledger;
+- applies each SQL file and inserts its checksum/filename/version ledger row inside the same transaction;
+- rolls back the entire migration file if any statement or ledger write fails;
+- never targets Production and never runs as part of the Worker deployment workflow.
+
+A clean install can apply the canonical current source files on an empty database branch. That does not prove the historical SQL byte sequence that originally ran on Development. Development remains blocked until its historical discrepancies are reconciled with evidence.

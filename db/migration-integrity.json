@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0020",
+  "nextMigrationVersion": "0021",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -264,6 +264,15 @@
         "status": "applied_checksum_verified",
         "ledgerChecksum": "de223be267e647d1e31a4d3bda1e3b5918a2c317de2f46ad18575409f727e474",
         "appliedAt": "2026-11-06T21:31:03.567959Z"
+      }
+    },
+    {
+      "filename": "0020_align_clean_install_schema.sql",
+      "version": "0020",
+      "sha256": "0f8818822832241785f4556546b4e418996214c5bbe2509c7ec0f703d28fe1d2",
+      "database": {
+        "status": "pending",
+        "note": "Forward-only schema reconciliation from a read-only comparison of the 0001–0019 clean-install branch against Neon Development on 2026-11-07. Adds invoice-line unit cost, preserves six-decimal purchase-order exchange rates, aligns notification target values, and replaces the incomplete rejection audit check. Not yet applied to Development."
       }
     }
   ]
