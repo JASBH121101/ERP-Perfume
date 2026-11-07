@@ -11,7 +11,7 @@ const MANIFEST_PATH = resolve(ROOT, "db/migration-integrity.json");
 const HISTORICAL_AUDIT_PATH = resolve(ROOT, "db/diagnostics/historical-migration-object-audit.sql");
 const BASELINE_RECONCILED_WITHOUT_LEDGER = new Set(["0012", "0013", "0014"]);
 const EXPECTED_HISTORICAL_AUDIT = new Map([["0002", 8], ["0003", 14], ["0006", 4], ["0008", 3], ["0009", 4], ["0012", 5], ["0013", 2], ["0014", 2], ["0017", 4], ["0018", 1]]);
-const EXPECTED_HISTORICAL_AUDIT_OBJECTS = new Set([
+export const EXPECTED_HISTORICAL_AUDIT_OBJECTS = new Set([
   "0002|table|purchase_orders",
   "0002|table|purchase_order_items",
   "0002|table|purchase_receipts",
