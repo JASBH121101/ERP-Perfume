@@ -5,6 +5,7 @@ import {
   classifyDatabaseState,
   classifyLedgerLineage,
   verifyLedgerChecksum,
+  verifyPostApplyLedger,
   validateConnectionTarget,
   validateOperatorApproval
 } from "../scripts/migrate-db.mjs";
@@ -17,6 +18,55 @@ function sha256(bytes) {
 function gitBlobSha1(bytes) {
   return createHash("sha1").update(Buffer.from("blob " + bytes.length + "\0")).update(bytes).digest("hex");
 }
+
+test("post-apply ledger verifier accepts the exact expected source set", () => {
+  const initialLedgerRows = [
+    { version: "0001", filename: "0001_initial.sql", checksum: "legacy-source-checksum" }
+  ];
+  const plannedMigrations = [
+    { version: "0002", filename: "0002_additive.sql", sha256: "sha256-source-checksum" }
+  ];
+  const finalLedgerRows = [
+    { version: "0001", filename: "0001_initial.sql", checksum: "legacy-source-checksum" },
+    { version: "0002", filename: "0002_additive.sql", checksum: "sha256-source-checksum" }
+  ];
+  assert.equal(verifyPostApplyLedger({ initialLedgerRows, plannedMigrations, finalLedgerRows }), true);
+});
+
+test("post-apply ledger verifier rejects missing, extra, duplicate and altered rows", () => {
+  const initialLedgerRows = [
+    { version: "0001", filename: "0001_initial.sql", checksum: "legacy-source-checksum" }
+  ];
+  const plannedMigrations = [
+    { version: "0002", filename: "0002_additive.sql", sha256: "sha256-source-checksum" }
+  ];
+  const valid = [
+    { version: "0001", filename: "0001_initial.sql", checksum: "legacy-source-checksum" },
+    { version: "0002", filename: "0002_additive.sql", checksum: "sha256-source-checksum" }
+  ];
+
+  assert.throws(() => verifyPostApplyLedger({
+    initialLedgerRows, plannedMigrations, finalLedgerRows: valid.slice(0, 1)
+  }), /row count mismatch/i);
+  assert.throws(() => verifyPostApplyLedger({
+    initialLedgerRows, plannedMigrations, finalLedgerRows: [...valid, {
+      version: "0003", filename: "0003_unplanned.sql", checksum: "extra"
+    }]
+  }), /row count mismatch/i);
+  assert.throws(() => verifyPostApplyLedger({
+    initialLedgerRows, plannedMigrations, finalLedgerRows: [...valid, valid[1]]
+  }), /duplicate version 0002/i);
+  assert.throws(() => verifyPostApplyLedger({
+    initialLedgerRows, plannedMigrations, finalLedgerRows: [
+      valid[0], { ...valid[1], filename: "renamed.sql" }
+    ]
+  }), /filename mismatch/i);
+  assert.throws(() => verifyPostApplyLedger({
+    initialLedgerRows, plannedMigrations, finalLedgerRows: [
+      valid[0], { ...valid[1], checksum: "wrong-checksum" }
+    ]
+  }), /checksum mismatch/i);
+});
 
 test("fresh database requires no pre-existing application tables or ledger rows", () => {
   assert.equal(classifyDatabaseState({

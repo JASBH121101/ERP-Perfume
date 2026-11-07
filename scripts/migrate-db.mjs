@@ -89,6 +89,53 @@ export function buildMigrationPlan({ migrations, ledgerRows, freshInstall }) {
     .filter(migration => !applied.has(migration.version));
 }
 
+export function verifyPostApplyLedger({ initialLedgerRows, plannedMigrations, finalLedgerRows }) {
+  if (!Array.isArray(initialLedgerRows) || !Array.isArray(plannedMigrations) || !Array.isArray(finalLedgerRows)) {
+    throw new Error("Initial ledger, planned migrations and final ledger must be arrays.");
+  }
+
+  const expected = new Map();
+  for (const row of initialLedgerRows) {
+    const version = String(row.version);
+    if (expected.has(version)) throw new Error("Initial migration ledger contains duplicate version " + version + ".");
+    expected.set(version, { filename: row.filename, checksum: row.checksum });
+  }
+
+  for (const migration of plannedMigrations) {
+    const version = String(migration.version);
+    if (expected.has(version)) throw new Error("Planned migration version " + version + " is already in the initial ledger.");
+    expected.set(version, { filename: migration.filename, checksum: migration.sha256 });
+  }
+
+  const actual = new Map();
+  for (const row of finalLedgerRows) {
+    const version = String(row.version);
+    if (actual.has(version)) throw new Error("Post-apply migration ledger contains duplicate version " + version + ".");
+    actual.set(version, row);
+  }
+
+  if (actual.size !== expected.size) {
+    throw new Error("Post-apply ledger row count mismatch: expected " + expected.size + ", got " + actual.size + ".");
+  }
+
+  for (const [version, expectedRow] of expected) {
+    const actualRow = actual.get(version);
+    if (!actualRow) throw new Error("Post-apply ledger is missing migration " + version + ".");
+    if (actualRow.filename !== expectedRow.filename) {
+      throw new Error("Post-apply filename mismatch for migration " + version + ".");
+    }
+    if (actualRow.checksum !== expectedRow.checksum) {
+      throw new Error("Post-apply checksum mismatch for migration " + version + ".");
+    }
+  }
+
+  for (const version of actual.keys()) {
+    if (!expected.has(version)) throw new Error("Post-apply ledger contains unplanned migration " + version + ".");
+  }
+
+  return true;
+}
+
 export function verifyLedgerChecksum({ migration, ledgerChecksum, currentBytes, historicalBytes = null }) {
   if (!migration || !migration.database || !Buffer.isBuffer(currentBytes)) return false;
   const status = migration.database.status;
@@ -399,11 +446,12 @@ async function main() {
     const finalRows = await client.query(
       "SELECT version,filename,checksum FROM public.app_schema_migrations ORDER BY version"
     );
-    const expectedLedgerCount = initialLedgerCount + plan.length;
-    if (finalRows.rows.length !== expectedLedgerCount) {
-      throw new Error("Post-apply ledger count mismatch: expected " + expectedLedgerCount + ", got " + finalRows.rows.length + ".");
-    }
-    console.log("SUCCESS: all source migrations are recorded in app_schema_migrations.");
+    verifyPostApplyLedger({
+      initialLedgerRows: ledgerRows,
+      plannedMigrations: plan,
+      finalLedgerRows: finalRows.rows
+    });
+    console.log("SUCCESS: final migration ledger exactly matches the preflight rows plus every committed migration source.");
   } finally {
     if (locked && client) {
       await client.query("SELECT pg_advisory_unlock(hashtext($1))", [LOCK_NAME]).catch(() => {});
