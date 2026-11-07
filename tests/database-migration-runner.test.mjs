@@ -376,11 +376,11 @@ test("historical baseline rejects missing objects, nonzero invariants, duplicate
   };
   const manifest={snapshot:{database:"erp_perfume",ledgerVersions:["0001"]},migrations:[]};
   const args={audit,manifest,ledgerRows:[{version:"0001"}]};
-  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:checks.slice(1)}}),/exactly 47/i);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:checks.slice(1)}}),/exactly 55/i);
   const substituted = checks.map((item,index) => index === 0 ? {...item,object:"unexpected_object"} : item);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:substituted}}),/unexpected object check/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,unvalidated_constraints:1}}),/invariant failed/i);
-  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:[...checks,checks[0]]}}),/exactly 47/i);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:[...checks,checks[0]]}}),/exactly 55/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[]}),/ledger does not exactly match/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[{version:"0001"},{version:"0012"}]}),/ledger does not exactly match/i);
 });
