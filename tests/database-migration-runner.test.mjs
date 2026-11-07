@@ -275,3 +275,46 @@ test("migration apply requires explicit approval even on the pinned Development 
     /ERP_MIGRATIONS_APPROVED=YES/i
   );
 });
+
+test("historical Development baseline requires all 47 checks and clean invariants", () => {
+  const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1]];
+  const checks = expected.flatMap(([migration,count]) =>
+    Array.from({length:count},(_,i)=>({migration,kind:"table",object:migration+"_"+i,present:true}))
+  );
+  const audit = {
+    database:"erp_perfume", role:"erp_owner", checks,
+    summary:expected.map(([migration,count])=>({migration,total:count,present:count,missing:0,status:"PASS"})),
+    employees_missing_initial_history:0, unvalidated_constraints:0, invalid_or_unready_indexes:0
+  };
+  const manifest = {snapshot:{database:"erp_perfume",ledgerVersions:["0001","0002"]},
+    migrations:[{version:"0020",database:{status:"pending"}}]};
+  const report = validateHistoricalBaselineAudit({
+    audit, manifest,
+    ledgerRows:[{version:"0001"},{version:"0002"}]
+  });
+  assert.equal(report.status,"RECONCILIATION_EVIDENCE_PASSED_REVIEW_REQUIRED");
+  assert.equal(report.objectChecks,47);
+  assert.deepEqual(report.schemaPresentWithoutLedger,["0012","0013","0014"]);
+  assert.deepEqual(report.pendingMigrations,["0020"]);
+  assert.equal(report.readinessStatus,"BLOCKED");
+  assert.equal(report.writesPerformed,false);
+});
+
+test("historical baseline rejects missing objects, nonzero invariants, duplicate checks and ledger drift", () => {
+  const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1]];
+  const checks = expected.flatMap(([migration,count]) =>
+    Array.from({length:count},(_,i)=>({migration,kind:"table",object:migration+"_"+i,present:true}))
+  );
+  const audit = {
+    database:"erp_perfume", role:"erp_owner", checks,
+    summary:expected.map(([migration,count])=>({migration,total:count,present:count,missing:0,status:"PASS"})),
+    employees_missing_initial_history:0, unvalidated_constraints:0, invalid_or_unready_indexes:0
+  };
+  const manifest={snapshot:{database:"erp_perfume",ledgerVersions:["0001"]},migrations:[]};
+  const args={audit,manifest,ledgerRows:[{version:"0001"}]};
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:checks.slice(1)}}),/exactly 47/i);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,unvalidated_constraints:1}}),/invariant failed/i);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:[...checks,checks[0]]}}),/exactly 47/i);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[]}),/ledger does not exactly match/i);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[{version:"0001"},{version:"0012"}]}),/ledger does not exactly match/i);
+});

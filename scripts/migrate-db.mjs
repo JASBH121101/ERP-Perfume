@@ -8,6 +8,9 @@ import { verifyMigrationSources } from "./check-db-migrations.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS_DIR = resolve(ROOT, "db/migrations");
 const MANIFEST_PATH = resolve(ROOT, "db/migration-integrity.json");
+const HISTORICAL_AUDIT_PATH = resolve(ROOT, "db/diagnostics/historical-migration-object-audit.sql");
+const BASELINE_RECONCILED_WITHOUT_LEDGER = new Set(["0012", "0013", "0014"]);
+const EXPECTED_HISTORICAL_AUDIT = new Map([["0002", 8], ["0003", 14], ["0006", 4], ["0008", 3], ["0009", 4], ["0012", 5], ["0013", 2], ["0014", 2], ["0017", 4], ["0018", 1]]);
 const LOCK_NAME = "jb-parfums-erp:database-migrations";
 const EXPECTED_DATABASE_DEFAULT = "erp_perfume";
 const EXPECTED_ROLE_DEFAULT = "erp_owner";
@@ -256,6 +259,73 @@ export function validateConnectionTarget(connectionString, manifest, environment
   return url;
 }
 
+export function validateHistoricalBaselineAudit({ audit, ledgerRows, manifest }) {
+  if (!audit || typeof audit !== "object") {
+    throw new Error("Historical baseline audit returned no structured result.");
+  }
+  if (audit.database !== manifest?.snapshot?.database || audit.role !== EXPECTED_ROLE_DEFAULT) {
+    throw new Error("Historical baseline audit database or owner role does not match the pinned Development target.");
+  }
+  if (!Array.isArray(audit.checks) || audit.checks.length !== 47) {
+    throw new Error("Historical baseline audit must return exactly 47 named object checks.");
+  }
+  const seen = new Map();
+  for (const item of audit.checks) {
+    if (!item || typeof item.migration !== "string" || typeof item.kind !== "string" ||
+        typeof item.object !== "string" || item.present !== true) {
+      throw new Error("Historical baseline audit contains a missing, malformed, or failed object check.");
+    }
+    const key = item.migration + ":" + item.kind + ":" + item.object;
+    if (seen.has(key)) throw new Error("Historical baseline audit contains a duplicate object check: " + key);
+    seen.set(key, true);
+  }
+  if (!Array.isArray(audit.summary)) {
+    throw new Error("Historical baseline audit summary is missing.");
+  }
+  const summaries = new Map(audit.summary.map(item => [String(item.migration), item]));
+  for (const [version, expectedCount] of EXPECTED_HISTORICAL_AUDIT) {
+    const item = summaries.get(version);
+    if (!item || Number(item.total) !== expectedCount ||
+        Number(item.present) !== expectedCount || Number(item.missing) !== 0 ||
+        item.status !== "PASS") {
+      throw new Error("Historical baseline audit did not fully verify migration " + version + ".");
+    }
+  }
+  if (summaries.size !== EXPECTED_HISTORICAL_AUDIT.size) {
+    throw new Error("Historical baseline audit returned an unexpected migration summary.");
+  }
+  for (const key of ["employees_missing_initial_history", "unvalidated_constraints", "invalid_or_unready_indexes"]) {
+    if (Number(audit[key]) !== 0) {
+      throw new Error("Historical baseline invariant failed: " + key + " must be zero.");
+    }
+  }
+
+  const actualVersions = ledgerRows.map(row => String(row.version)).sort(compareVersions);
+  const expectedVersions = [...(manifest.snapshot?.ledgerVersions || [])].sort(compareVersions);
+  if (JSON.stringify(actualVersions) !== JSON.stringify(expectedVersions)) {
+    throw new Error("Live Development ledger does not exactly match the reviewed snapshot.");
+  }
+  for (const version of BASELINE_RECONCILED_WITHOUT_LEDGER) {
+    if (actualVersions.includes(version)) {
+      throw new Error("Migration " + version + " unexpectedly has a ledger row; baseline assessment must be reviewed again.");
+    }
+  }
+  return {
+    status: "RECONCILIATION_EVIDENCE_PASSED_REVIEW_REQUIRED",
+    objectChecks: audit.checks.length,
+    migrationsChecked: EXPECTED_HISTORICAL_AUDIT.size,
+    ledgerRows: actualVersions.length,
+    schemaPresentWithoutLedger: [...BASELINE_RECONCILED_WITHOUT_LEDGER].sort(),
+    pendingMigrations: (manifest.migrations || [])
+      .filter(item => item?.database?.status === "pending")
+      .map(item => item.version)
+      .sort(compareVersions),
+    readinessStatus: "BLOCKED",
+    writesPerformed: false,
+    approvalRequiredBeforeAnyApply: true
+  };
+}
+
 export function validateOperatorApproval(apply, manifest, environment = process.env) {
   if (environment.ERP_ENVIRONMENT !== "development") {
     throw new Error("ERP_ENVIRONMENT must be explicitly set to development.");
@@ -314,13 +384,13 @@ async function verifyAppliedRows({ manifest, migrations, ledgerRows }) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const unknown = args.filter(arg => !["--apply", "--check"].includes(arg));
+  const unknown = args.filter(arg => !["--apply", "--check", "--reconcile-development-baseline"].includes(arg));
   if (unknown.length) throw new Error("Unknown argument(s): " + unknown.join(", "));
   if (args.includes("--apply") && args.includes("--check")) {
     throw new Error("Choose either --check or --apply, not both.");
   }
 
-  const apply = args.includes("--apply");
+  const apply = args.includes("--apply");\n  const reconcileBaseline = args.includes("--reconcile-development-baseline");
   const { manifest, summary, migrations } = await loadMigrationSources();
 
   // Pin branch identity and direct endpoint before opening any database socket.
@@ -369,6 +439,22 @@ async function main() {
     const ledgerRows = ledgerExists
       ? (await client.query("SELECT version,filename,checksum,applied_at FROM public.app_schema_migrations ORDER BY version")).rows
       : [];
+
+    if (reconcileBaseline) {
+      const auditSql = await readFile(HISTORICAL_AUDIT_PATH, "utf8");
+      const auditResult = await client.query(auditSql);
+      const audit = auditResult.rows?.[0]?.historical_object_audit;
+      const report = validateHistoricalBaselineAudit({ audit, ledgerRows, manifest });
+      console.log("HISTORICAL DEVELOPMENT BASELINE: evidence checks passed; formal review is still required.");
+      console.log("- Object checks: " + report.objectChecks + "/" + report.objectChecks + ".");
+      console.log("- Ledger rows: " + report.ledgerRows + " exact matches to the pinned Development snapshot.");
+      console.log("- Schema-present without ledger (never replay or fabricate rows): " + report.schemaPresentWithoutLedger.join(", ") + ".");
+      console.log("- Pending migration(s): " + (report.pendingMigrations.join(", ") || "none") + ".");
+      console.log("- Readiness remains " + report.readinessStatus + ".");
+      console.log("- Read-only assessment: no schema, ledger, or application data was changed.");
+      console.log("- This command does not grant apply permission. A separate reviewed approval is required before any migration can run.");
+      return;
+    }
 
     const databaseState = classifyDatabaseState({
       ledgerExists,

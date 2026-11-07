@@ -57,3 +57,11 @@ Read-only inspection on 2026-11-07 confirmed the Development branch had `neon_au
 ## Historical Development status
 
 The current Development snapshot is deliberately blocked from applying new migrations until its history discrepancies are reconciled. A new clean database can use the current pinned source chain, but that clean-install success does not retroactively prove the exact SQL that originally ran on Development.
+
+## Read-only historical Development baseline assessment
+
+Run `node scripts/migrate-db.mjs --reconcile-development-baseline` only from a trusted local shell with the same pinned Development environment variables above. This mode opens the exact pinned direct Development endpoint as `erp_owner`, acquires the migration advisory lock, and executes only `db/diagnostics/historical-migration-object-audit.sql`.
+
+The assessment requires all 47 named object checks to pass, the employee-history invariant to be zero, no unvalidated public constraints, no invalid/unready public indexes, and the live migration ledger versions to exactly match the reviewed snapshot. It explicitly verifies that 0012–0014 still have no ledger rows. It does not create ledger entries, execute migration files, modify schema/data, or mark the database READY.
+
+A successful assessment is evidence for a separate human-reviewed baseline decision, not proof of historical SQL byte provenance. The ordinary `--check` and `--apply` paths remain unchanged and blocked for the unresolved Development history. Migration 0020 remains pending. No reconciliation assessment by itself authorizes applying it.
