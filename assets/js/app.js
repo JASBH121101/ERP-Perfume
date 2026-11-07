@@ -679,7 +679,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "download-dgi-document": ["dgi.documents.view"], "reload-dgi-documents": ["dgi.documents.view"],
     "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
     "clear-inventory-filters": ["inventory.stock.view"], "clear-inventory-product-filters": ["inventory.stock.view"],
-    "inventory-page": ["inventory.stock.view"], "refresh-access-manager": ["users.accounts.view"],
+    "inventory-page": ["inventory.stock.view"], "inventory-stock-page": ["inventory.stock.view"], "refresh-access-manager": ["users.accounts.view"],
     "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
   };
   function applyPermissionActions() {
@@ -1161,6 +1161,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   function refreshInventoryMovementResults() {
     const container=document.getElementById('inventory-movement-results');
     if(container)container.innerHTML=renderInventoryMovementResults();
+    const total=document.getElementById('inventory-movement-total');
+    if(total&&inventoryMovementTotal!=null)total.textContent=Number(inventoryMovementTotal).toLocaleString('es-NI')+' movimientos';
   }
   async function loadInventoryMovementPage() {
     if(state.view!=='inventory')return;
@@ -1170,7 +1172,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       search:state.inventoryMovementQuery,type:state.inventoryMovementType,
       from:state.inventoryMovementStartDate,to:state.inventoryMovementEndDate
     });
-    inventoryMovementPageError='';
+    inventoryMovementPageError='Consultando movimientos en Neon…';
+    inventoryMovementPageRows=[];
+    inventoryMovementTotal=0;
+    refreshInventoryMovementResults();
     try{
       const data=await erpApi('inventory-movements?'+params.toString());
       if(requestId!==inventoryMovementRequestId||state.view!=='inventory')return;
@@ -1186,6 +1191,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       refreshInventoryMovementResults();
     }catch(error){
       if(requestId!==inventoryMovementRequestId)return;
+      inventoryMovementPageRows=[];
+      inventoryMovementTotal=0;
       inventoryMovementPageError=error?.message||'No se pudo consultar el historial en Neon.';
       refreshInventoryMovementResults();
     }
@@ -1227,7 +1234,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       search:state.inventoryProductQuery,category:state.inventoryProductCategory==='all'?'':state.inventoryProductCategory,
       status:state.inventoryProductStock
     });
-    inventoryStockPageError='';
+    inventoryStockPageError='Consultando existencias en Neon…';
+    inventoryStockPageRows=[];
+    inventoryStockTotal=0;
+    renderInventoryProductRows();
     try{
       const data=await erpApi('inventory-stock?'+params.toString());
       if(requestId!==inventoryStockRequestId||state.view!=='inventory')return;
@@ -1242,6 +1252,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       renderInventoryProductRows();
     }catch(error){
       if(requestId!==inventoryStockRequestId)return;
+      inventoryStockPageRows=[];
+      inventoryStockTotal=0;
       inventoryStockPageError=error?.message||'No se pudieron consultar las existencias.';
       renderInventoryProductRows();
     }
@@ -3103,6 +3115,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     applyPermissionNavigation();
     applyPermissionActions();
     updateNotificationIndicator();
+    if(state.view==='inventory'){
+      loadInventorySummary();
+      loadInventoryStockPage();
+      loadInventoryMovementPage();
+    }
     document.querySelector('.page-context')?.classList.toggle('page-context-hr',state.view==='hr');
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
     hydrateProductImageSlots();
@@ -3119,6 +3136,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     state.inventoryMovementStartDate = '';
     state.inventoryMovementEndDate = '';
     state.inventoryMovementPage = 1;
+    state.inventoryStockPage = 1;
     renderView();
     closeMobileMenu();
     if (view === 'catalog') loadCatalogSettings().then(() => { if (state.view === 'catalog') renderView(); });
@@ -3513,7 +3531,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       else if (name === 'inventory-page') {
         const step = action.getAttribute('data-page') === 'previous' ? -1 : 1;
         state.inventoryMovementPage = Math.max(1, state.inventoryMovementPage + step);
-        refreshInventoryMovementResults();
+        loadInventoryMovementPage();
+      }
+      else if (name === 'inventory-stock-page') {
+        const step = action.getAttribute('data-page') === 'previous' ? -1 : 1;
+        state.inventoryStockPage = Math.max(1, state.inventoryStockPage + step);
+        loadInventoryStockPage();
       }
       else if (name === 'clear-inventory-product-filters') {
         state.inventoryProductQuery = '';
@@ -3525,7 +3548,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if (search) search.value = '';
         if (category) category.value = 'all';
         if (stock) stock.value = 'all';
-        renderInventoryProductRows();
+        state.inventoryStockPage = 1;
+        loadInventoryStockPage();
       }
       else if (name === 'clear-inventory-filters') {
         state.inventoryMovementQuery = '';
@@ -3541,7 +3565,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if (type) type.value = 'all';
         if (startDate) startDate.value = '';
         if (endDate) endDate.value = '';
-        refreshInventoryMovementResults();
+        loadInventoryMovementPage();
       }
       else if (name === 'stock-new') openStockModal();
       else if (name === 'stock-product') openStockModal(action.getAttribute('data-id'));
@@ -3589,11 +3613,14 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     else if (event.target && event.target.id === 'inventory-movement-search') {
       state.inventoryMovementQuery = event.target.value;
       state.inventoryMovementPage = 1;
-      refreshInventoryMovementResults();
+      window.clearTimeout(inventoryMovementSearchTimer);
+      inventoryMovementSearchTimer = window.setTimeout(loadInventoryMovementPage, 250);
     }
     else if (event.target && event.target.id === 'inventory-product-search') {
       state.inventoryProductQuery = event.target.value;
-      renderInventoryProductRows();
+      state.inventoryStockPage = 1;
+      window.clearTimeout(inventoryStockSearchTimer);
+      inventoryStockSearchTimer = window.setTimeout(loadInventoryStockPage, 250);
     }
   });
   document.addEventListener('change', function (event) {
@@ -3609,7 +3636,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target && ['inventory-product-category','inventory-product-stock'].includes(event.target.id)) {
       if (event.target.id === 'inventory-product-category') state.inventoryProductCategory = event.target.value;
       if (event.target.id === 'inventory-product-stock') state.inventoryProductStock = event.target.value;
-      renderInventoryProductRows();
+      state.inventoryStockPage = 1;
+      loadInventoryStockPage();
       return;
     }
     if (event.target && ['inventory-movement-type','inventory-movement-start','inventory-movement-end'].includes(event.target.id)) {
@@ -3617,7 +3645,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       if (event.target.id === 'inventory-movement-start') state.inventoryMovementStartDate = event.target.value;
       if (event.target.id === 'inventory-movement-end') state.inventoryMovementEndDate = event.target.value;
       state.inventoryMovementPage = 1;
-      refreshInventoryMovementResults();
+      loadInventoryMovementPage();
       return;
     }
     if (event.target && event.target.id === 'stock-filter') {
@@ -3763,7 +3791,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     event.preventDefault();
     if(!stockForm.reportValidity())return;
     const data=new FormData(stockForm);
-    const product=products.find(item=>String(item.id)===String(data.get('productId')));
+    const product=[...(inventoryStockPageRows||[]),...products].find(item=>String(item.id)===String(data.get('productId')));
     const type=String(data.get('type')||''),quantity=Number(data.get('quantity')),note=String(data.get('note')||'').trim();
     if(!product||product.active===false||!Number.isInteger(quantity)||quantity<0||(type!=='adjustment'&&quantity===0)){
       toast('Selecciona un producto activo y una cantidad válida.');return;
