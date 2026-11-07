@@ -13,11 +13,9 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(result.summary.appliedLedgerRows, 16);
   assert.equal(result.summary.schemaPresentWithoutLedger, 3);
   assert.equal(result.summary.historicalSourcesVerified, 3);
-  assert.equal(result.summary.readinessStatus, "BLOCKED");
-  assert.deepEqual(
-    result.summary.readinessBlockers.map(item => item.version),
-    ["0006", "0008", "0009", "0012", "0013", "0014", "0017", "0018"]
-  );
+  assert.equal(result.summary.readinessStatus, "READY_WITH_APPROVED_BASELINE_EXCEPTIONS");
+  assert.equal(result.summary.approvedBaselineExceptions, 8);
+  assert.deepEqual(result.summary.readinessBlockers, []);
   assert.equal(result.summary.nextMigrationVersion, "0021");
   assert.deepEqual(result.summary.pendingMigrations, ["0020"]);
 });
