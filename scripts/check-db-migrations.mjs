@@ -121,6 +121,49 @@ export async function verifyMigrationSources({
     addError(errors, "The manifest must explicitly record that Production was not modified.");
   }
 
+  const baseline = manifest.baselineReconciliation;
+  const expectedLedgerExceptions = ["0006", "0008", "0009", "0017", "0018"];
+  const expectedSchemaSatisfied = ["0012", "0013", "0014"];
+  let baselineApproved = false;
+  if (baseline) {
+    const sameList = (actual, expected) =>
+      Array.isArray(actual) && JSON.stringify(actual) === JSON.stringify(expected);
+    if (baseline.schemaVersion !== 1 || baseline.status !== "approved" ||
+        baseline.scope !== "development-only; never applies to clean installs or Production" ||
+        baseline.branch !== manifest.snapshot?.branch ||
+        baseline.branchId !== manifest.snapshot?.branchId ||
+        baseline.database !== manifest.snapshot?.database ||
+        baseline.requiresLiveAuditBeforeApply !== true ||
+        !sameList(baseline.ledgerExceptions, expectedLedgerExceptions) ||
+        !sameList(baseline.schemaSatisfiedWithoutLedger, expectedSchemaSatisfied) ||
+        baseline.auditObjectCount !== 55 || baseline.auditMigrationCount !== 11 ||
+        typeof baseline.approvedAt !== "string" ||
+        typeof baseline.approvedBy !== "string" ||
+        typeof baseline.approvalReference !== "string" ||
+        !baseline.approvalReference.trim()) {
+      addError(errors, "Development baseline reconciliation attestation is incomplete or does not match the reviewed exception set.");
+    } else {
+      baselineApproved = true;
+    }
+    for (const version of expectedLedgerExceptions) {
+      const item = manifestMigrations.find(entry => entry?.version === version);
+      if (!item || !READINESS_BLOCKERS.has(item.database?.status) ||
+          !item.database?.ledgerChecksum || !item.database?.appliedAt) {
+        addError(errors, "Approved ledger exception " + version + " must retain its observed checksum and applied_at.");
+        baselineApproved = false;
+      }
+    }
+    for (const version of expectedSchemaSatisfied) {
+      const item = manifestMigrations.find(entry => entry?.version === version);
+      if (!item || item.database?.status !== "schema_present_without_ledger" ||
+          item.database?.ledgerChecksum || item.database?.appliedAt ||
+          !Array.isArray(item.database?.objectsVerified) || !item.database.objectsVerified.length) {
+        addError(errors, "Approved schema-satisfied version " + version + " must remain explicitly unregistered and retain object evidence.");
+        baselineApproved = false;
+      }
+    }
+  }
+
   let actualFiles = [];
   try {
     const entries = await readdir(migrationsDir, { withFileTypes: true });
@@ -285,10 +328,21 @@ export async function verifyMigrationSources({
     addError(errors, "nextMigrationVersion should be " + (calculatedNextVersion || "(unknown)") + ", not " + manifest.nextMigrationVersion + ".");
   }
 
+  const approvedLedgerExceptions = new Set(baselineApproved ? baseline.ledgerExceptions : []);
+  const approvedSchemaSatisfied = new Set(baselineApproved ? baseline.schemaSatisfiedWithoutLedger : []);
   const readinessBlockers = manifestMigrations
-    .filter(item => READINESS_BLOCKERS.has(item?.database?.status))
+    .filter(item => {
+      if (!READINESS_BLOCKERS.has(item?.database?.status)) return false;
+      if (item.database.status === "schema_present_without_ledger") {
+        return !approvedSchemaSatisfied.has(item.version);
+      }
+      return !approvedLedgerExceptions.has(item.version);
+    })
     .map(item => ({ version: item.version, status: item.database.status }))
     .sort((a, b) => a.version.localeCompare(b.version));
+  const approvedBaselineExceptionCount = baselineApproved
+    ? approvedLedgerExceptions.size + approvedSchemaSatisfied.size
+    : 0;
   const pendingMigrations = manifestMigrations
     .filter(item => item?.database?.status === "pending")
     .map(item => item.version)
@@ -306,8 +360,9 @@ export async function verifyMigrationSources({
       historicalChecksumExceptions: readinessBlockers.length,
       historicalSourcesVerified,
       pendingMigrations,
-      readinessStatus: readinessBlockers.length ? "BLOCKED" : "READY",
+      readinessStatus: readinessBlockers.length ? "BLOCKED" : approvedBaselineExceptionCount ? "READY_WITH_APPROVED_BASELINE_EXCEPTIONS" : "READY",
       readinessBlockers,
+      approvedBaselineExceptions: approvedBaselineExceptionCount,
       nextMigrationVersion: calculatedNextVersion
     }
   };
@@ -329,7 +384,7 @@ if (invokedPath === import.meta.url) {
     console.log("- Neon Development snapshot: " + s.appliedLedgerRows + " ledger rows; " + s.schemaPresentWithoutLedger + " schema-present versions without ledger rows.");
     console.log("- " + s.historicalSourcesVerified + " historical source artifact(s) recovered and hash-verified.");
     console.log("- Next source filename: " + s.nextMigrationVersion + "; this does not authorize applying it.");
-    console.log("- Database readiness: " + s.readinessStatus + " (" + s.readinessBlockers.length + " unresolved historical issue(s)).");
+    console.log("- Database readiness: " + s.readinessStatus + " (" + s.readinessBlockers.length + " blocking issue(s); " + (s.approvedBaselineExceptions || 0) + " approved baseline exception(s)).");
     for (const blocker of s.readinessBlockers) {
       console.log("  - " + blocker.version + ": " + blocker.status);
     }
