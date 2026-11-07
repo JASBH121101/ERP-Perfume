@@ -137,7 +137,7 @@ test("inventory summary is calculated by PostgreSQL across the full active catal
   assert.deepEqual(result.body.categories, ["Diseñador", "Nicho"]);
   assert.match(captured.statement, /COUNT\(\*\) FILTER \(WHERE active=TRUE/);
   assert.match(captured.statement, /SUM\(stock\) FILTER \(WHERE active=TRUE/);
-  assert.deepEqual(captured.values, []);
+  assert.equal(captured.values, undefined);
 });
 
 test("inventory stock list uses safe parameterized filters and database pagination", async () => {
