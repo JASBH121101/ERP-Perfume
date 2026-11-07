@@ -42,3 +42,8 @@ Preview release: Dashboard inventory doughnut chart with live availability/low-s
 Preview release: Resource Monitor for Neon/R2 measurements, premium on-demand product catalog PDF using existing R2 photos and invoice watermark, and responsive notification/button alignment.
 Preview release: notification drawer duplicate-handler removal, catalog permission initialization fix, and action-order regression coverage. Source commit: 6f4eff92e8b436fc91b30602e29ae0fbc6624fc0.
 Preview release: owner Resource Monitor now populates the sidebar after authentication using cached live measurements, with explicit unavailable state and regression coverage. Source commit: e0ad078491a4547c9758eb4722280f69cd75dda5.
+
+Preview release: fix mobile navigation drawer layering; the drawer now covers the sticky topbar and the scrim dims the full viewport.
+Visual regression: Chromium at 390x844 confirms topbar z-index 60, scrim 100, sidebar 110; no horizontal overflow; outside-tap dismissal works. Screenshot artifact attached to ERP Quality Gate run 42330981669.
+Validation: 120 unit tests, 32 E2E tests, JB Expert QA PASS 93/100, Development Worker health checks passed.
+Source commit: d9a4ec7a1668a2fd812c43e2508af4dc35ee87b8.
