@@ -9,9 +9,9 @@ This follow-up extends the Database Reliability Gate audit. It is based on read-
 | Version | Evidence | Current classification |
 |---|---|---|
 | 0001 | Neon checksum equals Git blob SHA-1 of current file | Source hash verified |
-| 0002 | Checksum does not match recoverable source revision | Unresolved |
-| 0003 | Checksum does not match either recoverable committed revision | Unresolved |
-| 0004 | Exact source recovered from commit \`55095a98d599850078b42bb2fd0c8320f959e94d\`; Git blob SHA-1 equals ledger | Historical source recovered |
+| 0002 | Exact historical SQL from commit `dba793412a40340d7809b52c0d6274099bfbb98c`; archived and original source blobs match the ledger | Verified recovered source |
+| 0003 | Exact historical SQL from commit `7347b46fe7d345bda34564cae92cb4ed0db38d5e`; archived and original source blobs match the ledger | Verified recovered source |
+| 0004 | Exact historical SQL from commit `55095a98d599850078b42bb2fd0c8320f959e94d`; archived and original source blobs match the ledger | Verified recovered source |
 | 0005 | Neon checksum equals Git blob SHA-1 of current file | Source hash verified |
 | 0006 | Git blob from commit \`7eb27a4d566ff750a2ddf9da7f45c0e5ca4d9c2f\` matches ledger checksum, but contains malformed SQL | Historical source recovered but unexecutable |
 | 0007 | Neon checksum equals SHA-1 of exact current SQL bytes | Source hash verified |
@@ -70,7 +70,7 @@ The checker now understands:
 
 Run \`npm run check:db\` for offline source-integrity checks. Run \`npm run check:db:ready\` before planning a new migration. The strict command returns exit code 2 while unresolved historical cases remain.
 
-Current readiness blockers: \`0002\`, \`0003\`, \`0006\`, \`0008\`, \`0009\`, \`0012\`, \`0013\`, \`0014\`, \`0017\`, \`0018\`.
+Current readiness blockers: `0006`, `0008`, `0009`, `0012`, `0013`, `0014`, `0017`, `0018` (8 cases). Versions `0002` and `0003` were subsequently verified against their original Git source commits and matching archived blobs; `0004` was already verified.
 
 No new migration should be applied until these cases are reconciled by evidence. Do not fabricate rows in \`app_schema_migrations\`; do not rerun versions whose objects are already present.
 
@@ -98,9 +98,9 @@ The valid synthetic order, line, receipt and receipt line were deleted before th
 
 ## Source-history search follow-up
 
-The recoverable 0002 source is itself documented as a schema reconstruction and its Git blob SHA-1 does not match the Development ledger checksum. Both available committed revisions for 0003 were checked; neither matches the ledger checksum. These observations confirm that the remaining source provenance gaps cannot be closed by simply choosing the current Git file.
+The earlier unresolved notes for 0002 and 0003 are superseded by direct source verification. The files at commits `dba793412a40340d7809b52c0d6274099bfbb98c` (0002) and `7347b46fe7d345bda34564cae92cb4ed0db38d5e` (0003) were compared byte-for-byte with their archived recovery files. Each original Git blob SHA-1 and archived blob SHA-1 exactly matches its Development ledger checksum. Version 0004 has the same verified provenance from commit `55095a98d599850078b42bb2fd0c8320f959e94d`.
 
-
+These are exact recovered historical sources, not schema-equivalent reconstructions. They are no longer readiness blockers. The remaining historical provenance/reconciliation blockers are 0006, 0008, 0009, 0012, 0013, 0014, 0017 and 0018.
 ## Fresh-install Auth and runtime-role provisioning check
 
 A branch clone created from the Production lineage and migrated through 0020 had the expected ERP application schema and migration ledger, but a separate read-only inspection found no `neon_auth` schema, no `jb_erp_runtime_sql` role, and no runtime grants. The Neon Auth API also reported that Managed Auth was not enabled for that branch. A Development-derived QA clone, by contrast, retained Neon Auth and the runtime role.
