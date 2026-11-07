@@ -1092,6 +1092,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       return resourceUsage;
     } catch (error) {
       resourceUsageError = error?.message || 'No se pudo consultar el consumo.';
+      resourceUsage = { database:null, storage:null };
+      updateResourceSidebarMetrics();
       throw error;
     }
   }
@@ -4198,6 +4200,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   root.innerHTML=heading(views.dashboard,'')+'<div class="notice-panel"><span>'+svg('clock')+'</span><div><strong>Conectando con Neon Development</strong><p>Consultando los registros operativos y permisos de esta cuenta…</p></div></div>';
   loadERPFromNeon(true).then(function(){
     renderView();
+    // Populate the owner's sidebar monitor once per session; the five-minute
+    // in-memory TTL prevents repeated provider queries while navigating.
+    if(window.JBAuth?.profile?.role==='owner') loadResourceUsage().catch(()=>{});
   }).catch(function(error){
     root.innerHTML=heading(views.dashboard,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>No se pudo cargar la información del ERP</strong><p>'+esc(error?.message||'Comprueba tu sesión o la conexión con la base de datos.')+'</p><button class="button button-quiet button-small" data-action="reload-erp">Reintentar conexión</button></div></div>';
   });

@@ -71,6 +71,17 @@ test.beforeEach(async ({ page }) => {
     if (pathname.endsWith('/bootstrap') && request.method() === 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: fixture }) });
     }
+    if (pathname.endsWith('/resource-usage') && request.method() === 'GET') {
+      return route.fulfill({
+        status:200, contentType:'application/json',
+        body:JSON.stringify({
+          updatedAt:'2026-11-07T00:00:00.000Z',
+          database:{sizeBytes:134217728,activeConnections:2,transactionsCommitted:1200,transactionsRolledBack:3},
+          storage:{sizeBytes:268435456,objectCount:42,complete:true,scannedPages:1},
+          errors:{database:null,storage:null}
+        })
+      });
+    }
     if (pathname.endsWith('/products/import') && request.method() === 'POST') {
       const payload = request.postDataJSON();
       return route.fulfill({
@@ -877,6 +888,23 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
 });
 
 
+
+
+test('owner resource monitor populates the sidebar after initial ERP load', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#resource-sidebar-db')).toHaveText('128 MB');
+  await expect(page.locator('#resource-sidebar-r2')).toHaveText('256 MB');
+  const bars = await page.evaluate(() => ({
+    database: document.querySelector('#resource-sidebar-db-bar').style.width,
+    storage: document.querySelector('#resource-sidebar-r2-bar').style.width
+  }));
+  expect(bars.database).toBe('25%');
+  expect(bars.storage).toBe('13%');
+  await navigateToView(page, 'resources');
+  await expect(page.getByRole('heading', { name: 'Consumo y servicios' })).toBeVisible();
+  await expect(page.locator('.resource-metric-grid')).toContainText('Neon PostgreSQL');
+  await expect(page.locator('.resource-secondary-grid')).toContainText('GitHub Actions');
+});
 
 test('product action buttons keep New product above Import on mobile and ordered on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
