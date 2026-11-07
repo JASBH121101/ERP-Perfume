@@ -165,3 +165,44 @@ The clean migration chain and the authenticated runtime are separate capabilitie
 - Development-derived QA clone: Neon Auth and runtime role present; its public application schema compared equal to Development after 0020.
 
 The installation checklist must therefore include Neon Managed Auth provisioning and least-privilege runtime role setup as a separate branch-level step. `db/diagnostics/runtime-provisioning.sql` checks that branch even before application migrations are present. Do not put managed Auth's internal schema into application migration files and do not give the Worker an owner/admin credential. The diagnostic SQL now reports these prerequisites alongside the database integrity checks.
+
+
+## Additional inventory/runtime verification — 2026-11-07
+
+### Worker-style stock sequence on the Development-derived QA branch
+
+On `qa-db-reliability-2026-11-07`, a single transaction exercised the inventory row-lock and movement/audit rules with a synthetic SKU:
+- opening stock 4;
+- entry +3 produced 7;
+- sale -2 produced 5;
+- absolute adjustment to 8 produced 8;
+- oversell by 9 produced no update;
+- adjustment to the already-current balance produced no movement;
+- an inactive product could not be selected for another movement.
+
+The assertions inside the transaction required final stock 8, exactly four valid movement rows (opening + three valid operations), and four matching audit rows. A deliberate division-by-zero statement then aborted the same transaction (SQLSTATE `22012`). A separate query found zero remaining rows for the synthetic SKU, its movement notes, and its product-creation audit. This was a rollback test, not persistent QA data.
+
+### Concurrent stock-out test
+
+A second isolated fixture started with stock 10. Two independent Neon transactions were launched concurrently; each selected the same product `FOR UPDATE` and attempted to issue 6 units. Both transactions completed, but PostgreSQL row locking serialized the calculation: one movement was accepted, the second saw the new balance and did not write. Observed result: final stock 4, one accepted concurrent movement, one opening movement. A cleanup transaction deleted the fixture; a follow-up query confirmed zero rows for its SKU and both movement notes.
+
+### Runtime role exercised directly
+
+A read-only connection using the actual Development role `jb_erp_runtime_sql` confirmed:
+- the connection authenticated as `jb_erp_runtime_sql`;
+- SELECT/INSERT/UPDATE on `products` are available;
+- DELETE on `products` is denied;
+- DELETE on `user_permission_overrides` and `role_template_permissions` is allowed;
+- required SELECT column privileges on `app_users` and `neon_auth."user"` are present;
+- SELECT on `app_schema_migrations` is denied.
+
+This matches the intended runtime least-privilege boundary. No write statement was run through the Development runtime role.
+
+### Automated repository validation
+
+GitHub Actions run [42385634657](https://github.com/JASBH121101/ERP-Perfume/actions/runs/42385634657) completed successfully on the database reliability branch:
+- 140/140 Node unit tests passed;
+- 32/32 Playwright browser tests passed;
+- build, static checks, Worker syntax and the offline migration source-integrity gate passed.
+
+The source-integrity gate correctly continues to report **BLOCKED** for new migrations because ten Development historical lineage issues remain. Passing CI does not clear these blockers or certify the live authenticated Worker end to end.
