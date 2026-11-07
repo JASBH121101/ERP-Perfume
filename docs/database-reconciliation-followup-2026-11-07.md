@@ -151,3 +151,15 @@ GitHub Actions run [42385634657](https://github.com/JASBH121101/ERP-Perfume/acti
 - build, static checks, Worker syntax and the offline migration source-integrity gate passed.
 
 The source-integrity gate correctly continues to report **BLOCKED** for new migrations because ten Development historical lineage issues remain. Passing CI does not clear these blockers or certify the live authenticated Worker end to end.
+
+
+## Approved Development baseline policy — 2026-11-07
+
+The repository owner explicitly authorized a Development-only baseline reconciliation on 2026-11-07. The eight previously blocking historical cases are retained as visible exceptions rather than being falsely reclassified as source-verified:
+
+- Ledger-backed exceptions: 0006, 0008, 0009, 0017 and 0018. Their observed checksums and applied timestamps remain unchanged.
+- Schema-present, unregistered versions: 0012, 0013 and 0014. No ledger rows or timestamps are invented and these SQL files are not replayed on Development.
+
+The live audit now verifies 55 named objects across 11 versions, including 0019's eight supporting indexes, plus zero employees missing initial history, zero unvalidated constraints and zero invalid/unready indexes. The runner repeats this read-only audit before every Development migration plan. Only after it passes can the runner skip the already-satisfied 0012–0014 versions and continue with pending 0020.
+
+Clean installs do not inherit this baseline exception and must execute every migration from 0001 through 0020. Production is not covered by this approval and remains protected. The readiness result is `READY_WITH_APPROVED_BASELINE_EXCEPTIONS`; historical source provenance is not claimed to be fully recovered.
