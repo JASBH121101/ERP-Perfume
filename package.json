@@ -10,7 +10,8 @@
     "build": "node scripts/build.mjs",
     "test": "playwright test",
     "test:unit": "node --test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:db": "node scripts/check-db-migrations.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "0.7.0-beta",
@@ -36,4 +37,4 @@
     "@react-email/render": "2.2.0",
     "zod": "4.6.6"
   }
-}
+}\n
