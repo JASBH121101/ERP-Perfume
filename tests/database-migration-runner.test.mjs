@@ -287,7 +287,11 @@ test("historical audit SQL exactly mirrors the 47 pinned object keys and binds o
   assert.equal(rows.length, EXPECTED_HISTORICAL_AUDIT_OBJECTS.size);
   assert.deepEqual([...sqlKeys].sort(), [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].sort());
 
-  const ownerRows = [...sql.matchAll(/^\\s*\\('(index|constraint|trigger)','([^']+)','([^']+)'\\),?$/gm)]
+  const ownersStart = sql.indexOf("expected_owners(");
+  const checkedStart = sql.indexOf("checked AS (", ownersStart);
+  assert.ok(ownersStart >= 0 && checkedStart > ownersStart, "expected owner mapping CTE must exist");
+  const ownersSql = sql.slice(ownersStart, checkedStart);
+  const ownerRows = [...ownersSql.matchAll(/^\\s*\\('(index|constraint|trigger)','([^']+)','([^']+)'\\),?$/gm)]
     .map(([, kind, object, relation]) => kind + "|" + object + "|" + relation);
   const expectedOwners = [
     "index|purchase_orders_supplier_date_idx|purchase_orders",
