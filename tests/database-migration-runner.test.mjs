@@ -204,7 +204,7 @@ test("migration target rejects pooled endpoints for session advisory locks", () 
     () => validateConnectionTarget(uri, migrationManifest, validEnvironment({
       ERP_EXPECTED_NEON_ENDPOINT_HOST: "ep-development-pinned-pooler.c-9.us-east-2.aws.neon.tech"
     })),
-    /pooled.*connection/i
+    /pooled.*endpoint/i
   );
 });
 
