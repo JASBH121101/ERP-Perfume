@@ -14,7 +14,8 @@
     "check:db": "node scripts/check-db-migrations.mjs",
     "check:db:ready": "node scripts/check-db-migrations.mjs --require-ready",
     "migrate:db": "node scripts/migrate-db.mjs --check",
-    "migrate:db:apply": "node scripts/migrate-db.mjs --apply"
+    "migrate:db:apply": "node scripts/migrate-db.mjs --apply",
+    "migrate:db:baseline-audit": "node scripts/migrate-db.mjs --reconcile-development-baseline"
   },
   "dependencies": {
     "@neondatabase/auth": "0.7.0-beta",
