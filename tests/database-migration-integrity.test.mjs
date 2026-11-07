@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -12,6 +12,12 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(result.summary.sourceFiles, 19);
   assert.equal(result.summary.appliedLedgerRows, 16);
   assert.equal(result.summary.schemaPresentWithoutLedger, 3);
+  assert.equal(result.summary.historicalSourcesVerified, 1);
+  assert.equal(result.summary.readinessStatus, "BLOCKED");
+  assert.deepEqual(
+    result.summary.readinessBlockers.map(item => item.version),
+    ["0002", "0003", "0006", "0008", "0009", "0012", "0013", "0014", "0017", "0018"]
+  );
   assert.equal(result.summary.nextMigrationVersion, "0020");
 });
 
@@ -24,19 +30,20 @@ async function createFixture(t, namesAndContents) {
   for (const [filename, content] of namesAndContents) {
     await writeFile(join(migrationsDir, filename), content, "utf8");
     const version = filename.slice(0, 4);
+    const checksum = createHash("sha256").update(content, "utf8").digest("hex");
     migrations.push({
       filename,
       version,
-      sha256: createHash("sha256").update(content, "utf8").digest("hex"),
+      sha256: checksum,
       database: {
         status: "applied_checksum_verified",
-        ledgerChecksum: createHash("sha256").update(content, "utf8").digest("hex"),
+        ledgerChecksum: checksum,
         appliedAt: "2026-11-07T00:00:00Z"
       }
     });
   }
   const manifestPath = join(root, "manifest.json");
-  await writeFile(manifestPath, JSON.stringify({
+  const manifest = {
     schemaVersion: 1,
     hashAlgorithm: "sha256",
     snapshot: {
@@ -48,8 +55,9 @@ async function createFixture(t, namesAndContents) {
     },
     nextMigrationVersion: String(Number(migrations.at(-1)?.version || "0000") + 1).padStart(4, "0"),
     migrations
-  }, null, 2));
-  return { migrationsDir, manifestPath };
+  };
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+  return { root, migrationsDir, manifestPath };
 }
 
 test("rejects source bytes that drift from the pinned SHA-256", async (t) => {
@@ -66,4 +74,20 @@ test("rejects a gap in migration numbering", async (t) => {
   ]);
   const result = await verifyMigrationSources(fixture);
   assert.ok(result.errors.some(message => message.includes("Migration sequence gap")));
+});
+
+test("accepts a pending migration without inventing a ledger row", async (t) => {
+  const fixture = await createFixture(t, [["0001_initial.sql", "SELECT 1;"]]);
+  const manifest = JSON.parse(await readFile(fixture.manifestPath, "utf8"));
+  manifest.migrations[0].database = {
+    status: "pending",
+    note: "Reviewed source; not applied to any database."
+  };
+  manifest.snapshot.ledgerRows = 0;
+  manifest.snapshot.ledgerVersions = [];
+  await writeFile(fixture.manifestPath, JSON.stringify(manifest, null, 2));
+  const result = await verifyMigrationSources(fixture);
+  assert.deepEqual(result.errors, [], result.errors.join("\n"));
+  assert.deepEqual(result.summary.pendingMigrations, ["0001"]);
+  assert.equal(result.summary.appliedLedgerRows, 0);
 });
