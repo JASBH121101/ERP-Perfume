@@ -31,11 +31,14 @@
       "0018",
       "0019"
     ],
-    "productionInspected": false,
+    "productionInspected": true,
     "productionModified": false,
-    "note": "Read-only snapshot. It is evidence from one audit, not a live CI connection or permission to execute migrations.",
+    "note": "Read-only snapshot of Neon Development. Neon Production public schema was separately inspected read-only and contained zero application tables; no Production SQL was executed and Production was not modified.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
-    "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech"
+    "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
+    "productionInspectionDate": "2026-11-07",
+    "productionBranchId": "br-royal-art-ben0apun",
+    "productionPublicApplicationTables": 0
   },
   "migrations": [
     {

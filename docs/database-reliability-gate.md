@@ -10,7 +10,7 @@ El control automático implementado en el repositorio es **offline y de solo lec
 - No ejecuta archivos SQL.
 - No crea, elimina ni corrige filas en `app_schema_migrations`.
 - No despliega Workers ni Pages.
-- No accede a Neon Production ni modifica Production.
+- Neon Production se consultó únicamente en modo lectura para confirmar que su esquema `public` tenía cero tablas de aplicación; no se ejecutó SQL ni se modificó Production.
 - No necesita secretos ni agrega consumo de Actions más allá del workflow de calidad que ya existe.
 
 El control de GitHub Actions valida que cada archivo de migración sea trazable contra el manifiesto revisado. La verificación del estado vivo de Neon se hace por separado mediante el SQL de diagnóstico incluido en `db/diagnostics/development-readiness.sql`.

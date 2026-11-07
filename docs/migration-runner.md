@@ -21,7 +21,8 @@ Set these values only in a trusted local shell or secret store; never commit the
 | `MIGRATION_DATABASE_URL` | Direct (unpooled) Neon connection string for Development |
 | `ERP_EXPECTED_NEON_ENDPOINT_HOST` | Exact hostname from that Development connection string |
 | `ERP_ENVIRONMENT` | `development` |
-| `ERP_MIGRATION_BRANCH` | `development` |\n| `ERP_MIGRATION_BRANCH_ID` | Exact branch ID pinned in `db/migration-integrity.json` |
+| `ERP_MIGRATION_BRANCH` | `development` |
+| `ERP_MIGRATION_BRANCH_ID` | Exact branch ID pinned in `db/migration-integrity.json` |
 | `ERP_EXPECTED_DATABASE_NAME` | `erp_perfume` (default) |
 | `ERP_EXPECTED_DATABASE_ROLE` | `erp_owner` (default) |
 | `ERP_MIGRATIONS_APPROVED` | Must be `YES` for `--apply` |
