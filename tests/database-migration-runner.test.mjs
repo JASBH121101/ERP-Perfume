@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import {
   buildMigrationPlan,
+  classifyLedgerLineage,
   classifyDatabaseState,
   classifyLedgerLineage,
   verifyLedgerChecksum,
@@ -282,11 +283,12 @@ test("migration apply requires explicit approval even on the pinned Development 
 
 
 
-test("historical audit SQL exactly mirrors the 47 pinned object keys and binds objects to their owning relations", async () => {
+test("historical audit SQL exactly mirrors the 55 pinned object keys and binds objects to their owning relations", async () => {
   const sql = await readFile(new URL("../db/diagnostics/historical-migration-object-audit.sql", import.meta.url), "utf8");
   const rows = [...sql.matchAll(/^\s*\('([^']+)','(\d{4})','([^']+)'\),?$/gm)];
   const sqlKeys = new Set(rows.map(([, kind, migration, object]) => migration + "|" + kind + "|" + object));
   assert.equal(rows.length, EXPECTED_HISTORICAL_AUDIT_OBJECTS.size);
+  assert.equal(rows.length, 55);
   assert.deepEqual([...sqlKeys].sort(), [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].sort());
 
   const ownersStart = sql.indexOf("expected_owners(");
@@ -318,7 +320,15 @@ test("historical audit SQL exactly mirrors the 47 pinned object keys and binds o
     "index|employee_documents_uploaded_by_idx|employee_documents",
     "constraint|purchase_orders_status_check|purchase_orders",
     "constraint|purchase_orders_rejection_audit_check|purchase_orders",
-    "trigger|employees_seed_history_after_insert|employees"
+    "trigger|employees_seed_history_after_insert|employees",
+    "index|dgi_support_documents_created_by_idx|dgi_support_documents",
+    "index|erp_roles_created_by_idx|erp_roles",
+    "index|permission_catalog_parent_idx|permission_catalog",
+    "index|role_template_permissions_permission_idx|role_template_permissions",
+    "index|user_permission_overrides_permission_idx|user_permission_overrides",
+    "index|user_permission_overrides_updated_by_idx|user_permission_overrides",
+    "index|supplier_invoices_created_by_idx|supplier_invoices",
+    "index|supplier_invoice_payments_created_by_idx|supplier_invoice_payments"
   ];
   assert.equal(ownerRows.length, expectedOwners.length);
   assert.deepEqual([...ownerRows].sort(), [...expectedOwners].sort());
@@ -329,8 +339,8 @@ test("historical audit SQL exactly mirrors the 47 pinned object keys and binds o
   assert.match(sql, /i\.indrelid = to_regclass/);
 });
 
-test("historical Development baseline requires all 47 checks and clean invariants", () => {
-  const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1]];
+test("historical Development baseline requires all 55 checks and clean invariants", () => {
+  const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1],["0019",8]];
   const checks = [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].map(key => {
     const [migration,kind,object] = key.split("|");
     return {migration,kind,object,present:true};
@@ -347,7 +357,7 @@ test("historical Development baseline requires all 47 checks and clean invariant
     ledgerRows:[{version:"0001"},{version:"0002"}]
   });
   assert.equal(report.status,"RECONCILIATION_EVIDENCE_PASSED_REVIEW_REQUIRED");
-  assert.equal(report.objectChecks,47);
+  assert.equal(report.objectChecks,55);
   assert.deepEqual(report.schemaPresentWithoutLedger,["0012","0013","0014"]);
   assert.deepEqual(report.pendingMigrations,["0020"]);
   assert.equal(report.readinessStatus,"BLOCKED");
@@ -402,4 +412,47 @@ test("migration runner rejects unsupported or malformed PostgreSQL versions", ()
   assert.throws(() => validateDatabaseIdentity({
     database_name: "erp_perfume", role_name: "erp_owner", server_version_num: null
   }), /PostgreSQL 15 or later/i);
+});
+
+
+test("approved Development baseline skips only audited schema-present versions and never changes clean installs", () => {
+  const migrations = ["0012","0013","0014","0020"].map(version => ({
+    version, filename: version + "_migration.sql", sha256: "a".repeat(64)
+  }));
+  const ledgerRows = [];
+  assert.deepEqual(
+    buildMigrationPlan({migrations,ledgerRows,freshInstall:false,satisfiedVersions:["0012","0013","0014"]})
+      .map(item=>item.version),
+    ["0020"]
+  );
+  assert.deepEqual(
+    buildMigrationPlan({migrations,ledgerRows,freshInstall:true,satisfiedVersions:["0012","0013","0014"]})
+      .map(item=>item.version),
+    ["0012","0013","0014","0020"]
+  );
+});
+
+test("approved Development baseline classification requires exact snapshot and explicit attestation", () => {
+  const manifest = {
+    snapshot:{branch:"development",branchId:"dev-branch",database:"erp_perfume",ledgerVersions:["0001","0002"]},
+    migrations:[
+      {version:"0006",database:{status:"applied_historical_source_unexecutable"}}
+    ],
+    baselineReconciliation:{
+      status:"approved",scope:"development-only; never applies to clean installs or Production",
+      branch:"development",branchId:"dev-branch",database:"erp_perfume",requiresLiveAuditBeforeApply:true
+    }
+  };
+  const result=classifyLedgerLineage({
+    manifest,migrations:[{version:"0001"},{version:"0002"}],
+    ledgerRows:[{version:"0001"},{version:"0002"}]
+  });
+  assert.equal(result.type,"approved-development-baseline");
+  assert.deepEqual(result.blockers,[]);
+  const altered=classifyLedgerLineage({
+    manifest,migrations:[{version:"0001"},{version:"0002"}],
+    ledgerRows:[{version:"0001"},{version:"0003"}]
+  });
+  assert.equal(altered.type,"unrecognized");
+  assert.notDeepEqual(altered.blockers,[]);
 });
