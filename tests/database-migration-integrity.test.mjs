@@ -8,7 +8,7 @@ import { verifyMigrationSources } from "../scripts/check-db-migrations.mjs";
 
 test("repository migration sources match the reviewed integrity baseline", async () => {
   const result = await verifyMigrationSources();
-  assert.deepEqual(result.errors, [], result.errors.join("\\n"));
+  assert.deepEqual(result.errors, [], result.errors.join("\n"));
   assert.equal(result.summary.sourceFiles, 19);
   assert.equal(result.summary.appliedLedgerRows, 16);
   assert.equal(result.summary.schemaPresentWithoutLedger, 3);
