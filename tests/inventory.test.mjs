@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createProduct, createInventoryMovement } from "../worker/src/erp.js";
+import { createProduct, createInventoryMovement, getInventorySummary, listInventoryStock, listInventoryMovements } from "../worker/src/erp.js";
 
 const actor = { id: "00000000-0000-0000-0000-000000000099", role: "owner" };
 const productId = "00000000-0000-0000-0000-000000000101";
@@ -111,4 +111,167 @@ test("database identifier errors are converted into a client error", async () =>
   }));
   assert.equal(result.status, 400);
   assert.equal(result.body.error.code, "INVALID_PRODUCT_ID");
+});
+
+
+test("inventory summary is calculated by PostgreSQL across the full active catalog", async () => {
+  let captured = null;
+  const sql = {
+    async query(statement, values) {
+      captured = { statement, values };
+      return [{
+        active_products: "125",
+        total_units: "748",
+        out_of_stock: "4",
+        low_stock: "11",
+        healthy_stock: "110",
+        categories: ["Diseñador", "Nicho"]
+      }];
+    }
+  };
+  const result = await readResponse(await getInventorySummary(sql));
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.summary, {
+    activeProducts: 125, totalUnits: 748, outOfStock: 4, lowStock: 11, healthyStock: 110
+  });
+  assert.deepEqual(result.body.categories, ["Diseñador", "Nicho"]);
+  assert.match(captured.statement, /COUNT\(\*\) FILTER \(WHERE active=TRUE/);
+  assert.match(captured.statement, /SUM\(stock\) FILTER \(WHERE active=TRUE/);
+  assert.deepEqual(captured.values, []);
+});
+
+test("inventory stock list uses safe parameterized filters and database pagination", async () => {
+  let captured = null;
+  const sql = {
+    async query(statement, values) {
+      captured = { statement, values };
+      return [{
+        total: 21,
+        records: [{
+          id: productId, name: "Perfume QA", sku: "QA-UNIT-01", stock: 2,
+          min_stock: 3, category: "Diseñador", active: true
+        }]
+      }];
+    }
+  };
+  const params = new URLSearchParams("page=2&page_size=10&search=Chanel&category=Dise%C3%B1ador&status=low");
+  const result = await readResponse(await listInventoryStock(sql, params));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.total, 21);
+  assert.equal(result.body.page, 2);
+  assert.equal(result.body.pageSize, 10);
+  assert.equal(result.body.totalPages, 3);
+  assert.equal(result.body.records[0].sku, "QA-UNIT-01");
+  assert.deepEqual(captured.values, ["%Chanel%", "Diseñador", 10, 10]);
+  assert.match(captured.statement, /ILIKE \$1/);
+  assert.match(captured.statement, /category = \$2/);
+  assert.match(captured.statement, /stock > 0 AND stock <= min_stock/);
+  assert.match(captured.statement, /LIMIT \$3 OFFSET \$4/);
+  assert.doesNotMatch(captured.statement, /Chanel|Diseñador/);
+});
+
+test("inventory stock list rejects malformed paging and filters before database access", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return []; } };
+  const cases = [
+    "page=0",
+    "page=-1",
+    "page=1.5",
+    "page_size=101",
+    "page_size=0",
+    "status=negative",
+    "search=" + "x".repeat(121),
+    "category=" + "x".repeat(121)
+  ];
+  for (const query of cases) {
+    const result = await readResponse(await listInventoryStock(sql, new URLSearchParams(query)));
+    assert.equal(result.status, 400, query);
+  }
+  assert.equal(calls, 0);
+});
+
+test("inventory movement history applies role-specific visibility and complete date/search filters", async () => {
+  let captured = null;
+  const sql = {
+    async query(statement, values) {
+      captured = { statement, values };
+      return [{
+        total: 31,
+        records: [{
+          id: "qa-movement-1", product_id: productId, product_name: "Perfume QA",
+          sku: "QA-UNIT-01", movement_type: "Salida", quantity: 2,
+          quantity_delta: -2, previous_stock: 8, new_stock: 6,
+          created_at: "2026-11-07T12:00:00.000Z"
+        }]
+      }];
+    }
+  };
+  const context = {
+    owner: false,
+    permissions: [
+      { key: "inventory.manual_out.view", parentKey: null, allowed: true }
+    ]
+  };
+  const params = new URLSearchParams(
+    "page=2&page_size=20&type=Salida&from=2026-11-01&to=2026-11-07&product_id=" +
+    productId + "&search=Perfume"
+  );
+  const result = await readResponse(await listInventoryMovements(sql, params, context));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.total, 31);
+  assert.equal(result.body.page, 2);
+  assert.equal(result.body.pageSize, 20);
+  assert.equal(result.body.totalPages, 2);
+  assert.equal(result.body.records[0].movement_type, "Salida");
+  assert.deepEqual(captured.values, [
+    "Salida", productId, "2026-11-01", "2026-11-07", "%Perfume%", 20, 20
+  ]);
+  assert.match(captured.statement, /im\.movement_type='Salida'/);
+  assert.match(captured.statement, /im\.movement_type = \$1/);
+  assert.match(captured.statement, /im\.product_id = \$2::uuid/);
+  assert.match(captured.statement, /im\.created_at >= \$3::date/);
+  assert.match(captured.statement, /im\.created_at < \(\$4::date \+ INTERVAL '1 day'\)/);
+  assert.match(captured.statement, /LIMIT \$6 OFFSET \$7/);
+  assert.doesNotMatch(captured.statement, /Perfume|2026-11/);
+});
+
+test("inventory movement history rejects invalid dates, date ranges and unauthorized movement visibility", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return []; } };
+  const owner = { owner: true, permissions: [] };
+  for (const query of [
+    "from=2026-02-30",
+    "from=2026-11-08&to=2026-11-07",
+    "type=Unexpected",
+    "page_size=101",
+    "product_id=not-a-uuid"
+  ]) {
+    const result = await readResponse(await listInventoryMovements(sql, new URLSearchParams(query), owner));
+    assert.equal(result.status, 400, query);
+  }
+  const denied = await readResponse(await listInventoryMovements(sql, new URLSearchParams(), {
+    owner: false, permissions: []
+  }));
+  assert.equal(denied.status, 403);
+  assert.equal(denied.body.error.code, "INVENTORY_MOVEMENT_VIEW_FORBIDDEN");
+  assert.equal(calls, 0);
+});
+
+test("movement visibility never exposes inbound rows to a user with outbound-only permission", async () => {
+  let captured = "";
+  const sql = {
+    async query(statement) {
+      captured = statement;
+      return [{ total: 0, records: [] }];
+    }
+  };
+  const context = {
+    owner: false,
+    permissions: [{ key: "inventory.manual_out.view", parentKey: null, allowed: true }]
+  };
+  const result = await readResponse(await listInventoryMovements(sql, new URLSearchParams(), context));
+  assert.equal(result.status, 200);
+  assert.match(captured, /im\.movement_type='Salida'/);
+  assert.doesNotMatch(captured, /im\.movement_type IN \('Entrada','Devolucion'\)/);
+  assert.doesNotMatch(captured, /im\.movement_type='Ajuste'/);
 });
