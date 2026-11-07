@@ -8,7 +8,7 @@ No schema, ledger, business record, employee record, or application data was cha
 
 ## Results
 
-All named expected objects in the audit were present and all checked indexes were valid and ready.
+All 55 named expected objects across migrations 0002, 0003, 0006, 0008, 0009, 0012–0014, 0017–0019 were present and all checked indexes were valid and ready.
 
 | Migration | Checks passed | Result |
 |---|---:|---|
@@ -22,7 +22,8 @@ All named expected objects in the audit were present and all checked indexes wer
 | 0014 | 2 / 2 | PASS |
 | 0017 | 4 / 4 | PASS |
 | 0018 | 1 / 1 | PASS |
-| **Total** | **47 / 47** | **PASS** |
+| 0019 | 8 / 8 | PASS |
+| **Total** | **55 / 55** | **PASS** |
 
 Additional checks:
 - Employees missing either an initial `hire` or `compensation` history event: **0**.
