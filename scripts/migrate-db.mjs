@@ -9,7 +9,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS_DIR = resolve(ROOT, "db/migrations");
 const MANIFEST_PATH = resolve(ROOT, "db/migration-integrity.json");
 const HISTORICAL_AUDIT_PATH = resolve(ROOT, "db/diagnostics/historical-migration-object-audit.sql");
-const BASELINE_RECONCILED_WITHOUT_LEDGER = new Set(["0012", "0013", "0014"]);
+const BASELINE_RECONCILED_WITHOUT_LEDGER = new Set(["0012", "0013", "0014", "0020"]);
 const EXPECTED_HISTORICAL_AUDIT = new Map([["0002", 8], ["0003", 14], ["0006", 4], ["0008", 3], ["0009", 4], ["0012", 5], ["0013", 2], ["0014", 2], ["0017", 4], ["0018", 1], ["0019", 8]]);
 export const EXPECTED_HISTORICAL_AUDIT_OBJECTS = new Set([
   "0002|table|purchase_orders",
@@ -382,6 +382,18 @@ export function validateHistoricalBaselineAudit({ audit, ledgerRows, manifest })
     if (Number(audit[key]) !== 0) {
       throw new Error("Historical baseline invariant failed: " + key + " must be zero.");
     }
+  }
+
+  const expectedDevelopmentSchemaAlignment = [
+    "invoice_unit_cost_usd",
+    "purchase_order_exchange_rate",
+    "notification_billing_target",
+    "purchase_order_rejection_reason"
+  ];
+  const alignment = audit.development_schema_alignment;
+  if (!alignment || expectedDevelopmentSchemaAlignment.some(key => alignment[key] !== true) ||
+      Object.keys(alignment).length !== expectedDevelopmentSchemaAlignment.length) {
+    throw new Error("Development schema alignment audit failed: migration 0020 effects are not all present with the expected definitions.");
   }
 
   const actualVersions = ledgerRows.map(row => String(row.version)).sort(compareVersions);
