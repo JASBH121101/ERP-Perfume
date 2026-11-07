@@ -3489,16 +3489,6 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target.closest('#stock-modal-close') || event.target.closest('#stock-cancel')) stockDialog.close();
     if (event.target.closest('#detail-close') || event.target.closest('#detail-cancel')) detailDialog.close();
     if (event.target.closest('#order-detail-close') || event.target.closest('#order-detail-cancel')) orderDialog.close();
-    if (event.target.closest('.notification-button')) {
-      const alerts=[];
-      const lowStock=products.filter(p=>p.active!==false&&needsRestock(p)).length;
-      const receivable=invoices.filter(i=>Number(i.totalUsd||0)-Number(i.paidUsd||0)>0.001).length;
-      const payable=purchases.filter(p=>Number(p.totalUsd||0)-Number(p.paidUsd||0)>0.001).length;
-      if(lowStock)alerts.push(lowStock+' productos requieren reposición');
-      if(receivable)alerts.push(receivable+' facturas tienen saldo pendiente');
-      if(payable)alerts.push(payable+' compras tienen saldo con proveedor');
-      toast(alerts.length?alerts.join(' · '):'No hay alertas operativas pendientes.');
-    }
   });
   document.addEventListener('input', function (event) {
     if (event.target && event.target.id === 'view-search') {

@@ -1777,8 +1777,11 @@ export async function handleERPRequest(request, env, user, sql) {
   }
   // Lightweight ERP publication settings are stored in app_settings; no schema or database is added.
   if (resource === "catalog-settings") {
+    // Resolve the catalog permission scope locally before the special route.
+    // The shared permissionContext for generic resources is initialized below.
+    const catalogPermissionContext = await loadUserPermissions(sql, user);
     if (request.method === "GET") {
-      if (!hasPermission(permissionContext, "products.catalog.view")) {
+      if (!hasPermission(catalogPermissionContext, "products.catalog.view")) {
         return erpError(403, "FORBIDDEN", "No tienes permiso para consultar el catálogo.");
       }
       try {
@@ -1794,7 +1797,7 @@ export async function handleERPRequest(request, env, user, sql) {
       }
     }
     if (request.method === "PATCH") {
-      if (!hasPermission(permissionContext, "products.catalog.edit")) {
+      if (!hasPermission(catalogPermissionContext, "products.catalog.edit")) {
         return erpError(403, "FORBIDDEN", "No tienes permiso para modificar la publicación de productos.");
       }
       let body;

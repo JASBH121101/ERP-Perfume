@@ -877,6 +877,32 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
 });
 
 
+
+test('product action buttons keep New product above Import on mobile and ordered on desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await navigateToView(page, 'products');
+  const newProduct = page.locator('.heading-actions-inline [data-action="new-product"]');
+  const importProducts = page.locator('.heading-actions-inline [data-action="import-products"]');
+  await expect(newProduct).toBeVisible();
+  await expect(importProducts).toBeVisible();
+  const mobileOrder = await page.evaluate(() => {
+    const a = document.querySelector('.heading-actions-inline [data-action="new-product"]').getBoundingClientRect();
+    const b = document.querySelector('.heading-actions-inline [data-action="import-products"]').getBoundingClientRect();
+    return { newTop:a.top, importTop:b.top, width:document.documentElement.scrollWidth, viewport:window.innerWidth };
+  });
+  expect(mobileOrder.newTop).toBeLessThan(mobileOrder.importTop);
+  expect(mobileOrder.width).toBeLessThanOrEqual(mobileOrder.viewport + 1);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const desktopOrder = await page.evaluate(() => {
+    const a = document.querySelector('.heading-actions-inline [data-action="new-product"]').getBoundingClientRect();
+    const b = document.querySelector('.heading-actions-inline [data-action="import-products"]').getBoundingClientRect();
+    return { newLeft:a.left, importLeft:b.left };
+  });
+  expect(desktopOrder.newLeft).toBeLessThan(desktopOrder.importLeft);
+});
+
 test('notification center displays unread alerts and marks them as read', async ({ page }) => {
   let notifications = [{
     id: 'qa-notification-1',
@@ -921,8 +947,10 @@ test('notification center displays unread alerts and marks them as read', async 
 
   await expect(trigger).toHaveAttribute('aria-label', 'Notificaciones: 1 sin leer');
   await expect(badge).toHaveText('1');
+  const toastCountBeforeBellClick = await page.locator('#toast-region .toast').count();
   await trigger.click();
   await expect(panel).toBeVisible();
+  await expect(page.locator('#toast-region .toast')).toHaveCount(toastCountBeforeBellClick);
   await expect(panel).toContainText('Orden de compra por aprobar');
   await expect(panel).toContainText('OC JB-OC-2026-000001');
 
