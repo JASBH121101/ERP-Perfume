@@ -31,6 +31,182 @@ function erpError(status, code, message) {
   return erpJson({ error: { code, message } }, status);
 }
 
+function inventoryQueryPage(params) {
+  const rawPage = params?.get?.("page");
+  const rawSize = params?.get?.("page_size");
+  const page = rawPage == null || rawPage === "" ? 1 : Number(rawPage);
+  const pageSize = rawSize == null || rawSize === "" ? 25 : Number(rawSize);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 1000000 ||
+      !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    return { error: erpError(400, "INVALID_PAGINATION", "La página debe ser positiva y el tamaño debe estar entre 1 y 100.") };
+  }
+  return { page, pageSize, offset: (page - 1) * pageSize };
+}
+
+function validInventoryDate(value) {
+  if (!value) return true;
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T00:00:00.000Z");
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function appendInventoryFilter(values, clause, value) {
+  values.push(value);
+  return clause.replace("?", "$" + values.length);
+}
+
+export async function getInventorySummary(sql) {
+  try {
+    const rows = await sql.query(
+      "SELECT COUNT(*) FILTER (WHERE active=TRUE)::int AS active_products, " +
+      "COALESCE(SUM(stock) FILTER (WHERE active=TRUE),0)::bigint AS total_units, " +
+      "COUNT(*) FILTER (WHERE active=TRUE AND stock=0)::int AS out_of_stock, " +
+      "COUNT(*) FILTER (WHERE active=TRUE AND stock>0 AND stock<=min_stock)::int AS low_stock, " +
+      "COUNT(*) FILTER (WHERE active=TRUE AND stock>min_stock)::int AS healthy_stock, " +
+      "COALESCE((SELECT jsonb_agg(category ORDER BY category) FROM " +
+      "(SELECT DISTINCT category FROM products WHERE active=TRUE AND NULLIF(BTRIM(category),'') IS NOT NULL) categories),'[]'::jsonb) AS categories " +
+      "FROM products"
+    );
+    const row = rows[0] || {};
+    return erpJson({
+      summary: {
+        activeProducts: Number(row.active_products || 0),
+        totalUnits: Number(row.total_units || 0),
+        outOfStock: Number(row.out_of_stock || 0),
+        lowStock: Number(row.low_stock || 0),
+        healthyStock: Number(row.healthy_stock || 0)
+      },
+      categories: Array.isArray(row.categories) ? row.categories : []
+    });
+  } catch (error) {
+    console.error("[erp] Inventory summary failed:", error?.message || "database error");
+    return erpError(503, "INVENTORY_SUMMARY_FAILED", "No se pudo calcular el resumen de inventario.");
+  }
+}
+
+export async function listInventoryStock(sql, params = new URLSearchParams()) {
+  const paging = inventoryQueryPage(params);
+  if (paging.error) return paging.error;
+  const search = String(params.get("search") || "").trim();
+  const category = String(params.get("category") || "").trim();
+  const stockStatus = String(params.get("status") || "all").trim();
+  if (search.length > 120 || category.length > 120) {
+    return erpError(400, "INVALID_INVENTORY_FILTER", "La búsqueda y la categoría no pueden superar 120 caracteres.");
+  }
+  if (!["all", "available", "low", "out"].includes(stockStatus)) {
+    return erpError(400, "INVALID_INVENTORY_FILTER", "El estado de existencias no es válido.");
+  }
+  const values = [];
+  const where = ["active=TRUE"];
+  if (search) {
+    values.push("%" + search + "%");
+    const param = "$" + values.length;
+    where.push("(name ILIKE " + param + " OR sku ILIKE " + param +
+      " OR COALESCE(brand,'') ILIKE " + param + " OR COALESCE(barcode,'') ILIKE " + param +
+      " OR COALESCE(location,'') ILIKE " + param + ")");
+  }
+  if (category) where.push("category = " + appendInventoryFilter(values, "?", category));
+  if (stockStatus === "available") where.push("stock > min_stock");
+  if (stockStatus === "low") where.push("stock > 0 AND stock <= min_stock");
+  if (stockStatus === "out") where.push("stock = 0");
+  const limit = appendInventoryFilter(values, "?", paging.pageSize);
+  const offset = appendInventoryFilter(values, "?", paging.offset);
+  const whereSql = where.join(" AND ");
+  try {
+    const rows = await sql.query(
+      "WITH filtered AS MATERIALIZED (" +
+      "SELECT id,name,sku,brand,category,stock,min_stock,location,barcode,tone,active " +
+      "FROM products WHERE " + whereSql +
+      "), page_rows AS (" +
+      "SELECT * FROM filtered ORDER BY stock ASC,name ASC,id ASC LIMIT " + limit + " OFFSET " + offset +
+      ") SELECT (SELECT COUNT(*)::int FROM filtered) AS total, " +
+      "COALESCE((SELECT jsonb_agg(to_jsonb(page_rows) ORDER BY stock ASC,name ASC,id ASC) FROM page_rows),'[]'::jsonb) AS records",
+      values
+    );
+    const row = rows[0] || {};
+    return erpJson({
+      records: Array.isArray(row.records) ? row.records : [],
+      total: Number(row.total || 0),
+      page: paging.page,
+      pageSize: paging.pageSize,
+      totalPages: Math.max(1, Math.ceil(Number(row.total || 0) / paging.pageSize))
+    });
+  } catch (error) {
+    console.error("[erp] Inventory stock list failed:", error?.message || "database error");
+    return erpError(503, "INVENTORY_STOCK_LIST_FAILED", "No se pudieron consultar las existencias.");
+  }
+}
+
+export async function listInventoryMovements(sql, params = new URLSearchParams(), permissionContext = { owner: true }) {
+  const paging = inventoryQueryPage(params);
+  if (paging.error) return paging.error;
+  const search = String(params.get("search") || "").trim();
+  const movementType = String(params.get("type") || "all").trim();
+  const from = String(params.get("from") || "").trim();
+  const to = String(params.get("to") || "").trim();
+  const productId = String(params.get("product_id") || "").trim();
+  if (search.length > 120 || !["all", "Entrada", "Salida", "Ajuste", "Devolucion", "Reversion"].includes(movementType) ||
+      !validInventoryDate(from) || !validInventoryDate(to) || (from && to && from > to) ||
+      (productId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(productId))) {
+    return erpError(400, "INVALID_INVENTORY_FILTER", "Los filtros de movimientos no son válidos.");
+  }
+
+  const canViewInbound = hasPermission(permissionContext, "inventory.receipts.view") ||
+    hasPermission(permissionContext, "purchases.receipts.view");
+  const canViewOutbound = hasPermission(permissionContext, "inventory.manual_out.view");
+  const canViewAdjustments = hasPermission(permissionContext, "inventory.adjustments.view");
+  if (!canViewInbound && !canViewOutbound && !canViewAdjustments) {
+    return erpError(403, "INVENTORY_MOVEMENT_VIEW_FORBIDDEN", "No tienes permiso para consultar movimientos de inventario.");
+  }
+
+  const visibility = [];
+  if (canViewInbound) {
+    visibility.push("(im.movement_type IN ('Entrada','Devolucion') OR (im.movement_type='Reversion' AND im.quantity_delta>0))");
+  }
+  if (canViewOutbound) {
+    visibility.push("(im.movement_type='Salida' OR (im.movement_type='Reversion' AND im.quantity_delta<0))");
+  }
+  if (canViewAdjustments) visibility.push("im.movement_type='Ajuste'");
+  const values = [];
+  const where = ["(" + visibility.join(" OR ") + ")"];
+  if (movementType !== "all") where.push("im.movement_type = " + appendInventoryFilter(values, "?", movementType));
+  if (productId) where.push("im.product_id = " + appendInventoryFilter(values, "?::uuid", productId));
+  if (from) where.push("im.created_at >= " + appendInventoryFilter(values, "?::date", from));
+  if (to) where.push("im.created_at < (" + appendInventoryFilter(values, "?::date", to) + " + INTERVAL '1 day')");
+  if (search) {
+    values.push("%" + search + "%");
+    const param = "$" + values.length;
+    where.push("(p.name ILIKE " + param + " OR p.sku ILIKE " + param +
+      " OR COALESCE(im.note,'') ILIKE " + param + " OR COALESCE(im.reference_id::text,'') ILIKE " + param + ")");
+  }
+  const limit = appendInventoryFilter(values, "?", paging.pageSize);
+  const offset = appendInventoryFilter(values, "?", paging.offset);
+  try {
+    const rows = await sql.query(
+      "WITH filtered AS MATERIALIZED (" +
+      "SELECT im.id,im.product_id,p.name AS product_name,p.sku,im.movement_type,im.quantity," +
+      "im.quantity_delta,im.previous_stock,im.new_stock,im.note,im.reference_type,im.reference_id,im.created_at " +
+      "FROM inventory_movements im JOIN products p ON p.id=im.product_id WHERE " + where.join(" AND ") +
+      "), page_rows AS (" +
+      "SELECT * FROM filtered ORDER BY created_at DESC,id DESC LIMIT " + limit + " OFFSET " + offset +
+      ") SELECT (SELECT COUNT(*)::int FROM filtered) AS total, " +
+      "COALESCE((SELECT jsonb_agg(to_jsonb(page_rows) ORDER BY created_at DESC,id DESC) FROM page_rows),'[]'::jsonb) AS records",
+      values
+    );
+    const row = rows[0] || {};
+    return erpJson({
+      records: Array.isArray(row.records) ? row.records : [],
+      total: Number(row.total || 0),
+      page: paging.page,
+      pageSize: paging.pageSize,
+      totalPages: Math.max(1, Math.ceil(Number(row.total || 0) / paging.pageSize))
+    });
+  } catch (error) {
+    console.error("[erp] Inventory movement list failed:", error?.message || "database error");
+    return erpError(503, "INVENTORY_MOVEMENT_LIST_FAILED", "No se pudo consultar el kardex.");
+  }
+}
+
 function roundCurrency(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
@@ -1651,6 +1827,9 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     if (method === "DELETE") return "products.catalog.delete";
     return null;
   }
+  if (["inventory-summary", "inventory-stock"].includes(resource)) {
+    return method === "GET" ? "inventory.stock.view" : null;
+  }
   if (resource === "inventory-movements") {
     if (method === "GET") return "inventory.stock.view";
     if (method === "PATCH" || method === "DELETE") return "inventory.stock.view";
@@ -2306,6 +2485,18 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar pedidos.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createOrder(sql, user, body);
+  }
+  if (resource === "inventory-summary" && request.method === "GET") {
+    if (!canAccess(user, RESOURCE_DEFS.inventory_movements.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para consultar existencias.");
+    return getInventorySummary(sql);
+  }
+  if (resource === "inventory-stock" && request.method === "GET") {
+    if (!canAccess(user, RESOURCE_DEFS.inventory_movements.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para consultar existencias.");
+    return listInventoryStock(sql, new URL(request.url).searchParams);
+  }
+  if (resource === "inventory-movements" && request.method === "GET" && !id) {
+    if (!canAccess(user, RESOURCE_DEFS.inventory_movements.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para consultar movimientos.");
+    return listInventoryMovements(sql, new URL(request.url).searchParams, permissionContext);
   }
   if (resource === "products" && id === "import" && request.method === "POST") {
     if (!canAccess(user, RESOURCE_DEFS.products.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para importar productos.");
