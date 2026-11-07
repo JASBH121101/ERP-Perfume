@@ -124,6 +124,12 @@ export async function verifyMigrationSources({
   const baseline = manifest.baselineReconciliation;
   const expectedLedgerExceptions = ["0006", "0008", "0009", "0017", "0018"];
   const expectedSchemaSatisfied = ["0012", "0013", "0014", "0020"];
+  const expectedSchemaAlignment = [
+    "invoice_unit_cost_usd",
+    "purchase_order_exchange_rate",
+    "notification_billing_target",
+    "purchase_order_rejection_reason"
+  ];
   let baselineApproved = false;
   if (baseline) {
     const sameList = (actual, expected) =>
@@ -137,6 +143,7 @@ export async function verifyMigrationSources({
         !sameList(baseline.ledgerExceptions, expectedLedgerExceptions) ||
         !sameList(baseline.schemaSatisfiedWithoutLedger, expectedSchemaSatisfied) ||
         baseline.auditObjectCount !== 55 || baseline.auditMigrationCount !== 11 ||
+        !sameList(baseline.auditSchemaAlignment, expectedSchemaAlignment) ||
         typeof baseline.approvedAt !== "string" ||
         typeof baseline.approvedBy !== "string" ||
         typeof baseline.approvalReference !== "string" ||
