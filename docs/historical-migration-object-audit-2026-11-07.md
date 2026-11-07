@@ -39,7 +39,7 @@ The audit does **not** clear all historical provenance blockers. Exact executabl
 - `0012`–`0014`: all named objects exist, but no corresponding ledger rows exist. No rows were inserted or fabricated.
 - `0017`, `0018`: the currently committed source does not match the registered checksum; `0018` is a schema-equivalent reconstruction.
 
-Therefore the migration readiness gate remains **BLOCKED**. This is intentional: a passing object audit is necessary evidence for a safe baseline reconciliation, but it is not sufficient authority to rewrite migration history or to apply the next migration.
+The repository owner has since explicitly approved a Development-only baseline exception policy. The historical object audit remains evidence of schema effects, not byte-for-byte source provenance. The runner retains all observed ledger checksums and timestamps, skips 0012–0014 only after this live audit passes, and requires a fresh audit before every Development migration plan. The approved exception does not apply to clean installs or Production.
 
 ## Next safe action
 
