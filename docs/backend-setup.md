@@ -105,7 +105,7 @@ The fresh-migration QA clone therefore proves the SQL schema chain can be built,
 
 Provision `jb_erp_runtime_sql` separately on each new branch. Its privileges must mirror the reviewed least-privilege Development policy: SELECT on operational tables, only the required INSERT/UPDATE/column grants, sequence use where required, and DELETE restricted to `user_permission_overrides` and `role_template_permissions`. Do not leave a generic Neon `read_write` role preset unchanged: that preset is broader than the ERP runtime policy because it grants DELETE across the scoped schema. Never use `erp_owner` as the Worker runtime credential.
 
-Before declaring a new branch ready, run `db/diagnostics/development-readiness.sql` against that exact branch and verify:
+Before declaring a new branch ready, run `db/diagnostics/runtime-provisioning.sql` against that exact branch (and `db/diagnostics/development-readiness.sql` after the migration ledger exists) and verify:
 - `neon_auth` exists and Neon Auth is enabled/configured for that branch;
 - `jb_erp_runtime_sql` exists with the least-privilege grants;
 - the Worker secret uses that runtime role and points to the intended branch;

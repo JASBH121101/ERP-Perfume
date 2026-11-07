@@ -50,7 +50,7 @@ Before connecting a new branch to the Worker:
 2. Configure the expected trusted origins and email-verification policy.
 3. Create the runtime login role and apply the reviewed least-privilege grants. Do not use an unrestricted/admin role, and do not leave the generic `read_write` preset's broad DELETE grants in place.
 4. Set the Worker `DATABASE_URL` to the runtime role, never `erp_owner`.
-5. Run the environment checks in `db/diagnostics/development-readiness.sql`, then verify `/api/health`, authenticated `/api/auth/profile`, and one disposable synthetic transaction.
+5. Run `db/diagnostics/runtime-provisioning.sql` on the new branch and `db/diagnostics/development-readiness.sql` after migrations, then verify `/api/health`, authenticated `/api/auth/profile`, and one disposable synthetic transaction.
 
 Read-only inspection on 2026-11-07 confirmed the Development branch had `neon_auth`, `jb_erp_runtime_sql`, 88 public table grants, 1,036 public column grants, and 2 public sequence grants. A fresh-migration QA clone had none of those branch-level provisioning objects. Those differences are environment provisioning, not missing SQL application migrations.
 

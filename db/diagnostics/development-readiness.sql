@@ -154,10 +154,17 @@ SELECT
 
 -- Expected role identity/access policy (read-only privilege introspection).
 -- The runtime role must not receive broad DELETE on operational tables.
+WITH runtime_role AS (
+  SELECT EXISTS (
+    SELECT 1 FROM pg_roles WHERE rolname = 'jb_erp_runtime_sql'
+  ) AS role_exists
+)
 SELECT
-  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'SELECT') AS products_select,
-  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'INSERT') AS products_insert,
-  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'UPDATE') AS products_update,
-  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'DELETE') AS products_delete,
-  has_table_privilege('jb_erp_runtime_sql', 'public.user_permission_overrides', 'DELETE') AS permission_override_delete,
-  has_table_privilege('jb_erp_runtime_sql', 'public.role_template_permissions', 'DELETE') AS role_template_permission_delete;
+  role_exists,
+  CASE WHEN role_exists THEN has_table_privilege('jb_erp_runtime_sql', 'public.products', 'SELECT') ELSE FALSE END AS products_select,
+  CASE WHEN role_exists THEN has_table_privilege('jb_erp_runtime_sql', 'public.products', 'INSERT') ELSE FALSE END AS products_insert,
+  CASE WHEN role_exists THEN has_table_privilege('jb_erp_runtime_sql', 'public.products', 'UPDATE') ELSE FALSE END AS products_update,
+  CASE WHEN role_exists THEN has_table_privilege('jb_erp_runtime_sql', 'public.products', 'DELETE') ELSE FALSE END AS products_delete,
+  CASE WHEN role_exists THEN has_table_privilege('jb_erp_runtime_sql', 'public.user_permission_overrides', 'DELETE') ELSE FALSE END AS permission_override_delete,
+  CASE WHEN role_exists THEN has_table_privilege('jb_erp_runtime_sql', 'public.role_template_permissions', 'DELETE') ELSE FALSE END AS role_template_permission_delete
+FROM runtime_role;

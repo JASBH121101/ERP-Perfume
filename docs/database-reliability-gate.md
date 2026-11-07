@@ -164,4 +164,4 @@ The clean migration chain and the authenticated runtime are separate capabilitie
 - Fresh-migration QA clone: Neon Auth absent; runtime role absent; no runtime grants.
 - Development-derived QA clone: Neon Auth and runtime role present; its public application schema compared equal to Development after 0020.
 
-The installation checklist must therefore include Neon Managed Auth provisioning and least-privilege runtime role setup as a separate branch-level step. Do not put managed Auth's internal schema into application migration files and do not give the Worker an owner/admin credential. The diagnostic SQL now reports these prerequisites alongside the database integrity checks.
+The installation checklist must therefore include Neon Managed Auth provisioning and least-privilege runtime role setup as a separate branch-level step. `db/diagnostics/runtime-provisioning.sql` checks that branch even before application migrations are present. Do not put managed Auth's internal schema into application migration files and do not give the Worker an owner/admin credential. The diagnostic SQL now reports these prerequisites alongside the database integrity checks.
