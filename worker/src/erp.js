@@ -1827,11 +1827,11 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     if (method === "DELETE") return "products.catalog.delete";
     return null;
   }
-  if (["inventory-summary", "inventory-stock"].includes(resource)) {
-    return method === "GET" ? "inventory.stock.view" : null;
+  if (["inventory-summary", "inventory-stock", "inventory-movements"].includes(resource)) {
+    return method === "GET" ? "inventory.view" : null;
   }
   if (resource === "inventory-movements") {
-    if (method === "GET") return "inventory.stock.view";
+    if (method === "GET") return "inventory.view";
     if (method === "PATCH" || method === "DELETE") return "inventory.stock.view";
     if (method !== "POST") return null;
     const movement = String(body?.movement_type || body?.type || body?.direction || "").toLowerCase();
