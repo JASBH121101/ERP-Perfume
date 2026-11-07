@@ -839,10 +839,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const costs = costSummary(product), inactive = product.active === false;
       const productStatus = inactive ? '<span class="status-chip status-muted">Desactivado</span>' : status(product.stock, product.minStock);
       const actions =
-        '<button class="table-action" type="button" data-action="preview-product" data-id="' + product.id + '" aria-label="Ver ' + esc(product.name) + '" title="Ver ficha">' + svg('eye') + '</button>' +
-        '<button class="table-action" type="button" data-action="edit-product" data-id="' + product.id + '" aria-label="Editar ' + esc(product.name) + '" title="Editar">' + svg('edit') + '</button>' +
-        '<button class="table-action" type="button" data-action="toggle-product" data-id="' + product.id + '" aria-label="' + (inactive ? 'Activar ' : 'Desactivar ') + esc(product.name) + '" title="' + (inactive ? 'Activar' : 'Desactivar') + '">' + (inactive ? '↻' : '⏸') + '</button>' +
-        '<button class="table-action table-action-danger" type="button" data-action="delete-product" data-id="' + product.id + '" aria-label="Eliminar ' + esc(product.name) + '" title="Eliminar">×</button>';
+        '<button class="table-action" type="button" data-action="preview-product" data-id="' + esc(product.id) + '" aria-label="Ver ' + esc(product.name) + '" title="Ver ficha">' + svg('eye') + '</button>' +
+        '<button class="table-action" type="button" data-action="edit-product" data-id="' + esc(product.id) + '" aria-label="Editar ' + esc(product.name) + '" title="Editar">' + svg('edit') + '</button>' +
+        '<button class="table-action" type="button" data-action="toggle-product" data-id="' + esc(product.id) + '" aria-label="' + (inactive ? 'Activar ' : 'Desactivar ') + esc(product.name) + '" title="' + (inactive ? 'Activar' : 'Desactivar') + '">' + (inactive ? '↻' : '⏸') + '</button>' +
+        '<button class="table-action table-action-danger" type="button" data-action="delete-product" data-id="' + esc(product.id) + '" aria-label="Eliminar ' + esc(product.name) + '" title="Eliminar">×</button>';
       return '<tr class="' + (inactive ? 'row-inactive' : '') + '"><td data-label="Perfume"><div class="product-cell"><span class="product-image-slot" data-product-image-slot="' + esc(product.id) + '">' + art(product.tone) + '</span><span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + productMeta(product) + '</small></span></div></td><td data-label="Categoría">' + esc(product.category) + '</td><td data-label="Precio y costo" class="table-primary">' + money(product.price) + '<small class="table-secondary">Costo ' + money(costs.unitCost) + ' · Margen ' + costs.margin.toFixed(1) + '%</small></td><td data-label="Existencias">' + product.stock + ' uds. <small class="table-secondary">Mín. ' + product.minStock + '</small></td><td data-label="Estado">' + productStatus + '</td><td data-label="Acciones"><div class="table-actions">' + actions + '</div></td></tr>';
     }).join('');
   }
@@ -1200,16 +1200,104 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   function renderInventoryProductRows() {
     const filtered = filteredInventoryProducts();
-    const rows = filtered.map(function (product) {
-      const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
-        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
-        '</div></td></tr>';
-    }).join('');
-    const count = document.getElementById('inventory-product-count');
     const body = document.getElementById('inventory-product-body');
+    const count = document.getElementById('inventory-product-count');
     if (count) count.textContent = filtered.length + ' de ' + products.filter(function (product) { return product.active !== false; }).length + ' productos';
-    if (body) body.innerHTML = rows || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>';
+    if (!body) return;
+    const fragment = document.createDocumentFragment();
+    filtered.forEach(function (product) {
+      const row = document.createElement('tr');
+      const perfumeCell = document.createElement('td');
+      perfumeCell.dataset.label = 'Perfume';
+      const productCell = document.createElement('div');
+      productCell.className = 'product-cell';
+      const artwork = document.createElement('span');
+      const tone = String(product.tone || '');
+      artwork.className = 'product-art' + (/^[a-z0-9_-]+$/i.test(tone) ? ' ' + tone : '');
+      artwork.setAttribute('aria-hidden', 'true');
+      const bottle = document.createElement('i');
+      bottle.className = 'bottle';
+      artwork.append(bottle);
+      const productInfo = document.createElement('span');
+      const productName = document.createElement('span');
+      productName.className = 'table-primary';
+      productName.textContent = String(product.name || '');
+      const productSku = document.createElement('small');
+      productSku.className = 'table-secondary';
+      productSku.textContent = String(product.sku || '') + ' · Mín. ' + Number(product.minStock ?? 3);
+      productInfo.append(productName, productSku);
+      productCell.append(artwork, productInfo);
+      perfumeCell.append(productCell);
+      row.append(perfumeCell);
+      const categoryCell = document.createElement('td');
+      categoryCell.dataset.label = 'Categoría';
+      categoryCell.textContent = String(product.category || '—');
+      row.append(categoryCell);
+      const stock = Number(product.stock || 0);
+      const minimum = Number.isInteger(product.minStock) ? product.minStock : 3;
+      const stockCell = document.createElement('td');
+      stockCell.dataset.label = 'Stock actual';
+      stockCell.className = 'table-primary';
+      stockCell.textContent = stock + ' unidades';
+      row.append(stockCell);
+      const statusCell = document.createElement('td');
+      statusCell.dataset.label = 'Estado';
+      const statusChip = document.createElement('span');
+      statusChip.className = 'status-chip ' + (stock <= 0 ? 'status-danger' : stock <= minimum ? 'status-pending' : 'status-success');
+      statusChip.textContent = stock <= 0 ? 'Agotado' : stock <= minimum ? 'Stock bajo' : 'Disponible';
+      statusCell.append(statusChip);
+      row.append(statusCell);
+      const restockCell = document.createElement('td');
+      restockCell.dataset.label = 'Reposición';
+      const restockLabel = document.createElement('span');
+      restockLabel.className = 'table-secondary';
+      restockLabel.textContent = stock <= 0 ? 'Reposición urgente' : stock <= minimum ? 'Revisar reposición' : 'Nivel estable';
+      restockCell.append(restockLabel);
+      row.append(restockCell);
+      const actionCell = document.createElement('td');
+      actionCell.dataset.label = 'Consulta';
+      const actions = document.createElement('div');
+      actions.className = 'table-actions';
+      const button = document.createElement('button');
+      button.className = 'table-action';
+      button.type = 'button';
+      button.dataset.action = 'inventory-view-product';
+      button.dataset.id = String(product.id || '');
+      button.setAttribute('aria-label', 'Consultar existencias de ' + String(product.name || '')) ;
+      button.title = 'Consultar existencias';
+      const eye = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      eye.setAttribute('viewBox', '0 0 24 24');
+      eye.setAttribute('fill', 'none');
+      eye.setAttribute('stroke', 'currentColor');
+      eye.setAttribute('stroke-width', '1.65');
+      eye.setAttribute('stroke-linecap', 'round');
+      eye.setAttribute('stroke-linejoin', 'round');
+      eye.setAttribute('aria-hidden', 'true');
+      const eyePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      eyePath.setAttribute('d', 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z');
+      const eyePupil = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      eyePupil.setAttribute('cx', '12');
+      eyePupil.setAttribute('cy', '12');
+      eyePupil.setAttribute('r', '2.5');
+      eye.append(eyePath, eyePupil);
+      button.append(eye);
+      actions.append(button);
+      actionCell.append(actions);
+      row.append(actionCell);
+      fragment.append(row);
+    });
+    if (!filtered.length) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 6;
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = 'No hay productos que coincidan con los filtros.';
+      cell.append(empty);
+      row.append(cell);
+      fragment.append(row);
+    }
+    body.replaceChildren(fragment);
   }
   function renderInventory() {
     const activeProducts = products.filter(function (product) { return product.active !== false; });
@@ -1220,7 +1308,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const rows = filteredInventoryProducts().map(function (product) {
       const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
       return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
-        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
+        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + esc(product.id) + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
         '</div></td></tr>';
     }).join('');
     return heading(views.inventory, '') +
@@ -3251,9 +3339,51 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const fileInput=dialog.querySelector('#catalog-import-file');
     const status=message=>{statusNode.textContent=message;};
     const renderPreview=()=>{
-      if(!records.length){previewNode.innerHTML='';saveButton.disabled=true;return;}
-      const rows=records.map((record,index)=>'<tr><td><input class="filter-select" style="min-width:120px" data-import-index="'+index+'" data-import-field="sku" value="'+esc(record.sku)+'" aria-label="SKU"></td><td><input class="filter-select" style="min-width:180px" data-import-index="'+index+'" data-import-field="name" value="'+esc(record.name)+'" aria-label="Producto"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="brand" value="'+esc(record.brand||'')+'" aria-label="Marca"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="price_usd" type="number" min="0" step="0.01" value="'+Number(record.price_usd||0)+'" aria-label="Precio"></td><td><input class="filter-select" style="min-width:110px" data-import-index="'+index+'" data-import-field="purchase_cost_usd" type="number" min="0" step="0.01" value="'+Number(record.purchase_cost_usd||0)+'" aria-label="Costo"></td><td><input class="filter-select" style="min-width:75px" data-import-index="'+index+'" data-import-field="stock" type="number" min="0" step="1" value="'+Number(record.stock||0)+'" aria-label="Stock"></td><td><button type="button" class="table-action table-action-danger" data-import-remove="'+index+'" aria-label="Quitar fila">×</button></td></tr>').join('');
-      previewNode.innerHTML='<table class="data-table"><thead><tr><th>SKU</th><th>PRODUCTO</th><th>MARCA</th><th>PRECIO USD</th><th>COSTO USD</th><th>STOCK</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+      if(!records.length){previewNode.replaceChildren();saveButton.disabled=true;return;}
+      const table=document.createElement('table');
+      table.className='data-table';
+      const headings=['SKU','PRODUCTO','MARCA','PRECIO USD','COSTO USD','STOCK',''];
+      const thead=document.createElement('thead');
+      const headerRow=document.createElement('tr');
+      headings.forEach(label=>{const th=document.createElement('th');th.textContent=label;headerRow.append(th);});
+      thead.append(headerRow);
+      const tbody=document.createElement('tbody');
+      const fields=[
+        {key:'sku',label:'SKU',width:'120px'},
+        {key:'name',label:'Producto',width:'180px'},
+        {key:'brand',label:'Marca',width:'110px'},
+        {key:'price_usd',label:'Precio',width:'110px',numeric:true,step:'0.01'},
+        {key:'purchase_cost_usd',label:'Costo',width:'110px',numeric:true,step:'0.01'},
+        {key:'stock',label:'Stock',width:'75px',numeric:true,step:'1'}
+      ];
+      records.forEach((record,index)=>{
+        const row=document.createElement('tr');
+        fields.forEach(field=>{
+          const cell=document.createElement('td');
+          const input=document.createElement('input');
+          input.className='filter-select';
+          input.style.minWidth=field.width;
+          input.dataset.importIndex=String(index);
+          input.dataset.importField=field.key;
+          input.setAttribute('aria-label',field.label);
+          if(field.numeric){input.type='number';input.min='0';input.step=field.step;input.value=String(Number(record[field.key]||0));}
+          else{input.type='text';input.value=String(record[field.key]||'');}
+          cell.append(input);
+          row.append(cell);
+        });
+        const removeCell=document.createElement('td');
+        const removeButton=document.createElement('button');
+        removeButton.type='button';
+        removeButton.className='table-action table-action-danger';
+        removeButton.dataset.importRemove=String(index);
+        removeButton.setAttribute('aria-label','Quitar fila');
+        removeButton.textContent='×';
+        removeCell.append(removeButton);
+        row.append(removeCell);
+        tbody.append(row);
+      });
+      table.append(thead,tbody);
+      previewNode.replaceChildren(table);
       saveButton.disabled=false;saveButton.textContent='Importar '+records.length+' productos a Neon';
     };
     fileInput.addEventListener('change',async()=>{
