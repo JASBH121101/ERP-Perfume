@@ -8,7 +8,8 @@ import {
   verifyPostApplyLedger,
   validateConnectionTarget,
   validateOperatorApproval,
-  validateHistoricalBaselineAudit
+  validateHistoricalBaselineAudit,
+  EXPECTED_HISTORICAL_AUDIT_OBJECTS
 } from "../scripts/migrate-db.mjs";
 import { createHash } from "node:crypto";
 
@@ -279,9 +280,10 @@ test("migration apply requires explicit approval even on the pinned Development 
 
 test("historical Development baseline requires all 47 checks and clean invariants", () => {
   const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1]];
-  const checks = expected.flatMap(([migration,count]) =>
-    Array.from({length:count},(_,i)=>({migration,kind:"table",object:migration+"_"+i,present:true}))
-  );
+  const checks = [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].map(key => {
+    const [migration,kind,object] = key.split("|");
+    return {migration,kind,object,present:true};
+  });
   const audit = {
     database:"erp_perfume", role:"erp_owner", checks,
     summary:expected.map(([migration,count])=>({migration,total:count,present:count,missing:0,status:"PASS"})),
@@ -303,9 +305,10 @@ test("historical Development baseline requires all 47 checks and clean invariant
 
 test("historical baseline rejects missing objects, nonzero invariants, duplicate checks and ledger drift", () => {
   const expected = [["0002",8],["0003",14],["0006",4],["0008",3],["0009",4],["0012",5],["0013",2],["0014",2],["0017",4],["0018",1]];
-  const checks = expected.flatMap(([migration,count]) =>
-    Array.from({length:count},(_,i)=>({migration,kind:"table",object:migration+"_"+i,present:true}))
-  );
+  const checks = [...EXPECTED_HISTORICAL_AUDIT_OBJECTS].map(key => {
+    const [migration,kind,object] = key.split("|");
+    return {migration,kind,object,present:true};
+  });
   const audit = {
     database:"erp_perfume", role:"erp_owner", checks,
     summary:expected.map(([migration,count])=>({migration,total:count,present:count,missing:0,status:"PASS"})),
@@ -314,6 +317,8 @@ test("historical baseline rejects missing objects, nonzero invariants, duplicate
   const manifest={snapshot:{database:"erp_perfume",ledgerVersions:["0001"]},migrations:[]};
   const args={audit,manifest,ledgerRows:[{version:"0001"}]};
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:checks.slice(1)}}),/exactly 47/i);
+  const substituted = checks.map((item,index) => index === 0 ? {...item,object:"unexpected_object"} : item);
+  assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:substituted}}),/unexpected object check/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,unvalidated_constraints:1}}),/invariant failed/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,audit:{...audit,checks:[...checks,checks[0]]}}),/exactly 47/i);
   assert.throws(()=>validateHistoricalBaselineAudit({...args,ledgerRows:[]}),/ledger does not exactly match/i);
