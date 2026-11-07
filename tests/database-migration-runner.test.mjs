@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import {
   buildMigrationPlan,
-  classifyLedgerLineage,
   classifyDatabaseState,
   classifyLedgerLineage,
   verifyLedgerChecksum,
