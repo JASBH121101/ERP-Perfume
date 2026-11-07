@@ -73,3 +73,29 @@ Run \`npm run check:db\` for offline source-integrity checks. Run \`npm run chec
 Current readiness blockers: \`0002\`, \`0003\`, \`0006\`, \`0008\`, \`0009\`, \`0012\`, \`0013\`, \`0014\`, \`0017\`, \`0018\`.
 
 No new migration should be applied until these cases are reconciled by evidence. Do not fabricate rows in \`app_schema_migrations\`; do not rerun versions whose objects are already present.
+
+
+## Object-level schema verification for 0012–0014
+
+A second read-only inspection checked definitions, not only object names:
+
+- **0012 — employee history:** \`employee_history\` contains the original employee/event/date, position, department, salary, commission, status and audit fields. Its employee foreign key is \`ON DELETE RESTRICT\`; \`changed_by\` is \`ON DELETE SET NULL\`. The default on \`employees.employee_code\` uses \`employee_code_sequence\`. The \`employees_seed_history_after_insert\` trigger calls \`seed_employee_history()\`, whose body inserts the initial hire and compensation events.
+- **0013 — employee documents:** all expected columns and checks were present: document type, unique file key, allowed MIME types, size limit, employee FK with \`ON DELETE RESTRICT\`, and uploader FK with \`ON DELETE SET NULL\`.
+- **0014 — supporting indexes:** the two expected partial indexes on \`employee_history.changed_by\` and \`employee_documents.uploaded_by\` were present. The base employee/date and document employee/date indexes were also present.
+- The later **0015** contract fields and contract-history trigger are also present and match its registered migration.
+
+This is stronger evidence that the schema effects of 0012–0014 are already in Development. It still does not create an authoritative historical execution timestamp or a ledger entry. The gate therefore continues to block new migrations until a controlled reconciliation policy is implemented; no synthetic rows were added to \`app_schema_migrations\`.
+
+## Procurement and receipt constraint checks
+
+A separate transaction created disposable purchase-order and receipt fixtures with no link to the pre-existing supplier or any product. PostgreSQL correctly rejected:
+- a duplicate purchase-order number;
+- a purchase-order item with received quantity greater than ordered quantity;
+- a receipt item with zero quantity;
+- a negative actual freight amount.
+
+The valid synthetic order, line, receipt and receipt line were deleted before the transaction completed. A fresh query afterward confirmed zero QA purchase orders, order items, receipts and receipt items. The pre-existing supplier count (1) and audit-log count (4) were unchanged.
+
+## Source-history search follow-up
+
+The recoverable 0002 source is itself documented as a schema reconstruction and its Git blob SHA-1 does not match the Development ledger checksum. Both available committed revisions for 0003 were checked; neither matches the ledger checksum. These observations confirm that the remaining source provenance gaps cannot be closed by simply choosing the current Git file.
