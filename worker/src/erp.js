@@ -1827,7 +1827,7 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     if (method === "DELETE") return "products.catalog.delete";
     return null;
   }
-  if (["inventory-summary", "inventory-stock", "inventory-movements"].includes(resource)) {
+  if (["inventory-summary", "inventory-stock"].includes(resource)) {
     return method === "GET" ? "inventory.view" : null;
   }
   if (resource === "inventory-movements") {
