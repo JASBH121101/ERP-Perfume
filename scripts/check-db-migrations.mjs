@@ -145,8 +145,9 @@ export async function verifyMigrationSources({
     } else {
       baselineApproved = true;
     }
+    const baselineEntries = Array.isArray(manifest.migrations) ? manifest.migrations : [];
     for (const version of expectedLedgerExceptions) {
-      const item = manifestMigrations.find(entry => entry?.version === version);
+      const item = baselineEntries.find(entry => entry?.version === version);
       if (!item || !READINESS_BLOCKERS.has(item.database?.status) ||
           !item.database?.ledgerChecksum || !item.database?.appliedAt) {
         addError(errors, "Approved ledger exception " + version + " must retain its observed checksum and applied_at.");
@@ -154,7 +155,7 @@ export async function verifyMigrationSources({
       }
     }
     for (const version of expectedSchemaSatisfied) {
-      const item = manifestMigrations.find(entry => entry?.version === version);
+      const item = baselineEntries.find(entry => entry?.version === version);
       if (!item || item.database?.status !== "schema_present_without_ledger" ||
           item.database?.ledgerChecksum || item.database?.appliedAt ||
           !Array.isArray(item.database?.objectsVerified) || !item.database.objectsVerified.length) {
