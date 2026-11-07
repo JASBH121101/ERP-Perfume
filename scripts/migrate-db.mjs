@@ -11,6 +11,55 @@ const MANIFEST_PATH = resolve(ROOT, "db/migration-integrity.json");
 const HISTORICAL_AUDIT_PATH = resolve(ROOT, "db/diagnostics/historical-migration-object-audit.sql");
 const BASELINE_RECONCILED_WITHOUT_LEDGER = new Set(["0012", "0013", "0014"]);
 const EXPECTED_HISTORICAL_AUDIT = new Map([["0002", 8], ["0003", 14], ["0006", 4], ["0008", 3], ["0009", 4], ["0012", 5], ["0013", 2], ["0014", 2], ["0017", 4], ["0018", 1]]);
+const EXPECTED_HISTORICAL_AUDIT_OBJECTS = new Set([
+  "0002|table|purchase_orders",
+  "0002|table|purchase_order_items",
+  "0002|table|purchase_receipts",
+  "0002|table|purchase_receipt_items",
+  "0002|index|purchase_orders_supplier_date_idx",
+  "0002|index|purchase_orders_status_idx",
+  "0002|index|purchase_order_items_order_idx",
+  "0002|index|purchase_receipts_order_idx",
+  "0003|column|products.barcode",
+  "0003|column|products.description",
+  "0003|column|products.supplier_name",
+  "0003|column|products.wholesale_price_usd",
+  "0003|column|products.tone",
+  "0003|column|products.notes",
+  "0003|column|products.images",
+  "0003|column|customers.customer_type",
+  "0003|constraint|products_images_array_check",
+  "0003|constraint|products_wholesale_price_usd_check",
+  "0003|constraint|customers_customer_type_check",
+  "0003|index|products_barcode_nonempty_uq",
+  "0003|index|products_active_category_idx",
+  "0003|index|customers_active_name_idx",
+  "0006|table|dgi_support_documents",
+  "0006|index|dgi_support_documents_date_idx",
+  "0006|index|dgi_support_documents_type_period_idx",
+  "0006|setting|dgi_compliance",
+  "0008|column|app_users.employee_id",
+  "0008|constraint|app_users_employee_id_fkey",
+  "0008|index|app_users_employee_id_unique_idx",
+  "0009|table|supplier_invoices",
+  "0009|table|supplier_invoice_payments",
+  "0009|index|supplier_invoices_supplier_date_idx",
+  "0009|index|supplier_invoice_payments_invoice_idx",
+  "0012|sequence|employee_code_sequence",
+  "0012|table|employee_history",
+  "0012|trigger|employees_seed_history_after_insert",
+  "0012|function|seed_employee_history",
+  "0012|index|employee_history_employee_date_idx",
+  "0013|table|employee_documents",
+  "0013|index|employee_documents_employee_date_idx",
+  "0014|index|employee_history_changed_by_idx",
+  "0014|index|employee_documents_uploaded_by_idx",
+  "0017|column|purchase_orders.rejected_by",
+  "0017|column|purchase_orders.rejected_at",
+  "0017|constraint|purchase_orders_status_check",
+  "0017|constraint|purchase_orders_rejection_audit_check",
+  "0018|column|purchase_orders.rejection_reason"
+]);
 const LOCK_NAME = "jb-parfums-erp:database-migrations";
 const EXPECTED_DATABASE_DEFAULT = "erp_perfume";
 const EXPECTED_ROLE_DEFAULT = "erp_owner";
@@ -266,18 +315,24 @@ export function validateHistoricalBaselineAudit({ audit, ledgerRows, manifest })
   if (audit.database !== manifest?.snapshot?.database || audit.role !== EXPECTED_ROLE_DEFAULT) {
     throw new Error("Historical baseline audit database or owner role does not match the pinned Development target.");
   }
-  if (!Array.isArray(audit.checks) || audit.checks.length !== 47) {
-    throw new Error("Historical baseline audit must return exactly 47 named object checks.");
+  if (!Array.isArray(audit.checks) || audit.checks.length !== EXPECTED_HISTORICAL_AUDIT_OBJECTS.size) {
+    throw new Error("Historical baseline audit must return exactly " + EXPECTED_HISTORICAL_AUDIT_OBJECTS.size + " named object checks.");
   }
-  const seen = new Map();
+  const seen = new Set();
   for (const item of audit.checks) {
     if (!item || typeof item.migration !== "string" || typeof item.kind !== "string" ||
         typeof item.object !== "string" || item.present !== true) {
       throw new Error("Historical baseline audit contains a missing, malformed, or failed object check.");
     }
-    const key = item.migration + ":" + item.kind + ":" + item.object;
+    const key = item.migration + "|" + item.kind + "|" + item.object;
     if (seen.has(key)) throw new Error("Historical baseline audit contains a duplicate object check: " + key);
-    seen.set(key, true);
+    if (!EXPECTED_HISTORICAL_AUDIT_OBJECTS.has(key)) {
+      throw new Error("Historical baseline audit contains an unexpected object check: " + key);
+    }
+    seen.add(key);
+  }
+  if (seen.size !== EXPECTED_HISTORICAL_AUDIT_OBJECTS.size) {
+    throw new Error("Historical baseline audit is missing one or more expected named object checks.");
   }
   if (!Array.isArray(audit.summary)) {
     throw new Error("Historical baseline audit summary is missing.");
