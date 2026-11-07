@@ -119,6 +119,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let inventorySummary = null;
   let inventoryStockPageRows = null, inventoryStockTotal = null, inventoryStockPageError = "";
   let inventoryMovementPageRows = null, inventoryMovementTotal = null, inventoryMovementPageError = "";
+  let inventoryStockLoading = false, inventoryMovementLoading = false;
   let inventoryStockRequestId = 0, inventoryMovementRequestId = 0;
   let inventoryStockSearchTimer = null, inventoryMovementSearchTimer = null;
   let dgiSupportDocuments = [];
@@ -1152,7 +1153,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }).join('');
     const rangeStart=total?offset+1:0,rangeEnd=Math.min(offset+pageSize,total);
     const empty=inventoryMovementPageError||(total?'No hay movimientos que coincidan con los filtros.':'Todavía no hay movimientos registrados.');
-    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||'<tr><td colspan="6"><div class="empty-state">'+esc(empty)+'</div></td></tr>')+'</tbody></table></div>'+
+    const emptyRow=inventoryMovementLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(empty)+'</div></td></tr>';
+    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||emptyRow)+'</tbody></table></div>'+
       '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos'+(serverPage?' · consultados en Neon':' · vista inicial')+'</span>'+
       '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" '+(state.inventoryMovementPage<=1?'disabled':'')+'>Anterior</button>'+
       '<span class="ledger-count">Página '+state.inventoryMovementPage+' de '+totalPages+'</span>'+
@@ -1173,7 +1175,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       search:state.inventoryMovementQuery,type:state.inventoryMovementType,
       from:state.inventoryMovementStartDate,to:state.inventoryMovementEndDate
     });
-    inventoryMovementPageError='Consultando movimientos en Neon…';
+    inventoryMovementLoading=true;
+    inventoryMovementPageError='';
     inventoryMovementPageRows=[];
     inventoryMovementTotal=0;
     refreshInventoryMovementResults();
@@ -1181,6 +1184,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const data=await erpApi('inventory-movements?'+params.toString());
       if(requestId!==inventoryMovementRequestId||state.view!=='inventory')return;
       const total=Number(data.total||0),totalPages=Math.max(1,Number(data.totalPages||1));
+      inventoryMovementLoading=false;
       if(state.inventoryMovementPage>totalPages){state.inventoryMovementPage=totalPages;return loadInventoryMovementPage();}
       inventoryMovementPageRows=(data.records||[]).map(m=>({
         id:m.id,productId:m.product_id,productName:m.product_name,sku:m.sku,type:m.movement_type,
@@ -1192,6 +1196,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       refreshInventoryMovementResults();
     }catch(error){
       if(requestId!==inventoryMovementRequestId)return;
+      inventoryMovementLoading=false;
       inventoryMovementPageRows=[];
       inventoryMovementTotal=0;
       inventoryMovementPageError=error?.message||'No se pudo consultar el historial en Neon.';
@@ -1235,7 +1240,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       search:state.inventoryProductQuery,category:state.inventoryProductCategory==='all'?'':state.inventoryProductCategory,
       status:state.inventoryProductStock
     });
-    inventoryStockPageError='Consultando existencias en Neon…';
+    inventoryStockLoading=true;
+    inventoryStockPageError='';
     inventoryStockPageRows=[];
     inventoryStockTotal=0;
     renderInventoryProductRows();
@@ -1243,6 +1249,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const data=await erpApi('inventory-stock?'+params.toString());
       if(requestId!==inventoryStockRequestId||state.view!=='inventory')return;
       const total=Number(data.total||0),totalPages=Math.max(1,Number(data.totalPages||1));
+      inventoryStockLoading=false;
       if(state.inventoryStockPage>totalPages){state.inventoryStockPage=totalPages;return loadInventoryStockPage();}
       inventoryStockPageRows=(data.records||[]).map(p=>({
         id:p.id,name:p.name,sku:p.sku,brand:p.brand||'',category:p.category||'',stock:Number(p.stock||0),
@@ -1253,6 +1260,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       renderInventoryProductRows();
     }catch(error){
       if(requestId!==inventoryStockRequestId)return;
+      inventoryStockLoading=false;
       inventoryStockPageRows=[];
       inventoryStockTotal=0;
       inventoryStockPageError=error?.message||'No se pudieron consultar las existencias.';
@@ -1304,8 +1312,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(body)body.innerHTML=filtered.map(product=>{
       const suggestion=Number(product.stock)===0?'Reposición urgente':(needsRestock(product)?'Revisar reposición':'Nivel estable');
       return '<tr><td data-label="Perfume"><div class="product-cell">'+art(product.tone)+'<span><span class="table-primary">'+esc(product.name)+'</span><small class="table-secondary">'+esc(product.sku)+' · Mín. '+Number(product.minStock??3)+'</small></span></div></td><td data-label="Categoría">'+esc(product.category || '—')+'</td><td data-label="Stock actual" class="table-primary">'+Number(product.stock||0)+' unidades</td><td data-label="Estado">'+status(Number(product.stock||0),Number(product.minStock??3))+'</td><td data-label="Reposición"><span class="table-secondary">'+suggestion+'</span></td><td data-label="Consulta"><div class="table-actions"><button class="table-action" type="button" data-action="inventory-view-product" data-id="'+esc(product.id)+'" aria-label="Consultar existencias de '+esc(product.name)+'" title="Consultar existencias">'+svg('eye')+'</button></div></td></tr>';
-    }).join('')||'<tr><td colspan="6"><div class="empty-state">'+esc(inventoryStockPageError||'No hay productos que coincidan con los filtros.')+'</div></td></tr>';
-    if(pagination)pagination.innerHTML='<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Página '+state.inventoryStockPage+' de '+pages+'</span><div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="previous" '+(state.inventoryStockPage<=1?'disabled':'')+'>Anterior</button><span class="ledger-count">'+start+'–'+end+' / '+total+'</span><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="next" '+(state.inventoryStockPage>=pages?'disabled':'')+'>Siguiente</button></div></div>';
+    }).join('')||(inventoryStockLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(inventoryStockPageError||'No hay productos que coincidan con los filtros.')+'</div></td></tr>');
+    if(pagination)pagination.innerHTML='<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Página '+state.inventoryStockPage+' de '+pages+'</span><div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="previous" '+(state.inventoryStockPage<=1?'disabled':'')+'>Menos stock</button><span class="ledger-count">'+start+'–'+end+' / '+total+'</span><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="next" '+(state.inventoryStockPage>=pages?'disabled':'')+'>Más stock</button></div></div>';
   }
   function renderInventory() {
     const activeProducts=products.filter(p=>p.active!==false);
