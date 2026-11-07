@@ -28,3 +28,17 @@ The original checksum values are retained here as audit evidence. No registry ro
 ## Safety boundary
 
 Only Neon Development was inspected. Neon Production was not queried for migration changes, migrated, or modified.
+
+
+## Additional historical source recovery — 2026-11-07
+
+The exact historical SQL sources for versions `0002` and `0003` were recovered from the `feature/erp-procurement-finance-catalog` branch:
+
+| Version | Source commit | Git blob SHA-1 | Development ledger match |
+|---|---|---|---|
+| 0002 | `dba793412a40340d7809b52c0d6274099bfbb98c` | `074ce79f6a8be69c58ae70e8f51a438b133a9571` | Exact |
+| 0003 | `7347b46fe7d345bda34564cae92cb4ed0db38d5e` | `fd84c81e13faa4dc8d761b341098175208430919` | Exact |
+
+The exact files are archived at `db/migration-history/0002-ledger-matched-source.sql` and `db/migration-history/0003-ledger-matched-source.sql`. Their hashes and source commits are pinned in `db/migration-integrity.json`. The current `db/migrations/0002_...` and `0003_...` clean-install sources remain unchanged; the archive is used only to verify the historical Development ledger and is never replayed automatically.
+
+This clears the source-provenance exceptions for 0002 and 0003. It does not clear the remaining 8 Development history exceptions or authorize applying the pending migration.
