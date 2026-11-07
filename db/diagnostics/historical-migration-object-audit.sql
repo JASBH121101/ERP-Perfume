@@ -244,5 +244,53 @@ SELECT jsonb_build_object(
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public'
       AND (NOT i.indisvalid OR NOT i.indisready)
+  ),
+  'development_schema_alignment', jsonb_build_object(
+    'invoice_unit_cost_usd', (
+      EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='invoice_items'
+          AND column_name='unit_cost_usd' AND data_type='numeric'
+          AND numeric_precision=14 AND numeric_scale=4
+          AND is_nullable='NO' AND column_default='0'
+      )
+      AND EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='public.invoice_items'::regclass
+          AND conname='invoice_items_unit_cost_usd_check'
+          AND lower(pg_get_constraintdef(oid)) LIKE '%unit_cost_usd >= (0)%'
+      )
+    ),
+    'purchase_order_exchange_rate', EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='purchase_orders'
+        AND column_name='exchange_rate' AND data_type='numeric'
+        AND numeric_precision=14 AND numeric_scale=6
+    ),
+    'notification_billing_target', (
+      SELECT COALESCE(
+        lower(pg_get_constraintdef(oid)) LIKE '%billing%'
+        AND lower(pg_get_constraintdef(oid)) LIKE '%purchaseorders%'
+        AND lower(pg_get_constraintdef(oid)) LIKE '%receivables%'
+        AND lower(pg_get_constraintdef(oid)) LIKE '%payables%',
+        false
+      )
+      FROM pg_constraint
+      WHERE conrelid='public.erp_notifications'::regclass
+        AND conname='erp_notifications_target_view_check'
+    ),
+    'purchase_order_rejection_reason', (
+      SELECT COALESCE(
+        lower(pg_get_constraintdef(oid)) LIKE '%rejection_reason%'
+        AND lower(pg_get_constraintdef(oid)) LIKE '%>= 5%'
+        AND lower(pg_get_constraintdef(oid)) LIKE '%<= 300%'
+        AND lower(pg_get_constraintdef(oid)) LIKE '%rejected_by is not null%'
+        AND lower(pg_get_constraintdef(oid)) LIKE '%rejected_at is not null%',
+        false
+      )
+      FROM pg_constraint
+      WHERE conrelid='public.purchase_orders'::regclass
+        AND conname='purchase_orders_rejection_audit_check'
+    )
   )
 ) AS historical_object_audit;
