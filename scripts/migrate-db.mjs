@@ -10,7 +10,7 @@ const MIGRATIONS_DIR = resolve(ROOT, "db/migrations");
 const MANIFEST_PATH = resolve(ROOT, "db/migration-integrity.json");
 const HISTORICAL_AUDIT_PATH = resolve(ROOT, "db/diagnostics/historical-migration-object-audit.sql");
 const BASELINE_RECONCILED_WITHOUT_LEDGER = new Set(["0012", "0013", "0014"]);
-const EXPECTED_HISTORICAL_AUDIT = new Map([["0002", 8], ["0003", 14], ["0006", 4], ["0008", 3], ["0009", 4], ["0012", 5], ["0013", 2], ["0014", 2], ["0017", 4], ["0018", 1]]);
+const EXPECTED_HISTORICAL_AUDIT = new Map([["0002", 8], ["0003", 14], ["0006", 4], ["0008", 3], ["0009", 4], ["0012", 5], ["0013", 2], ["0014", 2], ["0017", 4], ["0018", 1], ["0019", 8]]);
 export const EXPECTED_HISTORICAL_AUDIT_OBJECTS = new Set([
   "0002|table|purchase_orders",
   "0002|table|purchase_order_items",
@@ -58,7 +58,15 @@ export const EXPECTED_HISTORICAL_AUDIT_OBJECTS = new Set([
   "0017|column|purchase_orders.rejected_at",
   "0017|constraint|purchase_orders_status_check",
   "0017|constraint|purchase_orders_rejection_audit_check",
-  "0018|column|purchase_orders.rejection_reason"
+  "0018|column|purchase_orders.rejection_reason",
+  "0019|index|dgi_support_documents_created_by_idx",
+  "0019|index|erp_roles_created_by_idx",
+  "0019|index|permission_catalog_parent_idx",
+  "0019|index|role_template_permissions_permission_idx",
+  "0019|index|user_permission_overrides_permission_idx",
+  "0019|index|user_permission_overrides_updated_by_idx",
+  "0019|index|supplier_invoices_created_by_idx",
+  "0019|index|supplier_invoice_payments_created_by_idx"
 ]);
 const LOCK_NAME = "jb-parfums-erp:database-migrations";
 const EXPECTED_DATABASE_DEFAULT = "erp_perfume";
@@ -119,7 +127,7 @@ export function classifyDatabaseState({ ledgerExists, ledgerRows, applicationTab
   return "existing";
 }
 
-export function buildMigrationPlan({ migrations, ledgerRows, freshInstall }) {
+export function buildMigrationPlan({ migrations, ledgerRows, freshInstall, satisfiedVersions = [] }) {
   if (!Array.isArray(migrations) || !Array.isArray(ledgerRows)) {
     throw new Error("migrations and ledgerRows must be arrays.");
   }
@@ -149,9 +157,10 @@ export function buildMigrationPlan({ migrations, ledgerRows, freshInstall }) {
   }
 
   if (freshInstall) return [...migrations].sort((a, b) => compareVersions(a.version, b.version));
+  const satisfied = new Set(freshInstall ? [] : satisfiedVersions.map(String));
   return [...migrations]
     .sort((a, b) => compareVersions(a.version, b.version))
-    .filter(migration => !applied.has(migration.version));
+    .filter(migration => !applied.has(migration.version) && !satisfied.has(String(migration.version)));
 }
 
 export function verifyPostApplyLedger({ initialLedgerRows, plannedMigrations, finalLedgerRows }) {
@@ -226,9 +235,16 @@ export function classifyLedgerLineage({ manifest, migrations, ledgerRows }) {
   const snapshotVersions = [...(manifest.snapshot?.ledgerVersions || [])].sort(compareVersions);
 
   if (JSON.stringify(actualVersions) === JSON.stringify(snapshotVersions)) {
+    const approval = manifest.baselineReconciliation;
+    const approved = approval?.status === "approved" &&
+      approval.scope === "development-only; never applies to clean installs or Production" &&
+      approval.branch === manifest.snapshot?.branch &&
+      approval.branchId === manifest.snapshot?.branchId &&
+      approval.database === manifest.snapshot?.database &&
+      approval.requiresLiveAuditBeforeApply === true;
     return {
-      type: "development-snapshot",
-      blockers: (manifest.migrations || [])
+      type: approved ? "approved-development-baseline" : "development-snapshot",
+      blockers: approved ? [] : (manifest.migrations || [])
         .filter(item => BLOCKING_HISTORICAL_STATES.has(item?.database?.status))
         .map(item => ({ version: item.version, status: item.database.status }))
         .sort((a, b) => compareVersions(a.version, b.version))
@@ -379,7 +395,7 @@ export function validateHistoricalBaselineAudit({ audit, ledgerRows, manifest })
     }
   }
   return {
-    status: "RECONCILIATION_EVIDENCE_PASSED_REVIEW_REQUIRED",
+    status: manifest.baselineReconciliation?.status === "approved" ? "BASELINE_RECONCILIATION_EVIDENCE_PASSED" : "RECONCILIATION_EVIDENCE_PASSED_REVIEW_REQUIRED",
     objectChecks: audit.checks.length,
     migrationsChecked: EXPECTED_HISTORICAL_AUDIT.size,
     ledgerRows: actualVersions.length,
@@ -388,9 +404,9 @@ export function validateHistoricalBaselineAudit({ audit, ledgerRows, manifest })
       .filter(item => item?.database?.status === "pending")
       .map(item => item.version)
       .sort(compareVersions),
-    readinessStatus: "BLOCKED",
+    readinessStatus: manifest.baselineReconciliation?.status === "approved" ? "READY_WITH_APPROVED_BASELINE_EXCEPTIONS" : "BLOCKED",
     writesPerformed: false,
-    approvalRequiredBeforeAnyApply: true
+    approvalRequiredBeforeAnyApply: manifest.baselineReconciliation?.status !== "approved"
   };
 }
 
@@ -411,7 +427,7 @@ export function validateOperatorApproval(apply, manifest, environment = process.
   }
 }
 
-async function verifyAppliedRows({ manifest, migrations, ledgerRows }) {
+async function verifyAppliedRows({ manifest, migrations, ledgerRows, baselineAuditPassed = false }) {
   const lineage = classifyLedgerLineage({ manifest, migrations, ledgerRows });
   if (lineage.blockers.length) {
     throw new Error("Existing database migration lineage is not safe to extend:\n" +
@@ -419,7 +435,11 @@ async function verifyAppliedRows({ manifest, migrations, ledgerRows }) {
         "- " + (item.version ? item.version + ": " : "") + (item.status || item)
       ).join("\n"));
   }
+  if (lineage.type === "approved-development-baseline" && !baselineAuditPassed) {
+    throw new Error("Approved Development baseline requires a fresh successful live object audit before migration planning.");
+  }
 
+  const approvedExceptions = new Set(manifest.baselineReconciliation?.ledgerExceptions || []);
   const byVersion = new Map(migrations.map(migration => [migration.version, migration]));
   for (const row of ledgerRows) {
     const migration = byVersion.get(String(row.version));
@@ -428,6 +448,14 @@ async function verifyAppliedRows({ manifest, migrations, ledgerRows }) {
     if (lineage.type === "clean-install") {
       if (row.filename !== migration.filename || row.checksum !== migration.sha256) {
         throw new Error("Clean-install source checksum or filename mismatch for migration " + row.version + ".");
+      }
+      continue;
+    }
+
+    if (lineage.type === "approved-development-baseline" && approvedExceptions.has(String(row.version))) {
+      if (migration.database?.ledgerChecksum !== row.checksum ||
+          !BLOCKING_HISTORICAL_STATES.has(migration.database?.status)) {
+        throw new Error("Approved baseline exception metadata does not match the observed ledger row for migration " + row.version + ".");
       }
       continue;
     }
@@ -508,9 +536,9 @@ async function main() {
       console.log("- Ledger rows: " + report.ledgerRows + " exact matches to the pinned Development snapshot.");
       console.log("- Schema-present without ledger (never replay or fabricate rows): " + report.schemaPresentWithoutLedger.join(", ") + ".");
       console.log("- Pending migration(s): " + (report.pendingMigrations.join(", ") || "none") + ".");
-      console.log("- Readiness remains " + report.readinessStatus + ".");
+      console.log("- Readiness: " + report.readinessStatus + ".");
       console.log("- Read-only assessment: no schema, ledger, or application data was changed.");
-      console.log("- This command does not grant apply permission. A separate reviewed approval is required before any migration can run.");
+      console.log("- This command is read-only. Normal --apply still requires ERP_MIGRATIONS_APPROVED=YES and a fresh passing audit.");
       return;
     }
 
@@ -519,15 +547,35 @@ async function main() {
       ledgerRows,
       applicationTableCount: tables.rows.length
     });
+
+    let baselineReport = null;
+    let baselineSatisfiedVersions = [];
+    if (databaseState === "existing") {
+      const observedLineage = classifyLedgerLineage({ manifest, migrations, ledgerRows });
+      if (observedLineage.type === "approved-development-baseline") {
+        const auditSql = await readFile(HISTORICAL_AUDIT_PATH, "utf8");
+        const auditResult = await client.query(auditSql);
+        const audit = auditResult.rows?.[0]?.historical_object_audit;
+        baselineReport = validateHistoricalBaselineAudit({ audit, ledgerRows, manifest });
+        baselineSatisfiedVersions = baselineReport.schemaPresentWithoutLedger;
+        console.log("Approved Development baseline: live historical audit passed " +
+          baselineReport.objectChecks + "/" + baselineReport.objectChecks + " object checks.");
+      }
+    }
+
     const plan = buildMigrationPlan({
       migrations,
       ledgerRows,
-      freshInstall: databaseState === "fresh"
+      freshInstall: databaseState === "fresh",
+      satisfiedVersions: baselineSatisfiedVersions
     });
 
     let lineageType = "fresh-install";
     if (databaseState === "existing") {
-      lineageType = await verifyAppliedRows({ manifest, migrations, ledgerRows });
+      lineageType = await verifyAppliedRows({
+        manifest, migrations, ledgerRows,
+        baselineAuditPassed: Boolean(baselineReport)
+      });
     }
     const initialLedgerCount = ledgerRows.length;
 
