@@ -1098,6 +1098,12 @@ test('mobile sidebar visual coverage checks drawer, scrim, viewport bounds and d
   expect(visualState.scrim.top).toBeCloseTo(0, 0);
   expect(visualState.scrim.width).toBeGreaterThanOrEqual(visualState.viewport.width - 1);
   expect(visualState.scrim.height).toBeGreaterThanOrEqual(visualState.viewport.height - 1);
+  expect(
+    visualState.hitTopbar.insideScrim,
+    'the scrim must cover the sticky topbar while the drawer is open'
+  ).toBe(true);
+  expect(Number(visualState.topbar.zIndex)).toBeLessThan(Number(visualState.scrim.zIndex));
+  expect(Number(visualState.scrim.zIndex)).toBeLessThan(Number(visualState.sidebar.zIndex));
 
   await page.locator('#mobile-scrim').click({ position: { x: 370, y: 400 } });
   await expect(sidebar).not.toHaveClass(/open/);
