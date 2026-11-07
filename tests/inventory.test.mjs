@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createProduct, createInventoryMovement, getInventorySummary, listInventoryStock, listInventoryMovements } from "../worker/src/erp.js";
+import { createProduct, createInventoryMovement, getInventorySummary, listInventoryStock, listInventoryMovements, resolveRoutePermission } from "../worker/src/erp.js";
 
 const actor = { id: "00000000-0000-0000-0000-000000000099", role: "owner" };
 const productId = "00000000-0000-0000-0000-000000000101";
@@ -274,4 +274,20 @@ test("movement visibility never exposes inbound rows to a user with outbound-onl
   assert.match(captured, /im\.movement_type='Salida'/);
   assert.doesNotMatch(captured, /im\.movement_type IN \('Entrada','Devolucion'\)/);
   assert.doesNotMatch(captured, /im\.movement_type='Ajuste'/);
+});
+
+
+test("inventory read routes use the module permission while movement writes retain granular permissions", () => {
+  assert.equal(resolveRoutePermission("inventory-summary", "GET"), "inventory.view");
+  assert.equal(resolveRoutePermission("inventory-stock", "GET"), "inventory.view");
+  assert.equal(resolveRoutePermission("inventory-movements", "GET"), "inventory.view");
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", null, [], {
+    movement_type: "Entrada"
+  }), "inventory.receipts.receive");
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", null, [], {
+    movement_type: "Salida"
+  }), "inventory.manual_out.create");
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", null, [], {
+    movement_type: "Ajuste"
+  }), "inventory.adjustments.adjust");
 });
