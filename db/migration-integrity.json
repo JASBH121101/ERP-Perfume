@@ -294,8 +294,14 @@
       "version": "0020",
       "sha256": "0f8818822832241785f4556546b4e418996214c5bbe2509c7ec0f703d28fe1d2",
       "database": {
-        "status": "pending",
-        "note": "Forward-only schema reconciliation from a read-only comparison of the 0001–0019 clean-install branch against Neon Development on 2026-11-07. Adds invoice-line unit cost, preserves six-decimal purchase-order exchange rates, aligns notification target values, and replaces the incomplete rejection audit check. Not yet applied to Development."
+        "status": "schema_present_without_ledger",
+        "objectsVerified": [
+          "public.invoice_items.unit_cost_usd numeric(14,4) NOT NULL DEFAULT 0 with nonnegative check",
+          "public.purchase_orders.exchange_rate numeric(14,6)",
+          "public.erp_notifications target_view constraint includes billing",
+          "public.purchase_orders rejection audit constraint requires actor, timestamp and reason length 5..300"
+        ],
+        "note": "Read-only Development inspection on 2026-11-07 confirms all four effects from 0020 already exist with the exact expected definitions, although no 0020 ledger row exists. Do not replay the migration or fabricate a ledger row on Development. The runner verifies these four definitions live before skipping 0020 on this pinned Development branch. Fresh installations must still execute 0020."
       }
     }
   ],
@@ -319,7 +325,8 @@
     "schemaSatisfiedWithoutLedger": [
       "0012",
       "0013",
-      "0014"
+      "0014",
+      "0020"
     ],
     "auditObjectCount": 55,
     "auditMigrationCount": 11,
@@ -329,6 +336,12 @@
       "invalid_or_unready_indexes=0"
     ],
     "requiresLiveAuditBeforeApply": true,
-    "policy": "Preserve every observed ledger checksum and applied_at. Never fabricate historical ledger rows or replay a schema-present migration. Fresh installs must execute every pinned SQL migration in order."
+    "policy": "Preserve every observed ledger checksum and applied_at. Never fabricate historical ledger rows or replay a schema-present migration. The Development runner may skip only live-audited schema-satisfied versions 0012-0014 and 0020 on the pinned Development branch. Fresh installs must execute every pinned SQL migration in order, including 0020.",
+    "auditSchemaAlignment": [
+      "invoice_unit_cost_usd",
+      "purchase_order_exchange_rate",
+      "notification_billing_target",
+      "purchase_order_rejection_reason"
+    ]
   }
 }
