@@ -24,8 +24,9 @@ Lectura directa de `erp-perfume / erp_perfume / development` el **7 de noviembre
 | Filas en `app_schema_migrations` | 16 |
 | Versiones distintas registradas | 16 |
 | Versiones registradas | 0001–0011 y 0015–0019 |
-| Versiones sin fila de registro | 0012, 0013 y 0014 |
+| Versiones sin fila de registro | 0012, 0013, 0014 y 0020 |
 | Objetos esperados de 0012–0014 | Presentes |
+| Efectos de esquema de 0020 en Development | 4 de 4 presentes con definición exacta |
 | Índices agregados por 0019 | 8 de 8 presentes |
 | Claves foráneas sin validar | 0 |
 | Índices inválidos o no listos | 0 |
@@ -55,16 +56,16 @@ Ejecuta `npm run check:db`. El script:
 - calcula SHA-256 sobre los bytes exactos de cada archivo, sin normalizar finales de línea;
 - comprueba que cada excepción histórica tenga estado y evidencia explícitos;
 - exige que las versiones registradas y las no registradas coincidan con la fotografía documentada;
-- comprueba que la siguiente etiqueta de archivo calculada sea `0021`; la migración `0020` sigue pendiente de promoción a Development.
+- comprueba que la siguiente etiqueta de archivo calculada sea `0021`; `0020` está satisfecho en Development por auditoría de esquema, y sigue siendo obligatorio para instalaciones limpias.
 
-Este control **no certifica una conexión viva con Neon** y no autoriza aplicar la versión 0020 en Development. La ejecución de una nueva migración queda bloqueada operativamente hasta que se concilien 0012–0014, 0017 y la procedencia histórica de los checksums.
+El gate estático valida las fuentes y el manifiesto. El runner repite una auditoría viva de 55 objetos históricos, invariantes y cuatro definiciones de esquema correspondientes a 0020 antes de permitir un plan de Development. Development ya tiene esos cuatro efectos, pero no tiene una fila 0020; el runner los reconoce como satisfechos y no reejecuta la migración ni inventa una entrada de ledger. Las instalaciones limpias sí ejecutan 0020 en secuencia.
 
 ## Flujo de trabajo obligatorio para migraciones futuras
 
 1. Crear una nueva migración con el siguiente número disponible; no modificar ni renombrar archivos ya aplicados.
 2. Revisar SQL, efectos sobre datos, claves foráneas, restricciones, índices y compatibilidad con la versión actual.
 3. Actualizar el manifiesto con el SHA-256 exacto y la revisión correspondiente.
-4. Pasar el gate estático y las pruebas unitarias.
+4. Pasar el gate estático, la auditoría viva específica de Development y las pruebas unitarias.
 5. Antes de aplicar, obtener respaldo verificable y usar exclusivamente Development.
 6. Aplicar con exclusión mutua y transacción: el SQL y la inserción del ledger deben confirmarse juntos; si falla uno, debe revertirse la transacción.
 7. Verificar esquema, datos, constraints, índices y checksum desde una nueva conexión.
@@ -100,7 +101,7 @@ The fresh-install schema comparison identified real drift that the original 19 f
 - Development allows `billing` as an `erp_notifications.target_view`, while a clean install did not.
 - Development enforces the full rejected-order audit rule (status, actor, timestamp and 5–300 character reason). A clean install retained the weaker pair-only check created by 0017 because 0018 used `IF NOT EXISTS` and did not replace the earlier constraint.
 
-Migration `0020_align_clean_install_schema.sql` is added as a forward-only correction for those four differences. It is pinned as **pending**; it has not been executed on Development or Production. Its SQL was separately tested against the disposable clean-install branch after the 0001–0019 baseline.
+Migration `0020_align_clean_install_schema.sql` is a forward-only correction for four differences in the clean-install schema. A fresh read-only inspection of Development confirms that all four target definitions already exist there without a 0020 ledger row. The Development runner therefore audits and skips 0020 on that exact branch; it must not be replayed or assigned a fabricated ledger row. Fresh-install branches still execute 0020 after 0001–0019. It has not been applied to Production. Its SQL was separately tested against the disposable clean-install branch.
 
 The Neon managed `neon_auth` schema, its identities, the runtime role grants and the pre-existing migration ledger are environment provisioning concerns rather than app SQL migrations. The migration runner below creates the ledger only for a genuinely empty public application schema; it refuses to fabricate a baseline when app tables already exist.
 
@@ -217,3 +218,8 @@ The live historical object audit now covers **55 named objects across 11 migrati
 The approved exception set is scoped to the exact Neon Development branch ID and database in the manifest. It does not apply to clean-install branches or Production. Fresh installs continue to execute every pinned migration in numeric order, including 0012–0014. Production remains blocked by the runner and must receive the same reviewed migration files through its separate release process.
 
 Readiness is reported as `READY_WITH_APPROVED_BASELINE_EXCEPTIONS`, not as byte-for-byte historical source verification. The eight exceptions remain visible in the manifest and audit report.
+
+
+## Development schema alignment for 0020 — 2026-11-07
+
+A newer read-only inspection of the pinned Development branch confirmed all four effects represented by migration 0020 are already present: `invoice_items.unit_cost_usd` is `NUMERIC(14,4) NOT NULL DEFAULT 0` with its nonnegative check; `purchase_orders.exchange_rate` is `NUMERIC(14,6)`; `erp_notifications_target_view_check` includes `billing`; and `purchase_orders_rejection_audit_check` enforces the rejected status actor/timestamp and a trimmed reason of 5–300 characters. The `app_schema_migrations` ledger still has 16 rows and no `0020` row. The migration is therefore schema-satisfied but unregistered on Development. The baseline attestation and live audit record this separately; the runner skips it only on the pinned Development branch after all four exact checks pass. Clean installs do not inherit this exception and must execute the pinned 0020 SQL.
