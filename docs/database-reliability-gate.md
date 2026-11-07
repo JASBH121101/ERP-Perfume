@@ -205,7 +205,7 @@ GitHub Actions run [42385634657](https://github.com/JASBH121101/ERP-Perfume/acti
 - 32/32 Playwright browser tests passed;
 - build, static checks, Worker syntax and the offline migration source-integrity gate passed.
 
-The source-integrity gate correctly continues to report **BLOCKED** for new migrations because eight Development historical lineage issues remain: `0006`, `0008`, `0009`, `0012`, `0013`, `0014`, `0017` and `0018`. Versions `0002` and `0003` are verified historical sources and are no longer blockers. Passing CI does not clear the remaining blockers or certify the live authenticated Worker end to end.
+The eight historical cases are now covered by an explicit Development-only baseline attestation. The offline gate reports `READY_WITH_APPROVED_BASELINE_EXCEPTIONS`; the live migration runner still requires all 55 object checks and zero integrity invariants to pass before planning. This does not certify the live authenticated Worker end to end.
 
 
 ## Approved Development baseline reconciliation — 2026-11-07
