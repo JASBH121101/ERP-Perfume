@@ -147,7 +147,7 @@ export async function listInventoryMovements(sql, params = new URLSearchParams()
   const productId = String(params.get("product_id") || "").trim();
   if (search.length > 120 || !["all", "Entrada", "Salida", "Ajuste", "Devolucion", "Reversion"].includes(movementType) ||
       !validInventoryDate(from) || !validInventoryDate(to) || (from && to && from > to) ||
-      (productId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(productId))) {
+      (productId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId))) {
     return erpError(400, "INVALID_INVENTORY_FILTER", "Los filtros de movimientos no son válidos.");
   }
 
