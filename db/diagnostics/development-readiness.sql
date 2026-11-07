@@ -118,3 +118,46 @@ SELECT
     WHERE n.nspname = 'public'
       AND (NOT ix.indisvalid OR NOT ix.indisready)) AS invalid_or_unready_indexes
 FROM public.app_schema_migrations;
+
+
+-- 8) Separate environment provisioning gate for Neon Auth and the Worker role.
+-- These are NOT application migrations and must be provisioned per Neon branch.
+-- Counts are compared with the reviewed Development role snapshot, not treated
+-- as permanent constants after future permission changes.
+SELECT
+  EXISTS (
+    SELECT 1 FROM pg_roles WHERE rolname = 'jb_erp_runtime_sql'
+  ) AS runtime_role_exists,
+  to_regnamespace('neon_auth') IS NOT NULL AS neon_auth_schema_exists,
+  (
+    SELECT COUNT(*)
+    FROM information_schema.role_table_grants
+    WHERE grantee = 'jb_erp_runtime_sql' AND table_schema = 'public'
+  ) AS runtime_public_table_grants,
+  (
+    SELECT COUNT(*)
+    FROM information_schema.role_table_grants
+    WHERE grantee = 'jb_erp_runtime_sql' AND table_schema = 'neon_auth'
+  ) AS runtime_neon_auth_table_grants,
+  (
+    SELECT COUNT(*)
+    FROM information_schema.column_privileges
+    WHERE grantee = 'jb_erp_runtime_sql' AND table_schema = 'public'
+  ) AS runtime_public_column_grants,
+  (
+    SELECT COUNT(*)
+    FROM information_schema.usage_privileges
+    WHERE grantee = 'jb_erp_runtime_sql'
+      AND object_type = 'SEQUENCE'
+      AND object_schema = 'public'
+  ) AS runtime_public_sequence_grants;
+
+-- Expected role identity/access policy (read-only privilege introspection).
+-- The runtime role must not receive broad DELETE on operational tables.
+SELECT
+  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'SELECT') AS products_select,
+  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'INSERT') AS products_insert,
+  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'UPDATE') AS products_update,
+  has_table_privilege('jb_erp_runtime_sql', 'public.products', 'DELETE') AS products_delete,
+  has_table_privilege('jb_erp_runtime_sql', 'public.user_permission_overrides', 'DELETE') AS permission_override_delete,
+  has_table_privilege('jb_erp_runtime_sql', 'public.role_template_permissions', 'DELETE') AS role_template_permission_delete;

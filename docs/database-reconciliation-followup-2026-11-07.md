@@ -99,3 +99,14 @@ The valid synthetic order, line, receipt and receipt line were deleted before th
 ## Source-history search follow-up
 
 The recoverable 0002 source is itself documented as a schema reconstruction and its Git blob SHA-1 does not match the Development ledger checksum. Both available committed revisions for 0003 were checked; neither matches the ledger checksum. These observations confirm that the remaining source provenance gaps cannot be closed by simply choosing the current Git file.
+
+
+## Fresh-install Auth and runtime-role provisioning check
+
+A branch clone created from the Production lineage and migrated through 0020 had the expected ERP application schema and migration ledger, but a separate read-only inspection found no `neon_auth` schema, no `jb_erp_runtime_sql` role, and no runtime grants. The Neon Auth API also reported that Managed Auth was not enabled for that branch. A Development-derived QA clone, by contrast, retained Neon Auth and the runtime role.
+
+The reviewed Development baseline currently reports 88 public table grants, 1,036 public column grants, 2 public sequence grants, and 1 Neon Auth table grant for `jb_erp_runtime_sql`. The clean clone reported zero for each. The public application schema itself compared equal after migration 0020; the remaining differences are branch-level identity and ACL provisioning.
+
+This is now an explicit installation gate. The application migration runner must not attempt to synthesize Neon Auth tables or silently grant broad access. Provision Neon Auth using Neon Managed Auth controls, create the runtime role with the exact least-privilege policy, then point the Worker secret at that role. Do not use the generic Neon `read_write` preset without narrowing it; broad DELETE privileges would exceed the ERP policy.
+
+The Development branch was queried only for reads. The QA transaction probes used synthetic data and a forced rollback; no Production schema or application records were changed.

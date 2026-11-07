@@ -40,6 +40,20 @@ The runner rejects pooled `-pooler` hosts, any hostname other than the exact Dev
 7. A clean, empty application schema can bootstrap its own ledger. If application tables already exist but the ledger is absent or empty, the runner stops and requires a separately reviewed baseline reconciliation.
 8. The runner does not execute automatically during Cloudflare Pages or Worker deployment.
 
+
+## Branch-level runtime provisioning is a separate gate
+
+The migration runner intentionally manages only the application `public` schema. It does not provision Neon Managed Auth, create `jb_erp_runtime_sql`, or copy its table/column/sequence grants. Do not treat a successful clean migration run as proof that the branch can authenticate users or run the ERP Worker.
+
+Before connecting a new branch to the Worker:
+1. Enable/provision Neon Auth for that branch in Neon’s managed Auth controls.
+2. Configure the expected trusted origins and email-verification policy.
+3. Create the runtime login role and apply the reviewed least-privilege grants. Do not use an unrestricted/admin role, and do not leave the generic `read_write` preset's broad DELETE grants in place.
+4. Set the Worker `DATABASE_URL` to the runtime role, never `erp_owner`.
+5. Run the environment checks in `db/diagnostics/development-readiness.sql`, then verify `/api/health`, authenticated `/api/auth/profile`, and one disposable synthetic transaction.
+
+Read-only inspection on 2026-11-07 confirmed the Development branch had `neon_auth`, `jb_erp_runtime_sql`, 88 public table grants, 1,036 public column grants, and 2 public sequence grants. A fresh-migration QA clone had none of those branch-level provisioning objects. Those differences are environment provisioning, not missing SQL application migrations.
+
 ## Historical Development status
 
 The current Development snapshot is deliberately blocked from applying new migrations until its history discrepancies are reconciled. A new clean database can use the current pinned source chain, but that clean-install success does not retroactively prove the exact SQL that originally ran on Development.

@@ -155,3 +155,13 @@ También se ejecutaron las sentencias CTE equivalentes a las rutas del Worker:
 La comparación posterior de esquemas ya no mostró diferencias en las tablas, columnas, índices o restricciones de la aplicación entre las dos ramas QA. Las diferencias restantes son de provisión del entorno: el clon de Development contiene el esquema administrado `neon_auth`, ausente en la rama creada desde Production, y conserva permisos SQL del rol runtime que el clon limpio no recibe automáticamente. No se deben convertir esos objetos de identidad/permisos administrados en migraciones de aplicación.
 
 Los registros sintéticos permanecen dentro de las ramas QA aisladas para que el resultado sea auditable. No se han borrado ramas ni se ha limpiado ningún entorno mediante operaciones destructivas.
+
+
+## Additional certification finding — branch provisioning
+
+The clean migration chain and the authenticated runtime are separate capabilities. A clean Neon QA branch reached schema parity for application tables, columns, indexes and constraints after 0020, but did not inherit the Development branch's managed Auth configuration or runtime role. Read-only checks confirmed:
+- Development: Neon Auth present; runtime role present; 88 public table grants, 1,036 public column grants, 2 public sequence grants.
+- Fresh-migration QA clone: Neon Auth absent; runtime role absent; no runtime grants.
+- Development-derived QA clone: Neon Auth and runtime role present; its public application schema compared equal to Development after 0020.
+
+The installation checklist must therefore include Neon Managed Auth provisioning and least-privilege runtime role setup as a separate branch-level step. Do not put managed Auth's internal schema into application migration files and do not give the Worker an owner/admin credential. The diagnostic SQL now reports these prerequisites alongside the database integrity checks.

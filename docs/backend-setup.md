@@ -88,6 +88,31 @@ On the Neon `development` branch:
 
 The Worker resolves the Neon Auth user and ERP profile before allowing `/api/erp/*` operations. The frontend remains locked until a valid ERP profile is returned.
 
+
+## Provisioning a new Neon branch (outside application migrations)
+
+The SQL migration chain creates the ERP `public` schema. It does **not** provision Neon Managed Auth, the Worker runtime role, or the role's grants. These are separate, branch-scoped environment prerequisites.
+
+A read-only check on 2026-11-07 found:
+
+| Environment | `neon_auth` schema | `jb_erp_runtime_sql` | Public table grants | Public column grants | Public sequence grants |
+|---|---:|---:|---:|---:|---:|
+| Development | Present | Present | 88 | 1,036 | 2 |
+| Fresh-migration QA clone | Missing | Missing | 0 | 0 | 0 |
+| Development-derived QA clone | Present | Present | 88 | 1,036 | 2 |
+
+The fresh-migration QA clone therefore proves the SQL schema chain can be built, but it is **not** a complete authenticated ERP environment. Neon reported Managed Auth as not enabled on that branch. Do not try to create `neon_auth` by copying application SQL or by adding it to `db/migrations`; enable/provision Neon Auth for the target branch using Neon’s managed Auth controls, then configure trusted origins and email verification.
+
+Provision `jb_erp_runtime_sql` separately on each new branch. Its privileges must mirror the reviewed least-privilege Development policy: SELECT on operational tables, only the required INSERT/UPDATE/column grants, sequence use where required, and DELETE restricted to `user_permission_overrides` and `role_template_permissions`. Do not leave a generic Neon `read_write` role preset unchanged: that preset is broader than the ERP runtime policy because it grants DELETE across the scoped schema. Never use `erp_owner` as the Worker runtime credential.
+
+Before declaring a new branch ready, run `db/diagnostics/development-readiness.sql` against that exact branch and verify:
+- `neon_auth` exists and Neon Auth is enabled/configured for that branch;
+- `jb_erp_runtime_sql` exists with the least-privilege grants;
+- the Worker secret uses that runtime role and points to the intended branch;
+- `/api/health` succeeds, followed by an authenticated `/api/auth/profile` and a synthetic API smoke test.
+
+A green `/api/health` response alone proves database reachability and binding readiness; it does not prove that Neon Auth is provisioned or that the runtime role can access every required table/column.
+
 ## API surface
 
 Public/configuration endpoints:
