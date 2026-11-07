@@ -1020,3 +1020,94 @@ test('all six font scale levels apply and enforce their boundaries', async ({ pa
   await expect(decrease).toBeDisabled();
   await expect(page.locator('#font-scale-label')).toHaveText('100%');
 });
+
+
+test('mobile sidebar visual coverage checks drawer, scrim, viewport bounds and dismissal', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.locator('#db-connection-status')).toHaveText('Conectado');
+
+  const sidebar = page.locator('#sidebar');
+  const scrim = page.locator('#mobile-scrim');
+  const menuToggle = page.locator('#menu-toggle');
+
+  await menuToggle.click();
+  await expect(sidebar).toHaveClass(/open/);
+  await expect(scrim).toHaveClass(/visible/);
+  await expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
+  await page.waitForTimeout(260);
+
+  const visualState = await page.evaluate(() => {
+    const sidebarElement = document.getElementById('sidebar');
+    const scrimElement = document.getElementById('mobile-scrim');
+    const topbarElement = document.querySelector('.topbar');
+    const sidebarRect = sidebarElement.getBoundingClientRect();
+    const scrimRect = scrimElement.getBoundingClientRect();
+    const topbarRect = topbarElement.getBoundingClientRect();
+    const hitTopbar = document.elementFromPoint(window.innerWidth - 8, Math.max(2, topbarRect.top + 8));
+    const hitContent = document.elementFromPoint(window.innerWidth - 8, Math.min(window.innerHeight - 8, topbarRect.bottom + 32));
+    const describe = (element) => element ? {
+      tag: element.tagName,
+      id: element.id || null,
+      className: typeof element.className === 'string' ? element.className : '',
+      insideScrim: element === scrimElement || scrimElement.contains(element),
+      insideTopbar: topbarElement.contains(element)
+    } : null;
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      documentWidth: document.documentElement.scrollWidth,
+      bodyOverflow: getComputedStyle(document.body).overflow,
+      sidebar: {
+        left: sidebarRect.left, top: sidebarRect.top, right: sidebarRect.right,
+        bottom: sidebarRect.bottom, width: sidebarRect.width, height: sidebarRect.height,
+        zIndex: getComputedStyle(sidebarElement).zIndex,
+        transform: getComputedStyle(sidebarElement).transform,
+        overflowY: getComputedStyle(sidebarElement).overflowY
+      },
+      scrim: {
+        left: scrimRect.left, top: scrimRect.top, right: scrimRect.right,
+        bottom: scrimRect.bottom, width: scrimRect.width, height: scrimRect.height,
+        display: getComputedStyle(scrimElement).display,
+        position: getComputedStyle(scrimElement).position,
+        zIndex: getComputedStyle(scrimElement).zIndex
+      },
+      topbar: {
+        top: topbarRect.top, bottom: topbarRect.bottom,
+        zIndex: getComputedStyle(topbarElement).zIndex
+      },
+      hitTopbar: describe(hitTopbar),
+      hitContent: describe(hitContent)
+    };
+  });
+
+  console.log('MOBILE SIDEBAR VISUAL STATE:', JSON.stringify(visualState));
+  const evidenceDir = path.join(process.cwd(), 'visual-evidence');
+  mkdirSync(evidenceDir, { recursive: true });
+  const screenshotPath = path.join(evidenceDir, 'mobile-sidebar-open.png');
+  await page.screenshot({ path: screenshotPath, fullPage: false });
+  await testInfo.attach('mobile-sidebar-open', { path: screenshotPath, contentType: 'image/png' });
+
+  expect(visualState.documentWidth, 'mobile drawer must not create horizontal page overflow')
+    .toBeLessThanOrEqual(visualState.viewport.width + 1);
+  expect(visualState.sidebar.left, 'drawer must be flush with the left viewport edge').toBeCloseTo(0, 0);
+  expect(visualState.sidebar.top, 'drawer must start at the top of the visual viewport').toBeCloseTo(0, 0);
+  expect(visualState.sidebar.height, 'drawer must cover the viewport height')
+    .toBeGreaterThanOrEqual(visualState.viewport.height - 1);
+  expect(visualState.scrim.position).toBe('fixed');
+  expect(visualState.scrim.left).toBeCloseTo(0, 0);
+  expect(visualState.scrim.top).toBeCloseTo(0, 0);
+  expect(visualState.scrim.width).toBeGreaterThanOrEqual(visualState.viewport.width - 1);
+  expect(visualState.scrim.height).toBeGreaterThanOrEqual(visualState.viewport.height - 1);
+  expect(
+    visualState.hitTopbar.insideScrim,
+    'the scrim must cover the sticky topbar while the drawer is open'
+  ).toBe(true);
+  expect(Number(visualState.topbar.zIndex)).toBeLessThan(Number(visualState.scrim.zIndex));
+  expect(Number(visualState.scrim.zIndex)).toBeLessThan(Number(visualState.sidebar.zIndex));
+
+  await page.locator('#mobile-scrim').click({ position: { x: 370, y: 400 } });
+  await expect(sidebar).not.toHaveClass(/open/);
+  await expect(scrim).not.toHaveClass(/visible/);
+  await expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('body')).not.toHaveClass(/mobile-menu-open/);
+});

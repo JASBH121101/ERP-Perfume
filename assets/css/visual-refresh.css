@@ -487,6 +487,9 @@ body.sidebar-collapsed .main-panel{width:calc(100% - 82px);margin-left:82px}
 .notification-panel{position:absolute;top:calc(100% + 10px);right:0;z-index:1000;display:flex;flex-direction:column;width:min(420px,calc(100vw - 28px));max-height:min(580px,calc(100dvh - 96px));overflow:hidden}
 .notification-panel[hidden],.notification-count[hidden]{display:none!important}
 @media(max-width:720px){
+  /* The mobile navigation drawer must sit above the sticky topbar and its controls. */
+  .sidebar{z-index:110}
+  .mobile-scrim.visible{z-index:100}
   .notification-panel{position:fixed;top:max(72px,calc(env(safe-area-inset-top,0px) + 64px));right:12px;z-index:1000;width:min(430px,calc(100vw - 24px));max-height:calc(100dvh - max(72px,env(safe-area-inset-top,0px) + 64px) - 14px)}
   .notification-list{max-height:calc(100dvh - 180px)}
 }
