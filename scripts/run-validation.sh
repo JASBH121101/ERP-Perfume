@@ -42,6 +42,7 @@ NODE
 echo
 echo "=== Database migration integrity gate (offline; no SQL execution) ==="
 npm run check:db
+npm run check:db:ready
 
 echo "=== Build Cloudflare Pages output ==="
 npm run build
