@@ -181,3 +181,5 @@ jobs:
             exit 1
           fi
           echo "Development migration ledger is current."
+
+# Re-triggered after configuring the direct Neon Development connection secret.
