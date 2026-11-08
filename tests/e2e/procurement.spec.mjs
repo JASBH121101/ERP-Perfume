@@ -421,7 +421,8 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptDialog.locator('[type="submit"]').click();
   const receiptPayload = (await receiptRequest).postDataJSON();
   expect(receiptPayload.items).toHaveLength(2);
-  await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Recepción parcial');
+  // Emitting a receipt is staged: quantities and order status change only on posting.
+  await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Confirmada');
 
   expect(api.data.purchase_receipts).toHaveLength(1);
   expect(api.data.purchase_receipts[0].document_status).toBe('Emitida');
@@ -449,6 +450,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(api.data.inventory_movements).toHaveLength(2);
   expect(api.data.supplier_invoices).toHaveLength(1);
   expect(api.data.purchase_journal_entries[0].total_debit_usd).toBe(api.data.purchase_journal_entries[0].total_credit_usd);
+  await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Recepción parcial');
 
   await navigateToView(page, 'inventory');
   await expect(page.locator('#inventory-product-body')).toContainText('QA Purchase Perfume A');
