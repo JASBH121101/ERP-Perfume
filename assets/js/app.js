@@ -1524,8 +1524,25 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       headers=['Compra','Proveedor','Fecha','Moneda','Importe original','Tipo de cambio','Total USD','Pagado USD','Saldo USD','Estado'];
       rows=purchases.map(p=>[p.purchaseNumber,p.supplier,dateText(p.createdAt),p.currency,p.originalTotal,p.exchangeRate,p.totalUsd,p.paidUsd,Math.max(0,p.totalUsd-p.paidUsd),p.status]);
     }else if(state.view==='purchaseOrders'){
-      headers=['Orden','Proveedor','Fecha','Entrega estimada','Moneda','Tipo de cambio','Subtotal USD','Descuento USD','Flete USD','Impuestos USD','Total USD','Recepciones','Estado','Condiciones','Notas'];
-      rows=purchaseOrders.map(p=>[p.orderNumber,p.supplier,dateText(p.createdAt),dateText(p.expectedDate),p.currency,p.exchangeRate,p.subtotalUsd,p.discountUsd,p.freightUsd,p.taxesUsd,p.totalUsd,purchaseReceipts.filter(r=>String(r.purchase_order_id)===String(p.id)).length,p.status,p.paymentTerms,p.notes]);
+      headers=['Tipo de documento','Orden','Recepción','Factura proveedor','Proveedor','Fecha','Entrega estimada','Moneda','Tipo de cambio','Subtotal USD','Descuento USD','Flete USD','Impuestos USD','Total USD','Código de compra','Comprobante diario','Estado','Condición de pago','Emitido por','Contabilizado por','Notas'];
+      const orderRows=filteredPurchaseOrders().map(p=>[
+        'Orden de compra',p.orderNumber,'','','',dateText(p.createdAt),dateText(p.expectedDate),p.currency,p.exchangeRate,
+        p.subtotalUsd,p.discountUsd,p.freightUsd,p.taxesUsd,p.totalUsd,'','',''+p.status,p.paymentTerms,
+        p.createdByName||'',p.approvedByName||'',p.notes||''
+      ]);
+      const receiptRows=filteredPurchaseReceipts().map(r=>{
+        const order=purchaseOrders.find(p=>String(p.id)===String(r.purchase_order_id));
+        return [
+          'Recepción',order?.orderNumber||'',r.receiptNumber||r.receipt_number||'',r.supplier_invoice_number||'',
+          order?.supplier||'',dateText(r.supplier_invoice_date||r.emitted_at||r.received_at),
+          dateText(order?.expectedDate),r.invoice_currency||order?.currency||'',
+          Number(r.invoice_exchange_rate||order?.exchangeRate||0), '', '',r.actual_freight_usd||0,r.actual_taxes_usd||0,
+          Number(r.invoice_total_usd||0),r.purchase_code||'',r.journal_number||'',
+          r.documentStatus||r.document_status||'Contabilizada',r.payment_terms_snapshot||order?.paymentTerms||'',
+          r.emitted_by_name||r.emittedByName||'',r.posted_by_name||r.postedByName||'',r.notes||''
+        ];
+      });
+      rows=[...orderRows,...receiptRows];
     }else if(state.view==='payables'){
       headers=['Tipo de documento','Referencia','Proveedor','Fecha','Vencimiento','Moneda','Total USD','Pagado USD','Saldo USD','Estado'];
       rows=[
@@ -2832,11 +2849,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       if(status==="Contabilizada"&&!receipt.journal_number)actions.push('<small class="table-secondary">Histórico · sin comprobante diario</small>');
       return '<tr><td data-label="Recepción"><strong>'+esc(receipt.receiptNumber||receipt.receipt_number||"—")+'</strong><small class="table-secondary">Emitida por '+esc(receipt.emitted_by_name||receipt.emittedByName||"Usuario no disponible")+' · '+dateTimeText(receipt.emitted_at||receipt.received_at)+'</small>'+(status==="Contabilizada"?'<small class="table-secondary">Contabilizada por '+esc(receipt.posted_by_name||receipt.postedByName||"Usuario no disponible")+' · '+dateTimeText(receipt.posted_at||receipt.received_at)+'</small>':'')+'</td><td data-label="Factura">'+esc(receipt.supplier_invoice_number||"—")+'</td><td data-label="Fecha">'+dateText(receipt.supplier_invoice_date||receipt.emitted_at||receipt.received_at)+'</td><td data-label="Importe">'+money(Number(receipt.invoice_total_usd||0))+' USD</td><td data-label="Código de compra">'+(receipt.purchaseCode||receipt.purchase_code||"—")+'</td><td data-label="Estado"><span class="status-chip '+statusClass+'">'+esc(status)+'</span>'+(receipt.journal_number?'<small class="table-secondary">CD '+esc(receipt.journal_number)+'</small>':'')+'</td><td data-label="Acciones">'+(actions.join(" ")||"—")+'</td></tr>';
     }).join('');
-    const receiptPanel='<article class="list-panel purchase-receipts-panel"><div class="panel-heading"><div><h2>Recepciones y comprobantes</h2><p>Emitidas pendientes de contabilizar o documentos ya registrados en el diario.</p></div><span class="ledger-count">'+purchaseReceipts.length+' documentos</span></div><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>RECEPCIÓN</th><th>FACTURA</th><th>FECHA</th><th>TOTAL USD</th><th>CÓDIGO COMPRA</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(receiptRows||'<tr><td colspan="7">Todavía no hay recepciones emitidas.</td></tr>')+'</tbody></table></div></article>';
+    const receiptPanel='<article class="list-panel purchase-receipts-panel"><div class="panel-heading"><div><h2>Recepciones y comprobantes</h2><p>Emitidas pendientes de contabilizar o documentos ya registrados en el diario.</p></div><span class="ledger-count">'+visibleReceipts.length+' documentos</span></div><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>RECEPCIÓN</th><th>FACTURA</th><th>FECHA</th><th>TOTAL USD</th><th>CÓDIGO COMPRA</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(receiptRows||'<tr><td colspan="7">Todavía no hay recepciones emitidas.</td></tr>')+'</tbody></table></div></article>';
     const supplierFilterOptions='<option value="all">Todos los proveedores</option>'+suppliers.map(supplier=>'<option value="'+esc(supplier.id)+'"'+(String(state.purchaseHistorySupplier)===String(supplier.id)?' selected':'')+'>'+esc(supplier.name)+'</option>').join("");
     const toolbar='<article class="list-panel purchase-history-tools"><div class="toolbar products-toolbar inventory-ledger-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg("search")+'<input id="purchase-history-search" type="search" value="'+esc(state.purchaseHistoryQuery)+'" placeholder="Orden, proveedor, producto o factura" aria-label="Buscar en órdenes y recepciones"></label></div><div class="toolbar-right"><select class="filter-select" id="purchase-history-supplier" aria-label="Filtrar por proveedor">'+supplierFilterOptions+'</select><select class="filter-select" id="purchase-history-order-status" aria-label="Estado de orden">'+[["all","Todas las órdenes"],["Borrador","Borrador"],["Enviada","Enviada"],["Confirmada","Confirmada"],["Recepción parcial","Recepción parcial"],["Recibida","Recibida"],["Cancelada","Cancelada"]].map(([value,label])=>'<option value="'+value+'"'+(state.purchaseHistoryOrderStatus===value?' selected':'')+'>'+label+'</option>').join("")+'</select><select class="filter-select" id="purchase-history-receipt-status" aria-label="Estado de recepción">'+[["all","Todas las recepciones"],["Emitida","Emitida"],["Contabilizada","Contabilizada"],["Anulada","Anulada"]].map(([value,label])=>'<option value="'+value+'"'+(state.purchaseHistoryReceiptStatus===value?' selected':'')+'>'+label+'</option>').join("")+'</select><input class="filter-select" type="date" id="purchase-history-start" value="'+esc(state.purchaseHistoryStartDate)+'" aria-label="Desde fecha"><input class="filter-select" type="date" id="purchase-history-end" value="'+esc(state.purchaseHistoryEndDate)+'" aria-label="Hasta fecha"><button class="button button-quiet button-small" type="button" data-action="clear-purchase-filters">Limpiar filtros</button></div></div>'+renderPurchaseHistoryArchive()+'<div class="panel-heading"><span class="ledger-count">'+visibleOrders.length+' órdenes · '+visibleReceipts.length+' recepciones</span></div></article>';
     return heading(views.purchaseOrders,'<button class="button button-quiet" data-view="purchases">Compras recibidas</button>'+renderExportActions())+createForm+toolbar+
-      '<div class="summary-strip purchase-orders-summary-strip"><div class="summary-mini"><span>Órdenes</span><strong>'+purchaseOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+purchaseOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+purchaseOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+purchaseOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>'+
+      '<div class="summary-strip purchase-orders-summary-strip"><div class="summary-mini"><span>Órdenes filtradas</span><strong>'+visibleOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+visibleOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+visibleOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+visibleOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>'+
       '<article class="list-panel purchase-orders-list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>'+
       receiptPanel+'<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Emitir una recepción registra la factura, pero no toca existencias ni cuentas por pagar. La contabilización genera el movimiento de inventario, la cuenta por pagar y el comprobante diario de forma atómica.</p></div></div>';
   }
@@ -3793,6 +3810,20 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         state.inventoryStockPage = 1;
         loadInventoryStockPage();
       }
+      else if (name === 'purchase-month-filter') {
+        state.purchaseHistoryStartDate=action.getAttribute('data-start')||'';
+        state.purchaseHistoryEndDate=action.getAttribute('data-end')||'';
+        refreshPurchaseOrdersView(false);
+      }
+      else if (name === 'clear-purchase-filters') {
+        state.purchaseHistoryQuery='';
+        state.purchaseHistorySupplier='all';
+        state.purchaseHistoryOrderStatus='all';
+        state.purchaseHistoryReceiptStatus='all';
+        state.purchaseHistoryStartDate='';
+        state.purchaseHistoryEndDate='';
+        refreshPurchaseOrdersView(false);
+      }
       else if (name === 'inventory-month-filter') {
         state.inventoryMovementStartDate=action.getAttribute('data-start')||'';
         state.inventoryMovementEndDate=action.getAttribute('data-end')||'';
@@ -3858,7 +3889,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target.closest('#order-detail-close') || event.target.closest('#order-detail-cancel')) orderDialog.close();
   });
   document.addEventListener('input', function (event) {
-    if (event.target && event.target.id === 'view-search') {
+    if (event.target && event.target.id === 'purchase-history-search') {
+      state.purchaseHistoryQuery=event.target.value;
+      refreshPurchaseOrdersView(true);
+    }
+    else if (event.target && event.target.id === 'view-search') {
       state.query = event.target.value;
       const body = document.getElementById('product-table-body');
       if (body) body.innerHTML = productTable(filteredProducts());
@@ -3879,6 +3914,15 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }
   });
   document.addEventListener('change', function (event) {
+    if (event.target && ['purchase-history-supplier','purchase-history-order-status','purchase-history-receipt-status','purchase-history-start','purchase-history-end'].includes(event.target.id)) {
+      if(event.target.id==='purchase-history-supplier')state.purchaseHistorySupplier=event.target.value;
+      if(event.target.id==='purchase-history-order-status')state.purchaseHistoryOrderStatus=event.target.value;
+      if(event.target.id==='purchase-history-receipt-status')state.purchaseHistoryReceiptStatus=event.target.value;
+      if(event.target.id==='purchase-history-start')state.purchaseHistoryStartDate=event.target.value;
+      if(event.target.id==='purchase-history-end')state.purchaseHistoryEndDate=event.target.value;
+      refreshPurchaseOrdersView(false);
+      return;
+    }
     if (event.target && event.target.id === 'catalog-category-filter') {
       state.catalogCategory = event.target.value;
       renderView();
