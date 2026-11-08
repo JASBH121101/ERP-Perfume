@@ -1305,7 +1305,8 @@ export async function postPurchaseReceipt(sql,user,receiptId) {
       "'journal_number',(SELECT journal_number FROM journal),'supplier_invoice_number',r.supplier_invoice_number,"+
       "'inventory_movement_count',(SELECT COUNT(*) FROM movements)) FROM posted_receipt p JOIN locked_receipt r ON r.id=p.id RETURNING id) "+
       "SELECT p.*,j.journal_number,j.id AS journal_entry_id,u.status AS purchase_order_status,v.receipt_exists,v.document_status AS previous_status,"+
-      "v.invalid_quantity_count,v.line_count FROM posted_receipt p CROSS JOIN journal j CROSS JOIN updated_order u CROSS JOIN validation v",
+      "v.invalid_quantity_count,v.line_count FROM validation v LEFT JOIN posted_receipt p ON TRUE "+
+      "LEFT JOIN journal j ON TRUE LEFT JOIN updated_order u ON TRUE",
       [receiptId,user.id]
     );
     const result=rows[0];
