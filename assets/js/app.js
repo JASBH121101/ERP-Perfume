@@ -2681,13 +2681,15 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(!lines.length){toast("Esta orden no tiene cantidades pendientes de recibir.");return;}
     let dialog=document.getElementById("purchase-receipt-dialog");
     if(!dialog){dialog=document.createElement("dialog");dialog.id="purchase-receipt-dialog";dialog.className="modal-dialog purchase-receipt-dialog";document.body.appendChild(dialog);}
-    const receiptNumber="REC-"+new Date().toISOString().slice(0,10).replace(/-/g,"")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
-    const receiptLines=lines.map(item=>'<div class="purchase-receipt-line" data-receipt-line data-po-item-id="'+esc(item.id)+'"><div><strong>'+esc(item.product_name)+'</strong><small class="table-secondary">'+esc(item.sku_snapshot||'')+' · '+Number(item.received_quantity||0)+' recibidas de '+Number(item.ordered_quantity||0)+'</small></div><label>Recibir ahora<input data-receipt-quantity type="number" min="0" max="'+item.remaining+'" step="1" value="'+item.remaining+'" required></label><small>Máximo: '+item.remaining+'</small></div>').join('');
-    dialog.innerHTML='<form id="purchase-receipt-form" class="modal-form"><div class="modal-header"><div><span class="eyebrow">RECEPCIÓN FÍSICA</span><h2>Recibir '+esc(order.orderNumber)+'</h2><p>'+esc(order.supplier)+' · '+money(order.totalUsd)+' USD</p></div><button class="icon-button" type="button" data-action="close-purchase-receipt" aria-label="Cerrar">×</button></div>'+
-      '<input type="hidden" name="purchase_order_id" value="'+esc(order.id)+'"><input type="hidden" name="receipt_number" value="'+esc(receiptNumber)+'"><div class="purchase-receipt-lines">'+receiptLines+'</div>'+
-      '<div class="form-grid"><label>Flete real de esta recepción (USD)<input name="actual_freight_usd" type="number" min="0" step="0.01" value="0" required></label><label>Notas de recepción<input name="notes" maxlength="1000" placeholder="Estado de la mercancía, faltantes…"></label></div>'+
-      '<p class="form-helper">Solo las unidades recibidas aumentarán el inventario. El flete se distribuirá proporcionalmente entre los productos recibidos y actualizará el costo promedio.</p>'+
-      '<div class="form-actions"><button class="button button-quiet" type="button" data-action="close-purchase-receipt">Cancelar</button><button class="button button-primary" type="submit">Confirmar recepción</button></div></form>';
+    const receiptLines=lines.map(item=>'<div class="purchase-receipt-line" data-receipt-line data-po-item-id="'+esc(item.id)+'"><div><strong>'+esc(item.product_name)+'</strong><small class="table-secondary">'+esc(item.sku_snapshot||'')+' · '+Number(item.received_quantity||0)+' recibidas de '+Number(item.ordered_quantity||0)+'</small></div><label>Recibir ahora<input data-receipt-quantity name="quantity_received" type="number" min="1" max="'+item.remaining+'" step="1" value="'+item.remaining+'" required></label><label>Costo unitario facturado ('+esc(order.currency)+')<input data-receipt-unit-cost type="number" min="0.01" step="0.0001" value="'+Number(item.unit_cost_input||0).toFixed(4)+'" required></label><small>Máximo: '+item.remaining+'</small></div>').join('');
+    const defaultOriginal=lines.reduce((sum,item)=>sum+Number(item.unit_cost_input||0)*item.remaining,0);
+    const originalTotal=order.currency==="NIO"?defaultOriginal:defaultOriginal;
+    dialog.innerHTML='<form id="purchase-receipt-form" class="modal-form"><div class="modal-header"><div><span class="eyebrow">DOCUMENTO DE RECEPCIÓN</span><h2>Emitir recepción · '+esc(order.orderNumber)+'</h2><p>'+esc(order.supplier)+' · Orden '+esc(order.currency)+' · TC '+Number(order.exchangeRate||1).toFixed(4)+'</p></div><button class="icon-button" type="button" data-action="close-purchase-receipt" aria-label="Cerrar">×</button></div>'+
+      '<input type="hidden" name="purchase_order_id" value="'+esc(order.id)+'"><input type="hidden" name="invoice_currency" value="'+esc(order.currency)+'"><input type="hidden" name="invoice_exchange_rate" value="'+Number(order.exchangeRate||1)+'"><input type="hidden" name="payment_terms" value="'+esc(order.paymentTerms||"Por acordar")+'">'+
+      '<div class="form-grid"><label>Número de factura del proveedor<input name="supplier_invoice_number" maxlength="100" required placeholder="Ej. FAC-001-2026"></label><label>Fecha de factura<input name="supplier_invoice_date" type="date" value="'+new Date().toISOString().slice(0,10)+'" required></label><label>Total de factura ('+esc(order.currency)+')<input name="invoice_original_total" type="number" min="0.01" step="0.01" value="'+originalTotal.toFixed(2)+'" required></label><label>Flete real (USD)<input name="actual_freight_usd" type="number" min="0" step="0.01" value="0" required></label><label>Impuestos reales (USD)<input name="actual_taxes_usd" type="number" min="0" step="0.01" value="0" required></label><label>Condición de pago<input value="'+esc(order.paymentTerms||"Por acordar")+'" disabled></label></div>'+
+      '<div class="purchase-receipt-lines">'+receiptLines+'</div><label>Notas<input name="notes" maxlength="1000" placeholder="Observaciones de la factura o recepción"></label>'+
+      '<p class="form-helper">Al emitir, el documento queda pendiente. No aumenta existencias, no crea la cuenta por pagar y no genera comprobante contable hasta que un usuario autorizado lo contabilice.</p>'+
+      '<div class="form-actions"><button class="button button-quiet" type="button" data-action="close-purchase-receipt">Cancelar</button><button class="button button-primary" type="submit">Emitir recepción pendiente</button></div></form>';
     if(typeof dialog.showModal==="function")dialog.showModal();else toast("Tu navegador no admite el formulario de recepción.");
   }
   function renderPurchaseOrders(){
@@ -4361,19 +4363,33 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }
     if(form?.id==="purchase-receipt-form"){
       event.preventDefault();
-      if(!permissionGranted("purchases.receipts.receive")||!permissionGranted("inventory.receipts.receive")){toast("Tu cuenta no puede registrar esta recepción.");return;}
+      if(!permissionGranted("purchases.receipts.receive")){toast("Tu cuenta no puede emitir recepciones.");return;}
       const data=new FormData(form);
-      const items=Array.from(form.querySelectorAll("[data-receipt-line]")).map(row=>({purchase_order_item_id:row.getAttribute("data-po-item-id"),quantity_received:Number(row.querySelector("[data-receipt-quantity]").value||0)})).filter(item=>item.quantity_received>0);
+      const items=Array.from(form.querySelectorAll("[data-receipt-line]")).map(row=>({
+        purchase_order_item_id:row.getAttribute("data-po-item-id"),
+        quantity_received:Number(row.querySelector("[data-receipt-quantity]").value||0),
+        invoice_unit_cost_input:Number(row.querySelector("[data-receipt-unit-cost]").value||0)
+      })).filter(item=>item.quantity_received>0);
       if(!items.length){toast("Introduce al menos una cantidad recibida.");return;}
-      const payload={receipt_number:String(data.get("receipt_number")||""),items,actual_freight_usd:Number(data.get("actual_freight_usd")||0),notes:String(data.get("notes")||"").trim()||null};
+      const payload={
+        supplier_invoice_number:String(data.get("supplier_invoice_number")||"").trim(),
+        supplier_invoice_date:String(data.get("supplier_invoice_date")||""),
+        invoice_currency:String(data.get("invoice_currency")||""),
+        invoice_exchange_rate:Number(data.get("invoice_exchange_rate")||0),
+        invoice_original_total:Number(data.get("invoice_original_total")||0),
+        payment_terms:String(data.get("payment_terms")||""),
+        actual_freight_usd:Number(data.get("actual_freight_usd")||0),
+        actual_taxes_usd:Number(data.get("actual_taxes_usd")||0),
+        notes:String(data.get("notes")||"").trim()||null,items
+      };
       const orderId=String(data.get("purchase_order_id")||"");
-      const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Registrando…";}
+      const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Emitiendo…";}
       try{
         const result=await erpApi("purchase-orders/"+encodeURIComponent(orderId)+"/receipts",{method:"POST",body:JSON.stringify(payload)});
         document.getElementById("purchase-receipt-dialog")?.close();await loadERPFromNeon(true);goToView("purchaseOrders");
-        toast("Recepción "+(result.record?.receipt_number||"registrada")+". Inventario y costo promedio actualizados.");
-      }catch(error){toast(error?.message||"No se pudo registrar la recepción.");}
-      finally{if(submit){submit.disabled=false;submit.textContent="Confirmar recepción";}}
+        toast("Recepción "+(result.record?.receipt_number||"emitida")+" pendiente de contabilización. El inventario sigue sin cambios.");
+      }catch(error){toast(error?.message||"No se pudo emitir la recepción.");}
+      finally{if(submit){submit.disabled=false;submit.textContent="Emitir recepción pendiente";}}
       return;
     }
     if(form?.id==="role-permissions-form"){
