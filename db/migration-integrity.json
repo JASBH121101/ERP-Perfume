@@ -307,7 +307,7 @@
     {
       "filename": "0021_inventory_movement_reversals.sql",
       "version": "0021",
-      "sha256": "2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc",
+      "sha256": "5e6031af0b0faeb253c1bc1c50305b42414614197d57a4e584f9203364484324",
       "database": {
         "status": "pending",
         "note": "New additive migration for append-only inventory movements and audited manual reversals. Not applied to Neon Development or Production; requires review and an approved disposable-branch validation before application."
