@@ -354,7 +354,9 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await page.goto('/');
 
   await navigateToView(page, 'purchaseOrders');
+  console.log('POFLOW: orders view loaded');
   await page.locator('[data-action="purchase-section-tab"][data-tab="new"]').click();
+  console.log('POFLOW: new order tab selected');
   const orderForm = page.locator('#purchase-order-form');
   await expect(orderForm).toBeVisible();
   await expect(orderForm.getByText('Código de orden')).toHaveCount(0);
@@ -378,11 +380,13 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await orderForm.locator('[name="discount_usd"]').fill('1');
   await orderForm.locator('[name="estimated_freight_usd"]').fill('2');
   await orderForm.locator('[name="estimated_taxes_usd"]').fill('0.5');
+  console.log('POFLOW: form fields completed');
 
   const createRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders') && request.method() === 'POST'
   );
   await orderForm.locator('[type="submit"]').click();
+  console.log('POFLOW: submitted create order');
   const createPayload = (await createRequest).postDataJSON();
   expect(createPayload.items).toHaveLength(2);
   expect(createPayload).not.toHaveProperty('order_number');
@@ -397,6 +401,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   );
   await orderRow.locator('[data-action="submit-purchase-order"]').click();
   expect((await submitRequest).postDataJSON().status).toBe('Enviada');
+  console.log('POFLOW: order submitted');
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Enviada');
 
   const approveRequest = page.waitForRequest(request =>
@@ -405,6 +410,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   );
   await page.locator('tr').filter({ hasText: 'Proveedor QA' }).locator('[data-action="approve-purchase-order"]').click();
   expect((await approveRequest).postDataJSON().status).toBe('Confirmada');
+  console.log('POFLOW: order approved');
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Confirmada');
 
   await page.locator('tr').filter({ hasText: 'Proveedor QA' }).locator('[data-action="receive-purchase-order"]').click();
@@ -423,6 +429,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
     request.method() === 'POST'
   );
   await receiptDialog.locator('[type="submit"]').click();
+  console.log('POFLOW: receipt request sent');
   const receiptPayload = (await receiptRequest).postDataJSON();
   expect(receiptPayload.items).toHaveLength(2);
   // Emitting a receipt is staged: quantities and order status change only on posting.
@@ -448,6 +455,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptRow.locator('[data-action="post-purchase-receipt"]').click();
   const postedRequest = await postRequest;
   expect(postedRequest.method()).toBe('POST');
+  console.log('POFLOW: post receipt action returned');
   expect(api.data.purchase_receipts[0].document_status).toBe('Contabilizada');
   expect(api.data.purchase_receipts[0].purchase_code).toBe(1);
   expect(api.data.purchase_order_items.map(item => item.received_quantity)).toEqual([1, 2]);
@@ -463,6 +471,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await expect(page.locator('#inventory-product-body')).toContainText('QA Purchase Perfume A');
   await expect(page.locator('#inventory-product-body')).toContainText('6');
 
+  console.log('POFLOW: inventory verified, opening payables');
   await navigateToView(page, 'payables');
   const businessDialog = page.locator('#business-dialog');
   const businessForm = page.locator('#business-form');
