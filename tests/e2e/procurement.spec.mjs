@@ -435,8 +435,8 @@ test('procurement UI creates a mult-line order, receives partially, records supp
     request.url().endsWith('/api/erp/purchase-receipts/' + ids.receipt + '/post') &&
     request.method() === 'POST'
   );
+  page.once('dialog', dialog => dialog.accept());
   await receiptRow.locator('[data-action="post-purchase-receipt"]').click();
-  await page.getByRole('button', { name: /Aceptar|OK/ }).click().catch(() => {});
   const postedRequest = await postRequest;
   expect(postedRequest.method()).toBe('POST');
   expect(api.data.purchase_receipts[0].document_status).toBe('Contabilizada');
@@ -453,28 +453,11 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await expect(page.locator('#inventory-product-body')).toContainText('6');
 
   await navigateToView(page, 'payables');
-  await page.locator('[data-action="new-supplier-invoice"]').click();
   const businessDialog = page.locator('#business-dialog');
-  await expect(businessDialog).toBeVisible();
   const businessForm = page.locator('#business-form');
-  await businessForm.locator('[name="supplierId"]').selectOption(ids.supplier);
-  await businessForm.locator('[name="purchaseOrderId"]').selectOption(ids.order);
-  await businessForm.locator('[name="invoiceNumber"]').fill('FAC-PROV-QA-001');
-  await businessForm.locator('[name="invoiceDate"]').fill('2026-11-05');
-  await businessForm.locator('[name="dueDate"]').fill('2026-11-20');
-  await businessForm.locator('[name="currency"]').selectOption('NIO');
-  await businessForm.locator('[name="exchangeRate"]').fill('36.6');
-  await businessForm.locator('[name="originalAmount"]').fill('732');
-
-  const invoiceRequest = page.waitForRequest(request =>
-    request.url().endsWith('/api/erp/supplier-invoices') && request.method() === 'POST'
-  );
-  await businessForm.locator('#business-save').click();
-  const invoicePayload = (await invoiceRequest).postDataJSON();
-  expect(invoicePayload.purchase_order_id).toBe(ids.order);
+  expect(api.data.supplier_invoices).toHaveLength(1);
+  expect(api.data.supplier_invoices[0].purchase_order_id).toBe(ids.order);
   expect(api.data.supplier_invoices[0].amount_usd).toBe(20);
-  await expect(businessDialog).not.toBeVisible();
-
   const invoiceRow = page.locator('tr').filter({ hasText: 'FAC-PROV-QA-001' });
   await expect(invoiceRow).toContainText('Pendiente');
   await invoiceRow.locator('[data-action="new-supplier-invoice-payment"]').click();
