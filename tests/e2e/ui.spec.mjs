@@ -418,14 +418,14 @@ test('inventory kardex searches, filters by type and date, and paginates all mov
   await navigateToView(page, 'inventory');
   const rows = page.locator('#inventory-movement-body tr');
   await expect(rows).toHaveCount(25);
-  await expect(page.getByText('Página 1 de 2')).toBeVisible();
+  await expect(page.locator('.inventory-ledger-panel .inventory-ledger-footer .ledger-count')).toHaveText('Página 1 de 2');
   await page.getByRole('button', { name: 'Siguiente' }).click();
   await expect(rows).toHaveCount(2);
-  await expect(page.getByText('Página 2 de 2')).toBeVisible();
+  await expect(page.locator('.inventory-ledger-panel .inventory-ledger-footer .ledger-count')).toHaveText('Página 2 de 2');
 
   await page.getByLabel('Filtrar movimientos por tipo').selectOption('Entrada');
   await expect(rows).toHaveCount(14);
-  await expect(page.getByText('Página 1 de 1')).toBeVisible();
+  await expect(page.locator('.inventory-ledger-panel .inventory-ledger-footer .ledger-count')).toHaveText('Página 1 de 1');
 
   await page.getByLabel('Buscar en el kardex').fill('Movimiento QA 27');
   await expect(rows).toHaveCount(1);
@@ -435,7 +435,7 @@ test('inventory kardex searches, filters by type and date, and paginates all mov
   await page.getByLabel('Desde fecha').fill('2026-11-04');
   await page.getByLabel('Hasta fecha').fill('2026-11-04');
   await expect(rows).toHaveCount(9);
-  await expect(page.getByText('Página 1 de 1')).toBeVisible();
+  await expect(page.locator('.inventory-ledger-panel .inventory-ledger-footer .ledger-count')).toHaveText('Página 1 de 1');
 });
 
 test('new order allows registering a customer inline without a prior customer record', async ({ page }) => {
