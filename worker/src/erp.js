@@ -1267,7 +1267,7 @@ export async function postPurchaseReceipt(sql,user,receiptId) {
       "exchange_rate,original_amount,amount_usd,paid_amount_usd,status,notes,created_by) "+
       "SELECT r.supplier_id,r.po_id,r.supplier_invoice_number,r.supplier_invoice_date,"+
       "CASE WHEN LOWER(BTRIM(r.payment_terms_snapshot))='contado' THEN r.supplier_invoice_date "+
-      "WHEN BTRIM(r.payment_terms_snapshot) ~* '^(Crédito[[:space:]]+)?[0-9]+[[:space:]]+días THEN r.supplier_invoice_date + "+
+      "WHEN BTRIM(r.payment_terms_snapshot) ~* '^(Crédito[[:space:]]+)?[0-9]+[[:space:]]+días$' THEN r.supplier_invoice_date + "+
       "((regexp_match(r.payment_terms_snapshot,'([0-9]+)'))[1]::int) ELSE NULL END,"+
       "r.invoice_currency,r.invoice_exchange_rate,r.invoice_original_total,r.invoice_total_usd,0,'Pendiente',"+
       "'Factura registrada al contabilizar recepción '||r.receipt_number,$2::uuid FROM locked_receipt r "+
