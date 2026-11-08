@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0022",
+  "nextMigrationVersion": "0023",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -314,6 +314,15 @@
         "ledgerChecksum": "2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc",
         "appliedAt": "2026-11-08T14:08:48.980Z",
         "note": "Committed by guarded Development workflow run 42488309015 and independently verified against the live Development schema and migration ledger. Production was not targeted."
+      }
+    },
+    {
+      "filename": "0022_staged_purchase_receipts_and_journal.sql",
+      "version": "0022",
+      "sha256": "66a32e0e95e289112b4df3526380722cbe8fc5110ccb0d587bd7677b189d6148",
+      "database": {
+        "status": "pending",
+        "note": "New schema for staged receiving, purchase internal code and immutable journal. Not applied to Neon Development or Production; validate on the isolated QA branch and through the guarded migration workflow before any Development application."
       }
     }
   ],
