@@ -420,10 +420,21 @@ async function readBootstrap(sql, user, permissionContext) {
   const canViewAdjustments = hasPermission(permissionContext, "inventory.adjustments.view");
   if (canViewInbound || canViewOutbound || canViewAdjustments) {
     result.inventory_movements = movements.filter((movement) => {
+      const type = String(movement.movement_type || "");
       const delta = Number(movement.quantity_delta ?? movement.quantity ?? 0);
-      if (delta < 0) return canViewOutbound;
-      if (delta > 0) return canViewInbound;
-      return canViewAdjustments;
+
+      // Permission scope follows the business event, not just the sign.
+      // Adjustments remain restricted to their own section even when they
+      // increase/decrease stock; reversals inherit the direction they undo.
+      if (type === "Ajuste") return canViewAdjustments;
+      if (type === "Entrada" || type === "Devolucion") return canViewInbound;
+      if (type === "Salida") return canViewOutbound;
+      if (type === "Reversion") {
+        if (delta < 0) return canViewOutbound;
+        if (delta > 0) return canViewInbound;
+        return canViewAdjustments;
+      }
+      return false;
     });
   }
   if (hasPermission(permissionContext, "suppliers.records.view")) result.suppliers = suppliers;
