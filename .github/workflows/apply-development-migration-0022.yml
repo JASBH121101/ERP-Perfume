@@ -6,6 +6,7 @@ on:
       - feature/procurement-operations-and-audit
     paths:
       - .github/workflows/apply-development-migration-0022.yml
+      - tests/database-migration-integrity.test.mjs
 
 permissions:
   contents: read
