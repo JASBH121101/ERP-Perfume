@@ -1588,7 +1588,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const rows=stockRecords.map(p=>{
       const stock=Number(p.stock||0),minimum=Number(p.min_stock??0);
       const statusLabel=stock===0?'Agotado':(stock<=minimum?'Stock bajo':'Disponible');
-      return ['Existencia',p.sku,p.name,p.category,'',stock,minimum,statusLabel,p.location||''];
+      return ['Existencia',p.sku,p.name,p.category,'',stock,minimum,statusLabel,'','','',p.location||''];
     });
     movementRecords.forEach(m=>rows.push([
       'Movimiento',m.sku,m.product_name,m.movement_type,dateText(m.created_at),
