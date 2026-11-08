@@ -47,3 +47,8 @@ Preview release: fix mobile navigation drawer layering; the drawer now covers th
 Visual regression: Chromium at 390x844 confirms topbar z-index 60, scrim 100, sidebar 110; no horizontal overflow; outside-tap dismissal works. Screenshot artifact attached to ERP Quality Gate run 42330981669.
 Validation: 120 unit tests, 32 E2E tests, JB Expert QA PASS 93/100, Development Worker health checks passed.
 Source commit: d9a4ec7a1668a2fd812c43e2508af4dc35ee87b8.
+
+
+Preview release: integrate PR #16 — procurement workflow, staged supplier-invoice receipts, controlled posting, inventory costing, immutable balanced purchase journal, duplicate invoice guard, migration integrity and operational UI updates.
+Source commit: c69e32cf76656399fb348014521602895e294914.
+Deployment boundary: preview only; Pages frontend uses the existing Development API Worker and Neon Development. Production remains gated until the Neon Production schema, Neon Auth, runtime role and least-privilege grants are provisioned and validated.
