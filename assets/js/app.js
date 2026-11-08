@@ -671,7 +671,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "export-inventory": ["inventory.view"], "reverse-inventory-movement": ["inventory.movements.reverse"], "new-purchase": ["purchases.receipts.receive"],
     "submit-purchase-order": ["purchases.purchase_orders.submit"],
     "approve-purchase-order": ["purchases.approvals.approve"],
-    "cancel-purchase-order": ["purchases.purchase_orders.cancel"],
+    "cancel-purchase-order": ["purchases.purchase_orders.cancel"], "post-purchase-receipt": ["purchases.receipts.post"], "view-purchase-journal": ["purchases.receipts.journal.view"],
     "add-purchase-order-line": ["purchases.purchase_orders.create"],
     "remove-purchase-order-line": ["purchases.purchase_orders.create"],
     "new-purchase-payment": ["payables.payments.create"],
@@ -2723,10 +2723,19 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div id="purchase-order-lines">'+purchaseOrderLineHtml()+'</div>'+
       '<div class="form-grid purchase-order-adjustments"><label>Descuento USD<input name="discount_usd" type="number" min="0" step="0.01" value="0"></label><label>Flete estimado USD<input name="estimated_freight_usd" type="number" min="0" step="0.01" value="0"></label><label>Impuestos estimados USD<input name="estimated_taxes_usd" type="number" min="0" step="0.01" value="0"></label><label>Notas<input name="notes" maxlength="1000"></label></div>'+
       '<div class="form-actions"><button class="button button-primary" type="submit">Generar orden</button></div></form></section>':'';
+    const receiptRows=purchaseReceipts.slice().sort((a,b)=>String(b.emitted_at||b.received_at||"").localeCompare(String(a.emitted_at||a.received_at||""))).map(receipt=>{
+      const status=receipt.documentStatus||receipt.document_status||"Contabilizada";
+      const actions=[];
+      if(status==="Emitida"&&permissionGranted("purchases.receipts.post"))actions.push('<button class="button button-primary button-small" data-action="post-purchase-receipt" data-id="'+esc(receipt.id)+'">Contabilizar</button>');
+      if(status==="Contabilizada"&&permissionGranted("purchases.receipts.journal.view"))actions.push('<button class="button button-quiet button-small" data-action="view-purchase-journal" data-id="'+esc(receipt.id)+'">Comprobante diario</button>');
+      const statusClass=status==="Contabilizada"?"status-success":status==="Anulada"?"status-muted":"status-pending";
+      return '<tr><td data-label="Recepción"><strong>'+esc(receipt.receiptNumber||receipt.receipt_number||"—")+'</strong><small class="table-secondary">Emitida por '+esc(receipt.emitted_by_name||receipt.emittedByName||"Usuario no disponible")+'</small></td><td data-label="Factura">'+esc(receipt.supplier_invoice_number||"—")+'</td><td data-label="Fecha">'+dateText(receipt.supplier_invoice_date||receipt.emitted_at||receipt.received_at)+'</td><td data-label="Importe">'+money(Number(receipt.invoice_total_usd||0))+' USD</td><td data-label="Código de compra">'+(receipt.purchaseCode||receipt.purchase_code||"—")+'</td><td data-label="Estado"><span class="status-chip '+statusClass+'">'+esc(status)+'</span>'+(receipt.journal_number?'<small class="table-secondary">CD '+esc(receipt.journal_number)+'</small>':'')+'</td><td data-label="Acciones">'+(actions.join(" ")||"—")+'</td></tr>';
+    }).join('');
+    const receiptPanel='<article class="list-panel purchase-receipts-panel"><div class="panel-heading"><div><h2>Recepciones y comprobantes</h2><p>Emitidas pendientes de contabilizar o documentos ya registrados en el diario.</p></div><span class="ledger-count">'+purchaseReceipts.length+' documentos</span></div><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>RECEPCIÓN</th><th>FACTURA</th><th>FECHA</th><th>TOTAL USD</th><th>CÓDIGO COMPRA</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(receiptRows||'<tr><td colspan="7">Todavía no hay recepciones emitidas.</td></tr>')+'</tbody></table></div></article>';
     return heading(views.purchaseOrders,'<button class="button button-quiet" data-view="purchases">Compras recibidas</button>')+createForm+
       '<div class="summary-strip purchase-orders-summary-strip"><div class="summary-mini"><span>Órdenes</span><strong>'+purchaseOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+purchaseOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+purchaseOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+purchaseOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>'+
       '<article class="list-panel purchase-orders-list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>'+
-      '<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Crear y aprobar una orden no aumenta existencias. El stock y el costo promedio se actualizan únicamente cuando se confirma una recepción física.</p></div></div>';
+      receiptPanel+'<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Emitir una recepción registra la factura, pero no toca existencias ni cuentas por pagar. La contabilización genera el movimiento de inventario, la cuenta por pagar y el comprobante diario de forma atómica.</p></div></div>';
   }
   function renderPurchases(){
     const total=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
@@ -4224,6 +4233,28 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(action==="receive-purchase-order"){
       if(!permissionGranted("purchases.receipts.receive")||!permissionGranted("inventory.receipts.receive")){toast("Necesitas permisos de recepción de compras e inventario.");return;}
       openPurchaseReceiptDialog(button.getAttribute("data-id"));
+      return;
+    }
+    if(action==="post-purchase-receipt"){
+      const id=button.getAttribute("data-id");if(!id)return;
+      if(!permissionGranted("purchases.receipts.post")){toast("No tienes permiso para contabilizar recepciones.");return;}
+      if(!window.confirm("¿Contabilizar esta recepción? Se actualizarán existencias, cuenta por pagar y comprobante diario en una sola transacción."))return;
+      button.disabled=true;
+      try{const result=await erpApi("purchase-receipts/"+encodeURIComponent(id)+"/post",{method:"POST",body:"{}"});
+        await loadERPFromNeon(true);goToView("purchaseOrders");
+        toast("Recepción contabilizada. Código de compra "+(result.record?.purchase_code||"generado")+".");
+      }catch(error){toast(error?.message||"No se pudo contabilizar la recepción.");}
+      finally{button.disabled=false;}
+      return;
+    }
+    if(action==="view-purchase-journal"){
+      const id=button.getAttribute("data-id");if(!id)return;
+      try{
+        const result=await erpApi("purchase-receipts/"+encodeURIComponent(id)+"/journal");
+        const record=result.record||{},lines=Array.isArray(record.lines)?record.lines:[];
+        const detail=lines.map(line=>line.account_name+": "+money(Number(line.debit_usd||0))+" debe / "+money(Number(line.credit_usd||0))+" haber").join("\n");
+        window.alert("Comprobante diario "+record.journal_number+"\nCompra "+record.purchase_code+"\n"+record.description+"\n"+detail);
+      }catch(error){toast(error?.message||"No se pudo consultar el comprobante diario.");}
       return;
     }
     if(["submit-purchase-order","approve-purchase-order","cancel-purchase-order"].includes(action)){
