@@ -2690,7 +2690,7 @@ export async function handleERPRequest(request, env, user, sql) {
   if (resource === "audit" && request.method === "GET") {
     try {
       const rows = await sql.query(
-        "SELECT a.id,a.actor_user_id,u.display_name AS actor_name,a.action,a.entity_type,a.entity_id,a.details,a.created_at " +
+        "SELECT a.id,a.actor_user_id,COALESCE(NULLIF(u.display_name,''),u.email,'Usuario no disponible') AS actor_name,u.email AS actor_email,a.action,a.entity_type,a.entity_id,a.details,a.created_at " +
         "FROM audit_log a LEFT JOIN app_users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT 500"
       );
       return erpJson({ records: rows });
