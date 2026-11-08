@@ -455,12 +455,21 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         currency:order.currency, exchangeRate:Number(order.exchange_rate||1), subtotalUsd:Number(order.subtotal_usd||0),
         discountUsd:Number(order.discount_usd||0), freightUsd:Number(order.estimated_freight_usd||0),
         taxesUsd:Number(order.estimated_taxes_usd||0), totalUsd:Number(order.total_usd||0), status:order.status,
-        createdBy:order.created_by||null, approvedBy:order.approved_by||null, approvedAt:order.approved_at||null,
+        createdBy:order.created_by||null, createdByName:order.created_by_name||"Usuario no disponible",
+        approvedBy:order.approved_by||null, approvedByName:order.approved_by_name||"Usuario no disponible", approvedAt:order.approved_at||null,
         expectedDate:order.expected_delivery_date, paymentTerms:order.payment_terms||"", notes:order.notes||"", createdAt:order.created_at
       }));
       purchaseOrderItems = data.purchase_order_items || [];
-      purchaseReceipts = data.purchase_receipts || [];
-      purchaseReceiptItems = data.purchase_receipt_items || [];
+      purchaseReceipts = (data.purchase_receipts || []).map(receipt=>({...receipt,
+        purchaseOrderId:receipt.purchase_order_id, receiptNumber:receipt.receipt_number,
+        documentStatus:receipt.document_status||"Contabilizada", purchaseCode:receipt.purchase_code||null,
+        journalNumber:receipt.journal_number||null, emittedByName:receipt.emitted_by_name||"Usuario no disponible",
+        postedByName:receipt.posted_by_name||"Usuario no disponible"
+      }));
+      purchaseReceiptItems = (data.purchase_receipt_items || []).map(line=>({...line,
+        receiptId:line.receipt_id,purchaseOrderItemId:line.purchase_order_item_id,
+        quantityReceived:Number(line.quantity_received||0)
+      }));
       supplierInvoices = (data.supplier_invoices || []).map(invoice => ({
         id:invoice.id,supplierId:invoice.supplier_id,supplier:invoice.supplier_name,purchaseOrderId:invoice.purchase_order_id||null,
         invoiceNumber:invoice.invoice_number,invoiceDate:invoice.invoice_date,dueDate:invoice.due_date||null,currency:invoice.currency,
