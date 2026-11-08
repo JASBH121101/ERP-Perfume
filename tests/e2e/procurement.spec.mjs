@@ -385,7 +385,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(createPayload.currency).toBe('NIO');
   expect(api.data.purchase_orders[0].total_usd).toBe(36.5);
 
-  const orderRow = page.locator('tr').filter({ hasText: '1' });
+  const orderRow = page.locator('tr').filter({ hasText: 'Proveedor QA' });
   await expect(orderRow).toContainText('Borrador');
   const submitRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
@@ -393,17 +393,17 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   );
   await orderRow.locator('[data-action="submit-purchase-order"]').click();
   expect((await submitRequest).postDataJSON().status).toBe('Enviada');
-  await expect(page.locator('tr').filter({ hasText: '1' })).toContainText('Enviada');
+  await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Enviada');
 
   const approveRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
     request.method() === 'PATCH'
   );
-  await page.locator('tr').filter({ hasText: '1' }).locator('[data-action="approve-purchase-order"]').click();
+  await page.locator('tr').filter({ hasText: 'Proveedor QA' }).locator('[data-action="approve-purchase-order"]').click();
   expect((await approveRequest).postDataJSON().status).toBe('Confirmada');
-  await expect(page.locator('tr').filter({ hasText: '1' })).toContainText('Confirmada');
+  await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Confirmada');
 
-  await page.locator('tr').filter({ hasText: '1' }).locator('[data-action="receive-purchase-order"]').click();
+  await page.locator('tr').filter({ hasText: 'Proveedor QA' }).locator('[data-action="receive-purchase-order"]').click();
   const receiptDialog = page.locator('#purchase-receipt-dialog');
   await expect(receiptDialog).toBeVisible();
   const receiptLines = receiptDialog.locator('[data-receipt-line]');
@@ -421,7 +421,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptDialog.locator('[type="submit"]').click();
   const receiptPayload = (await receiptRequest).postDataJSON();
   expect(receiptPayload.items).toHaveLength(2);
-  await expect(page.locator('tr').filter({ hasText: '1' })).toContainText('Recepción parcial');
+  await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Recepción parcial');
 
   expect(api.data.purchase_receipts).toHaveLength(1);
   expect(api.data.purchase_receipts[0].document_status).toBe('Emitida');
