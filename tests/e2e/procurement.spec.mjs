@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { inventoryApiFixtureResponse } from './inventory-api-fixtures.mjs';
 
 const workerPattern = /\/api\/erp\/[^?]+/;
@@ -554,6 +555,7 @@ test('procurement history combines monthly, supplier and status filters and hand
   await expect(page.locator('#purchase-history-start')).toHaveValue('');
   await expect(page.locator('#purchase-history-receipt-status')).toHaveValue('all');
 
+  await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
   await page.locator('[data-action="toggle-export-menu"]').click();
   await expect(page.locator('#current-export-menu')).toBeVisible();
   const [download] = await Promise.all([
@@ -561,4 +563,7 @@ test('procurement history combines monthly, supplier and status filters and hand
     page.locator('[data-action="export-current-view"][data-format="csv"]').click()
   ]);
   expect(download.suggestedFilename()).toContain('purchaseOrders');
+  const csv = await readFile(await download.path(), 'utf8');
+  expect(csv).toContain('OLD-REC-17');
+  expect(csv).not.toContain('"Orden de compra"');
 });
