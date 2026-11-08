@@ -1,0 +1,245 @@
+name: Guarded Neon Development migration 0022
+
+on:
+  push:
+    branches:
+      - feature/procurement-operations-and-audit
+    paths:
+      - .github/workflows/apply-development-migration-0022.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jb-parfums-erp-development-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply-development:
+    if: github.ref == 'refs/heads/feature/procurement-operations-and-audit'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.ERP_MIGRATION_DATABASE_URL }}
+      ERP_ENVIRONMENT: development
+      ERP_MIGRATION_BRANCH: development
+      ERP_MIGRATION_BRANCH_ID: br-nameless-surf-bezeav6n
+      ERP_EXPECTED_NEON_ENDPOINT_HOST: ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech
+      ERP_MIGRATIONS_APPROVED: YES
+      EXPECTED_MIGRATION_SHA256: 60c2f6da1abaf7b061c8fc125141447c94414c01ce9a077cc980cd7a73af8d06
+
+    steps:
+      - name: Checkout the reviewed procurement branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/procurement-operations-and-audit
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify all pinned migration sources
+        run: npm run check:db
+
+      - name: Require exact Development-only migration configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MIGRATION_DATABASE_URL:-}" || {
+            echo "::error::ERP_MIGRATION_DATABASE_URL is not configured."
+            exit 1
+          }
+          test "${ERP_ENVIRONMENT}" = "development"
+          test "${ERP_MIGRATION_BRANCH}" = "development"
+          test "${ERP_MIGRATION_BRANCH_ID}" = "br-nameless-surf-bezeav6n"
+          test "${ERP_EXPECTED_NEON_ENDPOINT_HOST}" = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech"
+          test "${ERP_MIGRATIONS_APPROVED}" = "YES"
+
+      - name: Run live preflight and require migration 0022 only
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(npm run --silent migrate:db)"
+          printf '%s\\n' "$report"
+          mapfile -t pending < <(
+            printf '%s\\n' "$report" |
+              sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\\1/p'
+          )
+          if [[ "${#pending[@]}" -eq 1 && "${pending[0]}" == "0022" ]]; then
+            echo "migration_needed=true" >> "$GITHUB_OUTPUT"
+            echo "Live preflight confirms 0022 is the only pending migration."
+          elif [[ "${#pending[@]}" -eq 0 ]]; then
+            echo "migration_needed=false" >> "$GITHUB_OUTPUT"
+            echo "0022 is already recorded; no SQL will be re-applied."
+          else
+            echo "::error::Refusing to proceed: expected only pending migration 0022."
+            exit 1
+          fi
+
+      - name: Apply only through the protected repository migration runner
+        if: steps.preflight.outputs.migration_needed == 'true'
+        run: npm run migrate:db:apply
+
+      - name: Independently verify Development schema and migration ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { Pool } from "@neondatabase/serverless";
+
+          const expectedHost = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech";
+          const expectedChecksum = process.env.EXPECTED_MIGRATION_SHA256;
+          const url = new URL(process.env.MIGRATION_DATABASE_URL || "");
+          if (url.hostname.toLowerCase() !== expectedHost) {
+            throw new Error("Post-apply verification refused a non-Development Neon endpoint.");
+          }
+
+          const pool = new Pool({
+            connectionString: process.env.MIGRATION_DATABASE_URL,
+            max: 1,
+            connectionTimeoutMillis: 10000,
+            idleTimeoutMillis: 5000
+          });
+
+          try {
+            const result = await pool.query(`
+              SELECT
+                current_database() AS database_name,
+                current_user AS role_name,
+                (
+                  SELECT count(*) = 15
+                  FROM information_schema.columns
+                  WHERE table_schema = 'public'
+                    AND table_name = 'purchase_receipts'
+                    AND column_name = ANY(ARRAY[
+                      'document_status','supplier_invoice_number','supplier_invoice_date',
+                      'invoice_currency','invoice_exchange_rate','invoice_original_total',
+                      'invoice_total_usd','actual_taxes_usd','payment_terms_snapshot',
+                      'emitted_by','emitted_at','posted_by','posted_at','purchase_code',
+                      'supplier_invoice_id'
+                    ]::text[])
+                ) AS receipt_columns,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='purchase_receipt_items'
+                    AND column_name='invoice_unit_cost_input') AS receipt_item_cost_column,
+                to_regclass('public.purchase_journal_entries') IS NOT NULL AS journal_entries_table,
+                to_regclass('public.purchase_journal_lines') IS NOT NULL AS journal_lines_table,
+                to_regclass('public.purchase_receipt_number_seq') IS NOT NULL AS receipt_number_sequence,
+                to_regclass('public.purchase_code_seq') IS NOT NULL AS purchase_code_sequence,
+                to_regclass('public.purchase_journal_number_seq') IS NOT NULL AS journal_number_sequence,
+                (
+                  SELECT count(*) = 4
+                  FROM pg_constraint
+                  WHERE connamespace='public'::regnamespace
+                    AND conname = ANY(ARRAY[
+                      'purchase_receipts_document_status_check',
+                      'purchase_receipts_invoice_currency_check',
+                      'purchase_receipts_nonnegative_invoice_values_check',
+                      'purchase_receipt_items_invoice_unit_cost_check'
+                    ]::text[])
+                    AND convalidated
+                ) AS receipt_constraints,
+                (
+                  SELECT count(*) = 6
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='public'
+                    AND c.relname = ANY(ARRAY[
+                      'purchase_receipts_purchase_code_uq',
+                      'purchase_receipts_supplier_invoice_uq',
+                      'purchase_receipts_status_date_idx',
+                      'purchase_receipts_invoice_lookup_idx',
+                      'purchase_journal_entries_date_idx',
+                      'purchase_journal_lines_entry_idx'
+                    ]::text[])
+                ) AS receipt_and_journal_indexes,
+                to_regprocedure('public.prevent_purchase_journal_mutation()') IS NOT NULL AS journal_guard_function,
+                (
+                  SELECT count(*) = 2
+                  FROM pg_trigger t
+                  JOIN pg_class c ON c.oid=t.tgrelid
+                  JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='public'
+                    AND t.tgname = ANY(ARRAY[
+                      'purchase_journal_entries_append_only',
+                      'purchase_journal_lines_append_only'
+                    ]::text[])
+                    AND t.tgenabled <> 'D'
+                    AND NOT t.tgisinternal
+                ) AS append_only_triggers,
+                (
+                  SELECT count(*) = 2
+                  FROM public.permission_catalog
+                  WHERE permission_key = ANY(ARRAY[
+                    'purchases.receipts.post',
+                    'purchases.receipts.journal.view'
+                  ]::text[])
+                ) AS granular_permissions,
+                (
+                  SELECT count(*) = 5
+                  FROM public.role_template_permissions
+                  WHERE (role_key,permission_key) IN (
+                    ('admin','purchases.receipts.post'),
+                    ('finance','purchases.receipts.post'),
+                    ('admin','purchases.receipts.journal.view'),
+                    ('finance','purchases.receipts.journal.view'),
+                    ('inventory','purchases.receipts.journal.view')
+                  )
+                    AND allowed = TRUE
+                ) AS role_template_grants,
+                EXISTS (
+                  SELECT 1 FROM public.app_schema_migrations
+                  WHERE version='0022'
+                    AND filename='0022_staged_purchase_receipts_and_journal.sql'
+                    AND checksum=$1
+                ) AS ledger_checksum,
+                (
+                  SELECT applied_at
+                  FROM public.app_schema_migrations
+                  WHERE version='0022'
+                    AND filename='0022_staged_purchase_receipts_and_journal.sql'
+                    AND checksum=$1
+                ) AS applied_at
+            `, [expectedChecksum]);
+
+            const row = result.rows[0];
+            const checks = [
+              ["database and owner identity", row.database_name === "erp_perfume" && row.role_name === "erp_owner"],
+              ["15 staged-receipt columns", row.receipt_columns],
+              ["receipt item invoice cost", row.receipt_item_cost_column],
+              ["both purchase journal tables", row.journal_entries_table && row.journal_lines_table],
+              ["three receipt numbering sequences", row.receipt_number_sequence && row.purchase_code_sequence && row.journal_number_sequence],
+              ["four validated receipt constraints", row.receipt_constraints],
+              ["six required indexes", row.receipt_and_journal_indexes],
+              ["append-only journal guard function", row.journal_guard_function],
+              ["two enabled append-only journal triggers", row.append_only_triggers],
+              ["two granular receipt permissions", row.granular_permissions],
+              ["five role-template grants", row.role_template_grants],
+              ["0022 ledger filename and SHA-256", row.ledger_checksum && Boolean(row.applied_at)]
+            ];
+
+            for (const [name, passed] of checks) {
+              console.log((passed ? "PASS " : "FAIL ") + name);
+            }
+            if (checks.some(([, passed]) => !passed)) {
+              throw new Error("Post-apply verification failed one or more 0022 invariants.");
+            }
+            console.log("MIGRATION_0022_APPLIED_AT=" + new Date(row.applied_at).toISOString());
+            console.log("MIGRATION_0022_SHA256=" + expectedChecksum);
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Run deterministic unit tests
+        run: npm run test:unit
+
+      - name: Run browser E2E tests
+        run: npm run test:e2e
