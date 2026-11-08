@@ -169,9 +169,9 @@ async function installProcurementApi(page) {
         invoice_currency: body.invoice_currency,
         invoice_exchange_rate: Number(body.invoice_exchange_rate),
         invoice_original_total: Number(body.invoice_original_total),
-        invoice_total_usd: body.invoice_currency === 'NIO'
+        invoice_total_usd: Number((body.invoice_currency === 'NIO'
           ? Number(body.invoice_original_total) / Number(body.invoice_exchange_rate)
-          : Number(body.invoice_original_total),
+          : Number(body.invoice_original_total)).toFixed(2)),
         actual_freight_usd: Number(body.actual_freight_usd || 0),
         actual_taxes_usd: Number(body.actual_taxes_usd || 0),
         payment_terms_snapshot: body.payment_terms,
@@ -412,7 +412,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptLines.nth(1).locator('[data-receipt-quantity]').fill('2');
   await receiptDialog.locator('[name="actual_freight_usd"]').fill('1.5');
   await receiptDialog.locator('[name="supplier_invoice_number"]').fill('FAC-PROV-QA-001');
-  await receiptDialog.locator('[name="invoice_original_total"]').fill('732');
+  await expect(receiptDialog.locator('[name="invoice_original_total"]')).toHaveValue('766.04');
 
   const receiptRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order + '/receipts') &&
@@ -461,7 +461,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   const businessForm = page.locator('#business-form');
   expect(api.data.supplier_invoices).toHaveLength(1);
   expect(api.data.supplier_invoices[0].purchase_order_id).toBe(ids.order);
-  expect(api.data.supplier_invoices[0].amount_usd).toBe(20);
+  expect(api.data.supplier_invoices[0].amount_usd).toBe(20.93);
   const invoiceRow = page.locator('tr').filter({ hasText: 'FAC-PROV-QA-001' });
   await expect(invoiceRow).toContainText('Pendiente');
   await invoiceRow.locator('[data-action="new-supplier-invoice-payment"]').click();
