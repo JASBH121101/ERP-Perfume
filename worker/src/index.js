@@ -58,6 +58,52 @@ function getJwks(url) {
   return jwksCache.get(url);
 }
 
+export async function provisionBootstrapOwner(sql, authRecord, env) {
+  const configuredEmail = String(env?.BOOTSTRAP_OWNER_EMAIL || "").trim().toLowerCase();
+  const verifiedEmail = String(authRecord?.email || "").trim();
+  if (!configuredEmail || !verifiedEmail || verifiedEmail.toLowerCase() !== configuredEmail ||
+      authRecord?.email_verified !== true || !authRecord?.id) {
+    return null;
+  }
+
+  const displayName = String(authRecord.name || "").trim().slice(0, 120) ||
+    verifiedEmail.split("@")[0].slice(0, 120);
+
+  let rows;
+  try {
+    rows = await sql.query(
+      "INSERT INTO app_users (auth_user_id, email, display_name, role, active, position_title, " +
+      "account_status, must_change_password, role_template_key) " +
+      "VALUES ($1, $2, $3, 'owner', TRUE, 'Propietario', 'active', FALSE, 'owner') " +
+      "ON CONFLICT (auth_user_id) DO NOTHING " +
+      "RETURNING id, auth_user_id, email, display_name, role, role_template_key, position_title, " +
+      "account_status, must_change_password, active",
+      [String(authRecord.id), verifiedEmail, displayName]
+    );
+  } catch (error) {
+    // A matching email already linked to another identity must never be silently reassigned.
+    if (error?.code === "23505") return null;
+    throw error;
+  }
+
+  if (rows[0]) {
+    await sql.query(
+      "INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, details) " +
+      "VALUES ($1, 'bootstrap_owner', 'app_user', $2, $3::jsonb)",
+      [rows[0].id, rows[0].id, JSON.stringify({ email: verifiedEmail.toLowerCase(), role: "owner" })]
+    );
+    return rows[0];
+  }
+
+  const existing = await sql.query(
+    "SELECT id, auth_user_id, email, display_name, role, role_template_key, position_title, " +
+    "account_status, must_change_password, active " +
+    "FROM app_users WHERE auth_user_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1",
+    [String(authRecord.id), verifiedEmail]
+  );
+  return existing[0] || null;
+}
+
 async function requireUser(request, env) {
   if (!env?.NEON_AUTH_JWKS_URL || !env?.NEON_AUTH_BASE_URL || !env?.DATABASE_URL) {
     return { response: errorResponse(503, "AUTH_NOT_CONFIGURED", "Authentication is not configured.") };
@@ -92,7 +138,7 @@ async function requireUser(request, env) {
   try {
     const sql = getDatabase(env);
     const authRows = await sql.query(
-      'SELECT id, email, "emailVerified" AS email_verified FROM neon_auth."user" WHERE id = $1 LIMIT 1',
+      'SELECT id, name, email, "emailVerified" AS email_verified FROM neon_auth."user" WHERE id = $1 LIMIT 1',
       [authUserId]
     );
     const authRecord = authRows[0];
@@ -113,7 +159,7 @@ async function requireUser(request, env) {
       [authUserId, authRecord.email.trim()]
     );
 
-    const user = rows[0];
+    const user = rows[0] || await provisionBootstrapOwner(sql, authRecord, env);
     if (!user) {
       return { response: errorResponse(403, "ACCOUNT_NOT_PROVISIONED", "Esta cuenta todavía no fue autorizada por el propietario del ERP.") };
     }
