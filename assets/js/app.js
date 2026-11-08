@@ -2879,10 +2879,22 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const receiptPanel='<article class="list-panel purchase-receipts-panel"><div class="panel-heading"><div><h2>Recepciones y comprobantes</h2><p>Emitidas pendientes de contabilizar o documentos ya registrados en el diario.</p></div><span class="ledger-count">'+visibleReceipts.length+' documentos</span></div><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>RECEPCIÓN</th><th>FACTURA</th><th>FECHA</th><th>TOTAL USD</th><th>CÓDIGO COMPRA</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(receiptRows||'<tr><td colspan="7">Todavía no hay recepciones emitidas.</td></tr>')+'</tbody></table></div></article>';
     const supplierFilterOptions='<option value="all">Todos los proveedores</option>'+suppliers.map(supplier=>'<option value="'+esc(supplier.id)+'"'+(String(state.purchaseHistorySupplier)===String(supplier.id)?' selected':'')+'>'+esc(supplier.name)+'</option>').join("");
     const toolbar='<article class="list-panel purchase-history-tools"><div class="toolbar products-toolbar inventory-ledger-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg("search")+'<input id="purchase-history-search" type="search" value="'+esc(state.purchaseHistoryQuery)+'" placeholder="Orden, proveedor, producto o factura" aria-label="Buscar en órdenes y recepciones"></label></div><div class="toolbar-right"><select class="filter-select" id="purchase-history-supplier" aria-label="Filtrar por proveedor">'+supplierFilterOptions+'</select><select class="filter-select" id="purchase-history-order-status" aria-label="Estado de orden">'+[["all","Todas las órdenes"],["Borrador","Borrador"],["Enviada","Enviada"],["Confirmada","Confirmada"],["Recepción parcial","Recepción parcial"],["Recibida","Recibida"],["Cancelada","Cancelada"]].map(([value,label])=>'<option value="'+value+'"'+(state.purchaseHistoryOrderStatus===value?' selected':'')+'>'+label+'</option>').join("")+'</select><select class="filter-select" id="purchase-history-receipt-status" aria-label="Estado de recepción">'+[["all","Todas las recepciones"],["Emitida","Emitida"],["Contabilizada","Contabilizada"],["Anulada","Anulada"]].map(([value,label])=>'<option value="'+value+'"'+(state.purchaseHistoryReceiptStatus===value?' selected':'')+'>'+label+'</option>').join("")+'</select><input class="filter-select" type="date" id="purchase-history-start" value="'+esc(state.purchaseHistoryStartDate)+'" aria-label="Desde fecha"><input class="filter-select" type="date" id="purchase-history-end" value="'+esc(state.purchaseHistoryEndDate)+'" aria-label="Hasta fecha"><button class="button button-quiet button-small" type="button" data-action="clear-purchase-filters">Limpiar filtros</button></div></div>'+renderPurchaseHistoryArchive()+'<div class="panel-heading"><span class="ledger-count">'+visibleOrders.length+' órdenes · '+visibleReceipts.length+' recepciones</span></div></article>';
-    return heading(views.purchaseOrders,'<button class="button button-quiet" data-view="purchases">Compras recibidas</button>'+renderExportActions())+createForm+toolbar+
-      '<div class="summary-strip purchase-orders-summary-strip"><div class="summary-mini"><span>Órdenes filtradas</span><strong>'+visibleOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+visibleOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+visibleOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+visibleOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>'+
-      '<article class="list-panel purchase-orders-list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>'+
-      receiptPanel+'<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Emitir una recepción registra la factura, pero no toca existencias ni cuentas por pagar. La contabilización genera el movimiento de inventario, la cuenta por pagar y el comprobante diario de forma atómica.</p></div></div>';
+    const canViewOrders=permissionGranted("purchases.purchase_orders.view");
+    const canViewReceiptDocs=permissionGranted("purchases.receipts.view");
+    const availableSections=[
+      ...(canViewOrders?[["orders","Órdenes",visibleOrders.length]]:[]),
+      ...(canViewReceiptDocs?[["receipts","Recepciones",visibleReceipts.length]]:[]),
+      ...(canCreate?[["new","Nueva orden",null]]:[])
+    ];
+    if(!availableSections.some(([id])=>id===state.purchaseTab))state.purchaseTab=availableSections[0]?.[0]||"orders";
+    const sectionTabs='<nav class="purchase-module-tabs" role="tablist" aria-label="Secciones de abastecimiento">'+availableSections.map(([id,label,count])=>'<button type="button" role="tab" aria-selected="'+String(state.purchaseTab===id)+'" class="purchase-module-tab '+(state.purchaseTab===id?'is-active':'')+'" data-action="purchase-section-tab" data-tab="'+id+'"><span>'+label+'</span>'+(count===null?'':'<span class="purchase-tab-count">'+count+'</span>')+'</button>').join("")+'</nav>';
+    const orderSummary='<div class="summary-strip purchase-orders-summary-strip"><div class="summary-mini"><span>Órdenes filtradas</span><strong>'+visibleOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+visibleOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+visibleOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+visibleOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>';
+    const ordersPanel='<article class="list-panel purchase-orders-list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>';
+    const receiptNotice='<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Emitir una recepción registra la factura, pero no toca existencias ni cuentas por pagar. La contabilización genera el movimiento de inventario, la cuenta por pagar y el comprobante diario de forma atómica.</p></div></div>';
+    return heading(views.purchaseOrders,renderExportActions())+sectionTabs+
+      (state.purchaseTab==="new"?createForm:"")+
+      (state.purchaseTab==="orders"?toolbar+orderSummary+ordersPanel:"")+
+      (state.purchaseTab==="receipts"?receiptPanel+receiptNotice:"");
   }
   function renderPurchases(){
     const total=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
@@ -4406,6 +4418,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const action=button.getAttribute("data-action");
     if(action==="close-purchase-receipt"){document.getElementById("purchase-receipt-dialog")?.close();return;}
     if(action==="purchase-order-tab"){setPurchaseOrderTab(button.getAttribute("data-tab"));return;}
+    if(action==="purchase-section-tab"){
+      const tab=button.getAttribute("data-tab");
+      if(["orders","receipts","new"].includes(tab)){state.purchaseTab=tab;refreshPurchaseOrdersView(false);}
+      return;
+    }
     if(action==="add-purchase-order-line"){
       if(!permissionGranted("purchases.purchase_orders.create"))return;
       const container=document.getElementById("purchase-order-lines");
@@ -4579,6 +4596,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Generando…";}
       try{
         const response=await erpApi("purchase-orders",{method:"POST",body:JSON.stringify(payload)});
+        state.purchaseTab="orders";
         await loadERPFromNeon(true);goToView("purchaseOrders");
         toast("Orden "+(response.record?.order_number||"generada")+" como borrador. El inventario permanece sin cambios.");
       }
@@ -4611,6 +4629,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Emitiendo…";}
       try{
         const result=await erpApi("purchase-orders/"+encodeURIComponent(orderId)+"/receipts",{method:"POST",body:JSON.stringify(payload)});
+        state.purchaseTab="receipts";
         document.getElementById("purchase-receipt-dialog")?.close();await loadERPFromNeon(true);goToView("purchaseOrders");
         toast("Recepción "+(result.record?.receipt_number||"emitida")+" pendiente de contabilización. El inventario sigue sin cambios.");
       }catch(error){toast(error?.message||"No se pudo emitir la recepción.");}
