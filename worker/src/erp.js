@@ -145,7 +145,10 @@ export async function listInventoryMovements(sql, params = new URLSearchParams()
   const from = String(params.get("from") || "").trim();
   const to = String(params.get("to") || "").trim();
   const productId = String(params.get("product_id") || "").trim();
-  if (search.length > 120 || !["all", "Entrada", "Salida", "Ajuste", "Devolucion", "Reversion"].includes(movementType) ||
+  const actor = String(params.get("actor") || "").trim();
+  const supplier = String(params.get("supplier") || "").trim();
+  if (search.length > 120 || actor.length > 120 || supplier.length > 120 ||
+      !["all", "Entrada", "Salida", "Ajuste", "Devolucion", "Reversion"].includes(movementType) ||
       !validInventoryDate(from) || !validInventoryDate(to) || (from && to && from > to) ||
       (productId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId))) {
     return erpError(400, "INVALID_INVENTORY_FILTER", "Los filtros de movimientos no son válidos.");
@@ -172,6 +175,8 @@ export async function listInventoryMovements(sql, params = new URLSearchParams()
   const where = ["(" + visibility.join(" OR ") + ")"];
   if (movementType !== "all") where.push("im.movement_type = " + appendInventoryFilter(values, "?", movementType));
   if (productId) where.push("im.product_id = " + appendInventoryFilter(values, "?::uuid", productId));
+  if (actor) where.push("COALESCE(u.display_name,'') ILIKE " + appendInventoryFilter(values, "?", "%" + actor + "%"));
+  if (supplier) where.push("COALESCE(po.supplier_name,'') ILIKE " + appendInventoryFilter(values, "?", "%" + supplier + "%"));
   if (from) where.push("im.created_at >= " + appendInventoryFilter(values, "?::date", from));
   if (to) where.push("im.created_at < (" + appendInventoryFilter(values, "?::date", to) + " + INTERVAL '1 day')");
   if (search) {
@@ -187,8 +192,13 @@ export async function listInventoryMovements(sql, params = new URLSearchParams()
       "WITH filtered AS MATERIALIZED (" +
       "SELECT im.id,im.product_id,p.name AS product_name,p.sku,im.movement_type,im.quantity," +
       "im.quantity_delta,im.previous_stock,im.new_stock,im.note,im.reference_type,im.reference_id,im.created_at," +
+      "im.created_by AS actor_user_id,COALESCE(NULLIF(u.display_name,''),u.email,'Usuario no disponible') AS actor_name," +
+      "po.supplier_name,po.order_number AS purchase_order_number," +
       "EXISTS(SELECT 1 FROM inventory_movements reversed WHERE reversed.reference_type='reversal' AND reversed.reference_id=im.id::text) AS already_reversed " +
-      "FROM inventory_movements im JOIN products p ON p.id=im.product_id WHERE " + where.join(" AND ") +
+      "FROM inventory_movements im JOIN products p ON p.id=im.product_id " +
+      "LEFT JOIN app_users u ON u.id=im.created_by " +
+      "LEFT JOIN purchase_receipts pr ON im.reference_type='purchase_receipt' AND pr.id::text=im.reference_id " +
+      "LEFT JOIN purchase_orders po ON po.id=pr.purchase_order_id WHERE " + where.join(" AND ") +
       "), page_rows AS (" +
       "SELECT * FROM filtered ORDER BY created_at DESC,id DESC LIMIT " + limit + " OFFSET " + offset +
       ") SELECT (SELECT COUNT(*)::int FROM filtered) AS total, " +
