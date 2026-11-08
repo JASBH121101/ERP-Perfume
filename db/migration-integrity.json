@@ -35,7 +35,7 @@
     ],
     "productionInspected": true,
     "productionModified": false,
-    "note": "Updated from a read-only verification of Neon Development after guarded migration 0022 was committed. Migration 0022 was applied by the protected repository runner at 2026-11-08T20:23:20.004Z; the exact ledger rows and SHA-256 were independently observed. Neon Production was not modified.",
+    "note": "Updated from a read-only verification of Neon Development after guarded migration 0022 was committed. The exact 18 ledger rows, applied_at timestamp and SHA-256 were observed directly; Neon Production was not modified.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
     "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
     "productionInspectionDate": "2026-11-07",
@@ -324,8 +324,8 @@
       "database": {
         "status": "applied_checksum_verified",
         "ledgerChecksum": "60c2f6da1abaf7b061c8fc125141447c94414c01ce9a077cc980cd7a73af8d06",
-        "appliedAt": "2026-11-08T20:23:20.004Z",
-        "note": "Committed by guarded Development workflow run 42519818771 and independently verified against the live Development schema and migration ledger. Production was not targeted."
+        "appliedAt": "2026-11-08T20:23:20.004155Z",
+        "note": "Committed by guarded Development workflow run 42519818771 and independently verified against the live Development schema and migration ledger. The exact observed applied_at timestamp, filename and SHA-256 are recorded here. Production was not targeted."
       }
     }
   ],
