@@ -113,7 +113,7 @@ async function installProcurementApi(page) {
       }, 0);
       const order = {
         id: ids.order,
-        order_number: 'JB-OC-2026-000001',
+        order_number: '1',
         supplier_id: supplier.id,
         supplier_name: supplier.name,
         currency: body.currency,
@@ -163,61 +163,109 @@ async function installProcurementApi(page) {
       const order = data.purchase_orders.find(item => item.id === receiptMatch[1]);
       if (!order) return fulfill(route, { error: { message: 'Orden no encontrada.' } }, 404);
       const receipt = {
-        id: ids.receipt,
-        receipt_number: body.receipt_number,
-        purchase_order_id: order.id,
+        id: ids.receipt, receipt_number: '1', purchase_order_id: order.id,
+        supplier_invoice_number: body.supplier_invoice_number,
+        supplier_invoice_date: body.supplier_invoice_date,
+        invoice_currency: body.invoice_currency,
+        invoice_exchange_rate: Number(body.invoice_exchange_rate),
+        invoice_original_total: Number(body.invoice_original_total),
+        invoice_total_usd: body.invoice_currency === 'NIO'
+          ? Number(body.invoice_original_total) / Number(body.invoice_exchange_rate)
+          : Number(body.invoice_original_total),
         actual_freight_usd: Number(body.actual_freight_usd || 0),
-        notes: body.notes || null,
-        received_by: 'qa-owner',
-        received_at: '2026-11-05T10:15:00.000Z'
+        actual_taxes_usd: Number(body.actual_taxes_usd || 0),
+        payment_terms_snapshot: body.payment_terms,
+        notes: body.notes || null, document_status: 'Emitida',
+        emitted_by_name: 'QA Owner', emitted_at: '2026-11-05T10:15:00.000Z',
+        purchase_code: null
       };
-      const totalValue = body.items.reduce((sum, item) => {
-        const line = data.purchase_order_items.find(x => x.id === item.purchase_order_item_id);
-        return sum + Number(line.unit_cost_usd) * Number(item.quantity_received);
-      }, 0);
       data.purchase_receipts.push(receipt);
       for (const item of body.items) {
+        const line = data.purchase_order_items.find(x => x.id === item.purchase_order_item_id);
+        data.purchase_receipt_items.push({
+          id: 'qa-receipt-item-' + item.purchase_order_item_id,
+          receipt_id: receipt.id, purchase_order_item_id: line.id,
+          product_id: line.product_id, product_name: line.product_name,
+          quantity_received: Number(item.quantity_received),
+          invoice_unit_cost_input: Number(item.invoice_unit_cost_input),
+          landed_unit_cost_usd: Number(line.unit_cost_usd)
+        });
+      }
+      return fulfill(route, { record: receipt }, 201);
+    }
+
+    const postReceiptMatch = pathname.match(/^\/api\/erp\/purchase-receipts\/([^/]+)\/post$/);
+    if (postReceiptMatch && method === 'POST') {
+      const receipt = data.purchase_receipts.find(item => item.id === postReceiptMatch[1]);
+      if (!receipt || receipt.document_status !== 'Emitida') {
+        return fulfill(route, { error: { message: 'Recepción no pendiente.' } }, 409);
+      }
+      const order = data.purchase_orders.find(item => item.id === receipt.purchase_order_id);
+      const receiptItems = data.purchase_receipt_items.filter(item => item.receipt_id === receipt.id);
+      const totalValue = receiptItems.reduce((sum,item) => sum +
+        Number(data.purchase_order_items.find(line => line.id === item.purchase_order_item_id).unit_cost_usd) *
+        Number(item.quantity_received), 0);
+      for (const item of receiptItems) {
         const line = data.purchase_order_items.find(x => x.id === item.purchase_order_item_id);
         const product = data.products.find(x => x.id === line.product_id);
         const quantity = Number(item.quantity_received);
         const oldStock = Number(product.stock || 0);
-        const oldPurchaseCost = Number(product.purchase_cost_usd || 0);
+        const oldCost = Number(product.purchase_cost_usd || 0);
         const lineValue = Number(line.unit_cost_usd) * quantity;
-        const allocatedFreight = totalValue > 0 ? Number(body.actual_freight_usd || 0) * lineValue / totalValue : 0;
-        const landedUnit = Number(line.unit_cost_usd) + allocatedFreight / quantity;
+        const freight = totalValue > 0 ? Number(receipt.actual_freight_usd || 0) * lineValue / totalValue : 0;
+        const landedUnit = Number(line.unit_cost_usd) + freight / quantity;
         const nextStock = oldStock + quantity;
         product.stock = nextStock;
-        product.purchase_cost_usd = Number(((oldStock * oldPurchaseCost + quantity * landedUnit) / nextStock).toFixed(2));
+        product.purchase_cost_usd = Number(((oldStock * oldCost + quantity * landedUnit) / nextStock).toFixed(2));
         product.unit_cost_usd = Number((product.purchase_cost_usd + Number(product.additional_cost_usd || 0)).toFixed(2));
         line.received_quantity += quantity;
-        data.purchase_receipt_items.push({
-          id: 'qa-receipt-item-' + item.purchase_order_item_id,
-          receipt_id: receipt.id,
-          purchase_order_item_id: line.id,
-          product_id: product.id,
-          product_name: product.name,
-          quantity_received: quantity,
-          landed_unit_cost_usd: Number(landedUnit.toFixed(4))
-        });
+        item.landed_unit_cost_usd = Number(landedUnit.toFixed(4));
         data.inventory_movements.unshift({
           id: 'qa-po-movement-' + item.purchase_order_item_id,
-          product_id: product.id,
-          movement_type: 'Entrada',
-          quantity,
-          quantity_delta: quantity,
-          previous_stock: oldStock,
-          new_stock: nextStock,
-          note: 'Recepción ' + receipt.receipt_number,
-          reference_type: 'purchase_receipt',
-          reference_id: receipt.id,
-          created_at: receipt.received_at
+          product_id: product.id, movement_type: 'Entrada', quantity,
+          quantity_delta: quantity, previous_stock: oldStock, new_stock: nextStock,
+          note: 'Recepción ' + receipt.receipt_number, reference_type: 'purchase_receipt',
+          reference_id: receipt.id, actor_name: 'QA Owner', supplier_name: order.supplier_name,
+          purchase_order_number: order.order_number, created_at: '2026-11-05T10:20:00.000Z'
         });
       }
-      const allReceived = data.purchase_order_items
-        .filter(x => x.purchase_order_id === order.id)
+      const allReceived = data.purchase_order_items.filter(x => x.purchase_order_id === order.id)
         .every(x => x.received_quantity >= x.ordered_quantity);
       order.status = allReceived ? 'Recibida' : 'Recepción parcial';
-      return fulfill(route, { record: { ...receipt, purchase_order_status: order.status } }, 201);
+      receipt.document_status = 'Contabilizada';
+      receipt.purchase_code = 1;
+      receipt.posted_by_name = 'QA Owner';
+      receipt.journal_number = 1;
+      const invoice = {
+        id: ids.invoice, supplier_id: order.supplier_id, supplier_name: order.supplier_name,
+        purchase_order_id: order.id, invoice_number: receipt.supplier_invoice_number,
+        invoice_date: receipt.supplier_invoice_date, due_date: receipt.supplier_invoice_date,
+        currency: receipt.invoice_currency, exchange_rate: receipt.invoice_exchange_rate,
+        original_amount: receipt.invoice_original_total, amount_usd: receipt.invoice_total_usd,
+        paid_amount_usd: 0, status: 'Pendiente', notes: 'Factura registrada al contabilizar recepción'
+      };
+      data.supplier_invoices.push(invoice);
+      receipt.supplier_invoice_id = invoice.id;
+      data.purchase_journal_entries = [{
+        id: 'qa-journal-entry', journal_number: 1, purchase_receipt_id: receipt.id,
+        purchase_code: 1, entry_date: receipt.supplier_invoice_date,
+        description: 'Compra 1 · Factura ' + receipt.supplier_invoice_number,
+        currency: receipt.invoice_currency, exchange_rate: receipt.invoice_exchange_rate,
+        total_debit_usd: receipt.invoice_total_usd, total_credit_usd: receipt.invoice_total_usd,
+        status: 'Contabilizado', lines: [
+          { line_number: 1, account_name: 'Inventario', debit_usd: receipt.invoice_total_usd, credit_usd: 0 },
+          { line_number: 2, account_name: 'Cuentas por pagar a proveedores', debit_usd: 0, credit_usd: receipt.invoice_total_usd }
+        ]
+      }];
+      return fulfill(route, { record: { ...receipt, journal_number: 1, purchase_order_status: order.status } });
+    }
+
+    const journalMatch = pathname.match(/^\/api\/erp\/purchase-receipts\/([^/]+)\/journal$/);
+    if (journalMatch && method === 'GET') {
+      const receipt = data.purchase_receipts.find(item => item.id === journalMatch[1]);
+      const journal = data.purchase_journal_entries?.find(item => item.purchase_receipt_id === receipt?.id);
+      if (!journal) return fulfill(route, { error: { message: 'Comprobante no encontrado.' } }, 404);
+      return fulfill(route, { record: { ...journal, receipt_number: receipt.receipt_number } });
     }
 
     if (pathname === '/api/erp/supplier-invoices' && method === 'POST') {
@@ -337,7 +385,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(createPayload.currency).toBe('NIO');
   expect(api.data.purchase_orders[0].total_usd).toBe(36.5);
 
-  const orderRow = page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' });
+  const orderRow = page.locator('tr').filter({ hasText: '1' });
   await expect(orderRow).toContainText('Borrador');
   const submitRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
@@ -345,17 +393,17 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   );
   await orderRow.locator('[data-action="submit-purchase-order"]').click();
   expect((await submitRequest).postDataJSON().status).toBe('Enviada');
-  await expect(page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' })).toContainText('Enviada');
+  await expect(page.locator('tr').filter({ hasText: '1' })).toContainText('Enviada');
 
   const approveRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order) &&
     request.method() === 'PATCH'
   );
-  await page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' }).locator('[data-action="approve-purchase-order"]').click();
+  await page.locator('tr').filter({ hasText: '1' }).locator('[data-action="approve-purchase-order"]').click();
   expect((await approveRequest).postDataJSON().status).toBe('Confirmada');
-  await expect(page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' })).toContainText('Confirmada');
+  await expect(page.locator('tr').filter({ hasText: '1' })).toContainText('Confirmada');
 
-  await page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' }).locator('[data-action="receive-purchase-order"]').click();
+  await page.locator('tr').filter({ hasText: '1' }).locator('[data-action="receive-purchase-order"]').click();
   const receiptDialog = page.locator('#purchase-receipt-dialog');
   await expect(receiptDialog).toBeVisible();
   const receiptLines = receiptDialog.locator('[data-receipt-line]');
@@ -371,7 +419,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptDialog.locator('[type="submit"]').click();
   const receiptPayload = (await receiptRequest).postDataJSON();
   expect(receiptPayload.items).toHaveLength(2);
-  await expect(page.locator('tr').filter({ hasText: 'JB-OC-2026-000001' })).toContainText('Recepción parcial');
+  await expect(page.locator('tr').filter({ hasText: '1' })).toContainText('Recepción parcial');
 
   expect(api.data.purchase_receipts).toHaveLength(1);
   expect(api.data.purchase_order_items.map(item => item.received_quantity)).toEqual([1, 2]);
