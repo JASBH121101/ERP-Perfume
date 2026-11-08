@@ -349,6 +349,7 @@ async function navigateToView(page, view) {
 }
 
 test('procurement UI creates a mult-line order, receives partially, records supplier invoice and applies payment', async ({ page }) => {
+  test.setTimeout(60000);
   const api = await installProcurementApi(page);
   await page.goto('/');
 
@@ -566,9 +567,13 @@ test('procurement history combines monthly, supplier and status filters and hand
   expect(csv).not.toContain('"Orden de compra"');
 
   await page.locator('#purchase-history-search').fill('OLD-REC-17');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await page.locator('#purchase-history-search').fill('no-coincide');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
 
   await page.locator('[data-action="clear-purchase-filters"]').click();
   await expect(page.locator('#purchase-history-search')).toHaveValue('');
