@@ -1092,61 +1092,238 @@ async function changePurchaseOrderStatus(sql,user,id,body) {
 }
 
 export async function createPurchaseReceipt(sql,user,orderId,body) {
-  const freight = Number(body.actual_freight_usd ?? 0);
-  const notes = body.notes == null ? null : String(body.notes).trim();
-  const rawItems = Array.isArray(body.items) ? body.items : [];
-  if (!/^[0-9a-f-]{36}$/i.test(String(orderId)) || !Number.isFinite(freight) || freight < 0 ||
-      freight > 999999999999.99 || (notes && notes.length > 1000) || rawItems.length < 1 || rawItems.length > 100) {
-    return erpError(400,"INVALID_PURCHASE_RECEIPT","Revisa el flete real, las notas y las cantidades recibidas.");
+  const freight=Number(body.actual_freight_usd??0);
+  const taxes=Number(body.actual_taxes_usd??0);
+  const notes=body.notes==null?null:String(body.notes).trim();
+  const invoiceNumber=String(body.supplier_invoice_number||"").trim();
+  const invoiceDate=String(body.supplier_invoice_date||"").trim();
+  const invoiceCurrency=String(body.invoice_currency||"").toUpperCase();
+  const invoiceRate=Number(body.invoice_exchange_rate??0);
+  const invoiceOriginalTotal=Number(body.invoice_original_total??0);
+  const paymentTerms=String(body.payment_terms||"").trim();
+  const rawItems=Array.isArray(body.items)?body.items:[];
+  const termsValid=/^(Contado|Por acordar|Crédito\s+(?:[1-9]|[1-9][0-9]|[1-2][0-9]{2}|3[0-5][0-9]|360)\s+días)$/i.test(paymentTerms);
+  if(!/^[0-9a-f-]{36}$/i.test(String(orderId))||!invoiceNumber||invoiceNumber.length>100||
+     !/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)||!["USD","NIO"].includes(invoiceCurrency)||
+     !Number.isFinite(invoiceRate)||invoiceRate<=0||invoiceRate>100000||
+     !Number.isFinite(invoiceOriginalTotal)||invoiceOriginalTotal<=0||invoiceOriginalTotal>999999999999.99||
+     !Number.isFinite(freight)||freight<0||freight>999999999999.99||
+     !Number.isFinite(taxes)||taxes<0||taxes>999999999999.99||
+     !termsValid||(notes&&notes.length>1000)||rawItems.length<1||rawItems.length>100){
+    return erpError(400,"INVALID_PURCHASE_RECEIPT","Revisa factura, fecha, moneda, condición de pago, flete, impuestos y líneas recibidas.");
   }
-  const seen = new Set(), items = [];
-  for (const item of rawItems) {
-    const lineId=String(item?.purchase_order_item_id||"").trim(), quantity=Number(item?.quantity_received);
-    if(!/^[0-9a-f-]{36}$/i.test(lineId)||!Number.isInteger(quantity)||quantity<1||quantity>1000000)
-      return erpError(400,"INVALID_PURCHASE_RECEIPT_LINE","Cada línea recibida requiere una referencia y una cantidad entera positiva.");
-    if(seen.has(lineId)) return erpError(400,"DUPLICATE_RECEIPT_LINE","No repitas una línea de la orden en la misma recepción.");
-    seen.add(lineId); items.push({purchase_order_item_id:lineId,quantity_received:quantity});
+  const seen=new Set(),items=[];
+  for(const item of rawItems){
+    const lineId=String(item?.purchase_order_item_id||"").trim();
+    const quantity=Number(item?.quantity_received);
+    const unitInput=Number(item?.invoice_unit_cost_input);
+    if(!/^[0-9a-f-]{36}$/i.test(lineId)||!Number.isInteger(quantity)||quantity<1||quantity>1000000||
+       !Number.isFinite(unitInput)||unitInput<=0||unitInput>999999999999.99){
+      return erpError(400,"INVALID_PURCHASE_RECEIPT_LINE","Cada línea requiere referencia, cantidad entera y precio unitario positivo.");
+    }
+    if(seen.has(lineId))return erpError(400,"DUPLICATE_RECEIPT_LINE","No repitas una línea de la orden en la misma recepción.");
+    seen.add(lineId);
+    items.push({purchase_order_item_id:lineId,quantity_received:quantity,invoice_unit_cost_input:roundCurrency(unitInput)});
   }
-  const generatedNumber="REC-"+new Date().toISOString().slice(0,10).replace(/-/g,"")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
-  const receiptNumber=String(body.receipt_number||generatedNumber).trim();
-  if(!/^[A-Z0-9-]{8,64}$/i.test(receiptNumber)) return erpError(400,"INVALID_RECEIPT_NUMBER","El número de recepción no tiene un formato válido.");
-  try {
+  try{
     const rows=await sql.query(
-      "WITH input AS MATERIALIZED (SELECT $1::uuid order_id,$2::text receipt_number,$3::numeric actual_freight_usd,$4::text notes,$5::jsonb items,$6::uuid actor),"+
-      "locked_order AS MATERIALIZED (SELECT po.id,po.status,po.subtotal_usd,po.discount_usd FROM purchase_orders po JOIN input i ON i.order_id=po.id FOR UPDATE OF po),"+
-      "order_lines AS MATERIALIZED (SELECT oi.id AS purchase_order_item_id,oi.purchase_order_id,oi.product_id,oi.product_name,oi.ordered_quantity,oi.received_quantity,oi.unit_cost_usd,p.stock AS previous_stock,p.purchase_cost_usd,p.additional_cost_usd FROM purchase_order_items oi JOIN locked_order po ON po.id=oi.purchase_order_id JOIN products p ON p.id=oi.product_id FOR UPDATE OF oi,p),"+
-      "requested AS MATERIALIZED (SELECT * FROM jsonb_to_recordset((SELECT items FROM input)) AS x(purchase_order_item_id uuid,quantity_received integer)),"+
-      "matched AS MATERIALIZED (SELECT l.*,r.quantity_received FROM order_lines l JOIN requested r ON r.purchase_order_item_id=l.purchase_order_item_id),"+
-      "validation AS MATERIALIZED (SELECT EXISTS(SELECT 1 FROM locked_order) AS order_exists,COALESCE((SELECT status FROM locked_order),'') AS current_status,(SELECT COUNT(*) FROM requested)::int AS request_count,(SELECT COUNT(*) FROM matched)::int AS matched_count,(SELECT COUNT(DISTINCT purchase_order_item_id) FROM requested)::int AS distinct_count,(SELECT COUNT(*) FROM matched WHERE quantity_received<1 OR quantity_received>(ordered_quantity-received_quantity))::int AS invalid_quantity_count,(SELECT COUNT(*) FROM order_lines)::int AS order_line_count),"+
-      "merchandise AS MATERIALIZED (SELECT COALESCE(SUM(unit_cost_usd*quantity_received),0)::numeric AS total_value FROM matched),"+
-      "priced AS MATERIALIZED (SELECT m.*,ROUND(m.unit_cost_usd*(1-COALESCE((SELECT discount_usd/NULLIF(subtotal_usd,0) FROM locked_order),0)+CASE WHEN merchandise.total_value>0 THEN (SELECT actual_freight_usd FROM input)/merchandise.total_value ELSE 0 END),4) AS landed_unit_cost_usd FROM matched m CROSS JOIN merchandise),"+
-      "created_receipt AS (INSERT INTO purchase_receipts(receipt_number,purchase_order_id,actual_freight_usd,notes,received_by) SELECT i.receipt_number,i.order_id,i.actual_freight_usd,i.notes,i.actor FROM input i CROSS JOIN validation v WHERE v.order_exists AND v.current_status IN ('Confirmada','Recepción parcial') AND v.request_count>0 AND v.request_count=v.matched_count AND v.request_count=v.distinct_count AND v.invalid_quantity_count=0 AND v.order_line_count>0 RETURNING *),"+
-      "receipt_lines AS (INSERT INTO purchase_receipt_items(receipt_id,purchase_order_item_id,product_id,product_name,quantity_received,landed_unit_cost_usd) SELECT r.id,p.purchase_order_item_id,p.product_id,p.product_name,p.quantity_received,p.landed_unit_cost_usd FROM created_receipt r CROSS JOIN priced p RETURNING id),"+
-      "updated_order_items AS (UPDATE purchase_order_items oi SET received_quantity=oi.received_quantity+p.quantity_received FROM priced p CROSS JOIN created_receipt r WHERE oi.id=p.purchase_order_item_id AND EXISTS(SELECT 1 FROM receipt_lines) RETURNING oi.id),"+
-      "updated_products AS (UPDATE products product SET stock=product.stock+p.quantity_received,purchase_cost_usd=ROUND(((product.purchase_cost_usd*p.previous_stock)+(p.landed_unit_cost_usd*p.quantity_received))/NULLIF(p.previous_stock+p.quantity_received,0),2),unit_cost_usd=ROUND(((product.purchase_cost_usd*p.previous_stock)+(p.landed_unit_cost_usd*p.quantity_received))/NULLIF(p.previous_stock+p.quantity_received,0),2)+product.additional_cost_usd,updated_at=NOW() FROM priced p WHERE product.id=p.product_id AND EXISTS(SELECT 1 FROM updated_order_items) RETURNING product.id),"+
-      "movements AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) SELECT p.product_id,'Entrada',p.quantity_received,p.quantity_received,p.previous_stock,p.previous_stock+p.quantity_received,'Recepción '+i.receipt_number,'purchase_receipt',r.id::text,i.actor FROM priced p JOIN updated_products u ON u.id=p.product_id CROSS JOIN created_receipt r CROSS JOIN input i RETURNING id),"+
-      "remaining AS MATERIALIZED (SELECT COUNT(*) FILTER(WHERE oi.received_quantity+COALESCE(req.quantity_received,0)<oi.ordered_quantity)::int AS open_lines FROM purchase_order_items oi JOIN locked_order po ON po.id=oi.purchase_order_id LEFT JOIN requested req ON req.purchase_order_item_id=oi.id),"+
-      "updated_order AS (UPDATE purchase_orders po SET status=CASE WHEN remaining.open_lines=0 THEN 'Recibida' ELSE 'Recepción parcial' END,updated_at=NOW() FROM remaining CROSS JOIN created_receipt r WHERE po.id=r.purchase_order_id AND EXISTS(SELECT 1 FROM movements) RETURNING po.id,po.status),"+
-      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'receive','purchase_receipt',r.id::text,jsonb_build_object('receipt_number',r.receipt_number,'purchase_order_id',r.purchase_order_id,'actual_freight_usd',r.actual_freight_usd,'line_count',(SELECT COUNT(*) FROM receipt_lines),'new_order_status',u.status) FROM input i CROSS JOIN created_receipt r CROSS JOIN updated_order u RETURNING id) "+
-      "SELECT r.*,(SELECT COUNT(*) FROM receipt_lines)::int AS item_count,u.status AS purchase_order_status,v.order_exists,v.current_status AS previous_order_status,v.request_count,v.matched_count,v.distinct_count,v.invalid_quantity_count,v.order_line_count FROM validation v LEFT JOIN created_receipt r ON TRUE LEFT JOIN updated_order u ON TRUE",
-      [orderId,receiptNumber,roundCurrency(freight),notes,JSON.stringify(items),user.id]
+      "WITH input AS MATERIALIZED (SELECT $1::uuid order_id,$2::text invoice_number,$3::date invoice_date,$4::text currency,"+
+      "$5::numeric exchange_rate,$6::numeric original_total,$7::numeric freight_usd,$8::numeric taxes_usd,"+
+      "$9::text payment_terms,$10::text notes,$11::jsonb items,$12::uuid actor),"+
+      "generated AS MATERIALIZED (SELECT nextval('public.purchase_receipt_number_seq')::text receipt_number),"+
+      "locked_order AS MATERIALIZED (SELECT po.* FROM purchase_orders po JOIN input i ON i.order_id=po.id FOR UPDATE OF po),"+
+      "order_lines AS MATERIALIZED (SELECT oi.id,oi.purchase_order_id,oi.product_id,oi.product_name,oi.ordered_quantity,oi.received_quantity,"+
+      "oi.unit_cost_input,oi.unit_cost_usd FROM purchase_order_items oi JOIN locked_order po ON po.id=oi.purchase_order_id FOR UPDATE OF oi),"+
+      "requested AS MATERIALIZED (SELECT * FROM jsonb_to_recordset((SELECT items FROM input)) AS x(purchase_order_item_id uuid,quantity_received integer,invoice_unit_cost_input numeric)),"+
+      "reserved AS MATERIALIZED (SELECT pri.purchase_order_item_id,SUM(pri.quantity_received)::int reserved_quantity "+
+      "FROM purchase_receipt_items pri JOIN purchase_receipts pr ON pr.id=pri.receipt_id "+
+      "JOIN locked_order po ON po.id=pr.purchase_order_id WHERE pr.document_status='Emitida' GROUP BY pri.purchase_order_item_id),"+
+      "matched AS MATERIALIZED (SELECT l.*,r.quantity_received,r.invoice_unit_cost_input,COALESCE(rv.reserved_quantity,0) reserved_quantity "+
+      "FROM order_lines l JOIN requested r ON r.purchase_order_item_id=l.id LEFT JOIN reserved rv ON rv.purchase_order_item_id=l.id),"+
+      "merchandise AS MATERIALIZED (SELECT COALESCE(SUM(m.quantity_received*m.unit_cost_usd),0)::numeric gross_usd,"+
+      "COALESCE(SUM(m.quantity_received*m.unit_cost_input),0)::numeric gross_original FROM matched m),"+
+      "validation AS MATERIALIZED (SELECT EXISTS(SELECT 1 FROM locked_order) order_exists,"+
+      "COALESCE((SELECT status FROM locked_order),'') order_status,"+
+      "COALESCE((SELECT currency FROM locked_order),'') order_currency,"+
+      "COALESCE((SELECT exchange_rate FROM locked_order),0)::numeric order_rate,"+
+      "COALESCE((SELECT payment_terms FROM locked_order),'') order_payment_terms,"+
+      "(SELECT COUNT(*) FROM requested)::int request_count,(SELECT COUNT(*) FROM matched)::int matched_count,"+
+      "(SELECT COUNT(DISTINCT purchase_order_item_id) FROM requested)::int distinct_count,"+
+      "(SELECT COUNT(*) FROM matched WHERE quantity_received>ordered_quantity-received_quantity-reserved_quantity)::int invalid_quantity_count,"+
+      "(SELECT COUNT(*) FROM matched WHERE ABS(invoice_unit_cost_input-unit_cost_input)>0.01)::int price_mismatch_count,"+
+      "(SELECT COUNT(*) FROM order_lines)::int order_line_count,"+
+      "CASE WHEN (SELECT currency FROM locked_order)='NIO' THEN (SELECT gross_original FROM merchandise)/(SELECT exchange_rate FROM locked_order) "+
+      "ELSE (SELECT gross_original FROM merchandise) END AS expected_merchandise_usd,"+
+      "(SELECT discount_usd FROM locked_order) AS order_discount_usd,(SELECT subtotal_usd FROM locked_order) AS order_subtotal_usd),"+
+      "amount_check AS MATERIALIZED (SELECT v.*,"+
+      "ROUND(v.expected_merchandise_usd-CASE WHEN v.order_subtotal_usd>0 THEN v.order_discount_usd*v.expected_merchandise_usd/v.order_subtotal_usd ELSE 0 END+"+
+      "(SELECT freight_usd+taxes_usd FROM input),2) AS expected_invoice_usd,"+
+      "ROUND((SELECT original_total FROM input)/NULLIF((SELECT exchange_rate FROM input),0),2) AS supplied_invoice_usd "+
+      "FROM validation v CROSS JOIN input),"+
+      "created_receipt AS (INSERT INTO purchase_receipts(receipt_number,purchase_order_id,actual_freight_usd,notes,received_by,"+
+      "document_status,supplier_invoice_number,supplier_invoice_date,invoice_currency,invoice_exchange_rate,"+
+      "invoice_original_total,invoice_total_usd,actual_taxes_usd,payment_terms_snapshot,emitted_by,emitted_at) "+
+      "SELECT g.receipt_number,i.order_id,i.freight_usd,i.notes,NULL,'Emitida',i.invoice_number,i.invoice_date,i.currency,"+
+      "i.exchange_rate,i.original_total,a.supplied_invoice_usd,i.taxes_usd,i.payment_terms,i.actor,NOW() "+
+      "FROM input i CROSS JOIN generated g CROSS JOIN amount_check a "+
+      "WHERE a.order_exists AND a.order_status IN ('Confirmada','Recepción parcial') "+
+      "AND a.order_currency=i.currency AND ABS(a.order_rate-i.exchange_rate)<0.0001 "+
+      "AND LOWER(BTRIM(a.order_payment_terms))=LOWER(BTRIM(i.payment_terms)) "+
+      "AND a.request_count>0 AND a.request_count=a.matched_count AND a.request_count=a.distinct_count "+
+      "AND a.invalid_quantity_count=0 AND a.price_mismatch_count=0 AND a.order_line_count>0 "+
+      "AND ABS(a.expected_invoice_usd-a.supplied_invoice_usd)<=0.02 "+
+      "AND NOT EXISTS(SELECT 1 FROM supplier_invoices si JOIN locked_order po ON po.supplier_id=si.supplier_id "+
+      "WHERE si.invoice_number=i.invoice_number) RETURNING *),"+
+      "receipt_lines AS (INSERT INTO purchase_receipt_items(receipt_id,purchase_order_item_id,product_id,product_name,"+
+      "quantity_received,landed_unit_cost_usd,invoice_unit_cost_input) "+
+      "SELECT r.id,m.id,m.product_id,m.product_name,m.quantity_received,"+
+      "ROUND((CASE WHEN i.currency='NIO' THEN m.invoice_unit_cost_input/i.exchange_rate ELSE m.invoice_unit_cost_input END) * "+
+      "(1-CASE WHEN a.order_subtotal_usd>0 THEN a.order_discount_usd/a.order_subtotal_usd ELSE 0 END)+"+
+      "CASE WHEN a.expected_merchandise_usd>0 THEN i.freight_usd*m.unit_cost_usd*m.quantity_received/a.expected_merchandise_usd ELSE 0 END/NULLIF(m.quantity_received,0)+"+
+      "CASE WHEN a.expected_merchandise_usd>0 THEN i.taxes_usd*m.unit_cost_usd*m.quantity_received/a.expected_merchandise_usd ELSE 0 END/NULLIF(m.quantity_received,0),4),"+
+      "m.invoice_unit_cost_input FROM matched m CROSS JOIN created_receipt r CROSS JOIN input i CROSS JOIN amount_check a RETURNING id),"+
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) "+
+      "SELECT i.actor,'emit','purchase_receipt',r.id::text,jsonb_build_object('receipt_number',r.receipt_number,"+
+      "'purchase_order_id',r.purchase_order_id,'supplier_invoice_number',r.supplier_invoice_number,"+
+      "'invoice_date',r.supplier_invoice_date,'invoice_total_usd',r.invoice_total_usd,"+
+      "'line_count',(SELECT COUNT(*) FROM receipt_lines),'document_status',r.document_status) "+
+      "FROM input i CROSS JOIN created_receipt r RETURNING id) "+
+      "SELECT r.*,a.order_exists,a.order_status,a.order_currency,a.order_rate,a.order_payment_terms,a.request_count,"+
+      "a.matched_count,a.distinct_count,a.invalid_quantity_count,a.price_mismatch_count,a.expected_invoice_usd,a.supplied_invoice_usd "+
+      "FROM amount_check a LEFT JOIN created_receipt r ON TRUE",
+      [orderId,invoiceNumber,invoiceDate,invoiceCurrency,invoiceRate,roundMoney(invoiceOriginalTotal),roundMoney(freight),roundMoney(taxes),paymentTerms,notes,JSON.stringify(items),user.id]
     );
     const result=rows[0];
     if(!result?.id){
       if(!result?.order_exists)return erpError(404,"PURCHASE_ORDER_NOT_FOUND","No se encontró la orden de compra.");
-      if(!["Confirmada","Recepción parcial"].includes(result.previous_order_status))return erpError(409,"PURCHASE_ORDER_NOT_APPROVED","Solo se puede recibir mercancía de una orden confirmada.");
-      if(result.request_count===0||result.request_count!==result.matched_count||result.request_count!==result.distinct_count||result.invalid_quantity_count>0)
-        return erpError(409,"RECEIPT_QUANTITY_CONFLICT","Una o más cantidades superan lo pendiente o las líneas no pertenecen a esta orden. Actualiza la pantalla y vuelve a intentarlo.");
-      return erpError(409,"PURCHASE_RECEIPT_NOT_CREATED","No se pudo registrar la recepción. Verifica los productos y el estado de la orden.");
+      if(!["Confirmada","Recepción parcial"].includes(result.order_status))return erpError(409,"PURCHASE_ORDER_NOT_APPROVED","Solo se puede emitir una recepción de una orden confirmada.");
+      if(result.order_currency!==invoiceCurrency||Math.abs(Number(result.order_rate)-invoiceRate)>=0.0001)
+        return erpError(409,"INVOICE_CURRENCY_MISMATCH","La moneda o el tipo de cambio de la factura no coincide con la orden de compra.");
+      if(String(result.order_payment_terms||"").trim().toLowerCase()!==paymentTerms.toLowerCase())
+        return erpError(409,"INVOICE_PAYMENT_TERMS_MISMATCH","La condición de pago de la factura no coincide con la orden. Consulta con Compras.");
+      if(result.request_count===0||result.request_count!==result.matched_count||result.request_count!==result.distinct_count)
+        return erpError(409,"RECEIPT_LINES_INVALID","Una o más líneas no pertenecen a esta orden. Actualiza la pantalla.");
+      if(Number(result.invalid_quantity_count)>0)
+        return erpError(409,"RECEIPT_QUANTITY_CONFLICT","La cantidad supera lo pendiente de recibir, incluso considerando otras recepciones emitidas.");
+      if(Number(result.price_mismatch_count)>0)
+        return erpError(409,"INVOICE_PRICE_MISMATCH","El precio facturado no coincide con la orden. No se emitió la recepción; solicita revisión de Compras.");
+      if(Math.abs(Number(result.expected_invoice_usd)-Number(result.supplied_invoice_usd))>0.02)
+        return erpError(409,"INVOICE_TOTAL_MISMATCH","El total de la factura no coincide con las cantidades, precios, descuento, flete e impuestos registrados. No se emitió la recepción.");
+      return erpError(409,"PURCHASE_RECEIPT_EMIT_CONFLICT","No se pudo emitir la recepción. Verifica si la factura ya fue registrada.");
     }
     return erpJson({record:result},201);
   }catch(error){
     if(error?.code==="22P02")return erpError(400,"INVALID_PURCHASE_RECEIPT_REFERENCE","La orden o una línea de recepción tiene un identificador inválido.");
-    if(error?.code==="23505")return erpError(409,"DUPLICATE_PURCHASE_RECEIPT","Esta recepción ya fue registrada o su número está duplicado. Actualiza la orden para comprobarlo.");
+    if(error?.code==="23505")return erpError(409,"DUPLICATE_PURCHASE_RECEIPT","La factura o la recepción ya fue registrada. Actualiza la orden para comprobarlo.");
     if(error?.code==="23503")return erpError(400,"PURCHASE_RECEIPT_REFERENCE_NOT_FOUND","La orden o el producto relacionado ya no existe.");
-    if(error?.code==="23514"||error?.code==="22003")return erpError(400,"INVALID_PURCHASE_RECEIPT","La recepción excede los límites de inventario o de importes.");
-    console.error("[erp] Purchase receipt failed:",error?.message||"database error");
-    return erpError(503,"PURCHASE_RECEIPT_SAVE_FAILED","No se pudo guardar la recepción.");
+    if(error?.code==="23514"||error?.code==="22003")return erpError(400,"INVALID_PURCHASE_RECEIPT","La recepción excede los límites de cantidades o importes.");
+    console.error("[erp] Purchase receipt emission failed:",error?.message||"database error");
+    return erpError(503,"PURCHASE_RECEIPT_EMIT_FAILED","No se pudo emitir la recepción.");
+  }
+}
+
+export async function postPurchaseReceipt(sql,user,receiptId) {
+  if(!/^[0-9a-f-]{36}$/i.test(String(receiptId)))return erpError(400,"INVALID_PURCHASE_RECEIPT_ID","El identificador de la recepción no es válido.");
+  try{
+    const rows=await sql.query(
+      "WITH locked_receipt AS MATERIALIZED (SELECT pr.*,po.supplier_id,po.supplier_name,po.currency AS order_currency,po.exchange_rate AS order_rate,"+
+      "po.status AS order_status,po.id AS po_id FROM purchase_receipts pr JOIN purchase_orders po ON po.id=pr.purchase_order_id "+
+      "WHERE pr.id=$1::uuid FOR UPDATE OF pr,po),"+
+      "receipt_lines AS MATERIALIZED (SELECT pri.id AS receipt_item_id,pri.purchase_order_item_id,pri.product_id,pri.product_name,"+
+      "pri.quantity_received,pri.landed_unit_cost_usd,oi.ordered_quantity,oi.received_quantity,oi.unit_cost_usd,"+
+      "p.stock AS previous_stock,p.purchase_cost_usd,p.additional_cost_usd "+
+      "FROM purchase_receipt_items pri JOIN locked_receipt r ON r.id=pri.receipt_id "+
+      "JOIN purchase_order_items oi ON oi.id=pri.purchase_order_item_id JOIN products p ON p.id=pri.product_id "+
+      "FOR UPDATE OF oi,p),"+
+      "validation AS MATERIALIZED (SELECT EXISTS(SELECT 1 FROM locked_receipt) receipt_exists,"+
+      "COALESCE((SELECT document_status FROM locked_receipt),'') document_status,"+
+      "(SELECT COUNT(*) FROM receipt_lines)::int line_count,"+
+      "(SELECT COUNT(*) FROM receipt_lines WHERE quantity_received>ordered_quantity-received_quantity)::int invalid_quantity_count),"+
+      "new_stock AS MATERIALIZED (SELECT l.*,l.previous_stock+l.quantity_received AS resulting_stock FROM receipt_lines l),"+
+      "updated_products AS (UPDATE products p SET stock=n.resulting_stock,"+
+      "purchase_cost_usd=ROUND(((n.purchase_cost_usd*n.previous_stock)+(n.landed_unit_cost_usd*n.quantity_received))/NULLIF(n.previous_stock+n.quantity_received,0),2),"+
+      "unit_cost_usd=ROUND(((n.purchase_cost_usd*n.previous_stock)+(n.landed_unit_cost_usd*n.quantity_received))/NULLIF(n.previous_stock+n.quantity_received,0),2)+n.additional_cost_usd,"+
+      "updated_at=NOW() FROM new_stock n CROSS JOIN validation v WHERE p.id=n.product_id "+
+      "AND v.document_status='Emitida' AND v.invalid_quantity_count=0 AND v.line_count>0 RETURNING p.id),"+
+      "updated_order_items AS (UPDATE purchase_order_items oi SET received_quantity=oi.received_quantity+n.quantity_received "+
+      "FROM new_stock n WHERE oi.id=n.purchase_order_item_id AND EXISTS(SELECT 1 FROM updated_products) RETURNING oi.id),"+
+      "movements AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,reference_id,created_by) "+
+      "SELECT n.product_id,'Entrada',n.quantity_received,n.quantity_received,n.previous_stock,n.resulting_stock,"+
+      "'Recepción '||r.receipt_number,'purchase_receipt',r.id::text,$2::uuid FROM new_stock n CROSS JOIN locked_receipt r "+
+      "WHERE EXISTS(SELECT 1 FROM updated_order_items) RETURNING id),"+
+      "supplier_invoice AS (INSERT INTO supplier_invoices(supplier_id,purchase_order_id,invoice_number,invoice_date,due_date,currency,"+
+      "exchange_rate,original_amount,amount_usd,paid_amount_usd,status,notes,created_by) "+
+      "SELECT r.supplier_id,r.po_id,r.supplier_invoice_number,r.supplier_invoice_date,"+
+      "CASE WHEN r.payment_terms_snapshot='Contado' THEN r.supplier_invoice_date "+
+      "WHEN r.payment_terms_snapshot ~* '^Crédito [0-9]+ días$' THEN r.supplier_invoice_date+SUBSTRING(r.payment_terms_snapshot FROM '[0-9]+')::int "+
+      "ELSE NULL END,r.invoice_currency,r.invoice_exchange_rate,r.invoice_original_total,r.invoice_total_usd,0,'Pendiente',"+
+      "'Factura registrada al contabilizar recepción '||r.receipt_number,$2::uuid FROM locked_receipt r "+
+      "CROSS JOIN validation v WHERE v.document_status='Emitida' AND v.invalid_quantity_count=0 AND v.line_count>0 "+
+      "AND EXISTS(SELECT 1 FROM movements) RETURNING *),"+
+      "invoice_link AS MATERIALIZED (SELECT * FROM supplier_invoice),"+
+      "purchase_code AS MATERIALIZED (SELECT nextval('public.purchase_code_seq')::bigint code FROM validation v "+
+      "WHERE v.document_status='Emitida' AND v.invalid_quantity_count=0 AND v.line_count>0 AND EXISTS(SELECT 1 FROM movements) "+
+      "AND EXISTS(SELECT 1 FROM invoice_link)), "+
+      "journal_number AS MATERIALIZED (SELECT nextval('public.purchase_journal_number_seq')::bigint number FROM purchase_code),"+
+      "journal AS (INSERT INTO purchase_journal_entries(journal_number,purchase_receipt_id,purchase_code,entry_date,description,currency,"+
+      "exchange_rate,total_debit_usd,total_credit_usd,status,created_by) "+
+      "SELECT j.number,r.id,c.code,r.supplier_invoice_date,'Compra '+c.code||' · Factura '+r.supplier_invoice_number,"+
+      "r.invoice_currency,r.invoice_exchange_rate,r.invoice_total_usd,r.invoice_total_usd,'Contabilizado',$2::uuid "+
+      "FROM locked_receipt r CROSS JOIN purchase_code c CROSS JOIN journal_number j RETURNING *),"+
+      "journal_lines AS (INSERT INTO purchase_journal_lines(journal_entry_id,line_number,account_key,account_name,debit_usd,credit_usd) "+
+      "SELECT j.id,1,'INVENTORY','Inventario',j.total_debit_usd,0 FROM journal j "+
+      "UNION ALL SELECT j.id,2,'SUPPLIER_PAYABLES','Cuentas por pagar a proveedores',0,j.total_credit_usd FROM journal j RETURNING id),"+
+      "posted_receipt AS (UPDATE purchase_receipts pr SET document_status='Contabilizada',purchase_code=c.code,"+
+      "posted_by=$2::uuid,posted_at=NOW(),received_by=COALESCE(pr.received_by,$2::uuid),received_at=COALESCE(pr.received_at,NOW()),"+
+      "supplier_invoice_id=(SELECT id FROM invoice_link) FROM purchase_code c CROSS JOIN journal j "+
+      "WHERE pr.id=(SELECT id FROM locked_receipt) AND EXISTS(SELECT 1 FROM journal_lines) RETURNING pr.*),"+
+      "order_remaining AS MATERIALIZED (SELECT COUNT(*) FILTER(WHERE oi.received_quantity<oi.ordered_quantity)::int open_lines "+
+      "FROM purchase_order_items oi JOIN locked_receipt r ON r.po_id=oi.purchase_order_id),"+
+      "updated_order AS (UPDATE purchase_orders po SET status=CASE WHEN rem.open_lines=0 THEN 'Recibida' ELSE 'Recepción parcial' END,updated_at=NOW() "+
+      "FROM order_remaining rem CROSS JOIN locked_receipt r WHERE po.id=r.po_id AND EXISTS(SELECT 1 FROM posted_receipt) RETURNING po.id,po.status),"+
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) "+
+      "SELECT $2,'post','purchase_receipt',r.id::text,jsonb_build_object('receipt_number',r.receipt_number,'purchase_code',p.purchase_code,"+
+      "'journal_number',(SELECT journal_number FROM journal),'supplier_invoice_number',r.supplier_invoice_number,"+
+      "'inventory_movement_count',(SELECT COUNT(*) FROM movements)) FROM posted_receipt p JOIN locked_receipt r ON r.id=p.id RETURNING id) "+
+      "SELECT p.*,j.journal_number,j.id AS journal_entry_id,u.status AS purchase_order_status,v.receipt_exists,v.document_status AS previous_status,"+
+      "v.invalid_quantity_count,v.line_count FROM posted_receipt p CROSS JOIN journal j CROSS JOIN updated_order u CROSS JOIN validation v",
+      [receiptId,user.id]
+    );
+    const result=rows[0];
+    if(!result?.id){
+      if(!result?.receipt_exists)return erpError(404,"PURCHASE_RECEIPT_NOT_FOUND","No se encontró la recepción.");
+      if(result.previous_status!=="Emitida")return erpError(409,"PURCHASE_RECEIPT_NOT_PENDING","La recepción ya está contabilizada o fue anulada.");
+      if(Number(result.invalid_quantity_count)>0)return erpError(409,"PURCHASE_RECEIPT_QUANTITY_CONFLICT","La cantidad disponible cambió. Revisa la orden y vuelve a intentarlo.");
+      return erpError(409,"PURCHASE_RECEIPT_POST_CONFLICT","No se pudo contabilizar la recepción. Verifica factura y líneas relacionadas.");
+    }
+    return erpJson({record:result},200);
+  }catch(error){
+    if(error?.code==="23505")return erpError(409,"DUPLICATE_PURCHASE_INVOICE","La factura del proveedor ya está registrada. Verifica su número y la recepción.");
+    if(error?.code==="23503")return erpError(400,"PURCHASE_RECEIPT_REFERENCE_NOT_FOUND","No existe una referencia relacionada con esta recepción.");
+    if(error?.code==="23514"||error?.code==="22003")return erpError(400,"PURCHASE_RECEIPT_POST_INVALID","Los importes o cantidades no cumplen las reglas del sistema.");
+    console.error("[erp] Purchase receipt posting failed:",error?.message||"database error");
+    return erpError(503,"PURCHASE_RECEIPT_POST_FAILED","No se pudo contabilizar la recepción.");
+  }
+}
+
+export async function getPurchaseJournal(sql,receiptId){
+  if(!/^[0-9a-f-]{36}$/i.test(String(receiptId)))return erpError(400,"INVALID_PURCHASE_RECEIPT_ID","El identificador de la recepción no es válido.");
+  try{
+    const rows=await sql.query(
+      "SELECT r.id AS receipt_id,r.receipt_number,r.purchase_code,r.document_status,"+
+      "e.id AS journal_entry_id,e.journal_number,e.entry_date,e.description,e.currency,e.exchange_rate,"+
+      "e.total_debit_usd,e.total_credit_usd,e.status AS journal_status,"+
+      "COALESCE((SELECT jsonb_agg(jsonb_build_object('line_number',l.line_number,'account_key',l.account_key,"+
+      "'account_name',l.account_name,'debit_usd',l.debit_usd,'credit_usd',l.credit_usd) ORDER BY l.line_number) "+
+      "FROM purchase_journal_lines l WHERE l.journal_entry_id=e.id),'[]'::jsonb) AS lines "+
+      "FROM purchase_receipts r JOIN purchase_journal_entries e ON e.purchase_receipt_id=r.id "+
+      "WHERE r.id=$1::uuid AND r.document_status='Contabilizada' LIMIT 1",[receiptId]
+    );
+    if(!rows[0])return erpError(404,"PURCHASE_JOURNAL_NOT_FOUND","La recepción todavía no tiene un comprobante diario contabilizado.");
+    return erpJson({record:rows[0]});
+  }catch(error){
+    console.error("[erp] Purchase journal read failed:",error?.message||"database error");
+    return erpError(503,"PURCHASE_JOURNAL_READ_FAILED","No se pudo consultar el comprobante diario.");
   }
 }
 
