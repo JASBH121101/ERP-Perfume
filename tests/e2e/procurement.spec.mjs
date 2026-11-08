@@ -373,6 +373,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await secondLine.locator('[name="ordered_quantity"]').fill('3');
   await secondLine.locator('[name="unit_cost_input"]').fill('183');
 
+  await orderForm.locator('[data-action="purchase-order-tab"][data-tab="adjustments"]').click();
   await orderForm.locator('[name="discount_usd"]').fill('1');
   await orderForm.locator('[name="estimated_freight_usd"]').fill('2');
   await orderForm.locator('[name="estimated_taxes_usd"]').fill('0.5');
@@ -424,6 +425,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   const receiptPayload = (await receiptRequest).postDataJSON();
   expect(receiptPayload.items).toHaveLength(2);
   // Emitting a receipt is staged: quantities and order status change only on posting.
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Confirmada');
 
   expect(api.data.purchase_receipts).toHaveLength(1);
@@ -434,6 +436,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(api.data.inventory_movements).toHaveLength(0);
   expect(api.data.supplier_invoices).toHaveLength(0);
 
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   const receiptRow = page.locator('tr').filter({ hasText: 'FAC-PROV-QA-001' });
   await expect(receiptRow).toContainText('Emitida');
   const postRequest = page.waitForRequest(request =>
@@ -452,6 +455,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(api.data.inventory_movements).toHaveLength(2);
   expect(api.data.supplier_invoices).toHaveLength(1);
   expect(api.data.purchase_journal_entries[0].total_debit_usd).toBe(api.data.purchase_journal_entries[0].total_credit_usd);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Recepción parcial');
 
   await navigateToView(page, 'inventory');
@@ -525,25 +529,29 @@ test('procurement history combines monthly, supplier and status filters and hand
   await expect(page.locator('#purchase-history-order-status')).toBeVisible();
   await expect(page.locator('#purchase-history-receipt-status')).toBeVisible();
   await expect(page.locator('.purchase-history-archive')).toBeVisible();
-  const legacyReceiptRow = page.locator('tr').filter({ hasText: 'OLD-REC-17' });
-  await expect(legacyReceiptRow).toContainText('Histórico · sin comprobante diario');
-  await expect(legacyReceiptRow.locator('[data-action="view-purchase-journal"]')).toHaveCount(0);
 
   await page.locator('#purchase-history-order-status').selectOption('Borrador');
-  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
   await page.locator('#purchase-history-order-status').selectOption('all');
 
   await page.locator('#purchase-history-receipt-status').selectOption('Emitida');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await page.locator('#purchase-history-receipt-status').selectOption('all');
-  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
+  const legacyReceiptRow = page.locator('tr').filter({ hasText: 'OLD-REC-17' });
+  await expect(legacyReceiptRow).toContainText('Histórico · sin comprobante diario');
+  await expect(legacyReceiptRow.locator('[data-action="view-purchase-journal"]')).toHaveCount(0);
 
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await page.locator('.purchase-history-archive > summary').click();
   await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
   await expect(page.locator('#purchase-history-start')).toHaveValue('2026-11-01');
   await expect(page.locator('#purchase-history-end')).toHaveValue('2026-11-30');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
 
   await page.locator('[data-action="toggle-export-menu"]').click();
