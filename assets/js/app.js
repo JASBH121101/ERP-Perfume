@@ -2697,6 +2697,24 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const options=products.filter(product=>product.active!==false).map(product=>'<option value="'+esc(product.id)+'">'+esc(product.name)+' · '+esc(product.sku||'Sin SKU')+'</option>').join('');
     return '<div class="purchase-order-line"><label>Producto<select name="product_id" required><option value="">Seleccionar producto</option>'+options+'</select></label><label>Cantidad<input name="ordered_quantity" type="number" min="1" max="1000000" step="1" value="1" required></label><label>Costo unitario (moneda de la orden)<input name="unit_cost_input" type="number" min="0.01" step="0.01" required placeholder="0.00"></label><button class="button button-quiet button-small" type="button" data-action="remove-purchase-order-line" aria-label="Quitar producto">Quitar</button></div>';
   }
+  function setPurchaseOrderTab(tab){
+    const form=document.getElementById("purchase-order-form");
+    if(!form)return;
+    const allowed=["general","products","adjustments"];
+    const selected=allowed.includes(tab)?tab:"general";
+    const captions={general:"Etapa 1 de 3 · Datos de la orden",products:"Etapa 2 de 3 · Productos solicitados",adjustments:"Etapa 3 de 3 · Costos y notas"};
+    form.querySelectorAll("[data-action=\"purchase-order-tab\"]").forEach(button=>{
+      const active=button.getAttribute("data-tab")===selected;
+      button.classList.toggle("is-active",active);
+      button.setAttribute("aria-selected",String(active));
+      button.tabIndex=active?0:-1;
+    });
+    form.querySelectorAll("[data-po-panel]").forEach(panel=>{
+      panel.hidden=panel.getAttribute("data-po-panel")!==selected;
+    });
+    const caption=form.querySelector("[data-po-step-caption]");
+    if(caption)caption.textContent=captions[selected];
+  }
   function openPurchaseReceiptDialog(orderId){
     const order=purchaseOrders.find(item=>String(item.id)===String(orderId));if(!order)return;
     const lines=purchaseOrderItems.filter(item=>String(item.purchase_order_id)===String(order.id)).map(item=>({...item,remaining:Number(item.ordered_quantity||0)-Number(item.received_quantity||0)})).filter(item=>item.remaining>0);
@@ -2830,16 +2848,25 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }).join('');
     const supplierOptions=suppliers.filter(supplier=>supplier.active!==false).map(supplier=>'<option value="'+esc(supplier.id)+'">'+esc(supplier.name)+'</option>').join('');
     const canCreate=permissionGranted("purchases.purchase_orders.create")&&permissionGranted("products.catalog.view")&&permissionGranted("suppliers.records.view");
-    const createForm=canCreate?'<section class="panel purchase-order-create"><div class="panel-heading"><div><h2>Nueva orden</h2><p>Solicita productos a un proveedor; el número de OC se genera al crearla.</p></div></div>'+
-      '<form id="purchase-order-form"><div class="form-grid">'+
+    const createForm=canCreate?'<section class="panel purchase-order-create"><div class="panel-heading"><div><h2>Nueva orden</h2><p>Completa los datos por etapas; el número de OC se genera al crearla.</p></div></div>'+
+      '<form id="purchase-order-form" novalidate>'+
+      '<div class="purchase-order-step-tabs" role="tablist" aria-label="Etapas de la orden de compra">'+
+      '<button type="button" id="po-tab-general" role="tab" aria-selected="true" aria-controls="po-panel-general" class="po-step-tab is-active" data-action="purchase-order-tab" data-tab="general"><span class="po-step-number">01</span><span>Datos</span></button>'+
+      '<button type="button" id="po-tab-products" role="tab" aria-selected="false" aria-controls="po-panel-products" class="po-step-tab" data-action="purchase-order-tab" data-tab="products"><span class="po-step-number">02</span><span>Productos</span></button>'+
+      '<button type="button" id="po-tab-adjustments" role="tab" aria-selected="false" aria-controls="po-panel-adjustments" class="po-step-tab" data-action="purchase-order-tab" data-tab="adjustments"><span class="po-step-number">03</span><span>Costos y notas</span></button></div>'+
+      '<section id="po-panel-general" class="po-step-panel" role="tabpanel" aria-labelledby="po-tab-general" data-po-panel="general"><div class="form-grid">'+
       '<label>Proveedor<select name="supplier_id" required><option value="">Seleccionar proveedor</option>'+supplierOptions+'</select></label>'+
       '<label>Moneda<select name="currency"><option value="USD">USD · Dólar</option><option value="NIO">NIO · Córdoba</option></select></label>'+
       '<label>Tipo de cambio<input name="exchange_rate" type="number" min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'" required></label>'+
-      '<label>Entrega estimada<input name="expected_delivery_date" type="date"></label><label class="purchase-order-full-field">Condición de pago<select name="payment_terms"><option value="Contado">Contado</option><option value="Crédito 15 días">Crédito · 15 días</option><option value="Crédito 30 días">Crédito · 30 días</option><option value="Crédito 45 días">Crédito · 45 días</option><option value="Crédito 60 días">Crédito · 60 días</option><option value="Por acordar">Por acordar</option></select></label></div>'+
+      '<label>Entrega estimada<input name="expected_delivery_date" type="date"></label>'+
+      '<label class="purchase-order-full-field">Condición de pago<select name="payment_terms"><option value="Contado">Contado</option><option value="Crédito 15 días">Crédito · 15 días</option><option value="Crédito 30 días">Crédito · 30 días</option><option value="Crédito 45 días">Crédito · 45 días</option><option value="Crédito 60 días">Crédito · 60 días</option><option value="Por acordar">Por acordar</option></select></label>'+
+      '</div></section>'+
+      '<section id="po-panel-products" class="po-step-panel" role="tabpanel" aria-labelledby="po-tab-products" data-po-panel="products" hidden>'+
       '<div class="purchase-order-lines-heading"><strong>Productos solicitados</strong><button class="button button-quiet button-small" type="button" data-action="add-purchase-order-line">Añadir producto</button></div>'+
-      '<div id="purchase-order-lines">'+purchaseOrderLineHtml()+'</div>'+
-      '<div class="form-grid purchase-order-adjustments"><label>Descuento USD<input name="discount_usd" type="number" min="0" step="0.01" value="0"></label><label>Flete estimado USD<input name="estimated_freight_usd" type="number" min="0" step="0.01" value="0"></label><label>Impuestos estimados USD<input name="estimated_taxes_usd" type="number" min="0" step="0.01" value="0"></label><label>Notas<input name="notes" maxlength="1000"></label></div>'+
-      '<div class="form-actions"><button class="button button-primary" type="submit">Generar orden</button></div></form></section>':'';
+      '<div id="purchase-order-lines">'+purchaseOrderLineHtml()+'</div></section>'+
+      '<section id="po-panel-adjustments" class="po-step-panel" role="tabpanel" aria-labelledby="po-tab-adjustments" data-po-panel="adjustments" hidden>'+
+      '<div class="form-grid purchase-order-adjustments"><label>Descuento USD<input name="discount_usd" type="number" min="0" step="0.01" value="0"></label><label>Flete estimado USD<input name="estimated_freight_usd" type="number" min="0" step="0.01" value="0"></label><label>Impuestos estimados USD<input name="estimated_taxes_usd" type="number" min="0" step="0.01" value="0"></label><label class="purchase-order-full-field">Notas de la orden<input name="notes" maxlength="1000" placeholder="Indicaciones para el proveedor (opcional)"></label></div>'+
+      '</section><div class="po-form-footer"><span data-po-step-caption>Etapa 1 de 3 · Datos de la orden</span><button class="button button-primary" type="submit">Generar orden <span aria-hidden="true">→</span></button></div></form></section>':'';
     const receiptRows=visibleReceipts.map(receipt=>{
       const status=receipt.documentStatus||receipt.document_status||"Contabilizada";
       const actions=[];
@@ -4378,6 +4405,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(!button)return;
     const action=button.getAttribute("data-action");
     if(action==="close-purchase-receipt"){document.getElementById("purchase-receipt-dialog")?.close();return;}
+    if(action==="purchase-order-tab"){setPurchaseOrderTab(button.getAttribute("data-tab"));return;}
     if(action==="add-purchase-order-line"){
       if(!permissionGranted("purchases.purchase_orders.create"))return;
       const container=document.getElementById("purchase-order-lines");
@@ -4531,6 +4559,13 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(form?.id==="purchase-order-form"){
       event.preventDefault();
       if(!permissionGranted("purchases.purchase_orders.create")){toast("Tu cuenta no puede crear órdenes de compra.");return;}
+      if(!form.checkValidity()){
+        const invalid=form.querySelector(":invalid");
+        const panel=invalid?.closest("[data-po-panel]");
+        if(panel)setPurchaseOrderTab(panel.getAttribute("data-po-panel"));
+        if(invalid)requestAnimationFrame(()=>invalid.reportValidity());
+        return;
+      }
       const data=new FormData(form);
       const lines=Array.from(form.querySelectorAll(".purchase-order-line")).map(row=>({
         product_id:row.querySelector('[name="product_id"]').value,ordered_quantity:Number(row.querySelector('[name="ordered_quantity"]').value),
