@@ -1959,9 +1959,11 @@ export async function createSupplierInvoice(sql,user,body) {
   try {
     const rows=await sql.query(
       "WITH input AS MATERIALIZED (SELECT $1::uuid supplier_id,$2::uuid order_id,$3::text invoice_number,$4::date invoice_date,$5::date due_date,$6::text currency,$7::numeric rate,$8::numeric original_amount,$9::numeric amount_usd,$10::text notes,$11::uuid actor),"+
+      "invoice_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(hashtextextended(i.supplier_id::text||':'||i.invoice_number,0)) AS locked FROM input i),"+
       "valid AS MATERIALIZED (SELECT s.id,s.name,(i.order_id IS NULL OR EXISTS(SELECT 1 FROM purchase_orders po WHERE po.id=i.order_id AND po.supplier_id=s.id)) AS order_matches FROM input i JOIN suppliers s ON s.id=i.supplier_id AND s.active=TRUE),"+
       "created AS (INSERT INTO supplier_invoices(supplier_id,purchase_order_id,invoice_number,invoice_date,due_date,currency,exchange_rate,original_amount,amount_usd,paid_amount_usd,status,notes,created_by) "+
-      "SELECT v.id,i.order_id,i.invoice_number,i.invoice_date,i.due_date,i.currency,i.rate,i.original_amount,i.amount_usd,0,'Pendiente',i.notes,i.actor FROM input i JOIN valid v ON v.order_matches RETURNING *),"+
+      "SELECT v.id,i.order_id,i.invoice_number,i.invoice_date,i.due_date,i.currency,i.rate,i.original_amount,i.amount_usd,0,'Pendiente',i.notes,i.actor FROM input i JOIN valid v ON v.order_matches CROSS JOIN invoice_lock il "+
+      "WHERE NOT EXISTS(SELECT 1 FROM purchase_receipts pr JOIN purchase_orders po ON po.id=pr.purchase_order_id WHERE po.supplier_id=i.supplier_id AND pr.supplier_invoice_number=i.invoice_number) RETURNING *),"+
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'create','supplier_invoice',c.id::text,jsonb_build_object('invoice_number',c.invoice_number,'supplier_id',c.supplier_id,'amount_usd',c.amount_usd,'purchase_order_id',c.purchase_order_id) FROM input i CROSS JOIN created c RETURNING id) "+
       "SELECT c.* FROM created c",
       [supplierId,orderId,invoiceNumber,invoiceDate,dueDate,currency,rate,original,amountUsd,notes,user.id]
