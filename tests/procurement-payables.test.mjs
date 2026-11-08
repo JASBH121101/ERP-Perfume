@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   createPurchaseOrder,
   createPurchaseReceipt,
+  postPurchaseReceipt,
   createSupplierInvoice,
   addSupplierInvoicePayment,
   resolveRoutePermission,
@@ -153,42 +154,91 @@ test("purchase receipt validates duplicate and non-positive lines before SQL", a
   assert.equal(calls, 0);
 });
 
-test("purchase receipt writes receipt, weighted cost, inventory movement and audit in one SQL statement", async () => {
+test("purchase receipt emission stores supplier invoice and reserves quantities without posting stock", async () => {
   let captured;
   const sql = {
     async query(statement, values) {
       captured = { statement, values };
       return [{
         id: "00000000-0000-0000-0000-000000000403",
-        receipt_number: "REC-20261105-QA001",
-        item_count: 1,
+        receipt_number: "000001",
+        document_status: "Emitida",
+        invoice_total_usd: "20.00"
+      }];
+    }
+  };
+  const result = await responseOf(await createPurchaseReceipt(sql, actor, orderId, {
+    supplier_invoice_number: "FAC-QA-001",
+    supplier_invoice_date: "2026-11-08",
+    invoice_currency: "USD",
+    invoice_exchange_rate: 1,
+    invoice_original_total: 20,
+    payment_terms: "Contado",
+    actual_freight_usd: 1.5,
+    actual_taxes_usd: 0,
+    notes: "Recepción pendiente QA",
+    items: [{ purchase_order_item_id: orderItemId, quantity_received: 2, invoice_unit_cost_input: 10 }]
+  }));
+  assert.equal(result.status, 201);
+  assert.equal(result.body.record.document_status, "Emitida");
+  assert.equal(captured.values[0], orderId);
+  assert.equal(captured.values[1], "FAC-QA-001");
+  assert.equal(captured.values[2], "2026-11-08");
+  assert.equal(captured.values[3], "USD");
+  assert.equal(captured.values[4], 1);
+  assert.equal(captured.values[5], 20);
+  assert.equal(captured.values[6], 1.5);
+  assert.deepEqual(JSON.parse(captured.values[10]), [
+    { purchase_order_item_id: orderItemId, quantity_received: 2, invoice_unit_cost_input: 10 }
+  ]);
+  assert.equal(captured.values[11], actor.id);
+  assert.match(captured.statement, /document_status='Emitida'/);
+  assert.match(captured.statement, /reserved_quantity/);
+  assert.match(captured.statement, /supplier_invoice_number/);
+  assert.doesNotMatch(captured.statement, /UPDATE products/);
+  assert.doesNotMatch(captured.statement, /INSERT INTO inventory_movements/);
+  assert.doesNotMatch(captured.statement, /INSERT INTO supplier_invoices/);
+});
+
+test("purchase receipt emission rejects missing supplier invoice fields before SQL", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return []; } };
+  const result = await responseOf(await createPurchaseReceipt(sql, actor, orderId, {
+    items: [{ purchase_order_item_id: orderItemId, quantity_received: 1, invoice_unit_cost_input: 10 }]
+  }));
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error.code, "INVALID_PURCHASE_RECEIPT");
+  assert.equal(calls, 0);
+});
+
+test("purchase receipt posting atomically updates stock, payables, purchase code and balanced journal", async () => {
+  let captured;
+  const sql = {
+    async query(statement, values) {
+      captured = { statement, values };
+      return [{
+        id: "00000000-0000-0000-0000-000000000403",
+        document_status: "Contabilizada",
+        purchase_code: 41,
+        journal_number: 9,
         purchase_order_status: "Recepción parcial"
       }];
     }
   };
-
-  const result = await responseOf(await createPurchaseReceipt(sql, actor, orderId, {
-    actual_freight_usd: 1.5,
-    notes: "Recepción parcial controlada QA",
-    receipt_number: "REC-20261105-QA001",
-    items: [{ purchase_order_item_id: orderItemId, quantity_received: 2 }]
-  }));
-
-  assert.equal(result.status, 201);
-  assert.equal(result.body.record.purchase_order_status, "Recepción parcial");
-  assert.equal(captured.values[0], orderId);
-  assert.equal(captured.values[1], "REC-20261105-QA001");
-  assert.equal(captured.values[2], 1.5);
-  assert.deepEqual(JSON.parse(captured.values[4]), [
-    { purchase_order_item_id: orderItemId, quantity_received: 2 }
-  ]);
-  assert.equal(captured.values[5], actor.id);
-  assert.match(captured.statement, /FOR UPDATE OF po/);
-  assert.match(captured.statement, /FOR UPDATE OF oi,p/);
-  assert.match(captured.statement, /INSERT INTO purchase_receipt_items/);
+  const receiptId = "00000000-0000-0000-0000-000000000403";
+  const result = await responseOf(await postPurchaseReceipt(sql, actor, receiptId));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.record.purchase_code, 41);
+  assert.equal(captured.values[0], receiptId);
+  assert.equal(captured.values[1], actor.id);
+  assert.match(captured.statement, /FOR UPDATE OF pr,po/);
   assert.match(captured.statement, /UPDATE products/);
   assert.match(captured.statement, /INSERT INTO inventory_movements/);
-  assert.match(captured.statement, /INSERT INTO audit_log/);
+  assert.match(captured.statement, /INSERT INTO supplier_invoices/);
+  assert.match(captured.statement, /INSERT INTO purchase_journal_entries/);
+  assert.match(captured.statement, /INSERT INTO purchase_journal_lines/);
+  assert.match(captured.statement, /UPDATE purchase_receipts/);
+  assert.match(captured.statement, /document_status='Emitida'/);
 });
 
 test("supplier invoice converts NIO to USD and persists invoice plus audit atomically", async () => {
