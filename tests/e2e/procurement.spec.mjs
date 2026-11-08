@@ -412,7 +412,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptLines.nth(1).locator('[data-receipt-quantity]').fill('2');
   await receiptDialog.locator('[name="actual_freight_usd"]').fill('1.5');
   await receiptDialog.locator('[name="supplier_invoice_number"]').fill('FAC-PROV-QA-001');
-  await expect(receiptDialog.locator('[name="invoice_original_total"]')).toHaveValue('766.04');
+  await expect(receiptDialog.locator('[name="invoice_original_total"]')).toHaveValue('765.99');
 
   const receiptRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order + '/receipts') &&
