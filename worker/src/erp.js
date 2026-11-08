@@ -1255,7 +1255,11 @@ export async function postPurchaseReceipt(sql,user,receiptId) {
       "exchange_rate,original_amount,amount_usd,paid_amount_usd,status,notes,created_by) "+
       "SELECT r.supplier_id,r.po_id,r.supplier_invoice_number,r.supplier_invoice_date,"+
       "CASE WHEN r.payment_terms_snapshot='Contado' THEN r.supplier_invoice_date "+
-      "WHEN r.payment_terms_snapshot ~* '^(Crédito\\s+)?[0-9]+ días
+      "WHEN r.payment_terms_snapshot ~* '^(Crédito\\\\s+)?[0-9]+ días$' THEN r.supplier_invoice_date + "+
+      "((regexp_match(r.payment_terms_snapshot,'([0-9]+)'))[1]::int) ELSE r.supplier_invoice_date END,"+
+      "r.invoice_currency,r.invoice_exchange_rate,r.invoice_original_total,r.invoice_total_usd,0,'Pendiente',"+
+      "'Factura registrada al contabilizar recepción '||r.receipt_number,$2::uuid FROM locked_receipt r "+
+      "CROSS JOIN validation v WHERE v.document_status='Emitida' AND v.invalid_quantity_count=0 AND v.line_count>0 "+
       "AND EXISTS(SELECT 1 FROM movements) RETURNING *),"+
       "invoice_link AS MATERIALIZED (SELECT * FROM supplier_invoice),"+
       "purchase_code AS MATERIALIZED (SELECT nextval('public.purchase_code_seq')::bigint code FROM validation v "+
