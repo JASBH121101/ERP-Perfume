@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createProduct, createInventoryMovement, reverseInventoryMovement, getInventorySummary, listInventoryStock, listInventoryMovements, resolveRoutePermission } from "../worker/src/erp.js";
+import { createProduct, createInventoryMovement, reverseInventoryMovement, getInventorySummary, listInventoryStock, listInventoryMovements, resolveRoutePermission, handleERPRequest } from "../worker/src/erp.js";
 
 const actor = { id: "00000000-0000-0000-0000-000000000099", role: "owner" };
 const productId = "00000000-0000-0000-0000-000000000101";
@@ -276,6 +276,66 @@ test("movement visibility never exposes inbound rows to a user with outbound-onl
   assert.doesNotMatch(captured, /im\.movement_type='Ajuste'/);
 });
 
+
+test("bootstrap movement visibility follows movement type permissions, not only delta sign", async () => {
+  const movements = [
+    { id: "entry-1", movement_type: "Entrada", quantity_delta: 4 },
+    { id: "return-1", movement_type: "Devolucion", quantity_delta: 1 },
+    { id: "exit-1", movement_type: "Salida", quantity_delta: -2 },
+    { id: "adjust-up", movement_type: "Ajuste", quantity_delta: 3 },
+    { id: "adjust-down", movement_type: "Ajuste", quantity_delta: -1 },
+    { id: "reverse-in", movement_type: "Reversion", quantity_delta: 2 },
+    { id: "reverse-out", movement_type: "Reversion", quantity_delta: -2 }
+  ];
+
+  async function bootstrap(sectionPermissions) {
+    const permissionRows = [
+      { permission_key: "inventory.view", parent_key: null, allowed: true },
+      { permission_key: "inventory.receipts.view", parent_key: "inventory.view", allowed: sectionPermissions.inbound === true },
+      { permission_key: "inventory.manual_out.view", parent_key: "inventory.view", allowed: sectionPermissions.outbound === true },
+      { permission_key: "inventory.adjustments.view", parent_key: "inventory.view", allowed: sectionPermissions.adjustments === true },
+      { permission_key: "purchases.view", parent_key: null, allowed: false },
+      { permission_key: "purchases.receipts.view", parent_key: "purchases.view", allowed: false }
+    ];
+    const sql = {
+      async query() { return permissionRows; },
+      async transaction(callback) {
+        const tx = (strings) => {
+          const statement = strings.join(" ");
+          return Promise.resolve(statement.includes("FROM inventory_movements") ? movements : []);
+        };
+        return Promise.all(callback(tx));
+      }
+    };
+    const request = new Request("https://erp.test/api/erp/bootstrap");
+    const response = await handleERPRequest(request, {}, {
+      id: actor.id, role: "viewer"
+    }, sql);
+    return { response, data: await response.json() };
+  }
+
+  const inbound = await bootstrap({ inbound: true });
+  assert.equal(inbound.response.status, 200);
+  assert.deepEqual(inbound.data.data.inventory_movements.map(row => row.id), [
+    "entry-1", "return-1", "reverse-in"
+  ]);
+
+  const outbound = await bootstrap({ outbound: true });
+  assert.equal(outbound.response.status, 200);
+  assert.deepEqual(outbound.data.data.inventory_movements.map(row => row.id), [
+    "exit-1", "reverse-out"
+  ]);
+
+  const adjustments = await bootstrap({ adjustments: true });
+  assert.equal(adjustments.response.status, 200);
+  assert.deepEqual(adjustments.data.data.inventory_movements.map(row => row.id), [
+    "adjust-up", "adjust-down"
+  ]);
+
+  const viewOnly = await bootstrap({});
+  assert.equal(viewOnly.response.status, 200);
+  assert.equal(Object.hasOwn(viewOnly.data.data, "inventory_movements"), false);
+});
 
 test("inventory read routes use the module permission while movement writes retain granular permissions", () => {
   assert.equal(resolveRoutePermission("inventory-summary", "GET"), "inventory.view");
