@@ -32,7 +32,7 @@ function validPurchaseOrder(overrides = {}) {
     estimated_freight_usd: 2,
     estimated_taxes_usd: 0.5,
     expected_delivery_date: "2026-11-15",
-    payment_terms: "30 días",
+    payment_terms: "Crédito 30 días",
     notes: "Orden controlada QA",
     items: [
       { product_id: productA, ordered_quantity: 2, unit_cost_input: 366 },
