@@ -245,9 +245,9 @@ test("purchase receipt posting atomically updates stock, payables, purchase code
   assert.ok(captured.statement.includes("ELSE NULL END"), "Por acordar must not create a same-day due date.");
   assert.match(captured.statement, /UPDATE purchase_receipts/);
   assert.match(captured.statement, /document_status='Emitida'/);
-  assert.match(captured.statement, /SUM\\(pri\\.quantity_received\\)::int/);
-  assert.match(captured.statement, /pri\\.receipt_id=\\(SELECT id FROM locked_receipt\\)/);
-  assert.match(captured.statement, /oi\\.received_quantity\\+COALESCE/);
+  assert.match(captured.statement, /SUM\(pri\.quantity_received\)::int/);
+  assert.match(captured.statement, /pri\.receipt_id=\(SELECT id FROM locked_receipt\)/);
+  assert.match(captured.statement, /oi\.received_quantity\+COALESCE/);
   assert.match(captured.statement, /FROM validation v LEFT JOIN posted_receipt p ON TRUE/);
 });
 
