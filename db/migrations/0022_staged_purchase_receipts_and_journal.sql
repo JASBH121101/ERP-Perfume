@@ -16,15 +16,6 @@ SELECT setval(
   false
 );
 
-CREATE SEQUENCE IF NOT EXISTS public.purchase_code_seq
-  AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 NO MAXVALUE CACHE 1;
-
-SELECT setval(
-  'public.purchase_code_seq',
-  GREATEST(COALESCE((SELECT MAX(purchase_code) FROM public.purchase_receipts), 0) + 1, 1),
-  false
-);
-
 CREATE SEQUENCE IF NOT EXISTS public.purchase_journal_number_seq
   AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 NO MAXVALUE CACHE 1;
 
@@ -44,6 +35,16 @@ ALTER TABLE public.purchase_receipts
   ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS purchase_code BIGINT,
   ADD COLUMN IF NOT EXISTS supplier_invoice_id UUID REFERENCES public.supplier_invoices(id);
+
+-- purchase_code does not exist until the ALTER above; seed its sequence only now.
+CREATE SEQUENCE IF NOT EXISTS public.purchase_code_seq
+  AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 NO MAXVALUE CACHE 1;
+
+SELECT setval(
+  'public.purchase_code_seq',
+  GREATEST(COALESCE((SELECT MAX(purchase_code) FROM public.purchase_receipts), 0) + 1, 1),
+  false
+);
 
 UPDATE public.purchase_receipts
 SET emitted_by = COALESCE(emitted_by, received_by),
