@@ -282,3 +282,56 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   .po-step-tab { transition: none; }
 }
+
+/* First-level tabs inside the procurement workspace. */
+.purchase-module-tabs {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin:0 0 13px;
+  padding:5px;
+  border:1px solid #e2e7ee;
+  border-radius:12px;
+  background:#f7f9fb;
+  overflow-x:auto;
+  scrollbar-width:thin;
+}
+.purchase-module-tab {
+  flex:1 1 0;
+  min-width:max-content;
+  min-height:42px;
+  padding:8px 13px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  border:1px solid transparent;
+  border-radius:9px;
+  color:#5d6878;
+  background:transparent;
+  font:650 max(13px, calc(11px * var(--ui-font-scale))) "DM Sans", sans-serif;
+  cursor:pointer;
+}
+.purchase-module-tab:hover { border-color:#e1e6ed; background:#fff; }
+.purchase-module-tab.is-active {
+  border-color:#c4a16b;
+  color:#3b2c18;
+  background:linear-gradient(135deg,#ead7b0,#d7b982);
+  box-shadow:0 3px 8px rgba(143,104,47,.1);
+}
+.purchase-tab-count {
+  min-width:21px;
+  padding:3px 7px;
+  border:1px solid #e0e6ed;
+  border-radius:99px;
+  color:#627084;
+  background:#fff;
+  font-size:11px;
+  font-weight:750;
+  font-variant-numeric:tabular-nums;
+}
+@media(max-width:720px) {
+  .purchase-module-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
+  .purchase-module-tab { min-width:0; min-height:43px; padding:6px 5px; gap:4px; font-size:max(12px,calc(9px * var(--ui-font-scale))); flex-direction:column; }
+  .purchase-tab-count { min-width:18px; padding:1px 5px; font-size:10px; }
+}
