@@ -248,6 +248,24 @@ test("purchase receipt posting atomically updates stock, payables, purchase code
   assert.match(captured.statement, /SUM\\(pri\\.quantity_received\\)::int/);
   assert.match(captured.statement, /pri\\.receipt_id=\\(SELECT id FROM locked_receipt\\)/);
   assert.match(captured.statement, /oi\\.received_quantity\\+COALESCE/);
+  assert.match(captured.statement, /FROM validation v LEFT JOIN posted_receipt p ON TRUE/);
+});
+
+test("reposting an already-accounted receipt returns a conflict, not a missing-record response", async () => {
+  const sql = {
+    async query(statement) {
+      assert.match(statement, /FROM validation v LEFT JOIN posted_receipt p ON TRUE/);
+      return [{
+        receipt_exists: true,
+        previous_status: "Contabilizada",
+        invalid_quantity_count: 0,
+        line_count: 1
+      }];
+    }
+  };
+  const result = await responseOf(await postPurchaseReceipt(sql, actor, orderId));
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error.code, "PURCHASE_RECEIPT_NOT_PENDING");
 });
 
 test("supplier invoice converts NIO to USD and persists invoice plus audit atomically", async () => {
