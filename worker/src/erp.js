@@ -397,7 +397,7 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM purchase_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT po.*,creator.display_name AS created_by_name,creator.email AS created_by_email,approver.display_name AS approved_by_name FROM purchase_orders po LEFT JOIN app_users creator ON creator.id=po.created_by LEFT JOIN app_users approver ON approver.id=po.approved_by ORDER BY po.created_at DESC LIMIT 2000`,
       tx`SELECT * FROM purchase_order_items ORDER BY created_at ASC LIMIT 10000`,
-      tx`SELECT pr.*,po.order_number AS purchase_order_number,po.supplier_name,emitter.display_name AS emitted_by_name,poster.display_name AS posted_by_name FROM purchase_receipts pr JOIN purchase_orders po ON po.id=pr.purchase_order_id LEFT JOIN app_users emitter ON emitter.id=pr.emitted_by LEFT JOIN app_users poster ON poster.id=pr.posted_by ORDER BY COALESCE(pr.emitted_at,pr.received_at) DESC LIMIT 5000`,
+      tx`SELECT pr.*,po.order_number AS purchase_order_number,po.supplier_name,emitter.display_name AS emitted_by_name,poster.display_name AS posted_by_name,je.journal_number FROM purchase_receipts pr JOIN purchase_orders po ON po.id=pr.purchase_order_id LEFT JOIN app_users emitter ON emitter.id=pr.emitted_by LEFT JOIN app_users poster ON poster.id=pr.posted_by LEFT JOIN purchase_journal_entries je ON je.purchase_receipt_id=pr.id ORDER BY COALESCE(pr.emitted_at,pr.received_at) DESC LIMIT 5000`,
       tx`SELECT * FROM purchase_receipt_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT si.*,s.name AS supplier_name FROM supplier_invoices si JOIN suppliers s ON s.id=si.supplier_id ORDER BY si.invoice_date DESC,si.created_at DESC LIMIT 5000`,
       tx`SELECT sip.*,ca.name AS account_name FROM supplier_invoice_payments sip JOIN cash_accounts ca ON ca.id=sip.account_id ORDER BY sip.paid_at DESC LIMIT 10000`,
@@ -2800,9 +2800,8 @@ export async function handleERPRequest(request, env, user, sql) {
     return createPurchaseOrder(sql,user,body);
   }
   if (resource === "purchase-receipts" && id && parts[4] === "post" && request.method === "POST") {
-    if (!hasPermission(permissionContext,"purchases.receipts.post") ||
-        !hasPermission(permissionContext,"inventory.receipts.receive")) {
-      return erpError(403,"FORBIDDEN","Contabilizar una recepción requiere permisos de contabilización e inventario.");
+    if (!hasPermission(permissionContext,"purchases.receipts.post")) {
+      return erpError(403,"FORBIDDEN","No tienes permiso para contabilizar recepciones de compra.");
     }
     return postPurchaseReceipt(sql,user,id);
   }
