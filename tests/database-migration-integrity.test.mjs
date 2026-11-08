@@ -20,6 +20,7 @@ test("repository migration sources match the reviewed integrity baseline", async
   ));
   const migration0021 = manifest.migrations.find(item => item.version === "0021");
   const migration0022 = manifest.migrations.find(item => item.version === "0022");
+  const migration0022 = manifest.migrations.find(item => item.version === "0022");
   assert.equal(manifest.snapshot.ledgerRows, 17);
   assert.ok(manifest.snapshot.ledgerVersions.includes("0021"));
   assert.equal(migration0021.database.status, "applied_checksum_verified");
