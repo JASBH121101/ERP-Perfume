@@ -10,14 +10,25 @@ test("repository migration sources match the reviewed integrity baseline", async
   const result = await verifyMigrationSources();
   assert.deepEqual(result.errors, [], result.errors.join("\n"));
   assert.equal(result.summary.sourceFiles, 21);
-  assert.equal(result.summary.appliedLedgerRows, 16);
+  assert.equal(result.summary.appliedLedgerRows, 17);
   assert.equal(result.summary.schemaPresentWithoutLedger, 4);
+  assert.deepEqual(result.summary.pendingMigrations, []);
+
+  const manifest = JSON.parse(await readFile(
+    new URL("../db/migration-integrity.json", import.meta.url),
+    "utf8"
+  ));
+  const migration0021 = manifest.migrations.find(item => item.version === "0021");
+  assert.equal(manifest.snapshot.ledgerRows, 17);
+  assert.ok(manifest.snapshot.ledgerVersions.includes("0021"));
+  assert.equal(migration0021.database.status, "applied_checksum_verified");
+  assert.equal(migration0021.database.ledgerChecksum, migration0021.sha256);
+  assert.ok(Number.isFinite(Date.parse(migration0021.database.appliedAt)));
   assert.equal(result.summary.historicalSourcesVerified, 3);
   assert.equal(result.summary.readinessStatus, "READY_WITH_APPROVED_BASELINE_EXCEPTIONS");
   assert.equal(result.summary.approvedBaselineExceptions, 9);
   assert.deepEqual(result.summary.readinessBlockers, []);
   assert.equal(result.summary.nextMigrationVersion, "0022");
-  assert.deepEqual(result.summary.pendingMigrations, ["0021"]);
 });
 
 async function createFixture(t, namesAndContents) {
