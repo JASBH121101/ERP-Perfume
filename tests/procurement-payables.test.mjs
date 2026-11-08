@@ -269,6 +269,9 @@ test("supplier invoice converts NIO to USD and persists invoice plus audit atomi
   assert.equal(captured.values[10], actor.id);
   assert.match(captured.statement, /INSERT INTO supplier_invoices/);
   assert.match(captured.statement, /purchase_orders po WHERE po\.id=i\.order_id AND po\.supplier_id=s\.id/);
+  assert.match(captured.statement, /pg_advisory_xact_lock\\(hashtextextended\\(i\\.supplier_id::text\\|\\|':'\\|\\|i\\.invoice_number,0\\)\\)/);
+  assert.match(captured.statement, /FROM purchase_receipts pr JOIN purchase_orders po ON po\.id=pr\.purchase_order_id/);
+  assert.match(captured.statement, /pr\.supplier_invoice_number=i\.invoice_number/);
   assert.match(captured.statement, /INSERT INTO audit_log/);
 });
 
