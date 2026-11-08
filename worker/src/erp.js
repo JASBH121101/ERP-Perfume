@@ -1144,6 +1144,7 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
       "$9::text payment_terms,$10::text notes,$11::jsonb items,$12::uuid actor),"+
       "generated AS MATERIALIZED (SELECT nextval('public.purchase_receipt_number_seq')::text receipt_number),"+
       "locked_order AS MATERIALIZED (SELECT po.* FROM purchase_orders po JOIN input i ON i.order_id=po.id FOR UPDATE OF po),"+
+      "invoice_lock AS MATERIALIZED (SELECT pg_advisory_xact_lock(hashtextextended(po.supplier_id::text||':'||i.invoice_number,0)) AS locked FROM locked_order po CROSS JOIN input i),"+
       "order_lines AS MATERIALIZED (SELECT oi.id,oi.purchase_order_id,oi.product_id,oi.product_name,oi.ordered_quantity,oi.received_quantity,"+
       "oi.unit_cost_input,oi.unit_cost_usd FROM purchase_order_items oi JOIN locked_order po ON po.id=oi.purchase_order_id FOR UPDATE OF oi),"+
       "requested AS MATERIALIZED (SELECT * FROM jsonb_to_recordset((SELECT items FROM input)) AS x(purchase_order_item_id uuid,quantity_received integer,invoice_unit_cost_input numeric)),"+
@@ -1177,7 +1178,7 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
       "invoice_original_total,invoice_total_usd,actual_taxes_usd,payment_terms_snapshot,emitted_by,emitted_at) "+
       "SELECT g.receipt_number,i.order_id,i.freight_usd,i.notes,NULL,'Emitida',i.invoice_number,i.invoice_date,i.currency,"+
       "i.exchange_rate,i.original_total,a.supplied_invoice_usd,i.taxes_usd,i.payment_terms,i.actor,NOW() "+
-      "FROM input i CROSS JOIN generated g CROSS JOIN amount_check a "+
+      "FROM input i CROSS JOIN generated g CROSS JOIN amount_check a CROSS JOIN invoice_lock il "+
       "WHERE a.order_exists AND a.order_status IN ('Confirmada','Recepción parcial') "+
       "AND a.order_currency=i.currency AND ABS(a.order_rate-i.exchange_rate)<0.0001 "+
       "AND LOWER(BTRIM(a.order_payment_terms))=LOWER(BTRIM(i.payment_terms)) "+
@@ -1185,7 +1186,10 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
       "AND a.invalid_quantity_count=0 AND a.price_mismatch_count=0 AND a.order_line_count>0 "+
       "AND ABS(a.expected_invoice_usd-a.supplied_invoice_usd)<=0.02 "+
       "AND NOT EXISTS(SELECT 1 FROM supplier_invoices si JOIN locked_order po ON po.supplier_id=si.supplier_id "+
-      "WHERE si.invoice_number=i.invoice_number) RETURNING *),"+
+      "WHERE si.invoice_number=i.invoice_number) "+
+      "AND NOT EXISTS(SELECT 1 FROM purchase_receipts existing JOIN purchase_orders existing_order ON existing_order.id=existing.purchase_order_id "+
+      "JOIN locked_order current_order ON current_order.supplier_id=existing_order.supplier_id "+
+      "WHERE existing.supplier_invoice_number=i.invoice_number) RETURNING *),"+
       "receipt_lines AS (INSERT INTO purchase_receipt_items(receipt_id,purchase_order_item_id,product_id,product_name,"+
       "quantity_received,landed_unit_cost_usd,invoice_unit_cost_input) "+
       "SELECT r.id,m.id,m.product_id,m.product_name,m.quantity_received,"+
