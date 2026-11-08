@@ -907,7 +907,7 @@ export async function createInventoryMovement(sql, user, body) {
 }
 
 
-export export async function reverseInventoryMovement(sql, user, movementId, body = {}) {
+export async function reverseInventoryMovement(sql, user, movementId, body = {}) {
   const id = String(movementId || "").trim();
   const reason = String(body.reason || "").trim();
   if (!/^[0-9a-f-]{36}$/i.test(id) || reason.length < 3 || reason.length > 240) {
