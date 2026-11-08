@@ -1021,7 +1021,7 @@ export async function createPurchaseOrder(sql, user, body) {
   if (expected && !/^\d{4}-\d{2}-\d{2}$/.test(expected)) return erpError(400,"INVALID_EXPECTED_DATE","La fecha estimada no es válida.");
   try {
     const rows = await sql.query(
-      "WITH generated_number AS (SELECT 'JB-OC-'||TO_CHAR(CURRENT_DATE,'YYYY')||'-'||LPAD(nextval('public.purchase_order_number_seq')::text,6,'0') AS order_number),"+
+      "WITH generated_number AS (SELECT nextval('public.purchase_order_number_seq')::text AS order_number),"+
       "input AS (SELECT n.order_number,$1::uuid supplier_id,$2::text currency,$3::numeric exchange_rate,"+
       "$4::numeric subtotal_usd,$5::numeric discount_usd,$6::numeric freight_usd,$7::numeric taxes_usd,$8::numeric total_usd,"+
       "$9::date expected_date,$10::text payment_terms,$11::text notes,$12::jsonb items,$13::uuid actor FROM generated_number n),"+
