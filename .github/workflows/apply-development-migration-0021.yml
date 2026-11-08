@@ -1,11 +1,6 @@
 name: Guarded Neon Development migration 0021
 
 on:
-  push:
-    branches:
-      - feature/database-reliability-gate
-    paths:
-      - .github/workflows/apply-development-migration-0021.yml
   workflow_dispatch:
     inputs:
       confirm_development_only:
@@ -31,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      MIGRATION_DATABASE_URL: ${{ secrets.ERP_BACKUP_DATABASE_URL }}
+      MIGRATION_DATABASE_URL: ${{ secrets.ERP_MIGRATION_DATABASE_URL }}
       ERP_ENVIRONMENT: development
       ERP_MIGRATION_BRANCH: development
       ERP_MIGRATION_BRANCH_ID: br-nameless-surf-bezeav6n
@@ -63,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${MIGRATION_DATABASE_URL:-}" || {
-            echo "::error::ERP_BACKUP_DATABASE_URL is not configured."
+            echo "::error::ERP_MIGRATION_DATABASE_URL is not configured. Add the direct Development-only migration secret."
             exit 1
           }
           test "${ERP_ENVIRONMENT}" = "development"
