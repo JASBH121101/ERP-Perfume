@@ -972,7 +972,7 @@ export async function reverseInventoryMovement(sql, user, movementId, body = {})
   }
 }
 
-async function createPurchaseOrder(sql, user, body) {
+export async function createPurchaseOrder(sql, user, body) {
   const supplierId = String(body.supplier_id || "").trim();
   const currency = String(body.currency || "USD").toUpperCase();
   const rate = Number(body.exchange_rate ?? 1);
