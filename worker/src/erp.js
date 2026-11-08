@@ -1294,7 +1294,9 @@ export async function postPurchaseReceipt(sql,user,receiptId) {
       "posted_by=$2::uuid,posted_at=NOW(),received_by=COALESCE(pr.received_by,$2::uuid),received_at=COALESCE(pr.received_at,NOW()),"+
       "supplier_invoice_id=(SELECT id FROM invoice_link) FROM purchase_code c CROSS JOIN journal j "+
       "WHERE pr.id=(SELECT id FROM locked_receipt) AND EXISTS(SELECT 1 FROM journal_lines) RETURNING pr.*),"+
-      "order_remaining AS MATERIALIZED (SELECT COUNT(*) FILTER(WHERE oi.received_quantity<oi.ordered_quantity)::int open_lines "+
+      "order_remaining AS MATERIALIZED (SELECT COUNT(*) FILTER(WHERE oi.received_quantity+COALESCE((SELECT SUM(pri.quantity_received)::int "+
+      "FROM purchase_receipt_items pri WHERE pri.receipt_id=(SELECT id FROM locked_receipt) "+
+      "AND pri.purchase_order_item_id=oi.id),0)<oi.ordered_quantity)::int open_lines "+
       "FROM purchase_order_items oi JOIN locked_receipt r ON r.po_id=oi.purchase_order_id),"+
       "updated_order AS (UPDATE purchase_orders po SET status=CASE WHEN rem.open_lines=0 THEN 'Recibida' ELSE 'Recepción parcial' END,updated_at=NOW() "+
       "FROM order_remaining rem CROSS JOIN locked_receipt r WHERE po.id=r.po_id AND EXISTS(SELECT 1 FROM posted_receipt) RETURNING po.id,po.status),"+
