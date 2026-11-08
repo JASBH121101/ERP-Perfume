@@ -237,7 +237,9 @@ test("purchase receipt posting atomically updates stock, payables, purchase code
   assert.match(captured.statement, /INSERT INTO supplier_invoices/);
   assert.match(captured.statement, /INSERT INTO purchase_journal_entries/);
   assert.match(captured.statement, /INSERT INTO purchase_journal_lines/);
-  assert.ok(captured.statement.includes("BTRIM(r.payment_terms_snapshot) ~* '^(Crédito[[:space:]]+)?[0-9]+[[:space:]]+días
+  const creditPattern = "BTRIM(r.payment_terms_snapshot) ~* '^(Crédito[[:space:]]+)?[0-9]+[[:space:]]+días" + "$" + "'";
+  assert.ok(captured.statement.includes(creditPattern), "Credit terms must add their stated number of days.");
+  assert.ok(captured.statement.includes("ELSE NULL END"), "Por acordar must not create a same-day due date.");
   assert.match(captured.statement, /UPDATE purchase_receipts/);
   assert.match(captured.statement, /document_status='Emitida'/);
 });
