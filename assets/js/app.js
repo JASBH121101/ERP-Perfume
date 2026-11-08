@@ -659,7 +659,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "stock-new": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "stock-product": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "inventory-view-product": ["inventory.view"],
-    "export-inventory": ["inventory.view"], "new-purchase": ["purchases.receipts.receive"],
+    "export-inventory": ["inventory.view"], "reverse-inventory-movement": ["inventory.movements.reverse"], "new-purchase": ["purchases.receipts.receive"],
     "submit-purchase-order": ["purchases.purchase_orders.submit"],
     "approve-purchase-order": ["purchases.approvals.approve"],
     "cancel-purchase-order": ["purchases.purchase_orders.cancel"],
@@ -718,6 +718,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   const form = document.getElementById('product-form');
   const stockDialog = document.getElementById('stock-dialog');
   const stockForm = document.getElementById('stock-form');
+  const inventoryReversalDialog = document.getElementById('inventory-reversal-dialog');
+  const inventoryReversalForm = document.getElementById('inventory-reversal-form');
   const detailDialog = document.getElementById('product-detail-dialog');
   const orderDialog = document.getElementById('order-detail-dialog');
   const businessDialog = document.getElementById('business-dialog');
@@ -1149,7 +1151,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const pageRows=(serverPage?filtered:filtered.slice(offset,offset+pageSize)).map(m=>{
       const date=new Date(m.createdAt),dateLabel=Number.isNaN(date.getTime())?'Fecha no disponible':date.toLocaleString('es-NI',{dateStyle:'short',timeStyle:'short'});
       const delta=Number(m.delta||0),deltaLabel=delta>0?'+'+delta:String(delta);
-      return '<tr><td data-label="Fecha">'+esc(dateLabel)+'</td><td data-label="Perfume"><span class="table-primary">'+esc(m.productName)+'</span><small class="table-secondary">'+esc(m.sku||'')+'</small></td><td data-label="Tipo">'+esc(m.type)+'</td><td data-label="Variación" class="table-primary">'+deltaLabel+' uds.</td><td data-label="Stock resultante">'+Number(m.previousStock||0)+' → '+Number(m.newStock||0)+'</td><td data-label="Nota">'+esc(m.note||'—')+'</td></tr>';
+      const traceStatus=m.type==='Reversion'?'Reversión registrada':(m.alreadyReversed?'Movimiento revertido':'');
+      const canReverse=permissionGranted('inventory.movements.reverse')&&m.sourceType==='manual'&&m.type!=='Reversion'&&!m.alreadyReversed;
+      const reverseAction=canReverse?'<button class="button button-quiet button-small" type="button" data-action="reverse-inventory-movement" data-id="'+esc(m.id)+'">Revertir</button>':'';
+      return '<tr><td data-label="Fecha">'+esc(dateLabel)+'</td><td data-label="Perfume"><span class="table-primary">'+esc(m.productName)+'</span><small class="table-secondary">'+esc(m.sku||'')+'</small></td><td data-label="Tipo">'+esc(m.type)+'</td><td data-label="Variación" class="table-primary">'+deltaLabel+' uds.</td><td data-label="Stock resultante">'+Number(m.previousStock||0)+' → '+Number(m.newStock||0)+'</td><td data-label="Nota">'+esc(m.note||'—')+(traceStatus?'<small class="table-secondary">'+esc(traceStatus)+'</small>':'')+reverseAction+'</td></tr>';
     }).join('');
     const rangeStart=total?offset+1:0,rangeEnd=Math.min(offset+pageSize,total);
     const empty=inventoryMovementPageError||(total?'No hay movimientos que coincidan con los filtros.':'Todavía no hay movimientos registrados.');
@@ -1168,7 +1173,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   async function loadInventoryMovementPage() {
     if(state.view!=='inventory' ||
-      !["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted))return;
+      !["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"].some(permissionGranted))return;
     const requestId=++inventoryMovementRequestId;
     const params=new URLSearchParams({
       page:String(state.inventoryMovementPage),page_size:String(state.inventoryMovementPageSize),
@@ -1190,7 +1195,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         id:m.id,productId:m.product_id,productName:m.product_name,sku:m.sku,type:m.movement_type,
         quantity:Number(m.quantity||0),delta:Number(m.quantity_delta||0),
         previousStock:Number(m.previous_stock||0),newStock:Number(m.new_stock||0),
-        note:m.note||'',sourceType:m.reference_type||'',sourceId:m.reference_id||'',createdAt:m.created_at
+        note:m.note||'',sourceType:m.reference_type||'',sourceId:m.reference_id||'',alreadyReversed:m.already_reversed===true,createdAt:m.created_at
       }));
       inventoryMovementTotal=total;
       refreshInventoryMovementResults();
@@ -1333,6 +1338,27 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg('search')+'<input id="inventory-product-search" type="search" value="'+esc(state.inventoryProductQuery)+'" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>'+categoryOptions+'</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"'+(state.inventoryProductStock==='all'?' selected':'')+'>Todos los estados</option><option value="available"'+(state.inventoryProductStock==='available'?' selected':'')+'>Disponibles</option><option value="low"'+(state.inventoryProductStock==='low'?' selected':'')+'>Stock bajo</option><option value="out"'+(state.inventoryProductStock==='out'?' selected':'')+'>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">'+rows.length+' de '+activeProducts.length+' productos</span><span>Ordenados por menor existencia · consulta paginada</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th>CONSULTA</th></tr></thead><tbody id="inventory-product-body">'+(rows||'<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>')+'</tbody></table></div><div id="inventory-stock-pagination"></div></article>'+
       (["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted)?renderInventoryLedger():"")+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Stock mínimo configurable por producto · Kardex íntegro</strong><p>Las existencias y el historial se consultan directamente en Neon, con totales y paginación del lado del servidor. Las salidas se bloquean si generan stock negativo; cada movimiento conserva el saldo anterior, la variación y el saldo resultante.</p></div></div>';
+  }
+  function openInventoryReversalDialog(movementId) {
+    if (!permissionGranted('inventory.movements.reverse')) {
+      toast('Tu cuenta no tiene permiso para revertir movimientos.');
+      return;
+    }
+    const movement = [...(inventoryMovementPageRows || []), ...(inventoryMovements || [])]
+      .find(item => String(item.id) === String(movementId));
+    const sourceType = movement?.sourceType || movement?.reference_type || '';
+    const movementType = movement?.type || movement?.movement_type || '';
+    if (!movement || sourceType !== 'manual' || movementType === 'Reversion' || movement.alreadyReversed === true) {
+      toast('Solo se pueden revertir movimientos manuales que todavía no tengan reversión.');
+      return;
+    }
+    inventoryReversalForm.dataset.movementId = String(movement.id);
+    inventoryReversalForm.elements.reason.value = '';
+    document.getElementById('inventory-reversal-summary').textContent =
+      (movement.productName || movement.product_name || 'Producto') + ' · ' + movementType + ' · ' +
+      (Number(movement.delta ?? movement.quantity_delta) > 0 ? '+' : '') +
+      Number(movement.delta ?? movement.quantity_delta) + ' unidades';
+    if (typeof inventoryReversalDialog.showModal === 'function') inventoryReversalDialog.showModal();
   }
   function showInventoryProductDetails(productId) {
     const product = [...(inventoryStockPageRows || []), ...products].find(function (item) { return String(item.id) === String(productId); });
@@ -3636,6 +3662,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       }
       else if (name === 'stock-new') openStockModal();
       else if (name === 'stock-product') openStockModal(action.getAttribute('data-id'));
+      else if (name === 'reverse-inventory-movement') openInventoryReversalDialog(action.getAttribute('data-id'));
       else if (name === 'export-inventory') renderInventoryCsv();
       else if (name === 'export') exportCurrentView();
       else if (name === 'billing-preview') openBusinessDialog('invoice');
@@ -3668,6 +3695,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target.closest('#mobile-scrim')) closeMobileMenu();
     if (event.target.closest('#modal-close') || event.target.closest('#cancel-product')) { dialog.close(); form.dataset.editingId = ''; form.elements.stock.readOnly = false; }
     if (event.target.closest('#stock-modal-close') || event.target.closest('#stock-cancel')) stockDialog.close();
+    if (event.target.closest('#inventory-reversal-close') || event.target.closest('#inventory-reversal-cancel')) inventoryReversalDialog.close();
     if (event.target.closest('#detail-close') || event.target.closest('#detail-cancel')) detailDialog.close();
     if (event.target.closest('#order-detail-close') || event.target.closest('#order-detail-cancel')) orderDialog.close();
   });
@@ -3854,6 +3882,38 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     while (products.some(function (product) { return String(product.sku).toLowerCase() === ('jbp-' + String(index).padStart(3,'0')).toLowerCase(); })) index+=1;
     return 'JBP-' + String(index).padStart(3,'0');
   }
+  inventoryReversalForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (!inventoryReversalForm.reportValidity()) return;
+    if (!permissionGranted('inventory.movements.reverse')) {
+      toast('Tu cuenta ya no tiene permiso para revertir movimientos.');
+      inventoryReversalDialog.close();
+      return;
+    }
+    const movementId = String(inventoryReversalForm.dataset.movementId || '');
+    const reason = String(inventoryReversalForm.elements.reason.value || '').trim();
+    if (!movementId || reason.length < 3 || reason.length > 240) {
+      toast('Indica un motivo válido de 3 a 240 caracteres.');
+      return;
+    }
+    const button = inventoryReversalForm.querySelector('[type="submit"]');
+    if (button) { button.disabled = true; button.textContent = 'Revirtiendo…'; }
+    try {
+      await erpApi('inventory-movements/' + encodeURIComponent(movementId) + '/reverse', {
+        method: 'POST', body: JSON.stringify({ reason })
+      });
+      inventoryReversalDialog.close();
+      inventoryReversalForm.reset();
+      inventoryReversalForm.dataset.movementId = '';
+      state.inventoryMovementPage = 1;
+      await Promise.all([loadInventoryMovementPage(), loadInventoryStockPage(), loadInventorySummary()]);
+      toast('Reversión registrada. El movimiento original permanece en el Kardex.');
+    } catch (error) {
+      toast(error?.message || 'No se pudo revertir el movimiento.');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = 'Registrar reversión'; }
+    }
+  });
   stockForm.addEventListener('submit', async function (event) {
     event.preventDefault();
     if(!stockForm.reportValidity())return;
