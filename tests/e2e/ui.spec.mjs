@@ -885,7 +885,8 @@ test('purchase order form omits the generated code field and keeps payment terms
   await expect(form.locator('[name="supplier_id"]')).toBeVisible();
   await expect(form.locator('[name="payment_terms"]').locator('..')).toHaveClass(/purchase-order-full-field/);
 
-  const gridColumn = await form.locator('.purchase-order-full-field').evaluate(node => getComputedStyle(node).gridColumn);
+  const paymentTermsField = form.locator('[name="payment_terms"]').locator('..');
+  const gridColumn = await paymentTermsField.evaluate(node => getComputedStyle(node).gridColumn);
   expect(gridColumn).toContain('1 / -1');
 });
 
