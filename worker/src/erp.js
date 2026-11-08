@@ -1102,7 +1102,7 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
   const invoiceOriginalTotal=Number(body.invoice_original_total??0);
   const paymentTerms=String(body.payment_terms||"").trim();
   const rawItems=Array.isArray(body.items)?body.items:[];
-  const termsValid=/^(Contado|Por acordar|Crédito\s+(?:[1-9]|[1-9][0-9]|[1-2][0-9]{2}|3[0-5][0-9]|360)\s+días)$/i.test(paymentTerms);
+  const termsValid=/^(Contado|Por acordar|(?:Crédito\s+)?(?:15|30|45|60|90|120|180|360)\s+días)$/i.test(paymentTerms);
   if(!/^[0-9a-f-]{36}$/i.test(String(orderId))||!invoiceNumber||invoiceNumber.length>100||
      !/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)||!["USD","NIO"].includes(invoiceCurrency)||
      !Number.isFinite(invoiceRate)||invoiceRate<=0||invoiceRate>100000||
