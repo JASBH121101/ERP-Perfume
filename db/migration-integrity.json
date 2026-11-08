@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 1,
+  "hashAlgorithm": "sha256",
+  "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
+  "nextMigrationVersion": "0022",
+  "snapshot": {
+    "provider": "Neon",
+    "project": "erp-perfume",
+    "projectId": "withered-union-19544532",
+    "database": "erp_perfume",
+    "branch": "development",
+    "branchId": "br-nameless-surf-bezeav6n",
+    "observedDate": "2026-11-08",
+    "readOnly": true,
+    "ledgerRows": 17,
+    "ledgerVersions": [
+      "0001",
+      "0002",
+      "0003",
+      "0004",
+      "0005",
+      "0006",
+      "0007",
+      "0008",
+      "0009",
+      "0010",
+      "0011",
+      "0015",
+      "0016",
+      "0017",
+      "0018",
+      "0019",
+      "0021"
+    ],
+    "productionInspected": true,
+    "productionModified": false,
+    "note": "Updated from a read-only verification of Neon Development after guarded migration 0021 was committed. The exact ledger rows and SHA-256 were observed directly; Neon Production was not modified.",
+    "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
+    "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
+    "productionInspectionDate": "2026-11-07",
+    "productionBranchId": "br-royal-art-ben0apun",
+    "productionPublicApplicationTables": 0
+  },
+  "migrations": [
+    {
+      "filename": "0001_initial_schema.sql",
+      "version": "0001",
+      "sha256": "093410c6967a0d3cef00105bb69e0dbce84642df0536105c632814ec0af59b8f",
+      "database": {
+        "status": "applied_git_blob_verified",
+        "ledgerChecksum": "e821d247cf56d740ab797e5485d02e7ba8015689",
+        "appliedAt": "2026-11-04T02:19:40.496841Z",
+        "note": "The ledger checksum matches the Git blob SHA-1 of the current migration source."
+      }
+    },
+    {
+      "filename": "0002_procurement_finance_extensions.sql",
+      "version": "0002",
+      "sha256": "2942a2cd332be3398b3a25c64ab2169380edbcfb76a25e4b88a064eff0dca57a",
+      "database": {
+        "status": "applied_historical_source_recovered",
+        "ledgerChecksum": "074ce79f6a8be69c58ae70e8f51a438b133a9571",
+        "appliedAt": "2026-11-04T02:19:40.496841Z",
+        "note": "Exact historical SQL recovered from commit dba793412a40340d7809b52c0d6274099bfbb98c. The archived source and the file at that commit are byte-for-byte identical; their Git blob SHA-1 matches the Development ledger checksum. The 8 named schema effects pass the live read-only object audit.",
+        "historicalSource": {
+          "archivePath": "db/migration-history/0002-ledger-matched-source.sql",
+          "archiveSha256": "5808fafecc277bfe38a294ae63c61e17620fd9f299b84ce8b7fb02b197abeec8",
+          "gitBlobSha1": "074ce79f6a8be69c58ae70e8f51a438b133a9571",
+          "sourceCommit": "dba793412a40340d7809b52c0d6274099bfbb98c",
+          "originalPath": "db/migrations/0002_procurement_finance_extensions.sql",
+          "executable": true,
+          "note": "Exact historical SQL recovered from Git; Git blob SHA-1 equals the Development ledger checksum. The 8 named schema effects pass the live read-only Development object audit."
+        }
+      }
+    },
+    {
+      "filename": "0003_catalog_metadata.sql",
+      "version": "0003",
+      "sha256": "50bc66549aa2cc068338dfb6d95722a318979d2eece48686a29a8105a0c66f89",
+      "database": {
+        "status": "applied_historical_source_recovered",
+        "ledgerChecksum": "fd84c81e13faa4dc8d761b341098175208430919",
+        "appliedAt": "2026-11-04T02:22:08.357498Z",
+        "note": "Exact historical SQL recovered from commit 7347b46fe7d345bda34564cae92cb4ed0db38d5e. The archived source and the file at that commit are byte-for-byte identical; their Git blob SHA-1 matches the Development ledger checksum. The 14 named schema effects pass the live read-only object audit.",
+        "historicalSource": {
+          "archivePath": "db/migration-history/0003-ledger-matched-source.sql",
+          "archiveSha256": "c707797d180d72b5fb93fba86e39d158cca46d3dd14a24be4e9e8a5044e5ab72",
+          "gitBlobSha1": "fd84c81e13faa4dc8d761b341098175208430919",
+          "sourceCommit": "7347b46fe7d345bda34564cae92cb4ed0db38d5e",
+          "originalPath": "db/migrations/0003_catalog_metadata.sql",
+          "executable": true,
+          "note": "Exact historical SQL recovered from Git; Git blob SHA-1 equals the Development ledger checksum. The 14 named schema effects pass the live read-only Development object audit."
+        }
+      }
+    },
+    {
+      "filename": "0004_unique_invoice_per_web_order.sql",
+      "version": "0004",
+      "sha256": "be9b834bd2592305f6fb06ac164df921a33c3c56e2340ba0000cce24b3da3067",
+      "database": {
+        "status": "applied_historical_source_recovered",
+        "ledgerChecksum": "e4eecebff2d3566b4c4edd0460f6a1449d9253f3",
+        "appliedAt": "2026-11-04T11:07:18.723349Z",
+        "note": "Exact historical source recovered from commit 55095a98d599850078b42bb2fd0c8320f959e94d. The archived source and the file at that commit are byte-for-byte identical; their Git blob SHA-1 matches the Development ledger checksum.",
+        "historicalSource": {
+          "archivePath": "db/migration-history/0004-ledger-matched-source.sql",
+          "archiveSha256": "97e4d6b5289d3c9b3931ffdb91cd4ea085d7dd89a166fcfe2abd182554f5df9c",
+          "gitBlobSha1": "e4eecebff2d3566b4c4edd0460f6a1449d9253f3",
+          "sourceCommit": "55095a98d599850078b42bb2fd0c8320f959e94d",
+          "originalPath": "db/migrations/0004_unique_invoice_per_web_order.sql",
+          "executable": true,
+          "note": "Exact historical source recovered from Git; its Git blob SHA-1 equals the Development ledger checksum."
+        }
+      }
+    },
+    {
+      "filename": "0005_inventory_reference_lookup.sql",
+      "version": "0005",
+      "sha256": "580e578eb478cca59af90210a83ae081e9dfffd065880d6c51e6ce9a1b276cd6",
+      "database": {
+        "status": "applied_git_blob_verified",
+        "ledgerChecksum": "51b828c407a26d2f748b52bdf53635e5302011e3",
+        "appliedAt": "2026-11-04T11:16:01.578203Z",
+        "note": "The ledger checksum matches the Git blob SHA-1 of the current migration source."
+      }
+    },
+    {
+      "filename": "0006_dgi_compliance_support.sql",
+      "version": "0006",
+      "sha256": "052350d947ca9f7d54e5671723f73a99c320278145e73df68e2cc3cc5c01a99c",
+      "database": {
+        "status": "applied_historical_source_unexecutable",
+        "ledgerChecksum": "0944049798ed242d641941c78fa5601998ee574d",
+        "appliedAt": "2026-11-04T17:12:54.875341Z",
+        "note": "Historical source matching the ledger checksum is malformed. Do not replay this artifact or the corrected source. The actual SQL successfully executed remains unproven.",
+        "historicalSource": {
+          "archivePath": "db/migration-history/0006-ledger-matched-source-invalid.sql",
+          "archiveSha256": "54e2c66e7fa88c66ed8be97563ec7305ee433b604bdc89f0fcf2d7d6fb4ba115",
+          "gitBlobSha1": "0944049798ed242d641941c78fa5601998ee574d",
+          "sourceCommit": "7eb27a4d566ff750a2ddf9da7f45c0e5ca4d9c2f",
+          "originalPath": "db/migrations/0006_dgi_compliance_support.sql",
+          "executable": false,
+          "note": "The Git blob matching the ledger checksum contains an incomplete fiscal_period CHECK expression and duplicated SQL after the first statement. It cannot be treated as executable evidence. Development has the DGI table and constraints from the later corrected source; the exact SQL that completed the recorded migration remains unresolved."
+        }
+      }
+    },
+    {
+      "filename": "0007_granular_permissions.sql",
+      "version": "0007",
+      "sha256": "a140ed6ce6c48a1328c583e2b9d849973b3d42fd62f6f89890ebea362f650d0e",
+      "database": {
+        "status": "applied_content_sha1_verified",
+        "ledgerChecksum": "788c2464dc764bdb8fab4f746b1d30dc2888e82a",
+        "appliedAt": "2026-11-04T21:10:05.229124Z",
+        "note": "The ledger checksum matches SHA-1 of the exact current migration source bytes."
+      }
+    },
+    {
+      "filename": "0008_employee_account_link.sql",
+      "version": "0008",
+      "sha256": "7becc2630d646f465e94a1a5ea13b1101b0ae95ff67e639d65b5d44b88679a1b",
+      "database": {
+        "status": "applied_reconstructed_source",
+        "ledgerChecksum": "accb56146d1e5c707e7f7336eabc1e66dc50df1bf5e316387267b030fe392842",
+        "appliedAt": "2026-11-04T23:11:37.400002Z",
+        "note": "Schema-equivalent source reconstruction. Not byte-for-byte original; never replay or overwrite the ledger row."
+      }
+    },
+    {
+      "filename": "0009_supplier_invoices_payables.sql",
+      "version": "0009",
+      "sha256": "21a241dfc9df90196645532bc58ff817cd2863b8896e4792bdef35c007ac404b",
+      "database": {
+        "status": "applied_reconstructed_source",
+        "ledgerChecksum": "e564f8a421bd7e828f664259ff15bdaf3ce983a76b84ea15b8963d5880b17ec4",
+        "appliedAt": "2026-11-04T23:30:42.565523Z",
+        "note": "Schema-equivalent source reconstruction. Not byte-for-byte original; never replay or overwrite the ledger row."
+      }
+    },
+    {
+      "filename": "0010_purchase_order_number_sequence.sql",
+      "version": "0010",
+      "sha256": "c42f04bca7650985eb6a2c3809cca8551edc635b73c076f5a8692efdb93736eb",
+      "database": {
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "c42f04bca7650985eb6a2c3809cca8551edc635b73c076f5a8692efdb93736eb",
+        "appliedAt": "2026-11-05T04:33:43.880472Z"
+      }
+    },
+    {
+      "filename": "0011_hr_benefits_commissions.sql",
+      "version": "0011",
+      "sha256": "bf4b7b82a879dc0eb4e7398f156116c117ebc5411db210dcd222ebf54e729a66",
+      "database": {
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "bf4b7b82a879dc0eb4e7398f156116c117ebc5411db210dcd222ebf54e729a66",
+        "appliedAt": "2026-11-06T03:10:50.04044Z"
+      }
+    },
+    {
+      "filename": "0012_hr_employee_history.sql",
+      "version": "0012",
+      "sha256": "6624d02b83b8ee15035eda1e27a3d01c6c339f99deb74e3599902b9aaa29451f",
+      "database": {
+        "status": "schema_present_without_ledger",
+        "objectsVerified": [
+          "public.employee_code_sequence",
+          "public.employee_history",
+          "public.employees_seed_history_after_insert",
+          "public.employee_history_employee_date_idx"
+        ],
+        "note": "Live Development objects exist, but no migration ledger row exists. Do not replay or invent a ledger row."
+      }
+    },
+    {
+      "filename": "0013_hr_employee_documents.sql",
+      "version": "0013",
+      "sha256": "59d0c23447089a0aca80c7111ee0e1cc4978cf5d69fe25de19f5cbe33ccc3acc",
+      "database": {
+        "status": "schema_present_without_ledger",
+        "objectsVerified": [
+          "public.employee_documents",
+          "public.employee_documents_employee_date_idx"
+        ],
+        "note": "Live Development objects exist, but no migration ledger row exists. Do not replay or invent a ledger row."
+      }
+    },
+    {
+      "filename": "0014_hr_foreign_key_indexes.sql",
+      "version": "0014",
+      "sha256": "ce53a0031fc041c84b9dc55afd26b24fdb89d6e490089b23a8fa4578b591f333",
+      "database": {
+        "status": "schema_present_without_ledger",
+        "objectsVerified": [
+          "public.employee_history_changed_by_idx",
+          "public.employee_documents_uploaded_by_idx"
+        ],
+        "note": "Live Development indexes exist, but no migration ledger row exists. Do not replay or invent a ledger row."
+      }
+    },
+    {
+      "filename": "0015_employee_contract_terms.sql",
+      "version": "0015",
+      "sha256": "dcafd77a9606349d6dba807fd563f5696ea9dc04c3ac4aeb2ddce52d13920764",
+      "database": {
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "dcafd77a9606349d6dba807fd563f5696ea9dc04c3ac4aeb2ddce52d13920764",
+        "appliedAt": "2026-11-06T17:34:57.230716Z"
+      }
+    },
+    {
+      "filename": "0016_notifications_error_monitoring.sql",
+      "version": "0016",
+      "sha256": "97fedcd3bf2e999b47663d409d73579b1caa7ae0cb7d8a90f1dd554338a78654",
+      "database": {
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "97fedcd3bf2e999b47663d409d73579b1caa7ae0cb7d8a90f1dd554338a78654",
+        "appliedAt": "2026-11-06T19:40:26.816108Z"
+      }
+    },
+    {
+      "filename": "0017_purchase_order_rejections.sql",
+      "version": "0017",
+      "sha256": "c0feb0eeccb4decd989fe4e585c35522c8ce97061a1c32c16938b35faac5263f",
+      "database": {
+        "status": "applied_source_unverified",
+        "ledgerChecksum": "c295bad5a8c8a15a43ae0fedf9a07cd6a89cbead766bd39708fbb54d474b1182",
+        "appliedAt": "2026-11-06T19:55:29.020956Z",
+        "note": "Current source SHA-256 does not match the Development ledger checksum. Original source provenance needs reconciliation; do not replay or edit this file."
+      }
+    },
+    {
+      "filename": "0018_purchase_order_rejection_reason.sql",
+      "version": "0018",
+      "sha256": "1bdac6dee0ad081d831dd9d36a62b1c86fcf748c296f51150d94a63a677d770b",
+      "database": {
+        "status": "applied_reconstructed_source",
+        "ledgerChecksum": "2fe572455a79e20ef49139b229d7bbb6e0204375727e1e30be271f1b60644f57",
+        "appliedAt": "2026-11-06T20:40:28.218348Z",
+        "note": "Documented schema-equivalent reconstruction. Not byte-for-byte original; do not replay or overwrite the ledger row."
+      }
+    },
+    {
+      "filename": "0019_foreign_key_supporting_indexes.sql",
+      "version": "0019",
+      "sha256": "de223be267e647d1e31a4d3bda1e3b5918a2c317de2f46ad18575409f727e474",
+      "database": {
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "de223be267e647d1e31a4d3bda1e3b5918a2c317de2f46ad18575409f727e474",
+        "appliedAt": "2026-11-06T21:31:03.567959Z"
+      }
+    },
+    {
+      "filename": "0020_align_clean_install_schema.sql",
+      "version": "0020",
+      "sha256": "0f8818822832241785f4556546b4e418996214c5bbe2509c7ec0f703d28fe1d2",
+      "database": {
+        "status": "schema_present_without_ledger",
+        "objectsVerified": [
+          "public.invoice_items.unit_cost_usd numeric(14,4) NOT NULL DEFAULT 0 with nonnegative check",
+          "public.purchase_orders.exchange_rate numeric(14,6)",
+          "public.erp_notifications target_view constraint includes billing",
+          "public.purchase_orders rejection audit constraint requires actor, timestamp and reason length 5..300"
+        ],
+        "note": "Read-only Development inspection on 2026-11-07 confirms all four effects from 0020 already exist with the exact expected definitions, although no 0020 ledger row exists. Do not replay the migration or fabricate a ledger row on Development. The runner verifies these four definitions live before skipping 0020 on this pinned Development branch. Fresh installations must still execute 0020."
+      }
+    },
+    {
+      "filename": "0021_inventory_movement_reversals.sql",
+      "version": "0021",
+      "sha256": "2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc",
+      "database": {
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc",
+        "appliedAt": "2026-11-08T14:08:48.980Z",
+        "note": "Committed by guarded Development workflow run 42488309015 and independently verified against the live Development schema and migration ledger. Production was not targeted."
+      }
+    }
+  ],
+  "baselineReconciliation": {
+    "schemaVersion": 1,
+    "status": "approved",
+    "scope": "development-only; never applies to clean installs or Production",
+    "branch": "development",
+    "branchId": "br-nameless-surf-bezeav6n",
+    "database": "erp_perfume",
+    "approvedAt": "2026-11-07T20:13:39Z",
+    "approvedBy": "repository owner (explicit authorization in conversation)",
+    "approvalReference": "Explicit authorization to reconcile the Development migration baseline and remove the migration gate, 2026-11-07T20:13:39Z.",
+    "ledgerExceptions": [
+      "0006",
+      "0008",
+      "0009",
+      "0017",
+      "0018"
+    ],
+    "schemaSatisfiedWithoutLedger": [
+      "0012",
+      "0013",
+      "0014",
+      "0020"
+    ],
+    "auditObjectCount": 55,
+    "auditMigrationCount": 11,
+    "auditInvariants": [
+      "employees_missing_initial_history=0",
+      "unvalidated_constraints=0",
+      "invalid_or_unready_indexes=0"
+    ],
+    "requiresLiveAuditBeforeApply": true,
+    "policy": "Preserve every observed ledger checksum and applied_at. Never fabricate historical ledger rows or replay a schema-present migration. The Development runner may skip only live-audited schema-satisfied versions 0012-0014 and 0020 on the pinned Development branch. Fresh installs must execute every pinned SQL migration in order, including 0020.",
+    "auditSchemaAlignment": [
+      "invoice_unit_cost_usd",
+      "purchase_order_exchange_rate",
+      "notification_billing_target",
+      "purchase_order_rejection_reason"
+    ]
+  }
+}

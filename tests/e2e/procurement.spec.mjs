@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { inventoryApiFixtureResponse } from './inventory-api-fixtures.mjs';
 
 const workerPattern = /\/api\/erp\/[^?]+/;
 const apiBase = 'https://jb-parfums-erp-api.jaredblancoh19.workers.dev';
@@ -87,10 +88,16 @@ async function installProcurementApi(page) {
 
   await page.route(workerPattern, async route => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const requestUrl = new URL(request.url());
+    const pathname = requestUrl.pathname;
     const method = request.method();
     const body = method === 'GET' ? null : (request.postDataJSON?.() || null);
     requests.push({ method, pathname, body });
+
+    if (method === 'GET') {
+      const inventoryPayload = inventoryApiFixtureResponse(pathname, requestUrl.searchParams, data);
+      if (inventoryPayload) return fulfill(route, inventoryPayload);
+    }
 
     if (pathname.endsWith('/bootstrap') && method === 'GET') {
       return fulfill(route, { data });

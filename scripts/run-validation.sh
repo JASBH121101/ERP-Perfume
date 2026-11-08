@@ -40,6 +40,10 @@ console.log("PASS: @react-email/render 2.2.0; html-to-text v10+; no deepmerge pa
 NODE
 
 echo
+echo "=== Database migration integrity gate (offline; no SQL execution) ==="
+npm run check:db
+npm run check:db:ready
+
 echo "=== Build Cloudflare Pages output ==="
 npm run build
 

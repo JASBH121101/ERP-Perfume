@@ -44,3 +44,12 @@ No duplicate index is proposed for `employee_commissions.invoice_item_id`; a uni
 ## Safety boundary
 
 Only Neon Development was queried. No production branch, business records, or application data were modified. GitHub Actions, Cloudflare Pages, and Wrangler Worker deployments do not execute SQL migrations automatically.
+
+
+## Follow-up read-only verification — 2026-11-07
+
+A later read-only query against Neon Development confirmed that the ledger now contains 16 rows: versions `0001`–`0011` and `0015`–`0019`. In particular, version `0019` is recorded with checksum `de223be267e647d1e31a4d3bda1e3b5918a2c317de2f46ad18575409f727e474`, applied at `2026-11-06 21:31:03 UTC`. That value matches the SHA-256 of the current repository source. All eight indexes declared by 0019 were present.
+
+Versions `0012`, `0013` and `0014` remain absent from the ledger, while their expected sequence, tables, trigger and indexes are present. The same read-only inspection returned zero unvalidated foreign keys and zero invalid or unready public indexes. The migration ledger has one primary-key or unique constraint and contains 16 distinct versions.
+
+This follow-up supersedes the earlier “0019 pending” status above; it does not authorize replaying any historical SQL or inserting synthetic ledger rows. Production was not queried or modified.

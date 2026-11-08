@@ -116,6 +116,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let hrCommissions = [];
   let hrInssSettings = { regime:'integral', employer_band:'under_50', employee_rate:7, employer_rate:21.5 };
   let inventoryMovements = [];
+  let inventorySummary = null;
+  let inventoryStockPageRows = null, inventoryStockTotal = null, inventoryStockPageError = "";
+  let inventoryMovementPageRows = null, inventoryMovementTotal = null, inventoryMovementPageError = "";
+  let inventoryStockLoading = false, inventoryMovementLoading = false;
+  let inventoryStockRequestId = 0, inventoryMovementRequestId = 0;
+  let inventoryStockSearchTimer = null, inventoryMovementSearchTimer = null;
   let dgiSupportDocuments = [];
   let dgiDocumentsLoaded = false, dgiDocumentsLoading = false, dgiDocumentsLoadAttempted = false, dgiDocumentsError = "";
   let dgiCompliance = { taxpayer_name:"", ruc:"", business_address:"", regime_status:"not_confirmed", regime_confirmation_reference:"", quota_fixed_amount_nio:0, certificate_available:false, certificate_displayed:false, computerized_invoicing_status:"not_confirmed", dgi_confirmation_date:"", computerized_invoicing_authorization_number:"", computerized_invoicing_confirmation_reference:"" };
@@ -598,10 +604,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', catalogCategory: 'all', catalogShowPrices: true };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, catalogCategory: 'all', catalogShowPrices: true };
   const permissionViews = {
     dashboard: ["dashboard.view"], products: ["products.catalog.view"], catalog: ["products.catalog.view"], resources: [],
-    inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"],
+    inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"],
     orders: ["orders.records.view"], billing: ["billing.invoices.view"],
     receivables: ["receivables.view","billing.payments.view"], customers: ["customers.records.view"],
     hr: ["hr.employees.view","hr.attendance.view","hr.payroll.view","hr.leave.view","hr.contracts.view"],
@@ -652,8 +658,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "save-catalog-settings": ["products.catalog.edit"], "generate-catalog-pdf": ["products.catalog.view"],
     "stock-new": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
     "stock-product": ["inventory.receipts.receive","inventory.manual_out.create","inventory.adjustments.adjust"],
-    "inventory-view-product": ["inventory.stock.view"],
-    "export-inventory": ["inventory.stock.view"], "new-purchase": ["purchases.receipts.receive"],
+    "inventory-view-product": ["inventory.view"],
+    "export-inventory": ["inventory.view"], "reverse-inventory-movement": ["inventory.movements.reverse"], "new-purchase": ["purchases.receipts.receive"],
     "submit-purchase-order": ["purchases.purchase_orders.submit"],
     "approve-purchase-order": ["purchases.approvals.approve"],
     "cancel-purchase-order": ["purchases.purchase_orders.cancel"],
@@ -673,8 +679,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "approve-payroll": ["hr.payroll.approve"], "pay-payroll": ["hr.payroll.approve"],
     "download-dgi-document": ["dgi.documents.view"], "reload-dgi-documents": ["dgi.documents.view"],
     "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
-    "clear-inventory-filters": ["inventory.stock.view"], "clear-inventory-product-filters": ["inventory.stock.view"],
-    "inventory-page": ["inventory.stock.view"], "refresh-access-manager": ["users.accounts.view"],
+    "clear-inventory-filters": ["inventory.view"], "clear-inventory-product-filters": ["inventory.view"],
+    "inventory-page": ["inventory.view"], "inventory-stock-page": ["inventory.view"], "refresh-access-manager": ["users.accounts.view"],
     "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
   };
   function applyPermissionActions() {
@@ -712,6 +718,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   const form = document.getElementById('product-form');
   const stockDialog = document.getElementById('stock-dialog');
   const stockForm = document.getElementById('stock-form');
+  const inventoryReversalDialog = document.getElementById('inventory-reversal-dialog');
+  const inventoryReversalForm = document.getElementById('inventory-reversal-form');
   const detailDialog = document.getElementById('product-detail-dialog');
   const orderDialog = document.getElementById('order-detail-dialog');
   const businessDialog = document.getElementById('business-dialog');
@@ -812,10 +820,6 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '</section>'+
       '<section class="lower-grid"><article class="panel"><div class="panel-heading"><div><h2>Facturas recientes</h2><p>Actividad comercial registrada</p></div><button class="panel-link" data-view="billing">Ver todas '+svg('arrow')+'</button></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FACTURA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>'+(invoiceRows||'<tr><td colspan="5"><div class="empty-state">Todavía no hay facturas.</div></td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel inventory-status-panel"><div class="panel-heading"><div><h2>Estado del inventario</h2><p>Distribución de productos por nivel de existencias</p></div><button class="panel-link" data-view="inventory">Consultar existencias '+svg('arrow')+'</button></div><div class="inventory-donut-layout">'+donutMarkup+'<div class="donut-legend">'+stockLegend+'</div></div><div class="panel-footer-note">Conteo por referencia activa, calculado con existencias y stock mínimo registrados en Neon.</div></article></section>';
-  }
-  function stockBar(label, count, total, tone) {
-    const width = total ? Math.round(count / total * 100) : 0;
-    return '<div class="stock-row"><div class="stock-row-head"><span>' + label + '</span><strong>' + count + ' productos</strong></div><div class="stock-track"><span class="stock-fill ' + tone + '" style="width:' + width + '%"></span></div></div>';
   }
   function needsRestock(product) {
     return product.stock <= (Number.isInteger(product.minStock) ? product.minStock : 3);
@@ -1122,57 +1126,155 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="notice-panel resource-monitor-note"><span>' + svg('warning') + '</span><div><strong>Cómo leer estas barras</strong><p>Los umbrales de 512 MB para Neon y 2 GB para R2 son referencias preventivas internas configurables; no representan el límite de tu plan ni generan cargos por sí mismos. La lectura R2 puede indicarse como parcial si el bucket supera 10.000 objetos.</p></div></div>';
   }
   function renderInventoryMovementResults() {
-    const query = String(state.inventoryMovementQuery || '').trim().toLocaleLowerCase('es');
-    const startDate = state.inventoryMovementStartDate || '';
-    const endDate = state.inventoryMovementEndDate || '';
-    const ordered = inventoryMovements.slice().sort(function (a, b) {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
-    });
-    const filtered = ordered.filter(function (movement) {
-      const searchable = [movement.productName, movement.sku, movement.note, movement.type, movement.sourceId]
-        .filter(Boolean).join(' ').toLocaleLowerCase('es');
-      if (query && !searchable.includes(query)) return false;
-      if (state.inventoryMovementType !== 'all' && String(movement.type || '') !== state.inventoryMovementType) return false;
-      const date = new Date(movement.createdAt);
-      const dateKey = Number.isNaN(date.getTime()) ? '' :
-        date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-      if (startDate && (!dateKey || dateKey < startDate)) return false;
-      if (endDate && (!dateKey || dateKey > endDate)) return false;
+    const query=String(state.inventoryMovementQuery||'').trim().toLocaleLowerCase('es');
+    const startDate=state.inventoryMovementStartDate||'',endDate=state.inventoryMovementEndDate||'';
+    const ordered=inventoryMovements.slice().sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+    const localFiltered=ordered.filter(m=>{
+      const searchable=[m.productName,m.sku,m.note,m.type,m.sourceId].filter(Boolean).join(' ').toLocaleLowerCase('es');
+      if(query&&!searchable.includes(query))return false;
+      if(state.inventoryMovementType!=='all'&&String(m.type||'')!==state.inventoryMovementType)return false;
+      const date=new Date(m.createdAt),key=Number.isNaN(date.getTime())?'':date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+      if(startDate&&(!key||key<startDate))return false;
+      if(endDate&&(!key||key>endDate))return false;
       return true;
     });
-    const pageSize = 25;
-    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-    state.inventoryMovementPage = Math.min(Math.max(1, Number(state.inventoryMovementPage) || 1), totalPages);
-    const offset = (state.inventoryMovementPage - 1) * pageSize;
-    const pageRows = filtered.slice(offset, offset + pageSize).map(function (movement) {
-      const date = new Date(movement.createdAt);
-      const dateLabel = Number.isNaN(date.getTime()) ? 'Fecha no disponible' : date.toLocaleString('es-NI', { dateStyle: 'short', timeStyle: 'short' });
-      const delta = Number(movement.delta || 0);
-      const deltaLabel = delta > 0 ? '+' + delta : String(delta);
-      return '<tr><td data-label="Fecha">' + esc(dateLabel) + '</td><td data-label="Perfume"><span class="table-primary">' + esc(movement.productName) + '</span><small class="table-secondary">' + esc(movement.sku || '') + '</small></td><td data-label="Tipo">' + esc(movement.type) + '</td><td data-label="Variación" class="table-primary">' + deltaLabel + ' uds.</td><td data-label="Stock resultante">' + Number(movement.previousStock || 0) + ' → ' + Number(movement.newStock || 0) + '</td><td data-label="Nota">' + esc(movement.note || '—') + '</td></tr>';
+    const serverPage=Array.isArray(inventoryMovementPageRows);
+    const filtered=serverPage?inventoryMovementPageRows:localFiltered;
+    const total=serverPage?Number(inventoryMovementTotal||0):localFiltered.length;
+    const pageSize=state.inventoryMovementPageSize,totalPages=Math.max(1,Math.ceil(total/pageSize));
+    state.inventoryMovementPage=Math.min(Math.max(1,Number(state.inventoryMovementPage)||1),totalPages);
+    const offset=(state.inventoryMovementPage-1)*pageSize;
+    const pageRows=(serverPage?filtered:filtered.slice(offset,offset+pageSize)).map(m=>{
+      const date=new Date(m.createdAt),dateLabel=Number.isNaN(date.getTime())?'Fecha no disponible':date.toLocaleString('es-NI',{dateStyle:'short',timeStyle:'short'});
+      const delta=Number(m.delta||0),deltaLabel=delta>0?'+'+delta:String(delta);
+      const traceStatus=m.type==='Reversion'?'Reversión registrada':(m.alreadyReversed?'Movimiento revertido':'');
+      const canReverse=permissionGranted('inventory.movements.reverse')&&m.sourceType==='manual'&&m.type!=='Reversion'&&!m.alreadyReversed;
+      const reverseAction=canReverse?'<button class="button button-quiet button-small" type="button" data-action="reverse-inventory-movement" data-id="'+esc(m.id)+'">Revertir</button>':'';
+      return '<tr data-movement-id="'+esc(m.id)+'"><td data-label="Fecha">'+esc(dateLabel)+'</td><td data-label="Perfume"><span class="table-primary">'+esc(m.productName)+'</span><small class="table-secondary">'+esc(m.sku||'')+'</small></td><td data-label="Tipo">'+esc(m.type)+'</td><td data-label="Variación" class="table-primary">'+deltaLabel+' uds.</td><td data-label="Stock resultante">'+Number(m.previousStock||0)+' → '+Number(m.newStock||0)+'</td><td data-label="Nota">'+esc(m.note||'—')+(traceStatus?'<small class="table-secondary">'+esc(traceStatus)+'</small>':'')+reverseAction+'</td></tr>';
     }).join('');
-    const rangeStart = filtered.length ? offset + 1 : 0;
-    const rangeEnd = Math.min(offset + pageSize, filtered.length);
-    const emptyMessage = inventoryMovements.length ? 'No hay movimientos que coincidan con los filtros.' : 'Todavía no hay movimientos registrados.';
-    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">' +
-      (pageRows || '<tr><td colspan="6"><div class="empty-state">' + emptyMessage + '</div></td></tr>') + '</tbody></table></div>' +
-      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando ' + rangeStart + '–' + rangeEnd + ' de ' + filtered.length + ' movimientos</span>' +
-      '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" ' + (state.inventoryMovementPage <= 1 ? 'disabled' : '') + '>Anterior</button>' +
-      '<span class="ledger-count">Página ' + state.inventoryMovementPage + ' de ' + totalPages + '</span>' +
-      '<button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="next" ' + (state.inventoryMovementPage >= totalPages ? 'disabled' : '') + '>Siguiente</button></div></div>';
+    const rangeStart=total?offset+1:0,rangeEnd=Math.min(offset+pageSize,total);
+    const empty=inventoryMovementPageError||(total?'No hay movimientos que coincidan con los filtros.':'Todavía no hay movimientos registrados.');
+    const emptyRow=inventoryMovementLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(empty)+'</div></td></tr>';
+    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||emptyRow)+'</tbody></table></div>'+
+      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos · Página '+state.inventoryMovementPage+' de '+totalPages+(serverPage?' · consultados en Neon':' · vista inicial')+'</span>'+
+      '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" '+(state.inventoryMovementPage<=1?'disabled':'')+'>Anterior</button>'+
+      '<span class="ledger-count">Página '+state.inventoryMovementPage+' de '+totalPages+'</span>'+
+      '<button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="next" '+(state.inventoryMovementPage>=totalPages?'disabled':'')+'>Siguiente</button></div></div>';
   }
   function refreshInventoryMovementResults() {
-    const container = document.getElementById('inventory-movement-results');
-    if (container) container.innerHTML = renderInventoryMovementResults();
+    const container=document.getElementById('inventory-movement-results');
+    if(container)container.innerHTML=renderInventoryMovementResults();
+    const total=document.getElementById('inventory-movement-total');
+    if(total&&inventoryMovementTotal!=null)total.textContent=Number(inventoryMovementTotal).toLocaleString('es-NI')+' movimientos';
+  }
+  async function loadInventoryMovementPage() {
+    if(state.view!=='inventory' ||
+      !["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"].some(permissionGranted))return;
+    const requestId=++inventoryMovementRequestId;
+    const params=new URLSearchParams({
+      page:String(state.inventoryMovementPage),page_size:String(state.inventoryMovementPageSize),
+      search:state.inventoryMovementQuery,type:state.inventoryMovementType,
+      from:state.inventoryMovementStartDate,to:state.inventoryMovementEndDate
+    });
+    inventoryMovementLoading=true;
+    inventoryMovementPageError='';
+    inventoryMovementPageRows=[];
+    // Preserve the last known total while the requested page is loading; render clamps the page against it.
+    refreshInventoryMovementResults();
+    try{
+      const data=await erpApi('inventory-movements?'+params.toString());
+      if(requestId!==inventoryMovementRequestId||state.view!=='inventory')return;
+      const total=Number(data.total||0),totalPages=Math.max(1,Number(data.totalPages||1));
+      inventoryMovementLoading=false;
+      if(state.inventoryMovementPage>totalPages){state.inventoryMovementPage=totalPages;return loadInventoryMovementPage();}
+      inventoryMovementPageRows=(data.records||[]).map(m=>({
+        id:m.id,productId:m.product_id,productName:m.product_name,sku:m.sku,type:m.movement_type,
+        quantity:Number(m.quantity||0),delta:Number(m.quantity_delta||0),
+        previousStock:Number(m.previous_stock||0),newStock:Number(m.new_stock||0),
+        note:m.note||'',sourceType:m.reference_type||'',sourceId:m.reference_id||'',alreadyReversed:m.already_reversed===true,createdAt:m.created_at
+      }));
+      inventoryMovementTotal=total;
+      refreshInventoryMovementResults();
+    }catch(error){
+      if(requestId!==inventoryMovementRequestId)return;
+      inventoryMovementLoading=false;
+      inventoryMovementPageRows=[];
+      inventoryMovementTotal=0;
+      inventoryMovementPageError=error?.message||'No se pudo consultar el historial en Neon.';
+      refreshInventoryMovementResults();
+    }
+  }
+  async function loadInventorySummary() {
+    if(state.view!=='inventory')return;
+    try{
+      const data=await erpApi('inventory-summary');
+      if(state.view!=='inventory')return;
+      inventorySummary=data.summary||null;
+      const active=document.getElementById('inventory-summary-active');
+      const units=document.getElementById('inventory-summary-units');
+      const restock=document.getElementById('inventory-summary-restock');
+      const out=document.getElementById('inventory-summary-out');
+      if(active)active.textContent=Number(inventorySummary?.activeProducts||0).toLocaleString('es-NI');
+      if(units)units.textContent=Number(inventorySummary?.totalUnits||0).toLocaleString('es-NI');
+      if(restock)restock.textContent=(Number(inventorySummary?.lowStock||0)+Number(inventorySummary?.outOfStock||0)).toLocaleString('es-NI');
+      if(out)out.textContent=Number(inventorySummary?.outOfStock||0).toLocaleString('es-NI');
+      refreshInventoryCategoryOptions(data.categories||[]);
+    }catch(error){
+      const note=document.getElementById('inventory-summary-error');
+      if(note)note.textContent=error?.message||'No se pudo actualizar el resumen desde Neon.';
+    }
+  }
+  function refreshInventoryCategoryOptions(serverCategories) {
+    const select=document.getElementById('inventory-product-category');
+    if(!select)return;
+    const categories=Array.from(new Set([...(serverCategories||[]),...products.map(p=>p.category).filter(Boolean)]))
+      .filter(Boolean).sort((a,b)=>String(a).localeCompare(String(b),'es'));
+    select.innerHTML='<option value="all">Todas las categorías</option>'+categories.map(category=>
+      '<option value="'+esc(category)+'"'+(state.inventoryProductCategory===category?' selected':'')+'>'+esc(category)+'</option>'
+    ).join('');
+  }
+  async function loadInventoryStockPage() {
+    if(state.view!=='inventory')return;
+    const requestId=++inventoryStockRequestId;
+    const params=new URLSearchParams({
+      page:String(state.inventoryStockPage),page_size:String(state.inventoryStockPageSize),
+      search:state.inventoryProductQuery,category:state.inventoryProductCategory==='all'?'':state.inventoryProductCategory,
+      status:state.inventoryProductStock
+    });
+    inventoryStockLoading=true;
+    inventoryStockPageError='';
+    inventoryStockPageRows=[];
+    inventoryStockTotal=0;
+    renderInventoryProductRows();
+    try{
+      const data=await erpApi('inventory-stock?'+params.toString());
+      if(requestId!==inventoryStockRequestId||state.view!=='inventory')return;
+      const total=Number(data.total||0),totalPages=Math.max(1,Number(data.totalPages||1));
+      inventoryStockLoading=false;
+      if(state.inventoryStockPage>totalPages){state.inventoryStockPage=totalPages;return loadInventoryStockPage();}
+      inventoryStockPageRows=(data.records||[]).map(p=>({
+        id:p.id,name:p.name,sku:p.sku,brand:p.brand||'',category:p.category||'',stock:Number(p.stock||0),
+        minStock:Number(p.min_stock??3),location:p.location||'',barcode:p.barcode||'',tone:p.tone||'',
+        active:p.active!==false
+      }));
+      inventoryStockTotal=total;
+      renderInventoryProductRows();
+    }catch(error){
+      if(requestId!==inventoryStockRequestId)return;
+      inventoryStockLoading=false;
+      inventoryStockPageRows=[];
+      inventoryStockTotal=0;
+      inventoryStockPageError=error?.message||'No se pudieron consultar las existencias.';
+      renderInventoryProductRows();
+    }
   }
   function renderInventoryLedger() {
     const types = [['all', 'Todos los movimientos'], ['Entrada', 'Entradas'], ['Salida', 'Salidas'], ['Ajuste', 'Ajustes'], ['Devolucion', 'Devoluciones'], ['Reversion', 'Reversiones']];
     const typeOptions = types.map(function (item) {
       return '<option value="' + item[0] + '"' + (state.inventoryMovementType === item[0] ? ' selected' : '') + '>' + item[1] + '</option>';
     }).join('');
-    return '<article class="list-panel ledger-panel inventory-ledger-panel"><div class="panel-heading"><div><h2>Historial de movimientos</h2><p>Hasta 5,000 movimientos recientes, con filtros por producto, tipo y fecha</p></div><span class="ledger-count">' + inventoryMovements.length + ' movimientos</span></div>' +
+    const movementCount=inventoryMovementTotal==null?inventoryMovements.length:Number(inventoryMovementTotal);
+    return '<article class="list-panel ledger-panel inventory-ledger-panel"><div class="panel-heading"><div><h2>Historial de movimientos</h2><p>Historial completo consultado en Neon, con filtros y paginación por servidor</p></div><span class="ledger-count" id="inventory-movement-total">' + movementCount.toLocaleString('es-NI') + ' movimientos</span></div>' +
       '<div class="toolbar products-toolbar inventory-ledger-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="inventory-movement-search" type="search" value="' + esc(state.inventoryMovementQuery) + '" placeholder="Producto, SKU o nota" aria-label="Buscar en el kardex"></label></div>' +
       '<div class="toolbar-right"><select class="filter-select" id="inventory-movement-type" aria-label="Filtrar movimientos por tipo">' + typeOptions + '</select>' +
       '<input class="filter-select" type="date" id="inventory-movement-start" value="' + esc(state.inventoryMovementStartDate) + '" aria-label="Desde fecha">' +
@@ -1199,38 +1301,63 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     });
   }
   function renderInventoryProductRows() {
-    const filtered = filteredInventoryProducts();
-    const count = document.getElementById('inventory-product-count');
-    const body = document.getElementById('inventory-product-body');
-    if (count) count.textContent = filtered.length + ' de ' + products.filter(function (product) { return product.active !== false; }).length + ' productos';
-    if (body) body.innerHTML = filtered.map(function (product) {
-      const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + Number(product.minStock ?? 3) + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + Number(product.stock || 0) + ' unidades</td><td data-label="Estado">' + status(Number(product.stock || 0), Number(product.minStock ?? 3)) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
-        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + esc(product.id) + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
-        '</div></td></tr>';
-    }).join('') || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>';
+    const filtered=Array.isArray(inventoryStockPageRows)?inventoryStockPageRows:filteredInventoryProducts();
+    const total=inventoryStockTotal==null?products.filter(p=>p.active!==false).length:Number(inventoryStockTotal);
+    const count=document.getElementById('inventory-product-count');
+    const body=document.getElementById('inventory-product-body');
+    const pagination=document.getElementById('inventory-stock-pagination');
+    const pages=Math.max(1,Math.ceil(total/state.inventoryStockPageSize));
+    const start=total?(state.inventoryStockPage-1)*state.inventoryStockPageSize+1:0;
+    const end=Math.min(state.inventoryStockPage*state.inventoryStockPageSize,total);
+    if(count)count.textContent='Mostrando '+start+'–'+end+' de '+total+' productos';
+    if(body)body.innerHTML=filtered.map(product=>{
+      const suggestion=Number(product.stock)===0?'Reposición urgente':(needsRestock(product)?'Revisar reposición':'Nivel estable');
+      return '<tr><td data-label="Perfume"><div class="product-cell">'+art(product.tone)+'<span><span class="table-primary">'+esc(product.name)+'</span><small class="table-secondary">'+esc(product.sku)+' · Mín. '+Number(product.minStock??3)+'</small></span></div></td><td data-label="Categoría">'+esc(product.category || '—')+'</td><td data-label="Stock actual" class="table-primary">'+Number(product.stock||0)+' unidades</td><td data-label="Estado">'+status(Number(product.stock||0),Number(product.minStock??3))+'</td><td data-label="Reposición"><span class="table-secondary">'+suggestion+'</span></td><td data-label="Consulta"><div class="table-actions"><button class="table-action" type="button" data-action="inventory-view-product" data-id="'+esc(product.id)+'" aria-label="Consultar existencias de '+esc(product.name)+'" title="Consultar existencias">'+svg('eye')+'</button></div></td></tr>';
+    }).join('')||(inventoryStockLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(inventoryStockPageError||'No hay productos que coincidan con los filtros.')+'</div></td></tr>');
+    if(pagination)pagination.innerHTML='<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Página '+state.inventoryStockPage+' de '+pages+'</span><div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="previous" '+(state.inventoryStockPage<=1?'disabled':'')+'>Menos stock</button><span class="ledger-count">'+start+'–'+end+' / '+total+'</span><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="next" '+(state.inventoryStockPage>=pages?'disabled':'')+'>Más stock</button></div></div>';
   }
   function renderInventory() {
-    const activeProducts = products.filter(function (product) { return product.active !== false; });
-    const categories = Array.from(new Set(activeProducts.map(function (product) { return product.category; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, 'es'); });
-    const categoryOptions = categories.map(function (category) {
-      return '<option value="' + esc(category) + '"' + (state.inventoryProductCategory === category ? ' selected' : '') + '>' + esc(category) + '</option>';
+    const activeProducts=products.filter(p=>p.active!==false);
+    const categories=Array.from(new Set(activeProducts.map(p=>p.category).filter(Boolean))).sort((x,y)=>x.localeCompare(y,'es'));
+    const categoryOptions=categories.map(category=>'<option value="'+esc(category)+'"'+(state.inventoryProductCategory===category?' selected':'')+'>'+esc(category)+'</option>').join('');
+    const rows=filteredInventoryProducts().map(product=>{
+      const suggestion=product.stock===0?'Reposición urgente':(needsRestock(product)?'Revisar reposición':'Nivel estable');
+      return '<tr><td data-label="Perfume"><div class="product-cell">'+art(product.tone)+'<span><span class="table-primary">'+esc(product.name)+'</span><small class="table-secondary">'+esc(product.sku)+' · Mín. '+Number(product.minStock??3)+'</small></span></div></td><td data-label="Categoría">'+esc(product.category||'—')+'</td><td data-label="Stock actual" class="table-primary">'+Number(product.stock||0)+' unidades</td><td data-label="Estado">'+status(Number(product.stock||0),Number(product.minStock??3))+'</td><td data-label="Reposición"><span class="table-secondary">'+suggestion+'</span></td><td data-label="Consulta"><div class="table-actions"><button class="table-action" type="button" data-action="inventory-view-product" data-id="'+esc(product.id)+'" aria-label="Consultar existencias de '+esc(product.name)+'" title="Consultar existencias">'+svg('eye')+'</button></div></td></tr>';
     }).join('');
-    const rows = filteredInventoryProducts().map(function (product) {
-      const suggestion = product.stock === 0 ? 'Reposición urgente' : (needsRestock(product) ? 'Revisar reposición' : 'Nivel estable');
-      return '<tr><td data-label="Perfume"><div class="product-cell">' + art(product.tone) + '<span><span class="table-primary">' + esc(product.name) + '</span><small class="table-secondary">' + esc(product.sku) + ' · Mín. ' + product.minStock + '</small></span></div></td><td data-label="Categoría">' + esc(product.category || '—') + '</td><td data-label="Stock actual" class="table-primary">' + product.stock + ' unidades</td><td data-label="Estado">' + status(product.stock, product.minStock) + '</td><td data-label="Reposición"><span class="table-secondary">' + suggestion + '</span></td><td data-label="Consulta"><div class="table-actions">' +
-        '<button class="table-action" type="button" data-action="inventory-view-product" data-id="' + product.id + '" aria-label="Consultar existencias de ' + esc(product.name) + '" title="Consultar existencias">' + svg('eye') + '</button>' +
-        '</div></td></tr>';
-    }).join('');
-    return heading(views.inventory, '') +
-      '<div class="inventory-page-actions"></div>' +
-      '<div class="summary-strip inventory-summary-strip"><div class="summary-mini"><span>Referencias activas</span><strong>' + activeProducts.length + '</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong>' + activeProducts.reduce(function (sum, product) { return sum + product.stock; }, 0) + '</strong></div><div class="summary-mini"><span>Para reponer</span><strong>' + activeProducts.filter(needsRestock).length + '</strong></div></div>' +
-      '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="inventory-product-search" type="search" value="' + esc(state.inventoryProductQuery) + '" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"' + (state.inventoryProductStock === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.inventoryProductStock === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.inventoryProductStock === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.inventoryProductStock === 'out' ? ' selected' : '') + '>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">' + rows.length + ' de ' + activeProducts.length + ' productos</span><span>Ordenados por menor existencia</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th>CONSULTA</th></tr></thead><tbody id="inventory-product-body">' + (rows || '<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>') + '</tbody></table></div></article>' +
-      (["inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted) ? renderInventoryLedger() : "") +
-      '<div class="notice-panel"><span>' + svg('warning') + '</span><div><strong>Stock mínimo configurable por producto · Kardex conectado</strong><p>El sistema valida que las salidas no dejen existencias negativas. Cada movimiento conserva stock anterior, variación y stock resultante. Cada operación se registra en Neon y conserva su trazabilidad.</p></div></div>';
+    const summary=inventorySummary||{};
+    const restockCount=summary.lowStock==null||summary.outOfStock==null
+      ? activeProducts.filter(needsRestock).length
+      : Number(summary.lowStock)+Number(summary.outOfStock);
+    return heading(views.inventory,'')+
+      '<div class="inventory-page-actions"></div>'+
+      '<div class="summary-strip inventory-summary-strip"><div class="summary-mini"><span>Referencias activas</span><strong id="inventory-summary-active">'+Number(summary.activeProducts??activeProducts.length).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong id="inventory-summary-units">'+Number(summary.totalUnits??activeProducts.reduce((sum,p)=>sum+p.stock,0)).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Para reponer</span><strong id="inventory-summary-restock">'+Number(restockCount).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Agotados</span><strong id="inventory-summary-out">'+(summary.outOfStock==null?'—':Number(summary.outOfStock).toLocaleString('es-NI'))+'</strong></div></div><p class="form-hint" id="inventory-summary-error" role="status"></p>'+
+      '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg('search')+'<input id="inventory-product-search" type="search" value="'+esc(state.inventoryProductQuery)+'" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>'+categoryOptions+'</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"'+(state.inventoryProductStock==='all'?' selected':'')+'>Todos los estados</option><option value="available"'+(state.inventoryProductStock==='available'?' selected':'')+'>Disponibles</option><option value="low"'+(state.inventoryProductStock==='low'?' selected':'')+'>Stock bajo</option><option value="out"'+(state.inventoryProductStock==='out'?' selected':'')+'>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">'+rows.length+' de '+activeProducts.length+' productos</span><span>Ordenados por menor existencia · consulta paginada</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th>CONSULTA</th></tr></thead><tbody id="inventory-product-body">'+(rows||'<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>')+'</tbody></table></div><div id="inventory-stock-pagination"></div></article>'+
+      (["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"].some(permissionGranted)?renderInventoryLedger():"")+
+      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Stock mínimo configurable por producto · Kardex íntegro</strong><p>Las existencias y el historial se consultan directamente en Neon, con totales y paginación del lado del servidor. Las salidas se bloquean si generan stock negativo; cada movimiento conserva el saldo anterior, la variación y el saldo resultante.</p></div></div>';
+  }
+  function openInventoryReversalDialog(movementId) {
+    if (!permissionGranted('inventory.movements.reverse')) {
+      toast('Tu cuenta no tiene permiso para revertir movimientos.');
+      return;
+    }
+    const movement = [...(inventoryMovementPageRows || []), ...(inventoryMovements || [])]
+      .find(item => String(item.id) === String(movementId));
+    const sourceType = movement?.sourceType || movement?.reference_type || '';
+    const movementType = movement?.type || movement?.movement_type || '';
+    if (!movement || sourceType !== 'manual' || movementType === 'Reversion' || movement.alreadyReversed === true) {
+      toast('Solo se pueden revertir movimientos manuales que todavía no tengan reversión.');
+      return;
+    }
+    inventoryReversalForm.dataset.movementId = String(movement.id);
+    inventoryReversalForm.elements.reason.value = '';
+    document.getElementById('inventory-reversal-summary').textContent =
+      (movement.productName || movement.product_name || 'Producto') + ' · ' + movementType + ' · ' +
+      (Number(movement.delta ?? movement.quantity_delta) > 0 ? '+' : '') +
+      Number(movement.delta ?? movement.quantity_delta) + ' unidades';
+    if (typeof inventoryReversalDialog.showModal === 'function') inventoryReversalDialog.showModal();
   }
   function showInventoryProductDetails(productId) {
-    const product = products.find(function (item) { return String(item.id) === String(productId); });
+    const product = [...(inventoryStockPageRows || []), ...products].find(function (item) { return String(item.id) === String(productId); });
     if (!product) return;
     const fields = [
       ['SKU / Código', product.sku],
@@ -1402,12 +1529,67 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<button type="button" role="menuitem" data-action="export-current-view" data-format="pdf">PDF / Imprimir <small>Vista A4 para guardar como PDF</small></button>'+
       '</div></div>';
   }
-  function exportCurrentView(format){
+  async function fetchAllInventoryPages(resource,filterParams) {
+    const pageSize=100,maxRows=25000;
+    const params=new URLSearchParams(filterParams||{});
+    params.set('page','1');params.set('page_size',String(pageSize));
+    const first=await erpApi(resource+'?'+params.toString());
+    const total=Number(first.total||0),totalPages=Math.max(1,Math.ceil(total/pageSize));
+    if(total>maxRows)throw new Error('La consulta contiene '+total.toLocaleString('es-NI')+' registros. Reduce los filtros a 25,000 o menos para generar una exportación completa.');
+    const records=Array.isArray(first.records)?first.records.slice():[];
+    for(let start=2;start<=totalPages;start+=5){
+      const pages=Array.from({length:Math.min(5,totalPages-start+1)},(_,index)=>start+index);
+      const responses=await Promise.all(pages.map(async page=>{
+        const pageParams=new URLSearchParams(params);pageParams.set('page',String(page));
+        return erpApi(resource+'?'+pageParams.toString());
+      }));
+      for(const response of responses){
+        if(Number(response.total||0)!==total)throw new Error('Los datos cambiaron mientras se preparaba la exportación. Vuelve a intentarlo para obtener un archivo consistente.');
+        records.push(...(Array.isArray(response.records)?response.records:[]));
+      }
+    }
+    if(records.length!==total)throw new Error('La exportación no recibió todos los registros de Neon; no se generó un archivo parcial.');
+    return records;
+  }
+  async function buildInventoryExportDataset() {
+    const stockParams=new URLSearchParams({
+      search:state.inventoryProductQuery,
+      category:state.inventoryProductCategory==='all'?'':state.inventoryProductCategory,
+      status:state.inventoryProductStock
+    });
+    const movementParams=new URLSearchParams({
+      search:state.inventoryMovementQuery,
+      type:state.inventoryMovementType,
+      from:state.inventoryMovementStartDate,
+      to:state.inventoryMovementEndDate
+    });
+    const stockRecords=await fetchAllInventoryPages('inventory-stock',stockParams);
+    let movementRecords=[];
+    if(["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted)){
+      movementRecords=await fetchAllInventoryPages('inventory-movements',movementParams);
+    }
+    const headers=['Tipo de registro','SKU','Producto','Categoría / tipo','Fecha','Variación / stock','Stock mínimo / anterior','Estado / stock nuevo','Ubicación / nota'];
+    const rows=stockRecords.map(p=>{
+      const stock=Number(p.stock||0),minimum=Number(p.min_stock??0);
+      const statusLabel=stock===0?'Agotado':(stock<=minimum?'Stock bajo':'Disponible');
+      return ['Existencia',p.sku,p.name,p.category,'',stock,minimum,statusLabel,p.location||''];
+    });
+    movementRecords.forEach(m=>rows.push([
+      'Movimiento',m.sku,m.product_name,m.movement_type,dateText(m.created_at),
+      Number(m.quantity_delta||0),Number(m.previous_stock||0),Number(m.new_stock||0),m.note||''
+    ]));
+    return {
+      title:'Inventario · Existencias y kardex',
+      fileBase:'jb-parfums-inventory',
+      headers,rows
+    };
+  }
+  async function exportCurrentView(format){
     if(!canExportERPView(state.view)){toast('Tu cuenta no tiene permiso para exportar esta sección.');return;}
-    const dataset=buildCurrentExportDataset();
-    if(!dataset.headers.length){toast('Esta sección todavía no tiene una estructura de exportación.');return;}
-    if(!dataset.rows.length){toast('No hay registros disponibles para exportar en esta sección.');return;}
     try{
+      const dataset=state.view==='inventory'?await buildInventoryExportDataset():buildCurrentExportDataset();
+      if(!dataset.headers.length){toast('Esta sección todavía no tiene una estructura de exportación.');return;}
+      if(!dataset.rows.length){toast('No hay registros disponibles para exportar con los filtros actuales.');return;}
       if(format==='pdf'){
         if(!openPrintExport(dataset)){toast('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes para este sitio e inténtalo de nuevo.');return;}
         toast('Documento preparado. Selecciona “Guardar como PDF” en el diálogo de impresión.');
@@ -1417,7 +1599,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       }
     }catch(error){toast(error?.message||'No se pudo generar la exportación.');}
   }
-  function renderInventoryCsv(){exportCurrentView('csv');}
+  async function renderInventoryCsv(){return exportCurrentView('csv');}
   function showOrderDetails(orderId) {
     const order = orders.find(function (item) { return String(item.id) === String(orderId); });
     if (!order) { toast('No se encontró el pedido seleccionado.'); return; }
@@ -3022,6 +3204,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     applyPermissionNavigation();
     applyPermissionActions();
     updateNotificationIndicator();
+    if(state.view==='inventory'){
+      loadInventorySummary();
+      loadInventoryStockPage();
+      loadInventoryMovementPage();
+    }
     document.querySelector('.page-context')?.classList.toggle('page-context-hr',state.view==='hr');
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
     hydrateProductImageSlots();
@@ -3038,6 +3225,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     state.inventoryMovementStartDate = '';
     state.inventoryMovementEndDate = '';
     state.inventoryMovementPage = 1;
+    state.inventoryStockPage = 1;
     renderView();
     closeMobileMenu();
     if (view === 'catalog') loadCatalogSettings().then(() => { if (state.view === 'catalog') renderView(); });
@@ -3377,7 +3565,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if(menu){menu.hidden=true;menu.removeAttribute('style');}
         const trigger=root.querySelector('[data-action="toggle-export-menu"]');
         if(trigger)trigger.setAttribute('aria-expanded','false');
-        exportCurrentView(action.getAttribute('data-format')||'csv');
+        await exportCurrentView(action.getAttribute('data-format')||'csv');
         return;
       } else if (name === 'reload-erp') {
         action.disabled=true;
@@ -3432,7 +3620,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       else if (name === 'inventory-page') {
         const step = action.getAttribute('data-page') === 'previous' ? -1 : 1;
         state.inventoryMovementPage = Math.max(1, state.inventoryMovementPage + step);
-        refreshInventoryMovementResults();
+        loadInventoryMovementPage();
+      }
+      else if (name === 'inventory-stock-page') {
+        const step = action.getAttribute('data-page') === 'previous' ? -1 : 1;
+        state.inventoryStockPage = Math.max(1, state.inventoryStockPage + step);
+        loadInventoryStockPage();
       }
       else if (name === 'clear-inventory-product-filters') {
         state.inventoryProductQuery = '';
@@ -3444,7 +3637,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if (search) search.value = '';
         if (category) category.value = 'all';
         if (stock) stock.value = 'all';
-        renderInventoryProductRows();
+        state.inventoryStockPage = 1;
+        loadInventoryStockPage();
       }
       else if (name === 'clear-inventory-filters') {
         state.inventoryMovementQuery = '';
@@ -3460,10 +3654,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if (type) type.value = 'all';
         if (startDate) startDate.value = '';
         if (endDate) endDate.value = '';
-        refreshInventoryMovementResults();
+        loadInventoryMovementPage();
       }
       else if (name === 'stock-new') openStockModal();
       else if (name === 'stock-product') openStockModal(action.getAttribute('data-id'));
+      else if (name === 'reverse-inventory-movement') openInventoryReversalDialog(action.getAttribute('data-id'));
       else if (name === 'export-inventory') renderInventoryCsv();
       else if (name === 'export') exportCurrentView();
       else if (name === 'billing-preview') openBusinessDialog('invoice');
@@ -3496,6 +3691,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target.closest('#mobile-scrim')) closeMobileMenu();
     if (event.target.closest('#modal-close') || event.target.closest('#cancel-product')) { dialog.close(); form.dataset.editingId = ''; form.elements.stock.readOnly = false; }
     if (event.target.closest('#stock-modal-close') || event.target.closest('#stock-cancel')) stockDialog.close();
+    if (event.target.closest('#inventory-reversal-close') || event.target.closest('#inventory-reversal-cancel')) inventoryReversalDialog.close();
     if (event.target.closest('#detail-close') || event.target.closest('#detail-cancel')) detailDialog.close();
     if (event.target.closest('#order-detail-close') || event.target.closest('#order-detail-cancel')) orderDialog.close();
   });
@@ -3508,11 +3704,14 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     else if (event.target && event.target.id === 'inventory-movement-search') {
       state.inventoryMovementQuery = event.target.value;
       state.inventoryMovementPage = 1;
-      refreshInventoryMovementResults();
+      window.clearTimeout(inventoryMovementSearchTimer);
+      inventoryMovementSearchTimer = window.setTimeout(loadInventoryMovementPage, 250);
     }
     else if (event.target && event.target.id === 'inventory-product-search') {
       state.inventoryProductQuery = event.target.value;
-      renderInventoryProductRows();
+      state.inventoryStockPage = 1;
+      window.clearTimeout(inventoryStockSearchTimer);
+      inventoryStockSearchTimer = window.setTimeout(loadInventoryStockPage, 250);
     }
   });
   document.addEventListener('change', function (event) {
@@ -3528,7 +3727,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target && ['inventory-product-category','inventory-product-stock'].includes(event.target.id)) {
       if (event.target.id === 'inventory-product-category') state.inventoryProductCategory = event.target.value;
       if (event.target.id === 'inventory-product-stock') state.inventoryProductStock = event.target.value;
-      renderInventoryProductRows();
+      state.inventoryStockPage = 1;
+      loadInventoryStockPage();
       return;
     }
     if (event.target && ['inventory-movement-type','inventory-movement-start','inventory-movement-end'].includes(event.target.id)) {
@@ -3536,7 +3736,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       if (event.target.id === 'inventory-movement-start') state.inventoryMovementStartDate = event.target.value;
       if (event.target.id === 'inventory-movement-end') state.inventoryMovementEndDate = event.target.value;
       state.inventoryMovementPage = 1;
-      refreshInventoryMovementResults();
+      loadInventoryMovementPage();
       return;
     }
     if (event.target && event.target.id === 'stock-filter') {
@@ -3678,11 +3878,43 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     while (products.some(function (product) { return String(product.sku).toLowerCase() === ('jbp-' + String(index).padStart(3,'0')).toLowerCase(); })) index+=1;
     return 'JBP-' + String(index).padStart(3,'0');
   }
+  inventoryReversalForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (!inventoryReversalForm.reportValidity()) return;
+    if (!permissionGranted('inventory.movements.reverse')) {
+      toast('Tu cuenta ya no tiene permiso para revertir movimientos.');
+      inventoryReversalDialog.close();
+      return;
+    }
+    const movementId = String(inventoryReversalForm.dataset.movementId || '');
+    const reason = String(inventoryReversalForm.elements.reason.value || '').trim();
+    if (!movementId || reason.length < 3 || reason.length > 240) {
+      toast('Indica un motivo válido de 3 a 240 caracteres.');
+      return;
+    }
+    const button = inventoryReversalForm.querySelector('[type="submit"]');
+    if (button) { button.disabled = true; button.textContent = 'Revirtiendo…'; }
+    try {
+      await erpApi('inventory-movements/' + encodeURIComponent(movementId) + '/reverse', {
+        method: 'POST', body: JSON.stringify({ reason })
+      });
+      inventoryReversalDialog.close();
+      inventoryReversalForm.reset();
+      inventoryReversalForm.dataset.movementId = '';
+      state.inventoryMovementPage = 1;
+      await Promise.all([loadInventoryMovementPage(), loadInventoryStockPage(), loadInventorySummary()]);
+      toast('Reversión registrada. El movimiento original permanece en el Kardex.');
+    } catch (error) {
+      toast(error?.message || 'No se pudo revertir el movimiento.');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = 'Registrar reversión'; }
+    }
+  });
   stockForm.addEventListener('submit', async function (event) {
     event.preventDefault();
     if(!stockForm.reportValidity())return;
     const data=new FormData(stockForm);
-    const product=products.find(item=>String(item.id)===String(data.get('productId')));
+    const product=[...(inventoryStockPageRows||[]),...products].find(item=>String(item.id)===String(data.get('productId')));
     const type=String(data.get('type')||''),quantity=Number(data.get('quantity')),note=String(data.get('note')||'').trim();
     if(!product||product.active===false||!Number.isInteger(quantity)||quantity<0||(type!=='adjustment'&&quantity===0)){
       toast('Selecciona un producto activo y una cantidad válida.');return;
