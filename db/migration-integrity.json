@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0021",
+  "nextMigrationVersion": "0022",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -302,6 +302,15 @@
           "public.purchase_orders rejection audit constraint requires actor, timestamp and reason length 5..300"
         ],
         "note": "Read-only Development inspection on 2026-11-07 confirms all four effects from 0020 already exist with the exact expected definitions, although no 0020 ledger row exists. Do not replay the migration or fabricate a ledger row on Development. The runner verifies these four definitions live before skipping 0020 on this pinned Development branch. Fresh installations must still execute 0020."
+      }
+    },
+    {
+      "filename": "0021_inventory_movement_reversals.sql",
+      "version": "0021",
+      "sha256": "2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc",
+      "database": {
+        "status": "pending",
+        "note": "New additive migration for append-only inventory movements and audited manual reversals. Not applied to Neon Development or Production; requires review and an approved disposable-branch validation before application."
       }
     }
   ],
