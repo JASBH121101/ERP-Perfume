@@ -1,6 +1,11 @@
 name: Guarded Neon Development migration 0021
 
 on:
+  push:
+    branches:
+      - feature/database-reliability-gate
+    paths:
+      - .github/workflows/apply-development-migration-0021.yml
   workflow_dispatch:
     inputs:
       confirm_development_only:
@@ -73,10 +78,10 @@ jobs:
         run: |
           set -euo pipefail
           report="$(npm run --silent migrate:db)"
-          printf '%s\n' "$report"
+          printf '%s\\n' "$report"
           mapfile -t pending < <(
-            printf '%s\n' "$report" |
-              sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\1/p'
+            printf '%s\\n' "$report" |
+              sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\\1/p'
           )
           if [[ "${#pending[@]}" -ne 1 || "${pending[0]}" != "0021" ]]; then
             echo "::error::Refusing to apply: the live plan must contain exactly migration 0021 and no other pending version."
@@ -170,8 +175,8 @@ jobs:
         run: |
           set -euo pipefail
           report="$(npm run --silent migrate:db)"
-          printf '%s\n' "$report"
-          if printf '%s\n' "$report" | grep -Eq '^[[:space:]]*pending [0-9]{4} '; then
+          printf '%s\\n' "$report"
+          if printf '%s\\n' "$report" | grep -Eq '^[[:space:]]*pending [0-9]{4} '; then
             echo "::error::The post-apply migration plan still contains pending migrations."
             exit 1
           fi
