@@ -551,7 +551,7 @@ test('procurement history combines monthly, supplier and status filters and hand
     page.waitForEvent('download'),
     page.locator('[data-action="export-current-view"][data-format="csv"]').click()
   ]);
-  expect(download.suggestedFilename()).toContain('purchaseOrders');
+  expect(download.suggestedFilename()).toContain('purchaseorders');
   const csv = await readFile(await download.path(), 'utf8');
   expect(csv).toContain('OLD-REC-17');
   expect(csv).not.toContain('"Orden de compra"');
