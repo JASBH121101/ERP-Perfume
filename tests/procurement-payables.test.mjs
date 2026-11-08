@@ -195,6 +195,9 @@ test("purchase receipt emission stores supplier invoice and reserves quantities 
   assert.match(captured.statement, /document_status='Emitida'/);
   assert.match(captured.statement, /reserved_quantity/);
   assert.match(captured.statement, /supplier_invoice_number/);
+  assert.match(captured.statement, /pg_advisory_xact_lock\\(hashtextextended\\(po\\.supplier_id::text\\|\\|':'\\|\\|i\\.invoice_number,0\\)\\)/);
+  assert.match(captured.statement, /FROM purchase_receipts existing JOIN purchase_orders existing_order/);
+  assert.match(captured.statement, /existing\\.supplier_invoice_number=i\\.invoice_number/);
   assert.doesNotMatch(captured.statement, /UPDATE products/);
   assert.doesNotMatch(captured.statement, /INSERT INTO inventory_movements/);
   assert.doesNotMatch(captured.statement, /INSERT INTO supplier_invoices/);
