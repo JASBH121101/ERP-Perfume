@@ -1155,7 +1155,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const empty=inventoryMovementPageError||(total?'No hay movimientos que coincidan con los filtros.':'Todavía no hay movimientos registrados.');
     const emptyRow=inventoryMovementLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(empty)+'</div></td></tr>';
     return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||emptyRow)+'</tbody></table></div>'+
-      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos'+(serverPage?' · consultados en Neon':' · vista inicial')+'</span>'+
+      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos · Página '+state.inventoryMovementPage+' de '+totalPages+(serverPage?' · consultados en Neon':' · vista inicial')+'</span>'+
       '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" '+(state.inventoryMovementPage<=1?'disabled':'')+'>Anterior</button>'+
       '<span class="ledger-count">Página '+state.inventoryMovementPage+' de '+totalPages+'</span>'+
       '<button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="next" '+(state.inventoryMovementPage>=totalPages?'disabled':'')+'>Siguiente</button></div></div>';
