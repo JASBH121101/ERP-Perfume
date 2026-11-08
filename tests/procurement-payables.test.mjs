@@ -195,9 +195,9 @@ test("purchase receipt emission stores supplier invoice and reserves quantities 
   assert.match(captured.statement, /document_status='Emitida'/);
   assert.match(captured.statement, /reserved_quantity/);
   assert.match(captured.statement, /supplier_invoice_number/);
-  assert.match(captured.statement, /pg_advisory_xact_lock\\(hashtextextended\\(po\\.supplier_id::text\\|\\|':'\\|\\|i\\.invoice_number,0\\)\\)/);
-  assert.match(captured.statement, /FROM purchase_receipts existing JOIN purchase_orders existing_order/);
-  assert.match(captured.statement, /existing\\.supplier_invoice_number=i\\.invoice_number/);
+  assert.ok(captured.statement.includes("pg_advisory_xact_lock(hashtextextended(po.supplier_id::text||':'||i.invoice_number,0))"));
+  assert.ok(captured.statement.includes("FROM purchase_receipts existing JOIN purchase_orders existing_order"));
+  assert.ok(captured.statement.includes("existing.supplier_invoice_number=i.invoice_number"));
   assert.doesNotMatch(captured.statement, /UPDATE products/);
   assert.doesNotMatch(captured.statement, /INSERT INTO inventory_movements/);
   assert.doesNotMatch(captured.statement, /INSERT INTO supplier_invoices/);
@@ -269,7 +269,7 @@ test("supplier invoice converts NIO to USD and persists invoice plus audit atomi
   assert.equal(captured.values[10], actor.id);
   assert.match(captured.statement, /INSERT INTO supplier_invoices/);
   assert.match(captured.statement, /purchase_orders po WHERE po\.id=i\.order_id AND po\.supplier_id=s\.id/);
-  assert.match(captured.statement, /pg_advisory_xact_lock\\(hashtextextended\\(i\\.supplier_id::text\\|\\|':'\\|\\|i\\.invoice_number,0\\)\\)/);
+  assert.ok(captured.statement.includes("pg_advisory_xact_lock(hashtextextended(i.supplier_id::text||':'||i.invoice_number,0))"));
   assert.match(captured.statement, /FROM purchase_receipts pr JOIN purchase_orders po ON po\.id=pr\.purchase_order_id/);
   assert.match(captured.statement, /pr\.supplier_invoice_number=i\.invoice_number/);
   assert.match(captured.statement, /INSERT INTO audit_log/);
