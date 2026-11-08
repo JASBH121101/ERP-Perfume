@@ -422,10 +422,31 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await expect(page.locator('tr').filter({ hasText: '1' })).toContainText('Recepción parcial');
 
   expect(api.data.purchase_receipts).toHaveLength(1);
+  expect(api.data.purchase_receipts[0].document_status).toBe('Emitida');
+  expect(api.data.purchase_order_items.map(item => item.received_quantity)).toEqual([0, 0]);
+  expect(api.data.products.find(item => item.id === ids.productA).stock).toBe(5);
+  expect(api.data.products.find(item => item.id === ids.productB).stock).toBe(1);
+  expect(api.data.inventory_movements).toHaveLength(0);
+  expect(api.data.supplier_invoices).toHaveLength(0);
+
+  const receiptRow = page.locator('tr').filter({ hasText: 'FAC-PROV-QA-001' });
+  await expect(receiptRow).toContainText('Emitida');
+  const postRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/purchase-receipts/' + ids.receipt + '/post') &&
+    request.method() === 'POST'
+  );
+  await receiptRow.locator('[data-action="post-purchase-receipt"]').click();
+  await page.getByRole('button', { name: /Aceptar|OK/ }).click().catch(() => {});
+  const postedRequest = await postRequest;
+  expect(postedRequest.method()).toBe('POST');
+  expect(api.data.purchase_receipts[0].document_status).toBe('Contabilizada');
+  expect(api.data.purchase_receipts[0].purchase_code).toBe(1);
   expect(api.data.purchase_order_items.map(item => item.received_quantity)).toEqual([1, 2]);
   expect(api.data.products.find(item => item.id === ids.productA).stock).toBe(6);
   expect(api.data.products.find(item => item.id === ids.productB).stock).toBe(3);
   expect(api.data.inventory_movements).toHaveLength(2);
+  expect(api.data.supplier_invoices).toHaveLength(1);
+  expect(api.data.purchase_journal_entries[0].total_debit_usd).toBe(api.data.purchase_journal_entries[0].total_credit_usd);
 
   await navigateToView(page, 'inventory');
   await expect(page.locator('#inventory-product-body')).toContainText('QA Purchase Perfume A');
