@@ -238,6 +238,9 @@ jobs:
           }
           NODE
 
+      - name: Install Playwright Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+
       - name: Run deterministic unit tests
         run: npm run test:unit
 
