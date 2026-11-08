@@ -1,0 +1,127 @@
+name: Verify Neon Development migration 0021
+
+on:
+  push:
+    branches:
+      - feature/database-reliability-gate
+    paths:
+      - .github/workflows/verify-development-migration-0021.yml
+      - db/migration-integrity.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jb-parfums-erp-development-verification
+  cancel-in-progress: false
+
+jobs:
+  verify-development:
+    if: github.ref == 'refs/heads/feature/database-reliability-gate'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.ERP_MIGRATION_DATABASE_URL }}
+      ERP_ENVIRONMENT: development
+      ERP_MIGRATION_BRANCH: development
+      ERP_MIGRATION_BRANCH_ID: br-nameless-surf-bezeav6n
+      ERP_EXPECTED_NEON_ENDPOINT_HOST: ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech
+      EXPECTED_MIGRATION_SHA256: 2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc
+
+    steps:
+      - name: Checkout guarded feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/database-reliability-gate
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify migration source integrity
+        run: npm run check:db
+
+      - name: Require exact direct Development connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MIGRATION_DATABASE_URL:-}"
+          test "${ERP_ENVIRONMENT}" = "development"
+          test "${ERP_MIGRATION_BRANCH}" = "development"
+          test "${ERP_MIGRATION_BRANCH_ID}" = "br-nameless-surf-bezeav6n"
+          test "${ERP_EXPECTED_NEON_ENDPOINT_HOST}" = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech"
+          node --input-type=module -e '
+            const u = new URL(process.env.MIGRATION_DATABASE_URL);
+            if (u.hostname.toLowerCase() !== process.env.ERP_EXPECTED_NEON_ENDPOINT_HOST ||
+                u.hostname.includes("-pooler.")) {
+              throw new Error("Only the pinned direct Neon Development endpoint is allowed.");
+            }
+          '
+
+      - name: Run read-only migration runner and require zero pending migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(npm run --silent migrate:db)"
+          printf '%s\\n' "$report"
+          grep -Eq '^- New migrations: 0$' <<< "$report"
+          if grep -Eq '^[[:space:]]*pending [0-9]{4} ' <<< "$report"; then
+            echo "::error::The read-only runner still reports pending migrations."
+            exit 1
+          fi
+          echo "PASS: Development migration runner is current; no SQL was applied."
+
+      - name: Independently verify migration 0021 and schema invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { Pool } from "@neondatabase/serverless";
+          const expectedHost = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech";
+          const url = new URL(process.env.MIGRATION_DATABASE_URL);
+          if (url.hostname.toLowerCase() !== expectedHost) throw new Error("Wrong database endpoint.");
+          const pool = new Pool({ connectionString: process.env.MIGRATION_DATABASE_URL, max: 1 });
+          try {
+            const result = await pool.query(`
+              SELECT current_database() AS database_name,
+                current_user AS role_name,
+                EXISTS (SELECT 1 FROM public.app_schema_migrations
+                  WHERE version='0021'
+                    AND filename='0021_inventory_movement_reversals.sql'
+                    AND checksum=$1) AS ledger_checksum,
+                to_regclass('public.inventory_movement_single_reversal_uq') IS NOT NULL AS reversal_index,
+                EXISTS (SELECT 1 FROM pg_trigger t
+                  JOIN pg_class c ON c.oid=t.tgrelid
+                  WHERE c.oid='public.inventory_movements'::regclass
+                    AND t.tgname='inventory_movements_append_only'
+                    AND NOT t.tgisinternal AND t.tgenabled <> 'D') AS append_only_trigger,
+                to_regprocedure('public.prevent_inventory_movement_mutation()') IS NOT NULL AS guard_function,
+                EXISTS (SELECT 1 FROM public.permission_catalog
+                  WHERE permission_key='inventory.movements.reverse') AS reversal_permission,
+                EXISTS (SELECT 1 FROM public.role_template_permissions
+                  WHERE role_key='admin' AND permission_key='inventory.movements.reverse'
+                    AND allowed=TRUE) AS admin_default_grant
+            `, [process.env.EXPECTED_MIGRATION_SHA256]);
+            const row = result.rows[0];
+            const checks = [
+              ["database identity", row.database_name === "erp_perfume" && row.role_name === "erp_owner"],
+              ["0021 ledger SHA-256", row.ledger_checksum],
+              ["unique reversal index", row.reversal_index],
+              ["enabled append-only trigger", row.append_only_trigger],
+              ["mutation guard function", row.guard_function],
+              ["reversal permission", row.reversal_permission],
+              ["admin default grant", row.admin_default_grant]
+            ];
+            for (const [name, ok] of checks) console.log((ok ? "PASS " : "FAIL ") + name);
+            if (checks.some(([, ok]) => !ok)) throw new Error("One or more Development invariants failed.");
+          } finally {
+            await pool.end();
+          }
+          NODE
