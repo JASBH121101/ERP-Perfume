@@ -914,7 +914,8 @@ test('purchase workspace tabs separate orders, receipts and the staged creation 
 
   await page.locator('#po-tab-adjustments').click();
   await expect(page.locator('#po-panel-adjustments')).toBeVisible();
-  await expect(page.locator('#po-form-footer')).toHaveCount(0);
+  await expect(page.locator('#po-panel-adjustments [name="notes"]')).toBeVisible();
+  await expect(page.locator('#purchase-order-form [type="submit"]')).toBeVisible();
 });
 
 test('inventory and catalog stay usable at mobile, tablet and desktop widths', async ({ page }, testInfo) => {
