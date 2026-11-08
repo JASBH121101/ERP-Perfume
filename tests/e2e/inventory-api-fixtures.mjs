@@ -52,7 +52,10 @@ function listMovements(data, searchParams) {
     const row = {
       ...movement,
       product_name: product.name,
-      sku: product.sku
+      sku: product.sku,
+      already_reversed: (data.inventory_movements || []).some(reversal =>
+        reversal.reference_type === "reversal" && String(reversal.reference_id) === String(movement.id)
+      )
     };
     const searchable = [row.product_name, row.sku, row.note, row.reference_id]
       .filter(Boolean).join(" ").toLocaleLowerCase("es");
