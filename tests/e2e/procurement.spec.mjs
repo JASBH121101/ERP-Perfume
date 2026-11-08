@@ -485,3 +485,80 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(api.data.cash_entries).toHaveLength(1);
   expect(api.data.cash_entries[0].source_type).toBe('supplier_invoice_payment');
 });
+
+test('procurement history combines monthly, supplier and status filters and handles migrated receipts without journals', async ({ page }) => {
+  const api = await installProcurementApi(page);
+  const legacyOrderId = '00000000-0000-0000-0000-000000000801';
+  const legacyLineId = '00000000-0000-0000-0000-000000000811';
+  const legacyReceiptId = '00000000-0000-0000-0000-000000000821';
+
+  api.data.purchase_orders.push({
+    id: legacyOrderId, order_number: '17', supplier_id: ids.supplier, supplier_name: 'Proveedor QA',
+    currency: 'USD', exchange_rate: 1, subtotal_usd: 30, discount_usd: 0,
+    estimated_freight_usd: 0, estimated_taxes_usd: 0, total_usd: 30,
+    status: 'Recibida', payment_terms: 'Contado', notes: 'Archivo histórico',
+    created_by: 'qa-owner', created_by_name: 'QA Owner',
+    approved_by: 'qa-approver', approved_by_name: 'QA Approver',
+    created_at: '2026-10-12T10:00:00.000Z', approved_at: '2026-10-12T11:00:00.000Z'
+  });
+  api.data.purchase_order_items.push({
+    id: legacyLineId, purchase_order_id: legacyOrderId, product_id: ids.productA,
+    product_name: 'QA Purchase Perfume A', sku_snapshot: 'QA-PO-001',
+    ordered_quantity: 1, received_quantity: 1, unit_cost_input: 30, unit_cost_usd: 30,
+    line_total_usd: 30
+  });
+  api.data.purchase_receipts.push({
+    id: legacyReceiptId, receipt_number: 'OLD-REC-17', purchase_order_id: legacyOrderId,
+    document_status: 'Contabilizada', supplier_invoice_number: null, supplier_invoice_date: null,
+    invoice_total_usd: null, purchase_code: null, journal_number: null,
+    emitted_by_name: 'QA Owner', posted_by_name: 'QA Owner',
+    emitted_at: '2026-11-05T10:00:00.000Z', received_at: '2026-11-05T10:00:00.000Z',
+    posted_at: '2026-11-05T10:00:00.000Z'
+  });
+
+  await page.goto('/');
+  await navigateToView(page, 'purchaseOrders');
+  await expect(page.locator('#purchase-history-search')).toBeVisible();
+  await expect(page.locator('#purchase-history-supplier')).toBeVisible();
+  await expect(page.locator('#purchase-history-order-status')).toBeVisible();
+  await expect(page.locator('#purchase-history-receipt-status')).toBeVisible();
+  await expect(page.locator('.purchase-history-archive')).toBeVisible();
+
+  const legacyReceiptRow = page.locator('tr').filter({ hasText: 'OLD-REC-17' });
+  await expect(legacyReceiptRow).toContainText('Histórico · sin comprobante diario');
+  await expect(legacyReceiptRow.locator('[data-action="view-purchase-journal"]')).toHaveCount(0);
+
+  await page.locator('#purchase-history-order-status').selectOption('Borrador');
+  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
+  await page.locator('#purchase-history-order-status').selectOption('all');
+
+  await page.locator('#purchase-history-receipt-status').selectOption('Emitida');
+  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
+  await page.locator('#purchase-history-receipt-status').selectOption('all');
+  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+
+  await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
+  await expect(page.locator('#purchase-history-start')).toHaveValue('2026-11-01');
+  await expect(page.locator('#purchase-history-end')).toHaveValue('2026-11-30');
+  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
+
+  await page.locator('#purchase-history-search').fill('OLD-REC-17');
+  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await page.locator('#purchase-history-search').fill('no-coincide');
+  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
+
+  await page.locator('[data-action="clear-purchase-filters"]').click();
+  await expect(page.locator('#purchase-history-search')).toHaveValue('');
+  await expect(page.locator('#purchase-history-start')).toHaveValue('');
+  await expect(page.locator('#purchase-history-receipt-status')).toHaveValue('all');
+
+  await page.locator('[data-action="toggle-export-menu"]').click();
+  await expect(page.locator('#current-export-menu')).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('[data-action="export-current-view"][data-format="csv"]').click()
+  ]);
+  expect(download.suggestedFilename()).toContain('purchaseOrders');
+});
