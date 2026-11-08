@@ -10,9 +10,9 @@
     "database": "erp_perfume",
     "branch": "development",
     "branchId": "br-nameless-surf-bezeav6n",
-    "observedDate": "2026-11-07",
+    "observedDate": "2026-11-08",
     "readOnly": true,
-    "ledgerRows": 16,
+    "ledgerRows": 17,
     "ledgerVersions": [
       "0001",
       "0002",
@@ -29,11 +29,12 @@
       "0016",
       "0017",
       "0018",
-      "0019"
+      "0019",
+      "0021"
     ],
     "productionInspected": true,
     "productionModified": false,
-    "note": "Read-only snapshot of Neon Development. Neon Production public schema was separately inspected read-only and contained zero application tables; no Production SQL was executed and Production was not modified.",
+    "note": "Updated from a read-only verification of Neon Development after guarded migration 0021 was committed. The exact ledger rows and SHA-256 were observed directly; Neon Production was not modified.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
     "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
     "productionInspectionDate": "2026-11-07",
@@ -309,8 +310,10 @@
       "version": "0021",
       "sha256": "2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc",
       "database": {
-        "status": "pending",
-        "note": "New additive migration for append-only inventory movements and audited manual reversals. Not applied to Neon Development or Production; requires review and an approved disposable-branch validation before application."
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "2895ae015ab8e42c83956798c674beb57e0e515c4755ee393148cf3f90ab46dc",
+        "appliedAt": "2026-11-08T14:08:48.980Z",
+        "note": "Committed by guarded Development workflow run 42488309015 and independently verified against the live Development schema and migration ledger. Production was not targeted."
       }
     }
   ],
