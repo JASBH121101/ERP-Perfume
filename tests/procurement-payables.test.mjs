@@ -139,8 +139,8 @@ test("purchase receipt validates duplicate and non-positive lines before SQL", a
 
   const duplicate = await responseOf(await createPurchaseReceipt(sql, actor, orderId, {
     items: [
-      { purchase_order_item_id: orderItemId, quantity_received: 1 },
-      { purchase_order_item_id: orderItemId, quantity_received: 1 }
+      { purchase_order_item_id: orderItemId, quantity_received: 1, invoice_unit_cost_input: 10 },
+      { purchase_order_item_id: orderItemId, quantity_received: 1, invoice_unit_cost_input: 10 }
     ]
   }));
   assert.equal(duplicate.status, 400);
