@@ -70,7 +70,7 @@ jobs:
           printf '%s\n' "$report"
           mapfile -t pending < <(
             printf '%s\n' "$report" |
-              sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\\1/p'
+              sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\1/p'
           )
           if [[ "${#pending[@]}" -eq 1 && "${pending[0]}" == "0022" ]]; then
             echo "migration_needed=true" >> "$GITHUB_OUTPUT"
