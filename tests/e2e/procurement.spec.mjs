@@ -488,7 +488,12 @@ test('procurement UI creates a mult-line order, receives partially, records supp
 });
 
 test('procurement history combines monthly, supplier and status filters and handles migrated receipts without journals', async ({ page }) => {
+  test.setTimeout(60_000);
+  page.on('console', message => console.log('[HISTORY_BROWSER]', message.type(), message.text()));
+  page.on('pageerror', error => console.log('[HISTORY_PAGEERROR]', error.message));
+  console.log('[HISTORY_STEP] start');
   const api = await installProcurementApi(page);
+  console.log('[HISTORY_STEP] fixture');
   const legacyOrderId = '00000000-0000-0000-0000-000000000801';
   const legacyLineId = '00000000-0000-0000-0000-000000000811';
   const legacyReceiptId = '00000000-0000-0000-0000-000000000821';
@@ -518,39 +523,49 @@ test('procurement history combines monthly, supplier and status filters and hand
   });
 
   await page.goto('/');
+  console.log('[HISTORY_STEP] page loaded');
   await navigateToView(page, 'purchaseOrders');
+  console.log('[HISTORY_STEP] view opened');
   await expect(page.locator('#purchase-history-search')).toBeVisible();
   await expect(page.locator('#purchase-history-supplier')).toBeVisible();
   await expect(page.locator('#purchase-history-order-status')).toBeVisible();
   await expect(page.locator('#purchase-history-receipt-status')).toBeVisible();
   await expect(page.locator('.purchase-history-archive')).toBeVisible();
+  console.log('[HISTORY_STEP] filter controls ready');
   const legacyReceiptRow = page.locator('tr').filter({ hasText: 'OLD-REC-17' });
   await expect(legacyReceiptRow).toContainText('Histórico · sin comprobante diario');
   await expect(legacyReceiptRow.locator('[data-action="view-purchase-journal"]')).toHaveCount(0);
+  console.log('[HISTORY_STEP] legacy row rendered');
 
   await page.locator('#purchase-history-order-status').selectOption('Borrador');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
   await page.locator('#purchase-history-order-status').selectOption('all');
+  console.log('[HISTORY_STEP] order status passed');
 
   await page.locator('#purchase-history-receipt-status').selectOption('Emitida');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
   await page.locator('#purchase-history-receipt-status').selectOption('all');
+  console.log('[HISTORY_STEP] receipt status passed');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
 
   await page.locator('.purchase-history-archive > summary').click();
+  console.log('[HISTORY_STEP] archive opened');
   await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
+  console.log('[HISTORY_STEP] month selected');
   await expect(page.locator('#purchase-history-start')).toHaveValue('2026-11-01');
   await expect(page.locator('#purchase-history-end')).toHaveValue('2026-11-30');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
 
   await page.locator('#purchase-history-search').fill('OLD-REC-17');
+  console.log('[HISTORY_STEP] search exact');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await page.locator('#purchase-history-search').fill('no-coincide');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
 
   await page.locator('[data-action="clear-purchase-filters"]').click();
+  console.log('[HISTORY_STEP] cleared filters');
   await expect(page.locator('#purchase-history-search')).toHaveValue('');
   await expect(page.locator('#purchase-history-start')).toHaveValue('');
   await expect(page.locator('#purchase-history-receipt-status')).toHaveValue('all');
@@ -558,11 +573,13 @@ test('procurement history combines monthly, supplier and status filters and hand
   await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
   await page.locator('[data-action="toggle-export-menu"]').click();
   await expect(page.locator('#current-export-menu')).toBeVisible();
+  console.log('[HISTORY_STEP] export menu open');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.locator('[data-action="export-current-view"][data-format="csv"]').click()
   ]);
   expect(download.suggestedFilename()).toContain('purchaseOrders');
+  console.log('[HISTORY_STEP] download complete');
   const csv = await readFile(await download.path(), 'utf8');
   expect(csv).toContain('OLD-REC-17');
   expect(csv).not.toContain('"Orden de compra"');
