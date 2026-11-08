@@ -1178,7 +1178,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     inventoryMovementLoading=true;
     inventoryMovementPageError='';
     inventoryMovementPageRows=[];
-    inventoryMovementTotal=0;
+    // Preserve the last known total while the requested page is loading; render clamps the page against it.
     refreshInventoryMovementResults();
     try{
       const data=await erpApi('inventory-movements?'+params.toString());
