@@ -83,13 +83,19 @@ jobs:
             printf '%s\n' "$report" |
               sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\1/p'
           )
-          if [[ "${#pending[@]}" -ne 1 || "${pending[0]}" != "0021" ]]; then
-            echo "::error::Refusing to apply: the live plan must contain exactly migration 0021 and no other pending version."
+          if [[ "${#pending[@]}" -eq 1 && "${pending[0]}" == "0021" ]]; then
+            echo "migration_needed=true" >> "$GITHUB_OUTPUT"
+            echo "The live preflight confirms 0021 is the only pending migration."
+          elif [[ "${#pending[@]}" -eq 0 ]]; then
+            echo "migration_needed=false" >> "$GITHUB_OUTPUT"
+            echo "Migration 0021 is already recorded; no SQL will be re-applied."
+          else
+            echo "::error::Refusing to continue: the live plan contains an unexpected set of pending migrations."
             exit 1
           fi
-          echo "The live preflight confirms 0021 is the only pending migration."
 
       - name: Apply through the repository migration runner
+        if: steps.preflight.outputs.migration_needed == 'true'
         run: npm run migrate:db:apply
 
       - name: Independently verify Development schema and migration ledger
