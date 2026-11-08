@@ -42,7 +42,8 @@ ALTER TABLE public.purchase_receipts
   ADD COLUMN IF NOT EXISTS emitted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS posted_by UUID REFERENCES public.app_users(id),
   ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS purchase_code BIGINT;
+  ADD COLUMN IF NOT EXISTS purchase_code BIGINT,
+  ADD COLUMN IF NOT EXISTS supplier_invoice_id UUID REFERENCES public.supplier_invoices(id);
 
 UPDATE public.purchase_receipts
 SET emitted_by = COALESCE(emitted_by, received_by),
@@ -90,6 +91,10 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS purchase_receipts_purchase_code_uq
   ON public.purchase_receipts(purchase_code)
   WHERE purchase_code IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS purchase_receipts_supplier_invoice_uq
+  ON public.purchase_receipts(supplier_invoice_id)
+  WHERE supplier_invoice_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS purchase_receipts_status_date_idx
   ON public.purchase_receipts(document_status, emitted_at DESC);
