@@ -413,3 +413,54 @@ test("manual reversal route requires the dedicated permission", () => {
     "inventory.movements.reverse"
   );
 });
+
+
+test("inventory history combines period, employee, supplier and document filters and returns auditable names", async () => {
+  let captured = null;
+  const sql = {
+    async query(statement, values) {
+      captured = { statement, values };
+      return [{
+        total: 1,
+        records: [{
+          id: "qa-movement-audit", product_id: productId, product_name: "Perfume QA",
+          sku: "QA-UNIT-01", movement_type: "Entrada", quantity: 2, quantity_delta: 2,
+          previous_stock: 0, new_stock: 2, actor_user_id: actor.id,
+          actor_name: "Jared Blanco", supplier_name: "Proveedor QA",
+          purchase_order_number: "1", created_at: "2026-11-08T12:00:00.000Z"
+        }]
+      }];
+    }
+  };
+  const params = new URLSearchParams(
+    "type=Entrada&from=2026-11-01&to=2026-11-30&actor=Jared&supplier=Proveedor&search=1"
+  );
+  const result = await readResponse(await listInventoryMovements(sql, params));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.total, 1);
+  assert.equal(result.body.records[0].actor_name, "Jared Blanco");
+  assert.equal(result.body.records[0].supplier_name, "Proveedor QA");
+  assert.equal(result.body.records[0].purchase_order_number, "1");
+  assert.deepEqual(captured.values, [
+    "Entrada", "%Jared%", "%Proveedor%", "2026-11-01", "2026-11-30", "%1%", 25, 0
+  ]);
+  assert.match(captured.statement, /LEFT JOIN app_users u ON u\.id=im\.created_by/);
+  assert.match(captured.statement, /LEFT JOIN purchase_receipts pr/);
+  assert.match(captured.statement, /LEFT JOIN purchase_orders po/);
+  assert.match(captured.statement, /u\.display_name/);
+  assert.match(captured.statement, /po\.supplier_name/);
+});
+
+test("inventory history rejects oversized employee and supplier filters before database access", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return []; } };
+  for (const query of [
+    "actor=" + "x".repeat(121),
+    "supplier=" + "x".repeat(121)
+  ]) {
+    const result = await readResponse(await listInventoryMovements(sql, new URLSearchParams(query)));
+    assert.equal(result.status, 400, query.slice(0, 20));
+    assert.equal(result.body.error.code, "INVALID_INVENTORY_FILTER");
+  }
+  assert.equal(calls, 0);
+});
