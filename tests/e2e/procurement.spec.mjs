@@ -353,6 +353,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await page.goto('/');
 
   await navigateToView(page, 'purchaseOrders');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="new"]').click();
   const orderForm = page.locator('#purchase-order-form');
   await expect(orderForm).toBeVisible();
   await expect(orderForm.getByText('Código de orden')).toHaveCount(0);
