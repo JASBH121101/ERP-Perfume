@@ -12,7 +12,7 @@
     "branchId": "br-nameless-surf-bezeav6n",
     "observedDate": "2026-11-08",
     "readOnly": true,
-    "ledgerRows": 17,
+    "ledgerRows": 18,
     "ledgerVersions": [
       "0001",
       "0002",
@@ -30,11 +30,12 @@
       "0017",
       "0018",
       "0019",
-      "0021"
+      "0021",
+      "0022"
     ],
     "productionInspected": true,
     "productionModified": false,
-    "note": "Updated from a read-only verification of Neon Development after guarded migration 0021 was committed. The exact ledger rows and SHA-256 were observed directly; Neon Production was not modified.",
+    "note": "Updated from a read-only verification of Neon Development after guarded migration 0022 was committed. Migration 0022 was applied by the protected repository runner at 2026-11-08T20:23:20.004Z; the exact ledger rows and SHA-256 were independently observed. Neon Production was not modified.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
     "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
     "productionInspectionDate": "2026-11-07",
@@ -321,8 +322,10 @@
       "version": "0022",
       "sha256": "60c2f6da1abaf7b061c8fc125141447c94414c01ce9a077cc980cd7a73af8d06",
       "database": {
-        "status": "pending",
-        "note": "New schema for staged receiving, purchase internal code and immutable journal. Not applied to Neon Development or Production; validate on the isolated QA branch and through the guarded migration workflow before any Development application."
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "60c2f6da1abaf7b061c8fc125141447c94414c01ce9a077cc980cd7a73af8d06",
+        "appliedAt": "2026-11-08T20:23:20.004Z",
+        "note": "Committed by guarded Development workflow run 42519818771 and independently verified against the live Development schema and migration ledger. Production was not targeted."
       }
     }
   ],
