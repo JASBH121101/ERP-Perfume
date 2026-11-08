@@ -215,6 +215,23 @@
       <div class="modal-actions"><button type="button" class="button button-quiet" id="stock-cancel">Cancelar</button><button type="submit" class="button button-primary">Guardar movimiento</button></div>
     </form>
   </dialog>
+  <dialog class="modal" id="inventory-reversal-dialog" aria-labelledby="inventory-reversal-title">
+    <form id="inventory-reversal-form" class="modal-card">
+      <div class="modal-heading">
+        <div><span class="eyebrow">INVENTARIO · TRAZABILIDAD</span><h2 id="inventory-reversal-title">Revertir movimiento</h2></div>
+        <button type="button" class="icon-button modal-close" id="inventory-reversal-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="modal-note">La reversión agrega un nuevo movimiento opuesto. El original permanece intacto en el Kardex. Solo se permiten reversiones de movimientos manuales y cada movimiento puede revertirse una sola vez.</p>
+      <div class="form-grid">
+        <div class="form-field full-field"><span>Movimiento seleccionado</span><strong id="inventory-reversal-summary">Movimiento de inventario</strong></div>
+        <label class="form-field full-field"><span>Motivo de la reversión <span class="required-mark" aria-hidden="true">*</span></span><textarea name="reason" rows="3" minlength="3" maxlength="240" required placeholder="Explica por qué debe corregirse este movimiento"></textarea></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button button-quiet" id="inventory-reversal-cancel">Cancelar</button>
+        <button type="submit" class="button button-primary">Registrar reversión</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="modal detail-modal" id="product-detail-dialog" aria-labelledby="product-detail-title">
     <div class="modal-card">
       <div class="modal-heading"><div><span class="eyebrow">CATÁLOGO · DETALLE OPERATIVO</span><h2 id="product-detail-title">Producto</h2></div><button type="button" class="icon-button modal-close" id="detail-close" aria-label="Cerrar">×</button></div>
