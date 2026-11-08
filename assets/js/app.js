@@ -604,7 +604,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, catalogCategory: 'all', catalogShowPrices: true };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementActor: '', inventoryMovementSupplier: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, catalogCategory: 'all', catalogShowPrices: true };
   const permissionViews = {
     dashboard: ["dashboard.view"], products: ["products.catalog.view"], catalog: ["products.catalog.view"], resources: [],
     inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"],
@@ -679,7 +679,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "approve-payroll": ["hr.payroll.approve"], "pay-payroll": ["hr.payroll.approve"],
     "download-dgi-document": ["dgi.documents.view"], "reload-dgi-documents": ["dgi.documents.view"],
     "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
-    "clear-inventory-filters": ["inventory.view"], "clear-inventory-product-filters": ["inventory.view"],
+    "clear-inventory-filters": ["inventory.view"], "clear-inventory-product-filters": ["inventory.view"], "inventory-month-filter": ["inventory.view"],
     "inventory-page": ["inventory.view"], "inventory-stock-page": ["inventory.view"], "refresh-access-manager": ["users.accounts.view"],
     "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
   };
@@ -1150,12 +1150,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const traceStatus=m.type==='Reversion'?'Reversión registrada':(m.alreadyReversed?'Movimiento revertido':'');
       const canReverse=permissionGranted('inventory.movements.reverse')&&m.sourceType==='manual'&&m.type!=='Reversion'&&!m.alreadyReversed;
       const reverseAction=canReverse?'<button class="button button-quiet button-small" type="button" data-action="reverse-inventory-movement" data-id="'+esc(m.id)+'">Revertir</button>':'';
-      return '<tr data-movement-id="'+esc(m.id)+'"><td data-label="Fecha">'+esc(dateLabel)+'</td><td data-label="Perfume"><span class="table-primary">'+esc(m.productName)+'</span><small class="table-secondary">'+esc(m.sku||'')+'</small></td><td data-label="Tipo">'+esc(m.type)+'</td><td data-label="Variación" class="table-primary">'+deltaLabel+' uds.</td><td data-label="Stock resultante">'+Number(m.previousStock||0)+' → '+Number(m.newStock||0)+'</td><td data-label="Nota">'+esc(m.note||'—')+(traceStatus?'<small class="table-secondary">'+esc(traceStatus)+'</small>':'')+reverseAction+'</td></tr>';
+      return '<tr data-movement-id="'+esc(m.id)+'"><td data-label="Fecha">'+esc(dateLabel)+'</td><td data-label="Perfume"><span class="table-primary">'+esc(m.productName)+'</span><small class="table-secondary">'+esc(m.sku||'')+'</small></td><td data-label="Tipo">'+esc(m.type)+'</td><td data-label="Variación" class="table-primary">'+deltaLabel+' uds.</td><td data-label="Stock resultante">'+Number(m.previousStock||0)+' → '+Number(m.newStock||0)+'</td><td data-label="Responsable">'+esc(m.actorName||'No disponible')+'</td><td data-label="Proveedor / orden">'+esc(m.supplierName||'—')+(m.purchaseOrderNumber?'<small class="table-secondary">OC '+esc(m.purchaseOrderNumber)+'</small>':'')+'</td><td data-label="Nota">'+esc(m.note||'—')+(traceStatus?'<small class="table-secondary">'+esc(traceStatus)+'</small>':'')+reverseAction+'</td></tr>';
     }).join('');
     const rangeStart=total?offset+1:0,rangeEnd=Math.min(offset+pageSize,total);
     const empty=inventoryMovementPageError||(total?'No hay movimientos que coincidan con los filtros.':'Todavía no hay movimientos registrados.');
     const emptyRow=inventoryMovementLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(empty)+'</div></td></tr>';
-    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||emptyRow)+'</tbody></table></div>'+
+    return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>RESPONSABLE</th><th>PROVEEDOR / ORDEN</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||emptyRow.replace('colspan="6"','colspan="8"))+'</tbody></table></div>'+
       '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos · Página '+state.inventoryMovementPage+' de '+totalPages+(serverPage?' · consultados en Neon':' · vista inicial')+'</span>'+
       '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" '+(state.inventoryMovementPage<=1?'disabled':'')+'>Anterior</button>'+
       '<span class="ledger-count">Página '+state.inventoryMovementPage+' de '+totalPages+'</span>'+
@@ -1173,7 +1173,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const requestId=++inventoryMovementRequestId;
     const params=new URLSearchParams({
       page:String(state.inventoryMovementPage),page_size:String(state.inventoryMovementPageSize),
-      search:state.inventoryMovementQuery,type:state.inventoryMovementType,
+      search:state.inventoryMovementQuery,type:state.inventoryMovementType,actor:state.inventoryMovementActor,supplier:state.inventoryMovementSupplier,
       from:state.inventoryMovementStartDate,to:state.inventoryMovementEndDate
     });
     inventoryMovementLoading=true;
@@ -1191,6 +1191,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         id:m.id,productId:m.product_id,productName:m.product_name,sku:m.sku,type:m.movement_type,
         quantity:Number(m.quantity||0),delta:Number(m.quantity_delta||0),
         previousStock:Number(m.previous_stock||0),newStock:Number(m.new_stock||0),
+        actorUserId:m.actor_user_id||'',actorName:m.actor_name||'',supplierName:m.supplier_name||'',purchaseOrderNumber:m.purchase_order_number||'',
         note:m.note||'',sourceType:m.reference_type||'',sourceId:m.reference_id||'',alreadyReversed:m.already_reversed===true,createdAt:m.created_at
       }));
       inventoryMovementTotal=total;
@@ -1270,17 +1271,30 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   function renderInventoryLedger() {
     const types = [['all', 'Todos los movimientos'], ['Entrada', 'Entradas'], ['Salida', 'Salidas'], ['Ajuste', 'Ajustes'], ['Devolucion', 'Devoluciones'], ['Reversion', 'Reversiones']];
-    const typeOptions = types.map(function (item) {
-      return '<option value="' + item[0] + '"' + (state.inventoryMovementType === item[0] ? ' selected' : '') + '>' + item[1] + '</option>';
-    }).join('');
+    const typeOptions = types.map(item => '<option value="' + item[0] + '"' + (state.inventoryMovementType === item[0] ? ' selected' : '') + '>' + item[1] + '</option>').join('');
     const movementCount=inventoryMovementTotal==null?inventoryMovements.length:Number(inventoryMovementTotal);
-    return '<article class="list-panel ledger-panel inventory-ledger-panel"><div class="panel-heading"><div><h2>Historial de movimientos</h2><p>Historial completo consultado en Neon, con filtros y paginación por servidor</p></div><span class="ledger-count" id="inventory-movement-total">' + movementCount.toLocaleString('es-NI') + ' movimientos</span></div>' +
-      '<div class="toolbar products-toolbar inventory-ledger-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="inventory-movement-search" type="search" value="' + esc(state.inventoryMovementQuery) + '" placeholder="Producto, SKU o nota" aria-label="Buscar en el kardex"></label></div>' +
-      '<div class="toolbar-right"><select class="filter-select" id="inventory-movement-type" aria-label="Filtrar movimientos por tipo">' + typeOptions + '</select>' +
-      '<input class="filter-select" type="date" id="inventory-movement-start" value="' + esc(state.inventoryMovementStartDate) + '" aria-label="Desde fecha">' +
-      '<input class="filter-select" type="date" id="inventory-movement-end" value="' + esc(state.inventoryMovementEndDate) + '" aria-label="Hasta fecha">' +
-      '<button class="button button-quiet button-small" type="button" data-action="clear-inventory-filters">Limpiar filtros</button></div></div>' +
-      '<div id="inventory-movement-results">' + renderInventoryMovementResults() + '</div></article>';
+    const currentYear=new Date().getFullYear();
+    const archiveYears=Array.from({length:6},(_,index)=>currentYear-index).map(year=>
+      '<details class="inventory-archive-year" '+(year===currentYear?'open':'')+'><summary>'+year+'</summary><div class="inventory-archive-months">'+
+      Array.from({length:12},(_,monthIndex)=>{
+        const startValue=year+'-'+String(monthIndex+1).padStart(2,'0')+'-01';
+        const lastDay=new Date(year,monthIndex+1,0).getDate();
+        const endValue=year+'-'+String(monthIndex+1).padStart(2,'0')+'-'+String(lastDay).padStart(2,'0');
+        const label=new Date(year,monthIndex,1).toLocaleDateString('es-NI',{month:'long'});
+        const selected=state.inventoryMovementStartDate===startValue&&state.inventoryMovementEndDate===endValue;
+        return '<button type="button" class="inventory-archive-month'+(selected?' is-active':'')+'" data-action="inventory-month-filter" data-start="'+startValue+'" data-end="'+endValue+'">'+label+'</button>';
+      }).join('')+'</div></details>'
+    ).join('');
+    return '<article class="list-panel ledger-panel inventory-ledger-panel"><div class="panel-heading"><div><h2>Historial de movimientos</h2><p>Consulta por período, responsable, proveedor y tipo; filtros combinables en Neon.</p></div><span class="ledger-count" id="inventory-movement-total">'+movementCount.toLocaleString('es-NI')+' movimientos</span></div>'+
+      '<details class="inventory-archive"><summary>'+svg('clock')+' Archivo mensual <span>Selecciona un mes para consultar su historial completo</span></summary><div class="inventory-archive-years">'+archiveYears+'</div></details>'+
+      '<div class="toolbar products-toolbar inventory-ledger-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg('search')+'<input id="inventory-movement-search" type="search" value="'+esc(state.inventoryMovementQuery)+'" placeholder="Producto, SKU o documento" aria-label="Buscar en el kardex"></label></div>'+
+      '<div class="toolbar-right"><select class="filter-select" id="inventory-movement-type" aria-label="Filtrar movimientos por tipo">'+typeOptions+'</select>'+
+      '<input class="filter-select" id="inventory-movement-actor" type="search" value="'+esc(state.inventoryMovementActor)+'" placeholder="Responsable" aria-label="Filtrar por responsable">'+
+      '<input class="filter-select" id="inventory-movement-supplier" type="search" value="'+esc(state.inventoryMovementSupplier)+'" placeholder="Proveedor" aria-label="Filtrar por proveedor">'+
+      '<input class="filter-select" type="date" id="inventory-movement-start" value="'+esc(state.inventoryMovementStartDate)+'" aria-label="Desde fecha">'+
+      '<input class="filter-select" type="date" id="inventory-movement-end" value="'+esc(state.inventoryMovementEndDate)+'" aria-label="Hasta fecha">'+
+      '<button class="button button-quiet button-small" type="button" data-action="clear-inventory-filters">Limpiar filtros</button></div></div>'+
+      '<div id="inventory-movement-results">'+renderInventoryMovementResults()+'</div></article>';
   }
   function filteredInventoryProducts() {
     const query = String(state.inventoryProductQuery || '').trim().toLocaleLowerCase('es');
@@ -1560,6 +1574,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const movementParams=new URLSearchParams({
       search:state.inventoryMovementQuery,
       type:state.inventoryMovementType,
+      actor:state.inventoryMovementActor,
+      supplier:state.inventoryMovementSupplier,
       from:state.inventoryMovementStartDate,
       to:state.inventoryMovementEndDate
     });
@@ -1568,7 +1584,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view"].some(permissionGranted)){
       movementRecords=await fetchAllInventoryPages('inventory-movements',movementParams);
     }
-    const headers=['Tipo de registro','SKU','Producto','Categoría / tipo','Fecha','Variación / stock','Stock mínimo / anterior','Estado / stock nuevo','Ubicación / nota'];
+    const headers=['Tipo de registro','SKU','Producto','Categoría / tipo','Fecha','Variación / stock','Stock mínimo / anterior','Estado / stock nuevo','Responsable','Proveedor','Orden de compra','Ubicación / nota'];
     const rows=stockRecords.map(p=>{
       const stock=Number(p.stock||0),minimum=Number(p.min_stock??0);
       const statusLabel=stock===0?'Agotado':(stock<=minimum?'Stock bajo':'Disponible');
@@ -1576,7 +1592,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     });
     movementRecords.forEach(m=>rows.push([
       'Movimiento',m.sku,m.product_name,m.movement_type,dateText(m.created_at),
-      Number(m.quantity_delta||0),Number(m.previous_stock||0),Number(m.new_stock||0),m.note||''
+      Number(m.quantity_delta||0),Number(m.previous_stock||0),Number(m.new_stock||0),m.actor_name||'',m.supplier_name||'',m.purchase_order_number||'',m.note||''
     ]));
     return {
       title:'Inventario · Existencias y kardex',
@@ -3221,6 +3237,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     state.category = 'all';
     state.productStatus = 'active';
     state.inventoryMovementQuery = '';
+    state.inventoryMovementActor = '';
+    state.inventoryMovementSupplier = '';
     state.inventoryMovementType = 'all';
     state.inventoryMovementStartDate = '';
     state.inventoryMovementEndDate = '';
@@ -3640,20 +3658,29 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         state.inventoryStockPage = 1;
         loadInventoryStockPage();
       }
+      else if (name === 'inventory-month-filter') {
+        state.inventoryMovementStartDate=action.getAttribute('data-start')||'';
+        state.inventoryMovementEndDate=action.getAttribute('data-end')||'';
+        state.inventoryMovementPage=1;
+        const startDate=document.getElementById('inventory-movement-start'),endDate=document.getElementById('inventory-movement-end');
+        if(startDate)startDate.value=state.inventoryMovementStartDate;
+        if(endDate)endDate.value=state.inventoryMovementEndDate;
+        loadInventoryMovementPage();
+      }
       else if (name === 'clear-inventory-filters') {
         state.inventoryMovementQuery = '';
+        state.inventoryMovementActor = '';
+        state.inventoryMovementSupplier = '';
         state.inventoryMovementType = 'all';
         state.inventoryMovementStartDate = '';
         state.inventoryMovementEndDate = '';
         state.inventoryMovementPage = 1;
-        const search = document.getElementById('inventory-movement-search');
-        const type = document.getElementById('inventory-movement-type');
-        const startDate = document.getElementById('inventory-movement-start');
-        const endDate = document.getElementById('inventory-movement-end');
-        if (search) search.value = '';
-        if (type) type.value = 'all';
-        if (startDate) startDate.value = '';
-        if (endDate) endDate.value = '';
+        const search=document.getElementById('inventory-movement-search');
+        const actor=document.getElementById('inventory-movement-actor'),supplier=document.getElementById('inventory-movement-supplier');
+        const type=document.getElementById('inventory-movement-type');
+        const startDate=document.getElementById('inventory-movement-start'),endDate=document.getElementById('inventory-movement-end');
+        if(search)search.value='';if(actor)actor.value='';if(supplier)supplier.value='';
+        if(type)type.value='all';if(startDate)startDate.value='';if(endDate)endDate.value='';
         loadInventoryMovementPage();
       }
       else if (name === 'stock-new') openStockModal();
@@ -3701,8 +3728,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const body = document.getElementById('product-table-body');
       if (body) body.innerHTML = productTable(filteredProducts());
     }
-    else if (event.target && event.target.id === 'inventory-movement-search') {
-      state.inventoryMovementQuery = event.target.value;
+    else if (event.target && ['inventory-movement-search','inventory-movement-actor','inventory-movement-supplier'].includes(event.target.id)) {
+      if(event.target.id==='inventory-movement-search')state.inventoryMovementQuery=event.target.value;
+      if(event.target.id==='inventory-movement-actor')state.inventoryMovementActor=event.target.value;
+      if(event.target.id==='inventory-movement-supplier')state.inventoryMovementSupplier=event.target.value;
       state.inventoryMovementPage = 1;
       window.clearTimeout(inventoryMovementSearchTimer);
       inventoryMovementSearchTimer = window.setTimeout(loadInventoryMovementPage, 250);
