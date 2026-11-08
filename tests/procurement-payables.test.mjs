@@ -75,7 +75,7 @@ test("purchase order converts NIO line costs and stores order, lines and audit a
   const sql = {
     async query(statement, values) {
       captured = { statement, values };
-      return [{ id: orderId, order_number: "JB-OC-2026-000001", item_count: 2, subtotal_usd: "35.00", total_usd: "36.50" }];
+      return [{ id: orderId, order_number: "1", item_count: 2, subtotal_usd: "35.00", total_usd: "36.50" }];
     }
   };
 
