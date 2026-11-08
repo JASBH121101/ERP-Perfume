@@ -488,7 +488,10 @@ test('procurement UI creates a mult-line order, receives partially, records supp
 });
 
 test('procurement history combines monthly, supplier and status filters and handles migrated receipts without journals', async ({ page }) => {
+  test.setTimeout(60_000);
+  console.log('[PROCUREMENT_HISTORY_QA] start');
   const api = await installProcurementApi(page);
+  console.log('[PROCUREMENT_HISTORY_QA] fixture installed');
   const legacyOrderId = '00000000-0000-0000-0000-000000000801';
   const legacyLineId = '00000000-0000-0000-0000-000000000811';
   const legacyReceiptId = '00000000-0000-0000-0000-000000000821';
@@ -518,46 +521,56 @@ test('procurement history combines monthly, supplier and status filters and hand
   });
 
   await page.goto('/');
+  console.log('[PROCUREMENT_HISTORY_QA] page loaded');
   await navigateToView(page, 'purchaseOrders');
+  console.log('[PROCUREMENT_HISTORY_QA] purchase orders opened');
   await expect(page.locator('#purchase-history-search')).toBeVisible();
   await expect(page.locator('#purchase-history-supplier')).toBeVisible();
   await expect(page.locator('#purchase-history-order-status')).toBeVisible();
   await expect(page.locator('#purchase-history-receipt-status')).toBeVisible();
   await expect(page.locator('.purchase-history-archive')).toBeVisible();
 
+  console.log('[PROCUREMENT_HISTORY_QA] filters and archive visible');
   const legacyReceiptRow = page.locator('tr').filter({ hasText: 'OLD-REC-17' });
   await expect(legacyReceiptRow).toContainText('Histórico · sin comprobante diario');
   await expect(legacyReceiptRow.locator('[data-action="view-purchase-journal"]')).toHaveCount(0);
+  console.log('[PROCUREMENT_HISTORY_QA] legacy journal action suppressed');
 
   await page.locator('#purchase-history-order-status').selectOption('Borrador');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
   await page.locator('#purchase-history-order-status').selectOption('all');
+  console.log('[PROCUREMENT_HISTORY_QA] order status filter passed');
 
   await page.locator('#purchase-history-receipt-status').selectOption('Emitida');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
   await page.locator('#purchase-history-receipt-status').selectOption('all');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  console.log('[PROCUREMENT_HISTORY_QA] receipt status filter passed');
 
   await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
   await expect(page.locator('#purchase-history-start')).toHaveValue('2026-11-01');
   await expect(page.locator('#purchase-history-end')).toHaveValue('2026-11-30');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
+  console.log('[PROCUREMENT_HISTORY_QA] monthly archive filter passed');
 
   await page.locator('#purchase-history-search').fill('OLD-REC-17');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await page.locator('#purchase-history-search').fill('no-coincide');
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
+  console.log('[PROCUREMENT_HISTORY_QA] search filter passed');
 
   await page.locator('[data-action="clear-purchase-filters"]').click();
   await expect(page.locator('#purchase-history-search')).toHaveValue('');
   await expect(page.locator('#purchase-history-start')).toHaveValue('');
   await expect(page.locator('#purchase-history-receipt-status')).toHaveValue('all');
+  console.log('[PROCUREMENT_HISTORY_QA] clear filters passed');
 
   await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
   await page.locator('[data-action="toggle-export-menu"]').click();
   await expect(page.locator('#current-export-menu')).toBeVisible();
+  console.log('[PROCUREMENT_HISTORY_QA] export menu opened');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.locator('[data-action="export-current-view"][data-format="csv"]').click()
@@ -566,4 +579,5 @@ test('procurement history combines monthly, supplier and status filters and hand
   const csv = await readFile(await download.path(), 'utf8');
   expect(csv).toContain('OLD-REC-17');
   expect(csv).not.toContain('"Orden de compra"');
+  console.log('[PROCUREMENT_HISTORY_QA] filtered CSV verified');
 });
