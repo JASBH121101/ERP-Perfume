@@ -1001,10 +1001,12 @@ export async function createPurchaseOrder(sql, user, body) {
   const freight = roundCurrency(body.estimated_freight_usd ?? 0);
   const taxes = roundCurrency(body.estimated_taxes_usd ?? 0);
   const notes = body.notes == null ? null : String(body.notes).trim();
+  const paymentTerms = String(body.payment_terms || "Por acordar").trim();
+  const validPaymentTerms = /^(Contado|Por acordar|Crédito\s+(?:[1-9]|[1-9][0-9]|[1-2][0-9]{2}|3[0-5][0-9]|360)\s+días)$/i.test(paymentTerms);
   const items = Array.isArray(body.items) ? body.items : [];
   if (!supplierId || !["USD","NIO"].includes(currency) || !Number.isFinite(rate) || rate <= 0 || rate > 100000 ||
       !Number.isFinite(discount) || discount < 0 || !Number.isFinite(freight) || freight < 0 ||
-      !Number.isFinite(taxes) || taxes < 0 || (notes && notes.length > 1000) ||
+      !Number.isFinite(taxes) || taxes < 0 || !validPaymentTerms || (notes && notes.length > 1000) ||
       items.length < 1 || items.length > 100) {
     return erpError(400,"INVALID_PURCHASE_ORDER","Revisa proveedor, moneda, tipo de cambio y productos de la orden.");
   }
@@ -1045,7 +1047,7 @@ export async function createPurchaseOrder(sql, user, body) {
       "SELECT c.id,p.id,p.name,p.sku,l.ordered_quantity,l.unit_cost_input,l.unit_cost_usd,ROUND(l.ordered_quantity*l.unit_cost_usd,2) FROM created c CROSS JOIN lines l JOIN products p ON p.id=l.product_id RETURNING id),"+
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT i.actor,'create','purchase_order',c.id::text,jsonb_build_object('order_number',c.order_number,'supplier',c.supplier_name,'total_usd',c.total_usd,'items',(SELECT COUNT(*) FROM created_items)) FROM created c CROSS JOIN input i RETURNING id) "+
       "SELECT c.*,(SELECT COUNT(*) FROM created_items)::int item_count FROM created c",
-      [supplierId,currency,rate,subtotal,discount,freight,taxes,total,expected,body.payment_terms==null?null:String(body.payment_terms).slice(0,160),notes,JSON.stringify(lines),user.id]
+      [supplierId,currency,rate,subtotal,discount,freight,taxes,total,expected,paymentTerms,notes,JSON.stringify(lines),user.id]
     );
     if (!rows[0]) return erpError(409,"PURCHASE_ORDER_REFERENCE_INVALID","El proveedor o uno de los productos no existe, está inactivo o la orden no pudo validarse.");
     return erpJson({record:rows[0]},201);
