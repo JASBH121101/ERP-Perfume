@@ -411,6 +411,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptLines.nth(0).locator('[data-receipt-quantity]').fill('1');
   await receiptLines.nth(1).locator('[data-receipt-quantity]').fill('2');
   await receiptDialog.locator('[name="actual_freight_usd"]').fill('1.5');
+  await receiptDialog.locator('[name="invoice_original_total"]').fill('732');
 
   const receiptRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders/' + ids.order + '/receipts') &&
