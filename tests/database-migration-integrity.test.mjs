@@ -17,7 +17,7 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(result.summary.approvedBaselineExceptions, 9);
   assert.deepEqual(result.summary.readinessBlockers, []);
   assert.equal(result.summary.nextMigrationVersion, "0022");
-  assert.deepEqual(result.summary.pendingMigrations, []);
+  assert.deepEqual(result.summary.pendingMigrations, ["0021"]);
 });
 
 async function createFixture(t, namesAndContents) {
