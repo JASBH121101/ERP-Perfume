@@ -83,7 +83,7 @@ test("purchase order converts NIO line costs and stores order, lines and audit a
 
   assert.equal(result.status, 201);
   assert.equal(result.body.record.id, orderId);
-  assert.match(result.body.record.order_number, /^JB-OC-\d{4}-\d{6}$/);
+  assert.match(result.body.record.order_number, /^\d+$/);
   assert.equal(captured.values[0], supplierId);
   assert.equal(captured.values[1], "NIO");
   assert.equal(captured.values[2], 36.6);
@@ -94,7 +94,7 @@ test("purchase order converts NIO line costs and stores order, lines and audit a
   assert.equal(captured.values[7], 36.5);
   assert.equal(captured.values[12], actor.id);
   assert.match(captured.statement, /nextval\('public\.purchase_order_number_seq'\)/);
-  assert.match(captured.statement, /TO_CHAR\(CURRENT_DATE,'YYYY'\)/);
+  assert.doesNotMatch(captured.statement, /TO_CHAR\(CURRENT_DATE,'YYYY'\)/);
 
   const lines = JSON.parse(captured.values[11]);
   assert.deepEqual(lines.map(line => line.unit_cost_usd), [10, 5]);
@@ -345,4 +345,16 @@ test("client error telemetry redacts contact details and strips query strings", 
   assert.equal(result.value.error_message.includes("person@example.com"), false);
   assert.equal(result.value.error_message.includes("8888 1111"), false);
   assert.equal(normalizeClientErrorInput({ error_type: "api_error", error_message: "x" }).error.code, "INVALID_CLIENT_ERROR_TYPE");
+});
+
+
+test("purchase order rejects unsupported payment terms before SQL", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return []; } };
+  const result = await responseOf(await createPurchaseOrder(sql, actor, validPurchaseOrder({
+    payment_terms: "No definido"
+  })));
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error.code, "INVALID_PURCHASE_ORDER");
+  assert.equal(calls, 0);
 });
