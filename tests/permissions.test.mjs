@@ -5,7 +5,7 @@ import {
   hasPermission,
   loadUserPermissions
 } from "../worker/src/permissions.js";
-import { resolveRoutePermission } from "../worker/src/erp.js";
+import { canApprovePurchaseOrder, resolveRoutePermission } from "../worker/src/erp.js";
 
 test("a permission is denied when its section or module parent is denied", () => {
   const context = {
@@ -129,4 +129,22 @@ test("supplier invoice and supplier payment routes require their dedicated permi
   assert.equal(resolveRoutePermission("supplier-invoice-payments","POST","",[],{}),
     "payables.payments.create");
   assert.equal(resolveRoutePermission("supplier-invoice-payments","PATCH","payment-1",[],{}), null);
+});
+
+
+test("manual inventory reversal route requires the dedicated reversal permission", () => {
+  assert.equal(
+    resolveRoutePermission("inventory-movements", "POST", "00000000-0000-4000-8000-000000000001",
+      ["api","erp","inventory-movements","00000000-0000-4000-8000-000000000001","reverse"], {}),
+    "inventory.movements.reverse"
+  );
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", "", [], { movement_type: "Reversion" }), null);
+  assert.equal(resolveRoutePermission("inventory-movements", "POST", "00000000-0000-4000-8000-000000000001",
+    ["api","erp","inventory-movements","00000000-0000-4000-8000-000000000001","other"], {}), null);
+});
+
+test("purchase order creator cannot approve their own request", () => {
+  assert.equal(canApprovePurchaseOrder("creator-1", "creator-1"), false);
+  assert.equal(canApprovePurchaseOrder("approver-2", "creator-1"), true);
+  assert.equal(canApprovePurchaseOrder("approver-2", null), true);
 });
