@@ -240,7 +240,7 @@ async function installStatefulInventoryApi(page, options = {}) {
       return fulfill(route, { record });
     }
 
-    const reversalMatch = pathname.match(/\\/api\\/erp\\/inventory-movements\\/([^/]+)\\/reverse$/i);
+    const reversalMatch = pathname.match(/\/api\/erp\/inventory-movements\/([^/]+)\/reverse$/i);
     if (reversalMatch && method === 'POST') {
       const original = data.inventory_movements.find(item => String(item.id) === reversalMatch[1]);
       if (!original || original.reference_type !== 'manual') {
