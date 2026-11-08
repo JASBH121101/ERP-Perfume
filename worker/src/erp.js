@@ -395,9 +395,9 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM order_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT * FROM purchases ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM purchase_items ORDER BY id ASC LIMIT 10000`,
-      tx`SELECT * FROM purchase_orders ORDER BY created_at DESC LIMIT 2000`,
+      tx`SELECT po.*,creator.display_name AS created_by_name,creator.email AS created_by_email,approver.display_name AS approved_by_name FROM purchase_orders po LEFT JOIN app_users creator ON creator.id=po.created_by LEFT JOIN app_users approver ON approver.id=po.approved_by ORDER BY po.created_at DESC LIMIT 2000`,
       tx`SELECT * FROM purchase_order_items ORDER BY created_at ASC LIMIT 10000`,
-      tx`SELECT * FROM purchase_receipts ORDER BY received_at DESC LIMIT 5000`,
+      tx`SELECT pr.*,po.order_number AS purchase_order_number,po.supplier_name,emitter.display_name AS emitted_by_name,poster.display_name AS posted_by_name FROM purchase_receipts pr JOIN purchase_orders po ON po.id=pr.purchase_order_id LEFT JOIN app_users emitter ON emitter.id=pr.emitted_by LEFT JOIN app_users poster ON poster.id=pr.posted_by ORDER BY COALESCE(pr.emitted_at,pr.received_at) DESC LIMIT 5000`,
       tx`SELECT * FROM purchase_receipt_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT si.*,s.name AS supplier_name FROM supplier_invoices si JOIN suppliers s ON s.id=si.supplier_id ORDER BY si.invoice_date DESC,si.created_at DESC LIMIT 5000`,
       tx`SELECT sip.*,ca.name AS account_name FROM supplier_invoice_payments sip JOIN cash_accounts ca ON ca.id=sip.account_id ORDER BY sip.paid_at DESC LIMIT 10000`,
@@ -1191,7 +1191,7 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
       "SELECT r.*,a.order_exists,a.order_status,a.order_currency,a.order_rate,a.order_payment_terms,a.request_count,"+
       "a.matched_count,a.distinct_count,a.invalid_quantity_count,a.price_mismatch_count,a.expected_invoice_usd,a.supplied_invoice_usd "+
       "FROM amount_check a LEFT JOIN created_receipt r ON TRUE",
-      [orderId,invoiceNumber,invoiceDate,invoiceCurrency,invoiceRate,roundMoney(invoiceOriginalTotal),roundMoney(freight),roundMoney(taxes),paymentTerms,notes,JSON.stringify(items),user.id]
+      [orderId,invoiceNumber,invoiceDate,invoiceCurrency,invoiceRate,roundCurrency(invoiceOriginalTotal),roundCurrency(freight),roundCurrency(taxes),paymentTerms,notes,JSON.stringify(items),user.id]
     );
     const result=rows[0];
     if(!result?.id){
@@ -2112,6 +2112,11 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
   if (resource === "purchases") {
     return method === "GET" ? "purchases.receipts.view" : method === "POST" ? "purchases.receipts.receive" : null;
   }
+  if (resource === "purchase-receipts") {
+    if (parts[4] === "post" && method === "POST") return "purchases.receipts.post";
+    if (parts[4] === "journal" && method === "GET") return "purchases.receipts.journal.view";
+    return null;
+  }
   if (resource === "purchase-orders") {
     if (parts[4] === "receipts" && method === "POST") return "purchases.receipts.receive";
     if (method === "GET") return "purchases.purchase_orders.view";
@@ -2793,6 +2798,19 @@ export async function handleERPRequest(request, env, user, sql) {
   if (resource === "purchase-orders" && request.method === "POST") {
     let body; try { body = await request.json(); } catch { return erpError(400,"INVALID_JSON","El cuerpo JSON no es válido."); }
     return createPurchaseOrder(sql,user,body);
+  }
+  if (resource === "purchase-receipts" && id && parts[4] === "post" && request.method === "POST") {
+    if (!hasPermission(permissionContext,"purchases.receipts.post") ||
+        !hasPermission(permissionContext,"inventory.receipts.receive")) {
+      return erpError(403,"FORBIDDEN","Contabilizar una recepción requiere permisos de contabilización e inventario.");
+    }
+    return postPurchaseReceipt(sql,user,id);
+  }
+  if (resource === "purchase-receipts" && id && parts[4] === "journal" && request.method === "GET") {
+    if (!hasPermission(permissionContext,"purchases.receipts.journal.view")) {
+      return erpError(403,"FORBIDDEN","No tienes permiso para consultar el comprobante diario.");
+    }
+    return getPurchaseJournal(sql,id);
   }
   if (resource === "purchase-orders" && parts[4] === "receipts" && request.method === "POST" && id) {
     if (!hasPermission(permissionContext,"purchases.receipts.receive") || !hasPermission(permissionContext,"inventory.receipts.receive")) {
