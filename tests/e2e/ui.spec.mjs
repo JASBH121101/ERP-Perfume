@@ -240,6 +240,42 @@ async function installStatefulInventoryApi(page, options = {}) {
       return fulfill(route, { record });
     }
 
+    const reversalMatch = pathname.match(/\\/api\\/erp\\/inventory-movements\\/([^/]+)\\/reverse$/i);
+    if (reversalMatch && method === 'POST') {
+      const original = data.inventory_movements.find(item => String(item.id) === reversalMatch[1]);
+      if (!original || original.reference_type !== 'manual') {
+        return fulfill(route, { error: { message: 'Solo se pueden revertir movimientos manuales.' } }, 409);
+      }
+      if (data.inventory_movements.some(item =>
+        item.reference_type === 'reversal' && String(item.reference_id) === String(original.id)
+      )) {
+        return fulfill(route, { error: { message: 'El movimiento ya fue revertido.' } }, 409);
+      }
+      const reason = String(request.postDataJSON()?.reason || '').trim();
+      if (reason.length < 3 || reason.length > 240) {
+        return fulfill(route, { error: { message: 'Indica un motivo válido.' } }, 400);
+      }
+      const product = data.products.find(item => String(item.id) === String(original.product_id));
+      if (!product) return fulfill(route, { error: { message: 'Producto no encontrado.' } }, 404);
+      const previousStock = Number(product.stock || 0);
+      const nextStock = previousStock - Number(original.quantity_delta || 0);
+      if (nextStock < 0) return fulfill(route, { error: { message: 'La reversión dejaría stock negativo.' } }, 409);
+      product.stock = nextStock;
+      const reversal = {
+        id: 'qa-reversal-' + String(data.inventory_movements.length + 1),
+        product_id: original.product_id, movement_type: 'Reversion',
+        quantity: Math.abs(Number(original.quantity_delta || 0)),
+        quantity_delta: -Number(original.quantity_delta || 0),
+        previous_stock: previousStock, new_stock: nextStock,
+        note: 'Reversión de movimiento ' + original.id + ': ' + reason,
+        reference_type: 'reversal', reference_id: String(original.id),
+        created_at: new Date().toISOString()
+      };
+      data.inventory_movements.unshift(reversal);
+      mutationCommitted = true;
+      return fulfill(route, { record: reversal }, 201);
+    }
+
     if (pathname === '/api/erp/inventory-movements' && method === 'POST') {
       const payload = request.postDataJSON();
       const product = data.products.find(item => item.id === payload.product_id && item.active !== false);
@@ -411,6 +447,41 @@ test('mobile export menu stays fully inside the viewport on Orders', async ({ pa
   expect(bounds.left).toBeGreaterThanOrEqual(0);
   expect(bounds.right).toBeLessThanOrEqual(bounds.viewport);
   expect(bounds.width).toBeGreaterThan(0);
+});
+
+test('Kardex allows an authorized user to reverse a manual movement with an audit reason', async ({ page }) => {
+  const api = await installStatefulInventoryApi(page);
+  await page.goto('/');
+  await navigateToView(page, 'inventory');
+
+  const originalId = 'qa-movement-1';
+  const originalRow = page.locator('#inventory-movement-body tr').filter({ hasText: 'Movimiento QA 1' });
+  const reverseButton = originalRow.locator('[data-action="reverse-inventory-movement"]');
+  await expect(reverseButton).toBeVisible();
+  await reverseButton.click();
+
+  const dialog = page.locator('#inventory-reversal-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('#inventory-reversal-summary')).toContainText('QA Fixture Perfume');
+  await dialog.locator('[name="reason"]').fill('Entrada duplicada en conteo QA');
+
+  const reversalRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/inventory-movements/' + originalId + '/reverse') &&
+    request.method() === 'POST'
+  );
+  await dialog.locator('[type="submit"]').click();
+  await reversalRequest;
+
+  await expect(dialog).toBeHidden();
+  expect(api.data.products.find(product => product.id === fixture.products[0].id).stock).toBe(3);
+  const reversal = api.data.inventory_movements.find(item =>
+    item.reference_type === 'reversal' && String(item.reference_id) === originalId
+  );
+  expect(reversal).toBeTruthy();
+  expect(reversal.movement_type).toBe('Reversion');
+  expect(reversal.quantity_delta).toBe(-2);
+  expect(reversal.note).toContain('Entrada duplicada en conteo QA');
+  expect(api.data.inventory_movements.find(item => item.id === originalId).movement_type).toBe('Entrada');
 });
 
 test('inventory kardex searches, filters by type and date, and paginates all movements', async ({ page }) => {
