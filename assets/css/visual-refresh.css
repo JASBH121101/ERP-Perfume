@@ -493,3 +493,48 @@ body.sidebar-collapsed .main-panel{width:calc(100% - 82px);margin-left:82px}
   .notification-panel{position:fixed;top:max(72px,calc(env(safe-area-inset-top,0px) + 64px));right:12px;z-index:1000;width:min(430px,calc(100vw - 24px));max-height:calc(100dvh - max(72px,env(safe-area-inset-top,0px) + 64px) - 14px)}
   .notification-list{max-height:calc(100dvh - 180px)}
 }
+
+
+
+/* Operational ERP enhancements: dense monthly archive and compound ledger filters. */
+.inventory-archive{
+  margin:0 0 12px;border:1px solid #e1e6ed;border-radius:10px;background:#fbfcfd;
+}
+.inventory-archive>summary{
+  display:flex;align-items:center;gap:9px;min-height:38px;padding:7px 11px;
+  color:#465366;font-size:12px;font-weight:700;cursor:pointer;list-style:none;
+}
+.inventory-archive>summary::-webkit-details-marker,.inventory-archive-year>summary::-webkit-details-marker{display:none}
+.inventory-archive>summary:after{content:"⌄";margin-left:auto;color:#778395;font-size:15px}
+.inventory-archive[open]>summary:after{content:"⌃"}
+.inventory-archive>summary svg{width:15px;height:15px;color:#927143}
+.inventory-archive>summary span{color:#8792a1;font-size:11px;font-weight:500}
+.inventory-archive-years{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;padding:0 10px 10px}
+.inventory-archive-year{border:1px solid #e7ebf0;border-radius:8px;background:#fff;overflow:hidden}
+.inventory-archive-year>summary{padding:8px 10px;color:#354254;font-size:12px;font-weight:700;cursor:pointer;list-style:none}
+.inventory-archive-year[open]>summary{border-bottom:1px solid #edf0f4;background:#f8fafc}
+.inventory-archive-months{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:7px}
+.inventory-archive-month{
+  min-width:0;padding:6px 4px;border:1px solid transparent;border-radius:6px;color:#667386;
+  background:#f6f8fa;font-size:11px;text-transform:capitalize;cursor:pointer
+}
+.inventory-archive-month:hover{border-color:#d7c39e;color:#604b2d;background:#faf5eb}
+.inventory-archive-month.is-active{border-color:#c5a56e;color:#5c4525;background:#f5ead5;font-weight:700}
+.inventory-ledger-toolbar .toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.inventory-ledger-toolbar .filter-select{min-width:128px;min-height:34px;padding:6px 8px;border-radius:7px;font-size:12px}
+.inventory-ledger-toolbar input[type=search]{width:150px}
+.inventory-ledger-table{min-width:1040px}
+.inventory-ledger-table th{padding:9px 8px}
+.inventory-ledger-table td{padding:9px 8px;font-size:12px}
+.inventory-ledger-table td small{display:block;margin-top:2px}
+@media(max-width:900px){
+  .inventory-archive-years{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .inventory-ledger-toolbar .toolbar-right{width:100%}
+  .inventory-ledger-toolbar .filter-select{flex:1 1 135px}
+}
+@media(max-width:560px){
+  .inventory-archive>summary span{display:none}
+  .inventory-archive-years{grid-template-columns:1fr}
+  .inventory-ledger-toolbar .filter-select{flex:1 1 calc(50% - 7px);min-width:0}
+  .inventory-ledger-toolbar input[type=search]{width:100%;flex:1 1 100%}
+}

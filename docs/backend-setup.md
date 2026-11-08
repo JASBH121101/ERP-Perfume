@@ -88,6 +88,31 @@ On the Neon `development` branch:
 
 The Worker resolves the Neon Auth user and ERP profile before allowing `/api/erp/*` operations. The frontend remains locked until a valid ERP profile is returned.
 
+
+## Provisioning a new Neon branch (outside application migrations)
+
+The SQL migration chain creates the ERP `public` schema. It does **not** provision Neon Managed Auth, the Worker runtime role, or the role's grants. These are separate, branch-scoped environment prerequisites.
+
+A read-only check on 2026-11-07 found:
+
+| Environment | `neon_auth` schema | `jb_erp_runtime_sql` | Public table grants | Public column grants | Public sequence grants |
+|---|---:|---:|---:|---:|---:|
+| Development | Present | Present | 88 | 1,036 | 2 |
+| Fresh-migration QA clone | Missing | Missing | 0 | 0 | 0 |
+| Development-derived QA clone | Present | Present | 88 | 1,036 | 2 |
+
+The fresh-migration QA clone therefore proves the SQL schema chain can be built, but it is **not** a complete authenticated ERP environment. Neon reported Managed Auth as not enabled on that branch. Do not try to create `neon_auth` by copying application SQL or by adding it to `db/migrations`; enable/provision Neon Auth for the target branch using Neon’s managed Auth controls, then configure trusted origins and email verification.
+
+Provision `jb_erp_runtime_sql` separately on each new branch. Its privileges must mirror the reviewed least-privilege Development policy: SELECT on operational tables, only the required INSERT/UPDATE/column grants, sequence use where required, and DELETE restricted to `user_permission_overrides` and `role_template_permissions`. Do not leave a generic Neon `read_write` role preset unchanged: that preset is broader than the ERP runtime policy because it grants DELETE across the scoped schema. Never use `erp_owner` as the Worker runtime credential.
+
+Before declaring a new branch ready, run `db/diagnostics/runtime-provisioning.sql` against that exact branch (and `db/diagnostics/development-readiness.sql` after the migration ledger exists) and verify:
+- `neon_auth` exists and Neon Auth is enabled/configured for that branch;
+- `jb_erp_runtime_sql` exists with the least-privilege grants;
+- the Worker secret uses that runtime role and points to the intended branch;
+- `/api/health` succeeds, followed by an authenticated `/api/auth/profile` and a synthetic API smoke test.
+
+A green `/api/health` response alone proves database reachability and binding readiness; it does not prove that Neon Auth is provisioned or that the runtime role can access every required table/column.
+
 ## API surface
 
 Public/configuration endpoints:
@@ -109,11 +134,9 @@ Not every resource supports generic update or delete. Financial, payroll and inv
 
 ## Database migrations
 
-The repository now contains migration sources `0001` through `0019`. The Development migration ledger and live catalog are not fully aligned: versions `0012`–`0014` have their expected HR objects (tables, sequence, triggers and indexes) in Development but no corresponding ledger rows; version `0018` is recorded in Neon with a rejection-reason constraint, while its original SQL source was not committed. A schema-equivalent reconstruction is retained in the repository and documented separately; its checksum is not claimed to match the original.
+Repository sources now contain migrations `0001` through `0020`. Development still has historical ledger/source discrepancies: `0012`–`0014` have expected HR objects without ledger rows; `0002`, `0003`, `0006`, `0008`, `0009`, `0017` and `0018` retain source/checksum provenance exceptions. Do not replay those historical files or invent ledger rows. A disposable clean-install branch successfully executed `0001`–`0019`; schema comparison exposed four clean-install gaps, addressed by the new pending forward migration `0020_align_clean_install_schema.sql`. The 0020 migration has been applied and verified on two isolated QA branches (one clean-install branch and one Development clone); it has not been applied to Development or Production. See `docs/database-reliability-gate.md`, `db/migration-integrity.json` and `docs/migration-runner.md`.
 
-Version `0019` adds supporting indexes for nullable audit foreign keys and permission lookups. It is a pending additive migration until its Development execution and ledger entry are explicitly verified. Existing indexes are not duplicated: for example, `employee_commissions.invoice_item_id` is already protected by a unique index.
-
-See `docs/migration-audit-2026-11-06.md` for the read-only audit, observed checksums and reconciliation rules. Do not replay versions already represented by live objects. Migrations are not automatically executed by GitHub Actions, Pages or Wrangler Worker deployments. Neon Production was not changed; do not apply Production migrations without an explicitly approved cutover and backup plan.
+See `docs/migration-audit-2026-11-06.md` for the read-only audit, observed checksums and reconciliation rules. Do not replay versions already represented by live objects. Migrations are not automatically executed by GitHub Actions, Pages or Wrangler Worker deployments. The controlled local runner is `npm run migrate:db` (check only) and `npm run migrate:db:apply` (requires explicit approval, exact Development branch ID and pinned Development endpoint host). Neon Production was not changed; do not apply Production migrations without an explicitly approved cutover and backup plan.
 
 ## Validation
 
