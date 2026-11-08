@@ -454,7 +454,7 @@ test('Kardex allows an authorized user to reverse a manual movement with an audi
   await page.goto('/');
   await navigateToView(page, 'inventory');
 
-  const originalId = 'qa-movement-1';
+  const originalId = 'qa-movement-27';
   const originalRow = page.locator('#inventory-movement-body tr[data-movement-id="' + originalId + '"]');
   const reverseButton = originalRow.locator('[data-action="reverse-inventory-movement"]');
   await expect(reverseButton).toBeVisible();
