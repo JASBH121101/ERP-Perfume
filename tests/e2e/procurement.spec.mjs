@@ -351,14 +351,24 @@ async function navigateToView(page, view) {
 test('procurement UI creates a mult-line order, receives partially, records supplier invoice and applies payment', async ({ page }) => {
   test.setTimeout(60000);
   const api = await installProcurementApi(page);
+  page.on('pageerror', error => console.log('POFLOW PAGEERROR:', error.message));
   await page.goto('/');
 
   await navigateToView(page, 'purchaseOrders');
   console.log('POFLOW: orders view loaded');
   await page.locator('[data-action="purchase-section-tab"][data-tab="new"]').click();
   console.log('POFLOW: new order tab selected');
+  await page.waitForTimeout(1200);
+  console.log('POFLOW DOM:', JSON.stringify(await page.evaluate(() => ({
+    url: location.href,
+    rootText: document.querySelector('#view-root')?.innerText?.slice(0, 900),
+    formCount: document.querySelectorAll('#purchase-order-form').length,
+    selectedSection: document.querySelector('[data-action="purchase-section-tab"][aria-selected="true"]')?.getAttribute('data-tab'),
+    availableSections: [...document.querySelectorAll('[data-action="purchase-section-tab"]')].map(x => x.dataset.tab),
+    profile: window.JBAuth?.profile && { role: window.JBAuth.profile.role, permissions: window.JBAuth.profile.permissions }
+  }))));
   const orderForm = page.locator('#purchase-order-form');
-  await expect(orderForm).toBeVisible();
+  await expect(orderForm).toBeVisible({ timeout: 8000 });
   await expect(orderForm.locator('[name="supplier_id"] option[value="' + ids.supplier + '"]')).toHaveCount(1, { timeout: 15000 });
   await expect(orderForm.locator('[name="product_id"] option[value="' + ids.productA + '"]')).toHaveCount(1, { timeout: 15000 });
   await expect(orderForm.getByText('Código de orden')).toHaveCount(0);
