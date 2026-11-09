@@ -351,8 +351,15 @@ async function initialize() {
       const temporaryPassword = "Aa1!" + Array.from(bytes, value => alphabet[value % alphabet.length]).join("");
       const result = await method({ email, name, password: temporaryPassword, role: "user" });
       if (result?.error) throw new Error(result.error.message || "Neon Auth no pudo crear la identidad.");
-      await window.JBAuth.sendVerificationCode(email);
-      return result.data?.user || result.user || result.data || null;
+      const createdUser = result.data?.user || result.user || result.data || null;
+      try {
+        await window.JBAuth.sendVerificationCode(email);
+      } catch (error) {
+        const invitationError = new Error("La identidad se creó, pero no se pudo enviar el código de verificación. Reenvíalo desde Identidades pendientes. " + (error?.message || ""));
+        invitationError.identityCreated = true;
+        throw invitationError;
+      }
+      return createdUser;
     },
     async sendPasswordRecoveryCode(email) {
       const method = authClient?.forgetPassword?.emailOtp;
