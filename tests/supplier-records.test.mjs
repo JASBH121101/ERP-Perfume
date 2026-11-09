@@ -114,7 +114,7 @@ test("supplier update replaces all secondary phones atomically without multiplyi
   })));
   assert.equal(result.status, 200);
   assert.match(captured.statement, /DELETE FROM supplier_phone_numbers/);
-  assert.match(captured.statement, /delete_barrier AS \(SELECT count\(\) FROM deleted_phones\)/);
+  assert.match(captured.statement, /delete_barrier AS \(SELECT count\(\*\) FROM deleted_phones\)/);
   assert.match(captured.statement, /INSERT INTO supplier_phone_numbers/);
   assert.equal(captured.values[12], supplierId);
   assert.equal(captured.values[13], actor.id);
