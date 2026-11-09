@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
+import { resolveApiBaseUrl, injectApiBaseUrl } from "./deployment-config.mjs";
 
 const root = process.cwd();
 const output = new URL("../dist/", import.meta.url);
@@ -24,5 +25,10 @@ await build({
 
 const htmlPath = new URL("../dist/index.html", import.meta.url);
 const html = await readFile(htmlPath, "utf8");
-await writeFile(htmlPath, html.replace('src="assets/js/bootstrap.mjs"', 'src="assets/js/app.js"'), "utf8");
+const apiBaseUrl = resolveApiBaseUrl({
+  deploymentTarget: process.env.ERP_DEPLOY_TARGET,
+  apiBaseUrl: process.env.ERP_API_BASE_URL
+});
+const withApi = injectApiBaseUrl(html, apiBaseUrl);
+await writeFile(htmlPath, withApi.replace('src="assets/js/bootstrap.mjs"', 'src="assets/js/app.js"'), "utf8");
 console.log("Built static ERP assets and bundled browser authentication client.");
