@@ -2269,14 +2269,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       } else if(type==='supplier'){
         if(!get('name'))throw new Error('El nombre de la empresa proveedora es obligatorio.');
         const additionalPhones=Array.from(businessForm.querySelectorAll('input[name="additionalPhone"]')).map(input=>input.value.trim()).filter(Boolean);
+        const supplierRecordId=businessForm.dataset.recordId;
+        const existingSupplier=suppliers.find(item=>String(item.id)===String(supplierRecordId));
         const supplierPayload={
           name:get('name'),contact:get('contact'),phone:get('phone'),additional_phones:additionalPhones,
           email:get('email'),address:get('address'),payment_terms:get('paymentTerms'),
           minimum_order_usd:num('minimumOrderUsd'),lead_time_days:get('leadTimeDays')===''?null:num('leadTimeDays'),
-          notes:get('notes'),currency,active:currentSupplier?.active!==false
+          notes:get('notes'),currency,active:existingSupplier?.active!==false
         };
-        if(currentSupplier){
-          await erpApi('suppliers/'+encodeURIComponent(currentSupplier.id),{method:'PATCH',body:JSON.stringify(supplierPayload)});
+        if(existingSupplier){
+          await erpApi('suppliers/'+encodeURIComponent(existingSupplier.id),{method:'PATCH',body:JSON.stringify(supplierPayload)});
         }else{
           await erpApi('suppliers',{method:'POST',body:JSON.stringify(supplierPayload)});
         }
