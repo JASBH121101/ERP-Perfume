@@ -14,6 +14,8 @@ let authBaseUrl = "";
 let erpProfile = null;
 let profileError = "";
 let appLoaded = false;
+let allowOwnerSignUp = false;
+let authEnvironment = "unknown";
 
 async function readJson(response) {
   try { return await response.json(); } catch { return {}; }
@@ -115,24 +117,40 @@ async function refreshProfile() {
 
 function setAuthMode(mode, email = "") {
   if (!authForm) return;
+  const signingUp = mode === "signup";
   const verifying = mode === "verify";
   const recoveryRequest = mode === "recovery-request";
   const recoveryReset = mode === "recovery-reset";
-  const signingIn = !verifying && !recoveryRequest && !recoveryReset;
+  const signingIn = mode === "signin";
+  const enteringPassword = signingIn || signingUp;
+  const showingOtp = verifying || recoveryReset;
+
   authForm.dataset.mode = mode;
-  $("#auth-name-field")?.setAttribute("hidden", "");
-  $("#auth-password-field").hidden = !signingIn;
-  $("#auth-password").required = signingIn;
-  $("#auth-otp-field").hidden = !(verifying || recoveryReset);
-  $("#auth-otp").required = verifying || recoveryReset;
+  $("#auth-name-field").hidden = !signingUp;
+  $("#auth-name").required = signingUp;
+  $("#auth-password-field").hidden = !enteringPassword;
+  $("#auth-password").required = enteringPassword;
+  $("#auth-password").autocomplete = signingUp ? "new-password" : "current-password";
+  $("#auth-otp-field").hidden = !showingOtp;
+  $("#auth-otp").required = showingOtp;
   $("#auth-new-password-field").hidden = !recoveryReset;
   $("#auth-new-password").required = recoveryReset;
   $("#auth-confirm-password-field").hidden = !recoveryReset;
   $("#auth-confirm-password").required = recoveryReset;
-  $("#auth-resend-code").hidden = !(verifying || recoveryReset);
-  $("#auth-email").readOnly = verifying || recoveryReset;
+  $("#auth-resend-code").hidden = !showingOtp;
+  $("#auth-email").readOnly = showingOtp;
   $("#auth-forgot-password").hidden = !signingIn;
   $("#auth-back-to-signin").hidden = signingIn;
+  $("#auth-enroll-actions").hidden = !(signingIn && allowOwnerSignUp && !authUser);
+
+  const otpLabel = $("#auth-otp-label");
+  if (otpLabel) otpLabel.textContent = verifying ? "Código de verificación" : "Código de recuperación";
+  const gateNote = $(".auth-gate-note");
+  if (gateNote) {
+    gateNote.textContent = signingUp
+      ? "Alta inicial del propietario: registrá el correo designado para administrar JB PARFUMS. La verificación OTP confirma el correo; el backend sigue validando que sea la identidad autorizada."
+      : "Iniciá sesión con una cuenta previamente creada y habilitada por el propietario. Verificar el correo no concede acceso al ERP por sí solo.";
+  }
   const recoveryNote = $("#auth-recovery-note");
   if (recoveryNote) {
     recoveryNote.hidden = !(recoveryRequest || recoveryReset);
@@ -140,19 +158,24 @@ function setAuthMode(mode, email = "") {
       ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña. El SMS aún no está habilitado: requiere verificar el celular y conectar un proveedor de mensajes."
       : "Por ahora puedes recibir el código de recuperación en tu correo. El celular se guarda en RR. HH., pero todavía no está vinculado y verificado en Neon Auth para restablecer contraseñas por SMS.";
   }
+
   if (email) $("#auth-email").value = email;
-  if (!verifying && !recoveryReset) $("#auth-otp").value = "";
+  if (!showingOtp) $("#auth-otp").value = "";
   if (!recoveryReset) {
     $("#auth-new-password").value = "";
     $("#auth-confirm-password").value = "";
   }
+  if (!signingUp) $("#auth-name").value = "";
+
   $("#auth-submit").textContent = verifying
     ? "Verificar correo"
     : recoveryRequest
       ? "Enviar código"
       : recoveryReset
         ? "Cambiar contraseña"
-        : "Iniciar sesión";
+        : signingUp
+          ? "Crear cuenta"
+          : "Iniciar sesión";
   if (authFeedback) authFeedback.textContent = "";
 }
 
@@ -185,6 +208,7 @@ function lockERP(message = "") {
     $("#auth-mode-switch")?.setAttribute("hidden", "");
     $("#auth-name-field")?.setAttribute("hidden", "");
     $("#auth-otp-field").hidden = true;
+    $("#auth-enroll-actions")?.setAttribute("hidden", "");
   }
 
   if (message && authClient) setAuthFeedback(message, true);
@@ -196,7 +220,7 @@ function updateAuthControls() {
   const pill = $("#connection-pill");
   if (pill) {
     const indicator = pill.querySelector("i") || document.createElement("i");
-    pill.replaceChildren(indicator, document.createTextNode(" " + (authClient ? "NEON · DESARROLLO" : "ACCESO SEGURO")));
+    pill.replaceChildren(indicator, document.createTextNode(" " + (authClient ? "NEON · " + authEnvironment.toUpperCase() : "ACCESO SEGURO")));
     pill.classList.toggle("connected", Boolean(authClient));
   }
 
@@ -244,6 +268,9 @@ async function initialize() {
     const response = await fetch(apiUrl("/api/config"), { cache: "no-store" });
     if (!response.ok) throw new Error("El backend respondió con estado " + response.status + ".");
     config = await readJson(response);
+    authEnvironment = String(config.environment || "unknown").trim().toLowerCase();
+    // The initial enrollment entry point is exposed only on the production deployment.
+    allowOwnerSignUp = authEnvironment === "production";
   } catch (error) {
     window.JBAuth = { mode: "unavailable", user: null, profile: null, getToken: async () => null };
     lockERP("No se pudo contactar al servicio seguro del ERP. " + (error?.message || "Intenta recargar."));
@@ -286,6 +313,13 @@ async function initialize() {
     get profileError() { return profileError; },
     getToken,
     refreshProfile,
+    async signUp(email, password, name) {
+      const method = authClient?.signUp?.email;
+      if (typeof method !== "function") throw new Error("Neon Auth no tiene disponible el registro por correo y contraseña.");
+      const result = await method({ email, password, name });
+      if (result?.error) throw new Error(result.error.message || "No se pudo crear la cuenta.");
+      return result;
+    },
     async signIn(email, password) {
       const result = await authClient.signIn.email({ email, password });
       if (result?.error) throw new Error(result.error.message || "No se pudo iniciar sesión.");
@@ -383,7 +417,15 @@ async function initialize() {
     setAuthFeedback(mode === "verify" ? "Verificando correo…" : "Conectando con Neon Auth…");
 
     try {
-      if (mode === "verify") {
+      if (mode === "signup") {
+        const name = String(data.get("name") || "").trim();
+        const password = String(data.get("password") || "");
+        if (!name || name.length > 120) throw new Error("Escribe tu nombre completo (máximo 120 caracteres).");
+        if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
+        await window.JBAuth.signUp(email, password, name);
+        setAuthMode("verify", email);
+        setAuthFeedback("Cuenta creada en Neon. Te enviamos un código de seis dígitos; verifica el correo para activar el acceso inicial del propietario.");
+      } else if (mode === "verify") {
         await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
         if (erpProfile) {
           await openERP();
@@ -423,6 +465,14 @@ async function initialize() {
     } finally {
       submit.disabled = false;
     }
+  });
+
+  $("#auth-signup-start")?.addEventListener("click", () => {
+    if (!allowOwnerSignUp || authUser) return;
+    const email = String($("#auth-email")?.value || "").trim();
+    setAuthMode("signup", email);
+    setAuthFeedback("Usá el correo electrónico designado para el propietario del ERP. Otras identidades no recibirán permisos administrativos.");
+    $("#auth-name")?.focus();
   });
 
   $("#auth-forgot-password")?.addEventListener("click", () => {
