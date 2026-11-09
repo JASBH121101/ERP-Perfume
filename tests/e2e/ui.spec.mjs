@@ -332,7 +332,7 @@ test('permission editor opens Administrator by default and keeps each template s
   const api = { roles, permissions, grants };
   const requests = [];
 
-  await page.route(workerPattern, async route => {
+  await page.route('**/api/erp/roles**', async route => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === '/api/erp/roles' && request.method() === 'GET') {
