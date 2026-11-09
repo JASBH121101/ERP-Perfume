@@ -338,3 +338,242 @@ html, body { font-size: max(15px, calc(15px * var(--ui-font-scale, 1))); }
   .inventory-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inventory-summary-strip .summary-mini { min-height: 72px; padding: 8px; }
 }
+
+
+/* UX correction — permissions masonry, procurement filters and consistent controls. */
+.access-manager-section #role-permissions-form .permission-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+  padding: 14px;
+}
+.access-manager-section #role-permissions-form .permission-editor-column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+}
+.access-manager-section #role-permissions-form .permission-editor-module {
+  align-self: flex-start;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e3e8ef;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(32, 41, 54, .035);
+}
+.access-manager-section #role-permissions-form .permission-editor-module > summary {
+  min-height: 48px;
+  padding: 10px 13px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 10px;
+  color: #344052;
+  cursor: pointer;
+  list-style: none;
+  font-size: max(13px, calc(12px * var(--ui-font-scale, 1)));
+  font-weight: 700;
+}
+.access-manager-section #role-permissions-form .permission-editor-module > summary::-webkit-details-marker { display: none; }
+.access-manager-section #role-permissions-form .permission-editor-module > summary::after {
+  content: "+";
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid #dfe5ec;
+  border-radius: 50%;
+  color: #687588;
+  background: #f7f9fb;
+  font-size: 14px;
+  line-height: 1;
+}
+.access-manager-section #role-permissions-form .permission-editor-module[open] > summary {
+  border-bottom: 1px solid #edf0f4;
+  color: #76572b;
+  background: #fcfaf6;
+}
+.access-manager-section #role-permissions-form .permission-editor-module[open] > summary::after {
+  content: "−";
+  border-color: #e5d6bd;
+  color: #76572b;
+  background: #f5eee3;
+}
+.access-manager-section #role-permissions-form .permission-editor-module > summary small {
+  color: #7b8796;
+  font-size: max(11px, calc(10px * var(--ui-font-scale, 1)));
+  font-weight: 600;
+  white-space: nowrap;
+}
+.access-manager-section #role-permissions-form .permission-editor-module-content { padding: 3px 13px 10px; }
+.access-manager-section #role-permissions-form .permission-editor-row {
+  min-height: 38px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-top-color: #edf0f4;
+  color: #465366;
+  font-size: max(12px, calc(11px * var(--ui-font-scale, 1)));
+}
+.access-manager-section #role-permissions-form .permission-editor-row:first-child { border-top: 0; }
+.access-manager-section #role-permissions-form .permission-editor-row small {
+  color: #8490a0;
+  font-size: max(10px, calc(9px * var(--ui-font-scale, 1)));
+}
+.access-manager-section #role-permissions-form .permission-editor-row input {
+  width: 15px;
+  height: 15px;
+  accent-color: #a98248;
+}
+.access-manager-section #role-permissions-form .modal-actions { padding: 14px; border-top: 1px solid #edf0f4; }
+
+/* Two-zone procurement toolbar; controls reflow at effective zoomed widths. */
+.purchase-history-tools .toolbar {
+  display: grid !important;
+  grid-template-columns: minmax(230px, .82fr) minmax(0, 2fr);
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.purchase-history-tools .toolbar-left { flex: initial !important; width: auto !important; min-width: 0; }
+.purchase-history-tools .inline-search { box-sizing: border-box; width: 100% !important; min-width: 0; min-height: 44px; }
+.purchase-history-tools .toolbar-right {
+  display: grid !important;
+  flex: initial !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+  width: 100% !important;
+  min-width: 0;
+}
+.purchase-history-tools .toolbar-right .filter-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  height: auto;
+  padding: 8px 26px 8px 10px;
+  border-radius: 9px;
+  font-size: max(12px, calc(11px * var(--ui-font-scale, 1)));
+}
+.purchase-history-tools .toolbar-right .filter-select[type="date"] { padding-inline: 8px; }
+.purchase-history-tools .toolbar-right .button {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-height: 36px;
+  padding-inline: 13px;
+  white-space: nowrap;
+}
+
+/* Procurement tabs become three deliberate, equally weighted controls. */
+.purchase-module-tabs {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid #e3e8ef;
+  border-radius: 12px;
+  background: #f7f9fb;
+  overflow: visible;
+}
+.purchase-module-tab {
+  min-width: 0 !important;
+  min-height: 44px;
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #dfe5ec !important;
+  border-radius: 9px;
+  color: #536074;
+  background: #fff;
+  font: 650 max(13px, calc(12px * var(--ui-font-scale, 1))) "DM Sans", sans-serif;
+  line-height: 1.25;
+  white-space: normal;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease, color .15s ease;
+}
+.purchase-module-tab:hover {
+  border-color: #cbd5e1 !important;
+  color: #344052;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(32, 41, 54, .06);
+}
+.purchase-module-tab.is-active {
+  border-color: #bd995e !important;
+  color: #342715;
+  background: linear-gradient(135deg, #f0dfbc, #dec18a);
+  box-shadow: 0 3px 9px rgba(143, 104, 47, .14);
+}
+.purchase-tab-count {
+  min-width: 22px;
+  padding: 3px 7px;
+  border: 1px solid #e6dbc8;
+  border-radius: 99px;
+  color: #71572e;
+  background: #fffdf9;
+  font-size: max(11px, calc(10px * var(--ui-font-scale, 1)));
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One coherent button scale across actions, without shrinking utility controls. */
+.button {
+  min-height: 42px;
+  padding-inline: 15px;
+  border-radius: 10px;
+  font-size: max(13px, calc(12px * var(--ui-font-scale, 1)));
+  font-weight: 650;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.button:active { transform: translateY(1px); }
+.button:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+.button.button-small {
+  min-height: 36px;
+  padding-inline: 11px;
+  border-radius: 8px;
+  font-size: max(12px, calc(11px * var(--ui-font-scale, 1)));
+}
+.button-primary {
+  border-color: #b58b4b;
+  color: #261f14;
+  background: linear-gradient(135deg, #dfc58f, #bd995e);
+  box-shadow: 0 3px 10px rgba(143, 104, 47, .16);
+}
+.button-primary:hover {
+  border-color: #a77b3c;
+  background: linear-gradient(135deg, #ead3a2, #c5a06a);
+  box-shadow: 0 5px 14px rgba(143, 104, 47, .22);
+}
+.button-quiet { border-color: #d9e0e8; color: #455367; background: #fff; }
+.button-quiet:hover { border-color: #c5d0dc; color: #293548; background: #f7f9fb; }
+.button:focus-visible,
+.purchase-module-tab:focus-visible,
+.permission-editor-module > summary:focus-visible {
+  outline: 3px solid rgba(181, 139, 75, .45);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1050px) {
+  .access-manager-section #role-permissions-form .permission-editor-grid { grid-template-columns: 1fr; }
+  .purchase-history-tools .toolbar { grid-template-columns: minmax(0, 1fr); }
+  .purchase-history-tools .toolbar-right { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .access-manager-section #role-permissions-form .permission-editor-grid { padding: 10px; gap: 10px; }
+  .access-manager-section #role-permissions-form .permission-editor-column { gap: 8px; }
+  .purchase-history-tools .toolbar-right { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .purchase-history-tools .toolbar-right .button { grid-column: 1 / -1; }
+  .purchase-module-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .purchase-module-tab { min-height: 44px; padding: 7px 5px; gap: 5px; font-size: max(12px, calc(11px * var(--ui-font-scale, 1))); }
+}
+@media (max-width: 420px) {
+  .purchase-module-tab { flex-direction: column; gap: 3px; }
+  .purchase-tab-count { min-width: 18px; padding: 1px 5px; }
+}
