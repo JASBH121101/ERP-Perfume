@@ -3229,6 +3229,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       renderAccessManager()+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Entorno de trabajo: Desarrollo</strong><p>Los cambios de esta etapa se prueban en Desarrollo. Producción no recibe cambios de estructura ni datos hasta validar el sistema y revisar los consumos.</p></div></div>';
   }
+  function rolePermissionsHaveUnsavedChanges(form = document.getElementById("role-permissions-form")) {
+    if (!form || !accessSelectedRole) return false;
+    const current = new Set(new FormData(form).getAll("permission").map(String));
+    const saved = new Set(accessManager.grants
+      .filter(grant => grant.role_key === accessSelectedRole && grant.allowed === true)
+      .map(grant => grant.permission_key));
+    return accessManager.permissions.some(permission =>
+      current.has(permission.permission_key) !== saved.has(permission.permission_key)
+    );
+  }
+
   async function loadAccessManager(force = false) {
     if (window.JBAuth?.profile?.role !== "owner") return;
     if (accessManager.loading || (accessManager.loaded && !force) || (accessManager.attempted && !force)) return;
@@ -3247,7 +3258,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       accessManager.audit = audit.records || [];
       accessManager.clientErrors = clientErrors.records || [];
       if (!accessSelectedRole || !accessManager.roles.some(role => role.role_key === accessSelectedRole)) {
-        accessSelectedRole = accessManager.roles.find(role => role.role_key !== "owner")?.role_key || "";
+        // Open the Administrator template first instead of whichever role the API happens to sort first.
+        const administrator = accessManager.roles.find(role =>
+          role.role_key === "admin" || String(role.name || "").trim().toLocaleLowerCase("es") === "administrador"
+        );
+        accessSelectedRole = administrator?.role_key ||
+          accessManager.roles.find(role => role.role_key !== "owner")?.role_key || "";
       }
       accessManager.loaded = true;
     } catch (error) {
@@ -3352,9 +3368,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>La cuenta de acceso debe existir previamente. Esta acción crea el perfil ERP, inicialmente bloqueado; no crea la contraseña ni envía una invitación.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p></div>'+
-      '<select class="filter-select" id="access-role-select">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div>'+
-      (selectedRole ? '<form id="role-permissions-form" data-role-key="'+esc(accessSelectedRole)+'"><div class="permission-editor-grid">'+permissionGroups+'</div><div class="modal-actions"><button class="button button-primary" type="submit">Guardar permisos de plantilla</button></div></form>' : '<p>No hay plantillas editables disponibles.</p>')+
+      '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p><p class="access-template-help">Cada plantilla tiene sus propios permisos guardados. Cambiar aquí entre Administrador, Consulta, Finanzas u otra plantilla solo cambia lo que estás editando; no borra ni modifica las demás.</p></div>'+
+      '<div class="access-role-picker"><label for="access-role-select">Plantilla que estás editando</label><select class="filter-select" id="access-role-select" aria-label="Plantilla que estás editando">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div></div>'+
+      (selectedRole ? '<form id="role-permissions-form" data-role-key="'+esc(accessSelectedRole)+'"><p class="access-permission-dirty" id="access-permission-dirty" aria-live="polite" hidden></p><div class="permission-editor-grid">'+permissionGroups+'</div><div class="modal-actions"><button class="button button-primary" type="submit">Guardar permisos de plantilla</button></div></form>' : '<p>No hay plantillas editables disponibles.</p>')+
       '<form id="role-create-form" class="rate-form"><label class="form-field"><span>Clave nueva</span><input name="role_key" maxlength="32" pattern="[a-z][a-z0-9_-]{2,31}" placeholder="supervisor" required></label><label class="form-field"><span>Nombre</span><input name="name" maxlength="80" placeholder="Supervisor de tienda" required></label><label class="form-field"><span>Descripción</span><input name="description" maxlength="240" placeholder="Responsabilidades del puesto"></label><button class="button button-quiet" type="submit">Crear plantilla vacía</button></form></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Auditoría reciente</h3><p>Últimos 100 cambios registrados, con identidad, fecha y detalle disponible.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>ACTOR</th><th>ACCIÓN</th><th>REGISTRO</th><th>DETALLE</th></tr></thead><tbody>'+(auditRows||'<tr><td colspan="5">Todavía no hay eventos de auditoría.</td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Monitoreo de errores del navegador</h3><p>Últimos 100 errores reportados por sesiones autenticadas. Los datos sensibles se filtran antes de guardarse.</p><span class="ledger-count">'+accessManager.clientErrors.length+' eventos</span></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>USUARIO</th><th>TIPO</th><th>ERROR</th><th>ORIGEN</th></tr></thead><tbody>'+(clientErrorRows||'<tr><td colspan="5">No se han reportado errores técnicos del navegador.</td></tr>')+'</tbody></table></div></article>'+
@@ -4488,8 +4504,28 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     else if(name==='close-invoice-preview')document.getElementById('invoice-preview-dialog').close();
   });
   document.addEventListener("change",function(event){
+    if(event.target?.closest?.("#role-permissions-form input[name='permission']")) {
+      const form = document.getElementById("role-permissions-form");
+      const notice = document.getElementById("access-permission-dirty");
+      if (notice) {
+        notice.hidden = !rolePermissionsHaveUnsavedChanges(form);
+        notice.textContent = notice.hidden ? "" : "Hay cambios sin guardar en esta plantilla.";
+      }
+    }
     if(event.target?.id==="access-role-select"){
-      accessSelectedRole=event.target.value;
+      const nextRole = event.target.value;
+      if (nextRole === accessSelectedRole) return;
+      const form = document.getElementById("role-permissions-form");
+      if (rolePermissionsHaveUnsavedChanges(form)) {
+        const currentName = accessManager.roles.find(role=>role.role_key===accessSelectedRole)?.name || "la plantilla actual";
+        const nextName = accessManager.roles.find(role=>role.role_key===nextRole)?.name || "la nueva plantilla";
+        const discard = window.confirm("Hay cambios sin guardar en "+currentName+". ¿Descartarlos y abrir "+nextName+"?");
+        if (!discard) {
+          event.target.value = accessSelectedRole;
+          return;
+        }
+      }
+      accessSelectedRole=nextRole;
       renderView();
     }
   });
@@ -4721,6 +4757,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       event.preventDefault();
       if(window.JBAuth?.profile?.role!=="owner")return;
       const roleKey=form.getAttribute("data-role-key");
+      const roleName=accessManager.roles.find(role=>role.role_key===roleKey)?.name || "plantilla";
       const enabled=new Set(new FormData(form).getAll("permission").map(String));
       const permissions=accessManager.permissions.map(permission=>({
         permission_key:permission.permission_key,
@@ -4731,7 +4768,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       try{
         await erpApi("roles/"+encodeURIComponent(roleKey),{method:"PATCH",body:JSON.stringify({permissions})});
         await loadAccessManager(true);
-        toast("Permisos de la plantilla actualizados.");
+        toast("Permisos de "+roleName+" guardados correctamente.");
       }catch(error){toast(error?.message||"No se pudo guardar la plantilla.");}
       finally{if(submit){submit.disabled=false;submit.textContent="Guardar permisos de plantilla";}}
       return;

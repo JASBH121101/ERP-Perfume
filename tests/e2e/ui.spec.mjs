@@ -310,6 +310,140 @@ async function installStatefulInventoryApi(page, options = {}) {
   return { data, requests };
 }
 
+test('permission editor opens Administrator by default and keeps each template saved independently', async ({ page }) => {
+  test.setTimeout(45000);
+  const permissions = [
+    { permission_key: 'reports', label: 'Informes', module_key: 'reports', parent_key: null, permission_type: 'module', sort_order: 1 },
+    { permission_key: 'reports.analysis', label: 'Informes y análisis', module_key: 'reports', parent_key: 'reports', permission_type: 'section', sort_order: 2 },
+    { permission_key: 'reports.export', label: 'Exportar informes', module_key: 'reports', parent_key: 'reports.analysis', permission_type: 'action', sort_order: 3 }
+  ];
+  const roles = [
+    { role_key: 'viewer', name: 'Consulta', description: '', is_system: true },
+    { role_key: 'admin', name: 'Administrador', description: '', is_system: true },
+    { role_key: 'finance', name: 'Finanzas', description: '', is_system: true }
+  ];
+  const grants = [];
+  for (const role of roles) {
+    permissions.forEach((permission, index) => grants.push({
+      role_key: role.role_key,
+      permission_key: permission.permission_key,
+      allowed: role.role_key === 'admin' || (role.role_key === 'finance' && index === 0)
+    }));
+  }
+  const api = { roles, permissions, grants };
+  const requests = [];
+
+  await page.route('**/api/erp/roles**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/api/erp/roles' && request.method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(api) });
+    }
+    const match = url.pathname.match(/^\/api\/erp\/roles\/([^/]+)$/);
+    if (match && request.method() === 'PATCH') {
+      const roleKey = decodeURIComponent(match[1]);
+      const payload = request.postDataJSON();
+      requests.push({ roleKey, payload });
+      api.grants = api.grants.filter(grant => grant.role_key !== roleKey);
+      api.grants.push(...payload.permissions.map(item => ({ role_key: roleKey, ...item })));
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ role: roles.find(role => role.role_key === roleKey) })
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/');
+  console.log('[permission-template-test] initial page loaded; profile:', await page.evaluate(() => window.JBAuth?.profile?.role));
+  const settingsButton = page.locator('#sidebar button[data-view="settings"]');
+  console.log('[permission-template-test] settings navigation visible:', await settingsButton.isVisible());
+  const rolesRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/roles') && request.method() === 'GET',
+    { timeout: 8000 }
+  ).catch(() => null);
+  await settingsButton.click();
+  console.log('[permission-template-test] breadcrumb after navigation:', await page.locator('#breadcrumb-current').textContent());
+  console.log('[permission-template-test] roles API request intercepted:', Boolean(await rolesRequest));
+
+  const picker = page.locator('#access-role-select');
+  await expect(picker).toBeVisible();
+  await expect(picker).toHaveValue('admin');
+  await expect(page.getByText('Cada plantilla tiene sus propios permisos guardados.', { exact: false })).toBeVisible();
+  const checks = page.locator('#role-permissions-form input[name="permission"]');
+  await expect(checks).toHaveCount(3);
+  for (let index = 0; index < 3; index += 1) await expect(checks.nth(index)).toBeChecked();
+
+  await picker.selectOption('viewer');
+  for (let index = 0; index < 3; index += 1) await expect(checks.nth(index)).not.toBeChecked();
+
+  await picker.selectOption('admin');
+  for (let index = 0; index < 3; index += 1) await expect(checks.nth(index)).toBeChecked();
+
+  await checks.nth(2).uncheck();
+  await expect(page.locator('#access-permission-dirty')).toContainText('Hay cambios sin guardar');
+  const patchPromise = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/roles/admin') && request.method() === 'PATCH'
+  );
+  await page.getByRole('button', { name: 'Guardar permisos de plantilla' }).click();
+  await patchPromise;
+  await expect(checks.nth(2)).not.toBeChecked();
+  expect(requests).toHaveLength(1);
+  expect(requests[0].roleKey).toBe('admin');
+
+  await picker.selectOption('viewer');
+  for (let index = 0; index < 3; index += 1) await expect(checks.nth(index)).not.toBeChecked();
+  await picker.selectOption('admin');
+  await expect(checks.nth(0)).toBeChecked();
+  await expect(checks.nth(1)).toBeChecked();
+  await expect(checks.nth(2)).not.toBeChecked();
+});
+
+test('permission editor warns before changing templates with unsaved edits', async ({ page }) => {
+  test.setTimeout(45000);
+  const permissions = [
+    { permission_key: 'reports', label: 'Informes', module_key: 'reports', parent_key: null, permission_type: 'module', sort_order: 1 }
+  ];
+  const roles = [
+    { role_key: 'viewer', name: 'Consulta', description: '', is_system: true },
+    { role_key: 'admin', name: 'Administrador', description: '', is_system: true }
+  ];
+  const grants = [
+    { role_key: 'admin', permission_key: 'reports', allowed: true },
+    { role_key: 'viewer', permission_key: 'reports', allowed: false }
+  ];
+  await page.route(workerPattern, async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/api/erp/roles' && request.method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ roles, permissions, grants }) });
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/');
+  console.log('[permission-template-dirty-test] initial page loaded; profile:', await page.evaluate(() => window.JBAuth?.profile?.role));
+  const settingsButton = page.locator('#sidebar button[data-view="settings"]');
+  console.log('[permission-template-dirty-test] settings navigation visible:', await settingsButton.isVisible());
+  await settingsButton.click();
+  console.log('[permission-template-dirty-test] breadcrumb after navigation:', await page.locator('#breadcrumb-current').textContent());
+  const picker = page.locator('#access-role-select');
+  await expect(picker).toHaveValue('admin');
+  const check = page.locator('#role-permissions-form input[name="permission"]');
+  await check.uncheck();
+  await expect(page.locator('#access-permission-dirty')).toContainText('Hay cambios sin guardar');
+
+  page.once('dialog', dialog => dialog.dismiss());
+  await picker.selectOption('viewer');
+  await expect(picker).toHaveValue('admin');
+  await expect(check).not.toBeChecked();
+
+  page.once('dialog', dialog => dialog.accept());
+  await picker.selectOption('viewer');
+  await expect(picker).toHaveValue('viewer');
+  await expect(check).not.toBeChecked();
+});
+
 test('authenticated ERP renders dashboard and primary modules from API data', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/JB PARFUMS/);
