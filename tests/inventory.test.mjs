@@ -72,6 +72,24 @@ test("product creation rejects invalid opening stock before reaching Neon", asyn
   assert.equal(calls, 0);
 });
 
+test("product creation accepts the supported non-inspired authenticity types", async () => {
+  for (const authenticity_type of ["original", "generic"]) {
+    let captured = null;
+    const sql = { async query(statement, values) {
+      captured = { statement, values };
+      return [{ id: productId, authenticity_type, inspired_by: null }];
+    }};
+    const result = await readResponse(await createProduct(sql, actor, {
+      sku: "QA-" + authenticity_type.toUpperCase(), name: "Perfume QA", stock: 0,
+      price_usd: 24, authenticity_type, inspired_by: null
+    }));
+    assert.equal(result.status, 201);
+    assert.equal(captured.values[25], authenticity_type);
+    assert.equal(captured.values[26], null);
+    assert.equal(captured.values[27], actor.id);
+  }
+});
+
 test("manual stock movements lock the product row and write an auditable ledger entry", async () => {
   let captured = null;
   const movement = {
