@@ -14,7 +14,9 @@ ALTER TABLE products
 ALTER TABLE products
   ADD CONSTRAINT products_inspired_by_check
   CHECK (
-    (authenticity_type = 'inspired' AND NULLIF(BTRIM(inspired_by), '') IS NOT NULL)
+    (authenticity_type = 'inspired'
+      AND NULLIF(BTRIM(inspired_by), '') IS NOT NULL
+      AND CHAR_LENGTH(BTRIM(inspired_by)) <= 120)
     OR
     (authenticity_type <> 'inspired' AND inspired_by IS NULL)
   );
