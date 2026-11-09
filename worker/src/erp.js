@@ -516,7 +516,7 @@ function normalizeSupplierPhone(value) {
   return null;
 }
 
-function normalizeSupplierInput(body = {}) {
+export function normalizeSupplierInput(body = {}) {
   const name = String(body.name || "").trim().replace(/\s+/g, " ");
   const contact = String(body.contact || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
@@ -547,7 +547,7 @@ function normalizeSupplierInput(body = {}) {
   }};
 }
 
-async function createSupplier(sql, user, body) {
+export async function createSupplier(sql, user, body) {
   const normalized = normalizeSupplierInput(body);
   if (normalized.error) return normalized.error;
   const supplier = normalized.value;
@@ -568,7 +568,7 @@ async function createSupplier(sql, user, body) {
   }
 }
 
-async function updateSupplier(sql, user, id, body) {
+export async function updateSupplier(sql, user, id, body) {
   if (!/^[0-9a-f-]{36}$/i.test(String(id || ""))) return erpError(400, "INVALID_SUPPLIER_ID", "La referencia del proveedor no es válida.");
   const normalized = normalizeSupplierInput(body);
   if (normalized.error) return normalized.error;
@@ -576,7 +576,8 @@ async function updateSupplier(sql, user, id, body) {
   const query =
     "WITH changed AS (UPDATE suppliers SET name=$1,contact=$2,phone=$3,email=$4,currency=$5,notes=$6,active=$7,address=$8,payment_terms=$9,minimum_order_usd=$10,lead_time_days=$11,updated_at=NOW() WHERE id=$13::uuid RETURNING *), " +
     "deleted_phones AS (DELETE FROM supplier_phone_numbers p USING changed c WHERE p.supplier_id=c.id RETURNING p.id), " +
-    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT changed.id,phone.phone,phone.display_order FROM changed CROSS JOIN LATERAL jsonb_to_recordset($12::jsonb) AS phone(phone text,display_order smallint) LEFT JOIN deleted_phones ON TRUE RETURNING id), " +
+    "delete_barrier AS (SELECT count(*) FROM deleted_phones), " +
+    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT changed.id,phone.phone,phone.display_order FROM changed CROSS JOIN delete_barrier CROSS JOIN LATERAL jsonb_to_recordset($12::jsonb) AS phone(phone text,display_order smallint) RETURNING id), " +
     "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $14,'update','supplier',changed.id::text,to_jsonb(changed) FROM changed) " +
     "SELECT changed.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('phone',p.phone,'display_order',p.display_order) ORDER BY p.display_order) FROM supplier_phone_numbers p WHERE p.supplier_id=changed.id),'[]'::jsonb) AS additional_phones FROM changed";
   try {
