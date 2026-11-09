@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0025",
+  "nextMigrationVersion": "0026",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -380,6 +380,15 @@
       "database": {
         "status": "pending",
         "note": "Additive supplier metadata, up to five secondary phone numbers, safe migration of numeric-only legacy contact values into secondary phone rows, normalized supplier-name duplicate guard and nullable product-to-supplier relationship. Not yet applied to Development or Production."
+      }
+    },
+    {
+      "filename": "0025_product_authenticity_and_inspiration.sql",
+      "version": "0025",
+      "sha256": "d13f02794be3e66eae42f4bcad1b2d820a5ce8899052cd0a774dcdfa55b58d72",
+      "database": {
+        "status": "pending",
+        "note": "Additive product authenticity classification and inspired perfume reference. Existing records remain 'unspecified'; no existing product data is changed."
       }
     }
   ],
