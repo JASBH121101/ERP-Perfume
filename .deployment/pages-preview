@@ -61,3 +61,7 @@ Deployment boundary: Wrangler Pages Preview only. Pages Production and Neon Prod
 Preview release: financial reporting date windows (full history, current/previous month, rolling 30/90/180 days, YTD and custom range), invoice-value-weighted landed freight/taxes, optional concentration display guard.
 Source commit: 1e9e60cafcd927a1a44b0a7bae3f080900c650fc.
 Validation: ERP quality gate passed on PR #18 and main push; Development API Worker deployed and health-checked. Preview only; Production remains gated pending Neon Production bootstrap and environment isolation.
+
+Preview release: record verified Development migration 0023 (six supporting FK indexes), environment-isolated API build and migration ledger integrity.
+Source commit: a5f30de69441107fcc429f2703d4a3d8e0181d81.
+Validation: guarded Development migration workflow, independent ledger/index verification, unit tests and browser E2E passed. Preview only; Production not targeted.
