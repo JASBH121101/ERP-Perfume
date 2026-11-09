@@ -1341,7 +1341,35 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const suggestion=Number(product.stock)===0?'Reposición urgente':(needsRestock(product)?'Revisar reposición':'Nivel estable');
       return '<tr><td data-label="Perfume"><div class="product-cell">'+art(product.tone)+'<span><span class="table-primary">'+esc(product.name)+'</span><small class="table-secondary">'+esc(product.sku)+' · Mín. '+Number(product.minStock??3)+'</small></span></div></td><td data-label="Categoría">'+esc(product.category || '—')+'</td><td data-label="Stock actual" class="table-primary">'+Number(product.stock||0)+' unidades</td><td data-label="Estado">'+status(Number(product.stock||0),Number(product.minStock??3))+'</td><td data-label="Reposición"><span class="table-secondary">'+suggestion+'</span></td><td data-label="Consulta"><div class="table-actions"><button class="table-action" type="button" data-action="inventory-view-product" data-id="'+esc(product.id)+'" aria-label="Consultar existencias de '+esc(product.name)+'" title="Consultar existencias">'+svg('eye')+'</button></div></td></tr>';
     }).join('')||(inventoryStockLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(inventoryStockPageError||'No hay productos que coincidan con los filtros.')+'</div></td></tr>');
-    if(pagination)pagination.innerHTML='<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Página '+state.inventoryStockPage+' de '+pages+'</span><div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="previous" '+(state.inventoryStockPage<=1?'disabled':'')+'>Menos stock</button><span class="ledger-count">'+start+'–'+end+' / '+total+'</span><button class="button button-quiet button-small" type="button" data-action="inventory-stock-page" data-page="next" '+(state.inventoryStockPage>=pages?'disabled':'')+'>Más stock</button></div></div>';
+    if(pagination){
+      const footer=document.createElement('div');
+      footer.className='inventory-ledger-footer';
+      const rangeLabel=document.createElement('span');
+      rangeLabel.className='inventory-ledger-range';
+      rangeLabel.textContent='Página '+state.inventoryStockPage+' de '+pages;
+      const controls=document.createElement('div');
+      controls.className='inventory-ledger-pagination';
+      const previous=document.createElement('button');
+      previous.className='button button-quiet button-small';
+      previous.type='button';
+      previous.dataset.action='inventory-stock-page';
+      previous.dataset.page='previous';
+      previous.disabled=state.inventoryStockPage<=1;
+      previous.textContent='Menos stock';
+      const count=document.createElement('span');
+      count.className='ledger-count';
+      count.textContent=start+'–'+end+' / '+total;
+      const next=document.createElement('button');
+      next.className='button button-quiet button-small';
+      next.type='button';
+      next.dataset.action='inventory-stock-page';
+      next.dataset.page='next';
+      next.disabled=state.inventoryStockPage>=pages;
+      next.textContent='Más stock';
+      controls.append(previous,count,next);
+      footer.append(rangeLabel,controls);
+      pagination.replaceChildren(footer);
+    }
   }
   function renderInventory() {
     const activeProducts=products.filter(p=>p.active!==false);

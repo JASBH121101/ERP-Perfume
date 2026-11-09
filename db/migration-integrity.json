@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0023",
+  "nextMigrationVersion": "0024",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -326,6 +326,15 @@
         "ledgerChecksum": "60c2f6da1abaf7b061c8fc125141447c94414c01ce9a077cc980cd7a73af8d06",
         "appliedAt": "2026-11-08T20:23:20.004155Z",
         "note": "Committed by guarded Development workflow run 42519818771 and independently verified against the live Development schema and migration ledger. The exact observed applied_at timestamp, filename and SHA-256 are recorded here. Production was not targeted."
+      }
+    },
+    {
+      "filename": "0023_supporting_foreign_key_indexes.sql",
+      "version": "0023",
+      "sha256": "b52ac981b67baed17bdba4ace9c27b87115d655c55b136c7d2bb560e3fbf2731",
+      "database": {
+        "status": "pending",
+        "note": "Reviewed additive FK-supporting indexes for the six missing lookup paths confirmed on Development and clean-install QA. Not applied; requires guarded QA/Development migration validation."
       }
     }
   ],
