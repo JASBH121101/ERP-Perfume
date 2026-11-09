@@ -10,9 +10,9 @@
     "database": "erp_perfume",
     "branch": "development",
     "branchId": "br-nameless-surf-bezeav6n",
-    "observedDate": "2026-11-08",
+    "observedDate": "2026-11-09",
     "readOnly": true,
-    "ledgerRows": 18,
+    "ledgerRows": 19,
     "ledgerVersions": [
       "0001",
       "0002",
@@ -31,11 +31,12 @@
       "0018",
       "0019",
       "0021",
-      "0022"
+      "0022",
+      "0023"
     ],
     "productionInspected": true,
     "productionModified": false,
-    "note": "Updated from a read-only verification of Neon Development after guarded migration 0022 was committed. The exact 18 ledger rows, applied_at timestamp and SHA-256 were observed directly; Neon Production was not modified.",
+    "note": "Updated after guarded migration 0023 was applied to Neon Development. A read-only verification confirmed all 19 ledger versions, exact SHA-256 and applied_at for 0023, and all six supporting indexes valid. Production was not modified.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
     "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
     "productionInspectionDate": "2026-11-07",
@@ -333,8 +334,10 @@
       "version": "0023",
       "sha256": "b52ac981b67baed17bdba4ace9c27b87115d655c55b136c7d2bb560e3fbf2731",
       "database": {
-        "status": "pending",
-        "note": "Reviewed additive FK-supporting indexes for the six missing lookup paths confirmed on Development and clean-install QA. Not applied; requires guarded QA/Development migration validation."
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "b52ac981b67baed17bdba4ace9c27b87115d655c55b136c7d2bb560e3fbf2731",
+        "appliedAt": "2026-11-09T03:19:59.978Z",
+        "note": "Applied by guarded Development workflow run 42555758501 through the protected migration runner. The live Development database identity, migration filename, SHA-256 ledger entry and six valid indexes were independently verified. Production was not targeted."
       }
     }
   ],
