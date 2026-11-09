@@ -1519,7 +1519,10 @@ test('invitee verifies email and sets a personal password through the OTP activa
   await page.locator('#auth-email').fill('trabajador.qa@example.test');
   await page.locator('#auth-signup-start').click();
   await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'invite-verify');
+  expect(await page.evaluate(() => window.__authCalls)).toEqual([]);
 
+  await page.locator('#auth-resend-code').click();
+  await expect(page.locator('#auth-feedback')).toContainText('Código enviado');
   await page.locator('#auth-otp').fill('123456');
   await page.locator('#auth-submit').click();
   await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'recovery-reset');
