@@ -68,3 +68,7 @@ Validation: guarded Development migration workflow, independent ledger/index ver
 
 Preview release: PR #37 — product authenticity classification (Original / Inspiración / Genérico) and conditional Inspired by reference field; API validation and database migration 0025 verified on Development and Production.
 Preview deployment only; Production Pages promotion remains separately gated.
+
+Preview release: owner-managed worker invitations, email verification and password activation; ERP profile remains inactive until owner authorization.
+Source commit: a488cf82e0b628249a9deaaefea7d1f935162edb.
+Deployment boundary: Wrangler Pages Preview only, using Development API and Neon Development. Pages Production and Neon Production are not targeted.
