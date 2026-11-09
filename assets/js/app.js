@@ -3586,7 +3586,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const product = productId == null ? null : products.find(function (item) { return String(item.id) === String(productId); });
     if (productId != null && !product) return;
     form.reset(); clearPendingProductImagePreviews(); const uploadStatus=document.getElementById('product-image-upload-status');if(uploadStatus)uploadStatus.textContent=''; form.dataset.editingId = product ? String(product.id) : '';
-    const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','supplier','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
+    if(form.elements.supplierId)form.elements.supplierId.innerHTML='<option value="">Sin proveedor asignado</option>'+suppliers.filter(item=>item.active!==false).map(item=>'<option value="'+esc(item.id)+'">'+esc(item.name)+'</option>').join('');
+    const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','supplierId','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
     if (product) fields.forEach(function (field) { if (form.elements[field]) form.elements[field].value = product[field] == null ? '' : String(product[field]); });
     form.elements.stock.readOnly = Boolean(product);
     form.elements.stock.value = product ? String(product.stock) : (form.elements.stock.value || '');
@@ -4176,7 +4177,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       size_ml:number('sizeMl')||null,presentation:value('presentation')||null,
       purchase_cost_usd:purchaseCost,additional_cost_usd:additionalCost,unit_cost_usd:unitCost,
       price_usd:price,min_stock:minStock,location:value('location')||null,active:existing?existing.active!==false:true,
-      barcode:value('barcode')||null,supplier_name:value('supplier')||null,
+      barcode:value('barcode')||null,supplier_id:value('supplierId')||null,supplier_name:null,
       wholesale_price_usd:wholesalePrice||null,tone:existing?.tone||'art-violet',notes:value('notes')||null
     };
     let savedProductId=existing?.id||null;
