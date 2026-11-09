@@ -130,7 +130,7 @@ jobs:
             sleep 5
           done
           grep -q '<html' "$RUNNER_TEMP/preview.html"
-          grep -qF '<meta name="jb-api-base-url" content="$API_URL">' "$RUNNER_TEMP/preview.html"
+          grep -qF "<meta name=\"jb-api-base-url\" content=\"$API_URL\">" "$RUNNER_TEMP/preview.html"
 
           echo "Checking Worker CORS preflight from the Preview origin..."
           curl --fail --silent --show-error --max-time 15 \
