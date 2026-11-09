@@ -1,7 +1,7 @@
 import { loadUserPermissions, hasPermission, hasAnyModuleAccess } from "./permissions.js";
 
 const RESOURCE_DEFS = {
-  products: { table: "products", roles: ["owner", "admin", "inventory"], fields: ["sku","name","brand","category","concentration","gender","family","size_ml","presentation","purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","min_stock","location","active","barcode","description","supplier_id","supplier_name","wholesale_price_usd","tone","notes","images"], order: "name ASC" },
+  products: { table: "products", roles: ["owner", "admin", "inventory"], fields: ["sku","name","brand","category","concentration","gender","family","size_ml","presentation","authenticity_type","inspired_by","purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","min_stock","location","active","barcode","description","supplier_id","supplier_name","wholesale_price_usd","tone","notes","images"], order: "name ASC" },
   customers: { table: "customers", roles: ["owner", "admin", "sales"], fields: ["name","contact","phone","email","notes","active","customer_type"], order: "name ASC" },
   suppliers: { table: "suppliers", roles: ["owner", "admin", "inventory"], fields: ["name","contact","phone","email","currency","notes","active","address","payment_terms","minimum_order_usd","lead_time_days"], order: "name ASC" },
   orders: { table: "orders", roles: ["owner", "admin", "sales"], fields: ["order_number","customer_id","customer_name","phone","status","payment_status","payment_method","delivery_mode","currency","original_amount","exchange_rate","total_usd","discount_usd","delivery_fee_usd","notes"], order: "created_at DESC" },
@@ -765,6 +765,21 @@ async function updateGeneric(sql, user, resource, def, id, body) {
   if (def.table === "employees") return updateEmployeeGeneric(sql, user, resource, def, id, body);
   const { keys, values } = safeFields(def, body);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
+  if (def.table === "products" && (keys.includes("authenticity_type") || keys.includes("inspired_by"))) {
+    const typeIndex = keys.indexOf("authenticity_type");
+    const referenceIndex = keys.indexOf("inspired_by");
+    if (typeIndex < 0 || referenceIndex < 0) {
+      return erpError(400, "PRODUCT_AUTHENTICITY_FIELDS_REQUIRED", "La clasificación y el perfume de referencia deben actualizarse juntos.");
+    }
+    const authenticityType = String(values[typeIndex] || "").trim();
+    const inspiredBy = String(values[referenceIndex] || "").trim();
+    if (!["unspecified", "original", "inspired", "generic"].includes(authenticityType) ||
+        (authenticityType === "inspired" ? (!inspiredBy || inspiredBy.length > 120) : Boolean(inspiredBy))) {
+      return erpError(400, "INVALID_PRODUCT_AUTHENTICITY", "La clasificación y el perfume de referencia no son coherentes.");
+    }
+    values[typeIndex] = authenticityType;
+    values[referenceIndex] = authenticityType === "inspired" ? inspiredBy : null;
+  }
   if (keys.includes("created_by") || keys.includes("created_at")) return erpError(400, "INVALID_FIELD", "No se permite modificar la autoría ni la fecha de creación.");
   if (def.table === "products" && keys.includes("supplier_id")) {
     const supplierIndex = keys.indexOf("supplier_id");
@@ -899,6 +914,12 @@ export async function createProduct(sql, user, body) {
   const sku = String(body.sku || "").trim();
   const stock = Number(body.stock || 0);
   if (!name || !sku || !Number.isInteger(stock) || stock < 0) return erpError(400, "INVALID_PRODUCT", "Nombre, SKU y existencias iniciales son obligatorios y deben ser válidos.");
+  const authenticityType = String(body.authenticity_type || "").trim();
+  const inspiredBy = String(body.inspired_by || "").trim();
+  if (!["original", "inspired", "generic"].includes(authenticityType) ||
+      (authenticityType === "inspired" ? (!inspiredBy || inspiredBy.length > 120) : Boolean(inspiredBy))) {
+    return erpError(400, "INVALID_PRODUCT_AUTHENTICITY", "Selecciona Original, Inspiración o Genérico; si es de inspiración, indica el perfume de referencia.");
+  }
   const allowed = RESOURCE_DEFS.products.fields;
   const values = {};
   for (const key of allowed) if (Object.prototype.hasOwnProperty.call(body,key)) values[key] = body[key];
@@ -909,6 +930,8 @@ export async function createProduct(sql, user, body) {
     return erpError(400, "INVALID_PRODUCT_COST", "El costo de compra y los costos adicionales deben ser valores no negativos.");
   }
   values.unit_cost_usd = Math.round((purchaseCost + additionalCost) * 100) / 100;
+  values.authenticity_type = authenticityType;
+  values.inspired_by = authenticityType === "inspired" ? inspiredBy : null;
   const supplierId = String(values.supplier_id || "").trim() || null;
   if (supplierId && !/^[0-9a-f-]{36}$/i.test(supplierId)) return erpError(400, "INVALID_SUPPLIER_ID", "Selecciona un proveedor válido.");
   if (supplierId) {
@@ -917,8 +940,8 @@ export async function createProduct(sql, user, body) {
     values.supplier_name = linked[0].name;
   }
   const result = await sql.query(
-    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_id,supplier_name,wholesale_price_usd,tone,notes,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::uuid,$21,$22,$23,$24,$25::jsonb) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',$26 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $26,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
-    [sku,name,values.brand||null,values.category||null,values.concentration||null,values.gender||null,values.family||null,values.size_ml||null,values.presentation||null,values.purchase_cost_usd||0,values.additional_cost_usd||0,values.unit_cost_usd||0,values.price_usd||0,stock,values.min_stock||0,values.location||null,values.active!==false,values.barcode||null,values.description||null,supplierId,values.supplier_name||null,values.wholesale_price_usd||null,values.tone||null,values.notes||null,JSON.stringify(values.images||[]),user.id]
+    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_id,supplier_name,wholesale_price_usd,tone,notes,images,authenticity_type,inspired_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::uuid,$21,$22,$23,$24,$25::jsonb,$26,$27) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',$28 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $28,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
+    [sku,name,values.brand||null,values.category||null,values.concentration||null,values.gender||null,values.family||null,values.size_ml||null,values.presentation||null,values.purchase_cost_usd||0,values.additional_cost_usd||0,values.unit_cost_usd||0,values.price_usd||0,stock,values.min_stock||0,values.location||null,values.active!==false,values.barcode||null,values.description||null,supplierId,values.supplier_name||null,values.wholesale_price_usd||null,values.tone||null,values.notes||null,JSON.stringify(values.images||[]),values.authenticity_type,values.inspired_by,user.id]
   );
   return erpJson({record:result[0]},201);
 }
