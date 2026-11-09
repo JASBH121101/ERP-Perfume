@@ -39,7 +39,7 @@
     "note": "Updated after the clean 0001-0023 migration chain was applied to Neon Production. Read-only verification on 2026-11-09 confirmed 41 public application tables, 9 managed Neon Auth tables, 23 ledger rows (0001-0023), the least-privilege runtime role and zero unvalidated foreign keys or invalid indexes. The Development-only migration baseline and ledger snapshot remain unchanged. Production currently has no Auth user; the Development owner identity is separate and must complete first sign-up/OTP in Production.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
     "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
-    "productionInspectionDate": "2026-11-07",
+    "productionInspectionDate": "2026-11-09",
     "productionBranchId": "br-royal-art-ben0apun",
     "productionPublicApplicationTables": 41,
     "productionAuthTables": 9,
