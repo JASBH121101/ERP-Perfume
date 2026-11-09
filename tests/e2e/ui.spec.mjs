@@ -61,10 +61,13 @@ test.beforeEach(async ({ page }) => {
     contentType: 'text/javascript; charset=utf-8',
     body: "document.body.classList.remove('auth-pending','auth-locked');" +
       "document.body.classList.add('erp-authorized');" +
+      "window.__qaInviteCalls = [];" +
       "window.JBAuth = {" +
       "mode:'authenticated', user:{id:'qa-owner',email:'qa-owner@example.test'}, profile:{id:'qa-owner',name:'QA Owner',role:'owner',permissions:['*']}," +
       "apiUrl:path=>new URL(path,'" + apiBase + "').toString()," +
-      "getToken:async()=> 'qa-only-token' }; import('./app.js');"
+      "getToken:async()=> 'qa-only-token'," +
+      "createInvitedIdentity:async(email,name)=>{window.__qaInviteCalls.push({email,name});return {id:'qa-invite-auth-user'};}" +
+      "}; import('./app.js');"
   }));
   await page.route(workerPattern, async route => {
     const request = route.request();
@@ -586,6 +589,63 @@ test('HR permissions tab explains how to add the first collaborator', async ({ p
   await page.locator('[data-action="hr-tab"][data-tab="leaves"]').click();
   await expect(page.locator('[data-action="go-hr-employees"]')).toContainText('Agregar colaborador');
   await expect(page.getByText('Primero registra al colaborador')).toBeVisible();
+});
+
+test('owner creates a worker invitation and provisions a locked ERP profile', async ({ page }) => {
+  const requests = [];
+  await page.route('**/api/erp/users', async route => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      requests.push(request.postDataJSON());
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ user: { id: 'qa-worker-profile', account_status: 'registered', active: false } })
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/');
+  await navigateToView(page, 'settings');
+  const form = page.locator('#invite-worker-form');
+  await expect(form).toBeVisible();
+  await form.locator('[name="display_name"]').fill('Trabajador de prueba');
+  await form.locator('[name="email"]').fill('trabajador.qa@example.test');
+  await form.locator('[name="position_title"]').fill('Vendedor');
+  await form.locator('[name="role_template_key"]').selectOption('viewer');
+
+  await form.getByRole('button', { name: 'Crear y enviar invitación' }).click();
+  await expect(page.getByText(/Invitación enviada/)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__qaInviteCalls)).toEqual([
+    { email: 'trabajador.qa@example.test', name: 'Trabajador de prueba' }
+  ]);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    email: 'trabajador.qa@example.test',
+    display_name: 'Trabajador de prueba',
+    position_title: 'Vendedor',
+    role_template_key: 'viewer',
+    employee_id: null,
+    must_change_password: true
+  });
+  expect(requests[0]).not.toHaveProperty('active');
+});
+
+test('non-owner does not see the worker invitation form', async ({ page }) => {
+  await page.route('**/assets/js/bootstrap.mjs', route => route.fulfill({
+    status: 200,
+    contentType: 'text/javascript; charset=utf-8',
+    body: "document.body.classList.remove('auth-pending','auth-locked');" +
+      "document.body.classList.add('erp-authorized');" +
+      "window.JBAuth = {" +
+      "mode:'authenticated', user:{id:'qa-viewer',email:'qa-viewer@example.test'}, profile:{id:'qa-viewer',name:'QA Viewer',role:'viewer',permissions:['dashboard.view']}," +
+      "apiUrl:path=>new URL(path,'" + apiBase + "').toString()," +
+      "getToken:async()=> 'qa-only-token' }; import('./app.js');"
+  }));
+  await page.goto('/');
+  await navigateToView(page, 'settings');
+  await expect(page.locator('#invite-worker-form')).toHaveCount(0);
 });
 
 test('employee commission rate is disabled and saved as zero when commission is No', async ({ page }) => {
