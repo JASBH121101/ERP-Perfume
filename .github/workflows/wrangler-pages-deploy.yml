@@ -49,21 +49,38 @@ jobs:
 
       - name: Resolve API endpoint for the selected environment
         id: api-endpoint
-        env:
-          ERP_PRODUCTION_API_BASE_URL: ${{ vars.ERP_PRODUCTION_API_BASE_URL }}
         shell: bash
         run: |
           set -euo pipefail
           if [ "$DEPLOY_TARGET" = "production" ]; then
-            if [ -z "${ERP_PRODUCTION_API_BASE_URL:-}" ]; then
-              echo "::error::Production deploy is blocked. Configure the ERP_PRODUCTION_API_BASE_URL repository variable only after the dedicated Production API Worker and Neon Production are ready."
-              exit 1
-            fi
-            api_url="$ERP_PRODUCTION_API_BASE_URL"
+            api_url="https://jb-parfums-erp-api-production.jaredblancoh19.workers.dev"
           else
             api_url="https://jb-parfums-erp-api.jaredblancoh19.workers.dev"
           fi
           echo "api_url=$api_url" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight Production API before frontend promotion
+        if: env.DEPLOY_TARGET == 'production'
+        shell: bash
+        env:
+          API_URL: ${{ steps.api-endpoint.outputs.api_url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 \
+            "$API_URL/api/health" \
+            -H "Origin: https://erp-perfume.pages.dev" \
+            -o "$RUNNER_TEMP/production-health.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const data = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/production-health.json", "utf8"));
+          if (data.ok !== true) throw new Error("Production Worker health endpoint did not return ok=true.");
+          if (data.services?.database !== true) throw new Error("Neon Production connectivity failed.");
+          if (data.services?.authentication !== true) throw new Error("Neon Auth Production is not ready.");
+          if (data.services?.storage !== true) throw new Error("Production R2 binding is missing.");
+          if (data.environment !== "production") throw new Error("Worker is not pinned to Neon Production.");
+          console.log("Production API preflight passed:", JSON.stringify(data));
+          NODE
+
 
       - name: Build static ERP with environment-specific API
         env:
@@ -164,6 +181,41 @@ jobs:
             "https://ep-lingering-field-bethkduo.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth/.well-known/jwks.json" \
             -o "$RUNNER_TEMP/neon-jwks.json"
           node -e "const x=require('$RUNNER_TEMP/neon-jwks.json'); if(!Array.isArray(x.keys)||!x.keys.length) process.exit(1); console.log('Neon Auth JWKS reachable.');"
+
+      - name: Verify Production frontend, API and Neon Auth
+        if: env.DEPLOY_TARGET == 'production'
+        shell: bash
+        env:
+          PRODUCTION_URL: https://erp-perfume.pages.dev
+          API_URL: ${{ steps.api-endpoint.outputs.api_url }}
+          NEON_JWKS_URL: https://ep-snowy-surf-ber3pjus.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth/.well-known/jwks.json
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 "$PRODUCTION_URL/" -o "$RUNNER_TEMP/production.html"
+          grep -q '<html' "$RUNNER_TEMP/production.html"
+          grep -qF "<meta name=\"jb-api-base-url\" content=\"$API_URL\">" "$RUNNER_TEMP/production.html"
+          curl --fail --silent --show-error --max-time 20 \
+            "$API_URL/api/health" \
+            -H "Origin: $PRODUCTION_URL" \
+            -D "$RUNNER_TEMP/production-health.headers" \
+            -o "$RUNNER_TEMP/production-health.json"
+          grep -iqF "access-control-allow-origin: $PRODUCTION_URL" "$RUNNER_TEMP/production-health.headers"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const data = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/production-health.json", "utf8"));
+          if (data.ok !== true || data.environment !== "production") throw new Error("Production API identity/health check failed.");
+          if (data.services?.database !== true || data.services?.authentication !== true || data.services?.storage !== true) {
+            throw new Error("One or more Production services are not healthy.");
+          }
+          console.log("Production frontend/API verification passed:", JSON.stringify(data));
+          NODE
+          curl --fail --silent --show-error --max-time 20 "$NEON_JWKS_URL" -o "$RUNNER_TEMP/production-jwks.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const data = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/production-jwks.json", "utf8"));
+          if (!Array.isArray(data.keys) || data.keys.length < 1) throw new Error("Neon Auth Production JWKS is unavailable.");
+          console.log("Neon Auth Production JWKS reachable.");
+          NODE
 
       - name: Write deployment summary
         if: always()
