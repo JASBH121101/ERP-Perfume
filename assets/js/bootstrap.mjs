@@ -170,14 +170,14 @@ function setAuthMode(mode, email = "") {
   }
   if (!signingUp) $("#auth-name").value = "";
 
-  $("#auth-submit").textContent = verifying
-    ? "Verificar correo"
-    : recoveryRequest
-      ? "Enviar código"
-      : recoveryReset
-        ? "Cambiar contraseña"
-        : signingUp
-          ? "Crear cuenta"
+  $("#auth-submit").textContent = inviteVerification
+    ? "Confirmar invitación"
+    : verifying
+      ? "Verificar correo"
+      : recoveryRequest
+        ? "Enviar código"
+        : recoveryReset
+          ? "Definir contraseña"
           : "Iniciar sesión";
   if (authFeedback) authFeedback.textContent = "";
 }
