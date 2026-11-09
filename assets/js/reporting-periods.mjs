@@ -1,5 +1,5 @@
 function parseLocalDate(value) {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value || ""))) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
   const [year, month, day] = String(value).split("-").map(Number);
   const date = new Date(year, month - 1, day);
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
@@ -77,7 +77,7 @@ export function isWithinReportingPeriod(value, period) {
   if (value == null || value === "") return false;
 
   let date;
-  if (typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value)) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     date = parseLocalDate(value);
   } else {
     date = value instanceof Date ? value : new Date(value);
