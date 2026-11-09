@@ -1525,7 +1525,11 @@ test('invitee verifies email and sets a personal password through the OTP activa
   await expect(page.locator('#auth-feedback')).toContainText('Código enviado');
   await page.locator('#auth-otp').fill('123456');
   await page.locator('#auth-submit').click();
-  await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'recovery-reset');
+  await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'invite-password-reset');
+  await expect(page.locator('#auth-otp')).toHaveValue('');
+  await expect(page.locator('#auth-otp-label')).toHaveText('Segundo código para crear contraseña');
+  await expect(page.locator('#auth-feedback')).toContainText('segundo código');
+  await expect(page.locator('#auth-recovery-note')).toContainText('No uses el código anterior');
 
   await page.locator('#auth-otp').fill('654321');
   const invitedPassword = 'Personal-Password-2026!';
