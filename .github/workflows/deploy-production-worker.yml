@@ -53,10 +53,10 @@ jobs:
           set -euo pipefail
           grep -q '^name = "jb-parfums-erp-api-production"$' wrangler.production.toml
           grep -q '^ERP_ENVIRONMENT = "production"$' wrangler.production.toml
-          grep -q 'ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech' wrangler.production.toml
           ! grep -q 'ep-lingering-field-bethkduo' wrangler.production.toml
+          ! grep -q 'ERP_ENVIRONMENT = "development"' wrangler.production.toml
           grep -q '^bucket_name = "erp-perfume-assets"$' wrangler.production.toml
-          echo "Worker target is pinned to Neon Production and the production API name."
+          echo "Worker name, production environment, R2 bucket and absence of Development endpoint are verified. DATABASE_URL is checked by the authenticated Production health preflight."
 
       - name: Validate source, build and unit tests
         run: |
