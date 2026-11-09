@@ -875,6 +875,8 @@ test('product creation saves its opening balance and writes the first kardex ent
 test('purchase order form omits the generated code field and keeps payment terms aligned', async ({ page }) => {
   await page.goto('/');
   await navigateToView(page, 'purchaseOrders');
+  await expect(page.locator('[data-action="purchase-section-tab"][data-tab="orders"]')).toBeVisible();
+  await page.locator('[data-action="purchase-section-tab"][data-tab="new"]').click();
 
   const form = page.locator('#purchase-order-form');
   await expect(form).toBeVisible();
@@ -883,10 +885,39 @@ test('purchase order form omits the generated code field and keeps payment terms
   await expect(form.locator('[name="supplier_id"]')).toBeVisible();
   await expect(form.locator('[name="payment_terms"]').locator('..')).toHaveClass(/purchase-order-full-field/);
 
-  const gridColumn = await form.locator('.purchase-order-full-field').evaluate(node => getComputedStyle(node).gridColumn);
+  const paymentTermsField = form.locator('[name="payment_terms"]').locator('..');
+  const gridColumn = await paymentTermsField.evaluate(node => getComputedStyle(node).gridColumn);
   expect(gridColumn).toContain('1 / -1');
 });
 
+
+
+test('purchase workspace tabs separate orders, receipts and the staged creation form', async ({ page }) => {
+  await page.goto('/');
+  await navigateToView(page, 'purchaseOrders');
+
+  await expect(page.locator('[data-action="purchase-section-tab"][data-tab="orders"]')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#purchase-history-search')).toBeVisible();
+  await expect(page.locator('#purchase-order-form')).toHaveCount(0);
+
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
+  await expect(page.locator('.purchase-receipts-panel')).toBeVisible();
+  await expect(page.locator('#purchase-history-search')).toHaveCount(0);
+
+  await page.locator('[data-action="purchase-section-tab"][data-tab="new"]').click();
+  await expect(page.locator('#purchase-order-form')).toBeVisible();
+  await expect(page.locator('#po-tab-general')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#po-panel-products')).toBeHidden();
+
+  await page.locator('#po-tab-products').click();
+  await expect(page.locator('#po-panel-products')).toBeVisible();
+  await expect(page.locator('#po-panel-general')).toBeHidden();
+
+  await page.locator('#po-tab-adjustments').click();
+  await expect(page.locator('#po-panel-adjustments')).toBeVisible();
+  await expect(page.locator('#po-panel-adjustments [name="notes"]')).toBeVisible();
+  await expect(page.locator('#purchase-order-form [type="submit"]')).toBeVisible();
+});
 
 test('inventory and catalog stay usable at mobile, tablet and desktop widths', async ({ page }, testInfo) => {
   await installStatefulInventoryApi(page);

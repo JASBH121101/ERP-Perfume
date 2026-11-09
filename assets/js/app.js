@@ -613,7 +613,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', inventoryMovementQuery: '', inventoryMovementActor: '', inventoryMovementSupplier: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, purchaseHistoryQuery: '', purchaseHistorySupplier: 'all', purchaseHistoryOrderStatus: 'all', purchaseHistoryReceiptStatus: 'all', purchaseHistoryStartDate: '', purchaseHistoryEndDate: '', catalogCategory: 'all', catalogShowPrices: true };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', purchaseTab: 'orders', inventoryMovementQuery: '', inventoryMovementActor: '', inventoryMovementSupplier: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, purchaseHistoryQuery: '', purchaseHistorySupplier: 'all', purchaseHistoryOrderStatus: 'all', purchaseHistoryReceiptStatus: 'all', purchaseHistoryStartDate: '', purchaseHistoryEndDate: '', catalogCategory: 'all', catalogShowPrices: true };
   const permissionViews = {
     dashboard: ["dashboard.view"], products: ["products.catalog.view"], catalog: ["products.catalog.view"], resources: [],
     inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"],
@@ -2697,6 +2697,24 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const options=products.filter(product=>product.active!==false).map(product=>'<option value="'+esc(product.id)+'">'+esc(product.name)+' · '+esc(product.sku||'Sin SKU')+'</option>').join('');
     return '<div class="purchase-order-line"><label>Producto<select name="product_id" required><option value="">Seleccionar producto</option>'+options+'</select></label><label>Cantidad<input name="ordered_quantity" type="number" min="1" max="1000000" step="1" value="1" required></label><label>Costo unitario (moneda de la orden)<input name="unit_cost_input" type="number" min="0.01" step="0.01" required placeholder="0.00"></label><button class="button button-quiet button-small" type="button" data-action="remove-purchase-order-line" aria-label="Quitar producto">Quitar</button></div>';
   }
+  function setPurchaseOrderTab(tab){
+    const form=document.getElementById("purchase-order-form");
+    if(!form)return;
+    const allowed=["general","products","adjustments"];
+    const selected=allowed.includes(tab)?tab:"general";
+    const captions={general:"Etapa 1 de 3 · Datos de la orden",products:"Etapa 2 de 3 · Productos solicitados",adjustments:"Etapa 3 de 3 · Costos y notas"};
+    form.querySelectorAll("[data-action=\"purchase-order-tab\"]").forEach(button=>{
+      const active=button.getAttribute("data-tab")===selected;
+      button.classList.toggle("is-active",active);
+      button.setAttribute("aria-selected",String(active));
+      button.tabIndex=active?0:-1;
+    });
+    form.querySelectorAll("[data-po-panel]").forEach(panel=>{
+      panel.hidden=panel.getAttribute("data-po-panel")!==selected;
+    });
+    const caption=form.querySelector("[data-po-step-caption]");
+    if(caption)caption.textContent=captions[selected];
+  }
   function openPurchaseReceiptDialog(orderId){
     const order=purchaseOrders.find(item=>String(item.id)===String(orderId));if(!order)return;
     const lines=purchaseOrderItems.filter(item=>String(item.purchase_order_id)===String(order.id)).map(item=>({...item,remaining:Number(item.ordered_quantity||0)-Number(item.received_quantity||0)})).filter(item=>item.remaining>0);
@@ -2830,16 +2848,25 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }).join('');
     const supplierOptions=suppliers.filter(supplier=>supplier.active!==false).map(supplier=>'<option value="'+esc(supplier.id)+'">'+esc(supplier.name)+'</option>').join('');
     const canCreate=permissionGranted("purchases.purchase_orders.create")&&permissionGranted("products.catalog.view")&&permissionGranted("suppliers.records.view");
-    const createForm=canCreate?'<section class="panel purchase-order-create"><div class="panel-heading"><div><h2>Nueva orden</h2><p>Solicita productos a un proveedor; el número de OC se genera al crearla.</p></div></div>'+
-      '<form id="purchase-order-form"><div class="form-grid">'+
+    const createForm=canCreate?'<section class="panel purchase-order-create"><div class="panel-heading"><div><h2>Nueva orden</h2><p>Completa los datos por etapas; el número de OC se genera al crearla.</p></div></div>'+
+      '<form id="purchase-order-form" novalidate>'+
+      '<div class="purchase-order-step-tabs" role="tablist" aria-label="Etapas de la orden de compra">'+
+      '<button type="button" id="po-tab-general" role="tab" aria-selected="true" aria-controls="po-panel-general" class="po-step-tab is-active" data-action="purchase-order-tab" data-tab="general"><span class="po-step-number">01</span><span>Datos</span></button>'+
+      '<button type="button" id="po-tab-products" role="tab" aria-selected="false" aria-controls="po-panel-products" class="po-step-tab" data-action="purchase-order-tab" data-tab="products"><span class="po-step-number">02</span><span>Productos</span></button>'+
+      '<button type="button" id="po-tab-adjustments" role="tab" aria-selected="false" aria-controls="po-panel-adjustments" class="po-step-tab" data-action="purchase-order-tab" data-tab="adjustments"><span class="po-step-number">03</span><span>Costos y notas</span></button></div>'+
+      '<section id="po-panel-general" class="po-step-panel" role="tabpanel" aria-labelledby="po-tab-general" data-po-panel="general"><div class="form-grid">'+
       '<label>Proveedor<select name="supplier_id" required><option value="">Seleccionar proveedor</option>'+supplierOptions+'</select></label>'+
       '<label>Moneda<select name="currency"><option value="USD">USD · Dólar</option><option value="NIO">NIO · Córdoba</option></select></label>'+
       '<label>Tipo de cambio<input name="exchange_rate" type="number" min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'" required></label>'+
-      '<label>Entrega estimada<input name="expected_delivery_date" type="date"></label><label class="purchase-order-full-field">Condición de pago<select name="payment_terms"><option value="Contado">Contado</option><option value="Crédito 15 días">Crédito · 15 días</option><option value="Crédito 30 días">Crédito · 30 días</option><option value="Crédito 45 días">Crédito · 45 días</option><option value="Crédito 60 días">Crédito · 60 días</option><option value="Por acordar">Por acordar</option></select></label></div>'+
+      '<label>Entrega estimada<input name="expected_delivery_date" type="date"></label>'+
+      '<label class="purchase-order-full-field">Condición de pago<select name="payment_terms"><option value="Contado">Contado</option><option value="Crédito 15 días">Crédito · 15 días</option><option value="Crédito 30 días">Crédito · 30 días</option><option value="Crédito 45 días">Crédito · 45 días</option><option value="Crédito 60 días">Crédito · 60 días</option><option value="Por acordar">Por acordar</option></select></label>'+
+      '</div></section>'+
+      '<section id="po-panel-products" class="po-step-panel" role="tabpanel" aria-labelledby="po-tab-products" data-po-panel="products" hidden>'+
       '<div class="purchase-order-lines-heading"><strong>Productos solicitados</strong><button class="button button-quiet button-small" type="button" data-action="add-purchase-order-line">Añadir producto</button></div>'+
-      '<div id="purchase-order-lines">'+purchaseOrderLineHtml()+'</div>'+
-      '<div class="form-grid purchase-order-adjustments"><label>Descuento USD<input name="discount_usd" type="number" min="0" step="0.01" value="0"></label><label>Flete estimado USD<input name="estimated_freight_usd" type="number" min="0" step="0.01" value="0"></label><label>Impuestos estimados USD<input name="estimated_taxes_usd" type="number" min="0" step="0.01" value="0"></label><label>Notas<input name="notes" maxlength="1000"></label></div>'+
-      '<div class="form-actions"><button class="button button-primary" type="submit">Generar orden</button></div></form></section>':'';
+      '<div id="purchase-order-lines">'+purchaseOrderLineHtml()+'</div></section>'+
+      '<section id="po-panel-adjustments" class="po-step-panel" role="tabpanel" aria-labelledby="po-tab-adjustments" data-po-panel="adjustments" hidden>'+
+      '<div class="form-grid purchase-order-adjustments"><label>Descuento USD<input name="discount_usd" type="number" min="0" step="0.01" value="0"></label><label>Flete estimado USD<input name="estimated_freight_usd" type="number" min="0" step="0.01" value="0"></label><label>Impuestos estimados USD<input name="estimated_taxes_usd" type="number" min="0" step="0.01" value="0"></label><label class="purchase-order-full-field">Notas de la orden<input name="notes" maxlength="1000" placeholder="Indicaciones para el proveedor (opcional)"></label></div>'+
+      '</section><div class="po-form-footer"><span data-po-step-caption>Etapa 1 de 3 · Datos de la orden</span><button class="button button-primary" type="submit">Generar orden <span aria-hidden="true">→</span></button></div></form></section>':'';
     const receiptRows=visibleReceipts.map(receipt=>{
       const status=receipt.documentStatus||receipt.document_status||"Contabilizada";
       const actions=[];
@@ -2852,10 +2879,22 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const receiptPanel='<article class="list-panel purchase-receipts-panel"><div class="panel-heading"><div><h2>Recepciones y comprobantes</h2><p>Emitidas pendientes de contabilizar o documentos ya registrados en el diario.</p></div><span class="ledger-count">'+visibleReceipts.length+' documentos</span></div><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>RECEPCIÓN</th><th>FACTURA</th><th>FECHA</th><th>TOTAL USD</th><th>CÓDIGO COMPRA</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(receiptRows||'<tr><td colspan="7">Todavía no hay recepciones emitidas.</td></tr>')+'</tbody></table></div></article>';
     const supplierFilterOptions='<option value="all">Todos los proveedores</option>'+suppliers.map(supplier=>'<option value="'+esc(supplier.id)+'"'+(String(state.purchaseHistorySupplier)===String(supplier.id)?' selected':'')+'>'+esc(supplier.name)+'</option>').join("");
     const toolbar='<article class="list-panel purchase-history-tools"><div class="toolbar products-toolbar inventory-ledger-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg("search")+'<input id="purchase-history-search" type="search" value="'+esc(state.purchaseHistoryQuery)+'" placeholder="Orden, proveedor, producto o factura" aria-label="Buscar en órdenes y recepciones"></label></div><div class="toolbar-right"><select class="filter-select" id="purchase-history-supplier" aria-label="Filtrar por proveedor">'+supplierFilterOptions+'</select><select class="filter-select" id="purchase-history-order-status" aria-label="Estado de orden">'+[["all","Todas las órdenes"],["Borrador","Borrador"],["Enviada","Enviada"],["Confirmada","Confirmada"],["Recepción parcial","Recepción parcial"],["Recibida","Recibida"],["Cancelada","Cancelada"]].map(([value,label])=>'<option value="'+value+'"'+(state.purchaseHistoryOrderStatus===value?' selected':'')+'>'+label+'</option>').join("")+'</select><select class="filter-select" id="purchase-history-receipt-status" aria-label="Estado de recepción">'+[["all","Todas las recepciones"],["Emitida","Emitida"],["Contabilizada","Contabilizada"],["Anulada","Anulada"]].map(([value,label])=>'<option value="'+value+'"'+(state.purchaseHistoryReceiptStatus===value?' selected':'')+'>'+label+'</option>').join("")+'</select><input class="filter-select" type="date" id="purchase-history-start" value="'+esc(state.purchaseHistoryStartDate)+'" aria-label="Desde fecha"><input class="filter-select" type="date" id="purchase-history-end" value="'+esc(state.purchaseHistoryEndDate)+'" aria-label="Hasta fecha"><button class="button button-quiet button-small" type="button" data-action="clear-purchase-filters">Limpiar filtros</button></div></div>'+renderPurchaseHistoryArchive()+'<div class="panel-heading"><span class="ledger-count">'+visibleOrders.length+' órdenes · '+visibleReceipts.length+' recepciones</span></div></article>';
-    return heading(views.purchaseOrders,'<button class="button button-quiet" data-view="purchases">Compras recibidas</button>'+renderExportActions())+createForm+toolbar+
-      '<div class="summary-strip purchase-orders-summary-strip"><div class="summary-mini"><span>Órdenes filtradas</span><strong>'+visibleOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+visibleOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+visibleOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+visibleOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>'+
-      '<article class="list-panel purchase-orders-list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>'+
-      receiptPanel+'<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Emitir una recepción registra la factura, pero no toca existencias ni cuentas por pagar. La contabilización genera el movimiento de inventario, la cuenta por pagar y el comprobante diario de forma atómica.</p></div></div>';
+    const canViewOrders=permissionGranted("purchases.purchase_orders.view");
+    const canViewReceiptDocs=permissionGranted("purchases.receipts.view");
+    const availableSections=[
+      ...(canViewOrders?[["orders","Órdenes",visibleOrders.length]]:[]),
+      ...(canViewReceiptDocs?[["receipts","Recepciones",visibleReceipts.length]]:[]),
+      ...(canCreate?[["new","Nueva orden",null]]:[])
+    ];
+    if(!availableSections.some(([id])=>id===state.purchaseTab))state.purchaseTab=availableSections[0]?.[0]||"orders";
+    const sectionTabs='<nav class="purchase-module-tabs" role="tablist" aria-label="Secciones de abastecimiento">'+availableSections.map(([id,label,count])=>'<button type="button" role="tab" aria-selected="'+String(state.purchaseTab===id)+'" class="purchase-module-tab '+(state.purchaseTab===id?'is-active':'')+'" data-action="purchase-section-tab" data-tab="'+id+'"><span>'+label+'</span>'+(count===null?'':'<span class="purchase-tab-count">'+count+'</span>')+'</button>').join("")+'</nav>';
+    const orderSummary='<div class="summary-strip purchase-orders-summary-strip"><div class="summary-mini"><span>Órdenes filtradas</span><strong>'+visibleOrders.length+'</strong></div><div class="summary-mini"><span>Borradores</span><strong>'+visibleOrders.filter(x=>x.status==="Borrador").length+'</strong></div><div class="summary-mini"><span>Por aprobar</span><strong>'+visibleOrders.filter(x=>x.status==="Enviada").length+'</strong></div><div class="summary-mini"><span>Por recibir</span><strong>'+visibleOrders.filter(x=>["Confirmada","Recepción parcial"].includes(x.status)).length+'</strong></div></div>';
+    const ordersPanel='<article class="list-panel purchase-orders-list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>ORDEN</th><th>PROVEEDOR</th><th>PRODUCTOS / RECIBIDO</th><th>ENTREGA</th><th>TOTAL USD</th><th>RECEPCIONES</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Todavía no hay órdenes de compra.</td></tr>')+'</tbody></table></div></article>';
+    const receiptNotice='<div class="notice-panel"><span>'+svg('shield')+'</span><div><strong>Separación de funciones</strong><p>Emitir una recepción registra la factura, pero no toca existencias ni cuentas por pagar. La contabilización genera el movimiento de inventario, la cuenta por pagar y el comprobante diario de forma atómica.</p></div></div>';
+    return heading(views.purchaseOrders,renderExportActions())+sectionTabs+
+      (state.purchaseTab==="new"?createForm:"")+
+      (state.purchaseTab==="orders"?toolbar+orderSummary+ordersPanel:"")+
+      (state.purchaseTab==="receipts"?receiptPanel+receiptNotice:"");
   }
   function renderPurchases(){
     const total=purchases.reduce((s,p)=>s+Number(p.totalUsd||0),0);
@@ -3366,7 +3405,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(state.view==='inventory'){
       const inventoryActions=root.querySelector('.inventory-page-actions');
       if(inventoryActions)inventoryActions.insertAdjacentHTML('afterbegin',renderExportActions());
-    }else if(pageActions){
+    }else if(pageActions&&!pageActions.querySelector('[data-action="toggle-export-menu"]')){
       pageActions.insertAdjacentHTML('afterbegin',renderExportActions());
     }
     applyPermissionNavigation();
@@ -4378,6 +4417,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(!button)return;
     const action=button.getAttribute("data-action");
     if(action==="close-purchase-receipt"){document.getElementById("purchase-receipt-dialog")?.close();return;}
+    if(action==="purchase-order-tab"){setPurchaseOrderTab(button.getAttribute("data-tab"));return;}
+    if(action==="purchase-section-tab"){
+      const tab=button.getAttribute("data-tab");
+      if(["orders","receipts","new"].includes(tab)){state.purchaseTab=tab;renderView();}
+      return;
+    }
     if(action==="add-purchase-order-line"){
       if(!permissionGranted("purchases.purchase_orders.create"))return;
       const container=document.getElementById("purchase-order-lines");
@@ -4531,6 +4576,13 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(form?.id==="purchase-order-form"){
       event.preventDefault();
       if(!permissionGranted("purchases.purchase_orders.create")){toast("Tu cuenta no puede crear órdenes de compra.");return;}
+      if(!form.checkValidity()){
+        const invalid=form.querySelector(":invalid");
+        const panel=invalid?.closest("[data-po-panel]");
+        if(panel)setPurchaseOrderTab(panel.getAttribute("data-po-panel"));
+        if(invalid)requestAnimationFrame(()=>invalid.reportValidity());
+        return;
+      }
       const data=new FormData(form);
       const lines=Array.from(form.querySelectorAll(".purchase-order-line")).map(row=>({
         product_id:row.querySelector('[name="product_id"]').value,ordered_quantity:Number(row.querySelector('[name="ordered_quantity"]').value),
@@ -4544,6 +4596,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Generando…";}
       try{
         const response=await erpApi("purchase-orders",{method:"POST",body:JSON.stringify(payload)});
+        state.purchaseTab="orders";
         await loadERPFromNeon(true);goToView("purchaseOrders");
         toast("Orden "+(response.record?.order_number||"generada")+" como borrador. El inventario permanece sin cambios.");
       }
@@ -4576,6 +4629,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const submit=form.querySelector('[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Emitiendo…";}
       try{
         const result=await erpApi("purchase-orders/"+encodeURIComponent(orderId)+"/receipts",{method:"POST",body:JSON.stringify(payload)});
+        state.purchaseTab="receipts";
         document.getElementById("purchase-receipt-dialog")?.close();await loadERPFromNeon(true);goToView("purchaseOrders");
         toast("Recepción "+(result.record?.receipt_number||"emitida")+" pendiente de contabilización. El inventario sigue sin cambios.");
       }catch(error){toast(error?.message||"No se pudo emitir la recepción.");}

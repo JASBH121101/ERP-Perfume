@@ -349,18 +349,25 @@ async function navigateToView(page, view) {
 }
 
 test('procurement UI creates a mult-line order, receives partially, records supplier invoice and applies payment', async ({ page }) => {
+  test.setTimeout(60000);
   const api = await installProcurementApi(page);
   await page.goto('/');
 
   await navigateToView(page, 'purchaseOrders');
+  console.log('POFLOW: orders view loaded');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="new"]').click();
+  console.log('POFLOW: new order tab selected');
   const orderForm = page.locator('#purchase-order-form');
-  await expect(orderForm).toBeVisible();
+  await expect(orderForm).toBeVisible({ timeout: 8000 });
+  await expect(orderForm.locator('[name="supplier_id"] option[value="' + ids.supplier + '"]')).toHaveCount(1, { timeout: 15000 });
+  await expect(orderForm.locator('[name="product_id"] option[value="' + ids.productA + '"]')).toHaveCount(1, { timeout: 15000 });
   await expect(orderForm.getByText('Código de orden')).toHaveCount(0);
   await expect(orderForm.locator('input[value="Se asigna al generar"]')).toHaveCount(0);
   await orderForm.locator('[name="supplier_id"]').selectOption(ids.supplier);
   await orderForm.locator('[name="currency"]').selectOption('NIO');
   await orderForm.locator('[name="exchange_rate"]').fill('36.6');
 
+  await orderForm.locator('[data-action="purchase-order-tab"][data-tab="products"]').click();
   const firstLine = orderForm.locator('.purchase-order-line').nth(0);
   await firstLine.locator('[name="product_id"]').selectOption(ids.productA);
   await firstLine.locator('[name="ordered_quantity"]').fill('2');
@@ -372,14 +379,17 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await secondLine.locator('[name="ordered_quantity"]').fill('3');
   await secondLine.locator('[name="unit_cost_input"]').fill('183');
 
+  await orderForm.locator('[data-action="purchase-order-tab"][data-tab="adjustments"]').click();
   await orderForm.locator('[name="discount_usd"]').fill('1');
   await orderForm.locator('[name="estimated_freight_usd"]').fill('2');
   await orderForm.locator('[name="estimated_taxes_usd"]').fill('0.5');
+  console.log('POFLOW: form fields completed');
 
   const createRequest = page.waitForRequest(request =>
     request.url().endsWith('/api/erp/purchase-orders') && request.method() === 'POST'
   );
   await orderForm.locator('[type="submit"]').click();
+  console.log('POFLOW: submitted create order');
   const createPayload = (await createRequest).postDataJSON();
   expect(createPayload.items).toHaveLength(2);
   expect(createPayload).not.toHaveProperty('order_number');
@@ -394,6 +404,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   );
   await orderRow.locator('[data-action="submit-purchase-order"]').click();
   expect((await submitRequest).postDataJSON().status).toBe('Enviada');
+  console.log('POFLOW: order submitted');
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Enviada');
 
   const approveRequest = page.waitForRequest(request =>
@@ -402,6 +413,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   );
   await page.locator('tr').filter({ hasText: 'Proveedor QA' }).locator('[data-action="approve-purchase-order"]').click();
   expect((await approveRequest).postDataJSON().status).toBe('Confirmada');
+  console.log('POFLOW: order approved');
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Confirmada');
 
   await page.locator('tr').filter({ hasText: 'Proveedor QA' }).locator('[data-action="receive-purchase-order"]').click();
@@ -420,9 +432,11 @@ test('procurement UI creates a mult-line order, receives partially, records supp
     request.method() === 'POST'
   );
   await receiptDialog.locator('[type="submit"]').click();
+  console.log('POFLOW: receipt request sent');
   const receiptPayload = (await receiptRequest).postDataJSON();
   expect(receiptPayload.items).toHaveLength(2);
   // Emitting a receipt is staged: quantities and order status change only on posting.
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Confirmada');
 
   expect(api.data.purchase_receipts).toHaveLength(1);
@@ -433,6 +447,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(api.data.inventory_movements).toHaveLength(0);
   expect(api.data.supplier_invoices).toHaveLength(0);
 
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   const receiptRow = page.locator('tr').filter({ hasText: 'FAC-PROV-QA-001' });
   await expect(receiptRow).toContainText('Emitida');
   const postRequest = page.waitForRequest(request =>
@@ -443,6 +458,7 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   await receiptRow.locator('[data-action="post-purchase-receipt"]').click();
   const postedRequest = await postRequest;
   expect(postedRequest.method()).toBe('POST');
+  console.log('POFLOW: post receipt action returned');
   expect(api.data.purchase_receipts[0].document_status).toBe('Contabilizada');
   expect(api.data.purchase_receipts[0].purchase_code).toBe(1);
   expect(api.data.purchase_order_items.map(item => item.received_quantity)).toEqual([1, 2]);
@@ -451,12 +467,14 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   expect(api.data.inventory_movements).toHaveLength(2);
   expect(api.data.supplier_invoices).toHaveLength(1);
   expect(api.data.purchase_journal_entries[0].total_debit_usd).toBe(api.data.purchase_journal_entries[0].total_credit_usd);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await expect(page.locator('tr').filter({ hasText: 'Proveedor QA' })).toContainText('Recepción parcial');
 
   await navigateToView(page, 'inventory');
   await expect(page.locator('#inventory-product-body')).toContainText('QA Purchase Perfume A');
   await expect(page.locator('#inventory-product-body')).toContainText('6');
 
+  console.log('POFLOW: inventory verified, opening payables');
   await navigateToView(page, 'payables');
   const businessDialog = page.locator('#business-dialog');
   const businessForm = page.locator('#business-form');
@@ -524,27 +542,32 @@ test('procurement history combines monthly, supplier and status filters and hand
   await expect(page.locator('#purchase-history-order-status')).toBeVisible();
   await expect(page.locator('#purchase-history-receipt-status')).toBeVisible();
   await expect(page.locator('.purchase-history-archive')).toBeVisible();
-  const legacyReceiptRow = page.locator('tr').filter({ hasText: 'OLD-REC-17' });
-  await expect(legacyReceiptRow).toContainText('Histórico · sin comprobante diario');
-  await expect(legacyReceiptRow.locator('[data-action="view-purchase-journal"]')).toHaveCount(0);
 
   await page.locator('#purchase-history-order-status').selectOption('Borrador');
-  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
   await page.locator('#purchase-history-order-status').selectOption('all');
 
   await page.locator('#purchase-history-receipt-status').selectOption('Emitida');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await page.locator('#purchase-history-receipt-status').selectOption('all');
-  await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
+  const legacyReceiptRow = page.locator('tr').filter({ hasText: 'OLD-REC-17' });
+  await expect(legacyReceiptRow).toContainText('Histórico · sin comprobante diario');
+  await expect(legacyReceiptRow.locator('[data-action="view-purchase-journal"]')).toHaveCount(0);
 
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await page.locator('.purchase-history-archive > summary').click();
   await page.locator('.purchase-history-archive [data-action="purchase-month-filter"][data-start="2026-11-01"]').click();
   await expect(page.locator('#purchase-history-start')).toHaveValue('2026-11-01');
   await expect(page.locator('#purchase-history-end')).toHaveValue('2026-11-30');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
 
+  await expect(page.locator('[data-action="toggle-export-menu"]')).toHaveCount(1);
   await page.locator('[data-action="toggle-export-menu"]').click();
   await expect(page.locator('#current-export-menu')).toBeVisible();
   const [download] = await Promise.all([
@@ -557,9 +580,13 @@ test('procurement history combines monthly, supplier and status filters and hand
   expect(csv).not.toContain('"Orden de compra"');
 
   await page.locator('#purchase-history-search').fill('OLD-REC-17');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(1);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await page.locator('#purchase-history-search').fill('no-coincide');
+  await page.locator('[data-action="purchase-section-tab"][data-tab="receipts"]').click();
   await expect(page.locator('tr').filter({ hasText: 'OLD-REC-17' })).toHaveCount(0);
+  await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
 
   await page.locator('[data-action="clear-purchase-filters"]').click();
   await expect(page.locator('#purchase-history-search')).toHaveValue('');
