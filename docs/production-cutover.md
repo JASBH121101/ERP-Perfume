@@ -52,6 +52,7 @@ The health response verifies database connectivity and the presence of Auth and 
 ## Cloudflare Pages Production
 
 Pages project: `erp-perfume`  
+Git integration automatic deployment switch: enabled; Production deploys from `main`, preview deploys are disabled.  
 Canonical origin: `https://erp-perfume.pages.dev`  
 Source repository: `JASBH121101/ERP-Perfume`  
 Production branch: `main`
