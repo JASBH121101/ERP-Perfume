@@ -500,7 +500,7 @@ async function initialize() {
     }
   });
 
-  $("#auth-signup-start")?.addEventListener("click", async () => {
+  $("#auth-signup-start")?.addEventListener("click", () => {
     if (!allowInviteActivation || authUser) return;
     const email = String($("#auth-email")?.value || "").trim();
     if (!email) {
@@ -508,17 +508,10 @@ async function initialize() {
       $("#auth-email")?.focus();
       return;
     }
-    const button = $("#auth-signup-start");
-    if (button) button.disabled = true;
-    try {
-      await window.JBAuth.sendVerificationCode(email);
-      setAuthMode("invite-verify", email);
-      setAuthFeedback("Si existe una invitación para este correo, recibirás un código para verificarlo.");
-    } catch (error) {
-      setAuthFeedback(error?.message || "No se pudo iniciar la activación. Comprueba el correo e inténtalo nuevamente.", true);
-    } finally {
-      if (button) button.disabled = false;
-    }
+    // The owner already sent the first verification OTP when creating the invite.
+    // Do not invalidate it by sending a second code as soon as the invitee opens the form.
+    setAuthMode("invite-verify", email);
+    setAuthFeedback("Ingresa el código que llegó en la invitación. Si no lo encuentras, pulsa Reenviar código.");
   });
 
   $("#auth-forgot-password")?.addEventListener("click", () => {
