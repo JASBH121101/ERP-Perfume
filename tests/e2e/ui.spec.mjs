@@ -724,7 +724,7 @@ test('catalog import explicitly accepts CSV, PDF, PNG, JPG and JPEG', async ({ p
   await page.getByRole('button', { name: /Importar catálogo/ }).click();
   const dialog = page.locator('#catalog-import-dialog');
   await expect(dialog).toBeVisible();
-  await expect(dialog).not.toContainText(/Neon|Cloudflare|\\bR2\\b/i);
+  await expect(dialog).not.toContainText(/Neon|Cloudflare|R2/i);
   const accept = await dialog.locator('#catalog-import-file').getAttribute('accept');
   for (const extension of ['.csv', '.pdf', '.png', '.jpg', '.jpeg']) expect(accept).toContain(extension);
   await expect(dialog).toContainText('Admite CSV, PDF, PNG, JPG y JPEG');
@@ -844,7 +844,7 @@ test('product creation saves its opening balance and writes the first kardex ent
   const form = page.locator('#product-form');
   await expect(dialog).toBeVisible();
   await expect(form.locator('#save-product')).toHaveText('Guardar');
-  await expect(dialog).not.toContainText(/Neon|Cloudflare|\\bR2\\b/i);
+  await expect(dialog).not.toContainText(/Neon|Cloudflare|R2/i);
   await form.locator('[name="name"]').fill('QA Inventory Created Perfume');
   await form.locator('[name="sku"]').fill('QA-NEW-201');
   await form.locator('[name="brand"]').fill('QA Atelier');
@@ -1188,7 +1188,7 @@ test('interface action labels do not expose infrastructure provider names', asyn
   for (const view of views) {
     await navigateToView(page, view);
     const labels = await page.locator('button:visible').allTextContents();
-    const exposedNames = labels.filter(label => /Neon|Cloudflare|\\bR2\\b/i.test(label));
+    const exposedNames = labels.filter(label => /Neon|Cloudflare|R2/i.test(label));
     expect(exposedNames, 'provider names found in button labels on ' + view).toEqual([]);
   }
 });
