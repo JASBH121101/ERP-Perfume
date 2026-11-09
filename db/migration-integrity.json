@@ -12,7 +12,7 @@
     "branchId": "br-nameless-surf-bezeav6n",
     "observedDate": "2026-11-09",
     "readOnly": true,
-    "ledgerRows": 20,
+    "ledgerRows": 21,
     "ledgerVersions": [
       "0001",
       "0002",
@@ -33,18 +33,19 @@
       "0021",
       "0022",
       "0023",
-      "0024"
+      "0024",
+      "0025"
     ],
     "productionInspected": true,
     "productionModified": true,
-    "note": "Read-only reconciliation on 2026-11-09 verified Development migration 0024 (SHA-256 and applied_at 2026-11-09T20:26:45.286258Z) and Production migration 0024 (SHA-256 and applied_at 2026-11-09T18:33:47.235066Z). Development ledger has 20 rows, including 0024 and the approved historical exceptions; Production ledger has 24 rows (0001-0024). Product authenticity migration 0025 remains pending. No business data was modified by this inspection.",
+    "note": "Migration 0025 was applied and checksum-verified on Development at 2026-11-09T21:26:41.474Z. Development verification confirmed 21 ledger rows, the two product columns and both validated constraints; supplier count remained 1 and product count 0. Production independently applied the same migration checksum at 2026-11-09T21:27:34.385Z; Production verification confirmed 25 ledger rows, the two product columns and both validated constraints, with 3 suppliers, 0 products, 0 purchase orders and 0 invoices. Pre-migration Neon backup branches were created for both environments. Existing product records retain the default 'unspecified' classification; no business rows were rewritten.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
     "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
     "productionInspectionDate": "2026-11-09",
     "productionBranchId": "br-royal-art-ben0apun",
     "productionPublicApplicationTables": 41,
     "productionAuthTables": 9,
-    "productionLedgerRows": 24,
+    "productionLedgerRows": 25,
     "productionLedgerVersions": [
       "0001",
       "0002",
@@ -69,14 +70,15 @@
       "0021",
       "0022",
       "0023",
-      "0024"
+      "0024",
+      "0025"
     ],
     "productionRuntimeRole": "jb_erp_runtime_sql",
     "productionRuntimeRoleVerified": true,
     "productionOwnerAuthUsers": 0,
-    "productionBackupBranch": "br-lingering-bread-bejcvkss",
+    "productionBackupBranch": "br-curly-paper-bevsuycf",
     "productionModifiedByDevelopmentBaselineReconciliation": false,
-    "productionModificationNote": "Production's 0001-0024 cutover history is recorded above. Read-only reconciliation and the Development baseline process did not write to Production."
+    "productionModificationNote": "Production migration 0025 was applied transactionally after creating backup branch br-curly-paper-bevsuycf. The ledger records the exact reviewed source checksum e68d282e5ed76a74bb391b9e5994a7cb273bb9c10926aa2a8a139dd983a5855e at 2026-11-09T21:27:34.385Z; verification confirmed both new product columns and both validated constraints. Supplier/product/purchase-order/invoice counts remain 3/0/0/0."
   },
   "migrations": [
     {
@@ -391,8 +393,11 @@
       "version": "0025",
       "sha256": "e68d282e5ed76a74bb391b9e5994a7cb273bb9c10926aa2a8a139dd983a5855e",
       "database": {
-        "status": "pending",
-        "note": "Additive product authenticity classification and inspired perfume reference, including a 120-character reference limit. Existing records remain 'unspecified'; no existing product data is changed."
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "e68d282e5ed76a74bb391b9e5994a7cb273bb9c10926aa2a8a139dd983a5855e",
+        "appliedAt": "2026-11-09T21:26:41.474Z",
+        "productionAppliedAt": "2026-11-09T21:27:34.385Z",
+        "note": "Applied and verified transactionally on Development and Production. Both branches have authenticity_type and inspired_by columns plus two validated CHECK constraints. Existing product data was not rewritten; current product count is zero in both environments."
       }
     }
   ],
