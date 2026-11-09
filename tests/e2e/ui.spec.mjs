@@ -338,7 +338,7 @@ test('permission editor opens Administrator by default and keeps each template s
     if (url.pathname === '/api/erp/roles' && request.method() === 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(api) });
     }
-    const match = url.pathname.match(/^\\/api\\/erp\\/roles\\/([^/]+)$/);
+    const match = url.pathname.match(/^\/api\/erp\/roles\/([^/]+)$/);
     if (match && request.method() === 'PATCH') {
       const roleKey = decodeURIComponent(match[1]);
       const payload = request.postDataJSON();
