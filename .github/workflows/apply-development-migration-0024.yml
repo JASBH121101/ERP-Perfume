@@ -1,0 +1,261 @@
+name: Guarded Neon Development migration 0024
+
+on:
+  push:
+    branches:
+      - feature/database-migration-0024
+    paths:
+      - .github/workflows/apply-development-migration-0024.yml
+      - db/migrations/0024_supplier_contacts_and_product_sourcing.sql
+      - db/migration-integrity.json
+      - scripts/migrate-db.mjs
+      - scripts/check-db-migrations.mjs
+      - tests/database-migration-integrity.test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jb-parfums-erp-development-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply-development:
+    if: github.ref == 'refs/heads/feature/database-migration-0024'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.ERP_MIGRATION_DATABASE_URL }}
+      ERP_ENVIRONMENT: development
+      ERP_MIGRATION_BRANCH: development
+      ERP_MIGRATION_BRANCH_ID: br-nameless-surf-bezeav6n
+      ERP_EXPECTED_NEON_ENDPOINT_HOST: ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech
+      ERP_MIGRATIONS_APPROVED: YES
+      EXPECTED_MIGRATION_SHA256: 84c9d4d16fc2b7f978b37544575dd7089624b3dcfbd6eb4fc1d65769ecda5347
+
+    steps:
+      - name: Check out the reviewed main-based migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/database-migration-0024
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify pinned migration sources
+        run: npm run check:db
+
+      - name: Require exact Development-only migration configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MIGRATION_DATABASE_URL:-}" || {
+            echo "::error::ERP_MIGRATION_DATABASE_URL is not configured."
+            exit 1
+          }
+          test "${ERP_ENVIRONMENT}" = "development"
+          test "${ERP_MIGRATION_BRANCH}" = "development"
+          test "${ERP_MIGRATION_BRANCH_ID}" = "br-nameless-surf-bezeav6n"
+          test "${ERP_EXPECTED_NEON_ENDPOINT_HOST}" = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech"
+          test "${ERP_MIGRATIONS_APPROVED}" = "YES"
+          node --input-type=module -e '
+            const url = new URL(process.env.MIGRATION_DATABASE_URL);
+            if (url.hostname.toLowerCase() !== process.env.ERP_EXPECTED_NEON_ENDPOINT_HOST ||
+                url.hostname.includes("-pooler.")) {
+              throw new Error("Only the pinned direct Development endpoint may be used.");
+            }
+          '
+
+      - name: Record read-only pre-migration data counts
+        id: snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { Pool } from "@neondatabase/serverless";
+          const url = new URL(process.env.MIGRATION_DATABASE_URL);
+          const expectedHost = process.env.ERP_EXPECTED_NEON_ENDPOINT_HOST;
+          if (url.hostname.toLowerCase() !== expectedHost) {
+            throw new Error("Refusing to snapshot a non-Development Neon endpoint.");
+          }
+          const pool = new Pool({ connectionString: process.env.MIGRATION_DATABASE_URL, max: 1 });
+          try {
+            const result = await pool.query(`
+              SELECT
+                current_database() AS database_name,
+                current_user AS role_name,
+                (SELECT count(*)::int FROM public.suppliers) AS suppliers,
+                (SELECT count(*)::int FROM public.products) AS products,
+                (SELECT count(*)::int FROM public.purchase_orders) AS purchase_orders,
+                (SELECT count(*)::int FROM public.invoices) AS invoices
+            `);
+            const row = result.rows[0];
+            if (row.database_name !== "erp_perfume" || row.role_name !== "erp_owner") {
+              throw new Error("Unexpected database or migration role.");
+            }
+            for (const key of ["suppliers", "products", "purchase_orders", "invoices"]) {
+              console.log(key + "=" + row[key]);
+              console.log("::notice::Pre-migration " + key + ": " + row[key]);
+            }
+            const fs = await import("node:fs");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,
+              Object.entries(row).filter(([key]) => ["suppliers","products","purchase_orders","invoices"].includes(key))
+                .map(([key,value]) => key + "=" + value).join("\n") + "\n");
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Run read-only preflight and require migration 0024 only
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(npm run --silent migrate:db)"
+          printf '%s\n' "$report"
+          mapfile -t pending < <(
+            printf '%s\n' "$report" | awk '/^[[:space:]]*pending / { print $2 }'
+          )
+          if [[ "${#pending[@]}" -eq 1 && "${pending[0]}" == "0024" ]]; then
+            echo "migration_needed=true" >> "$GITHUB_OUTPUT"
+            echo "Preflight confirms 0024 is the only pending migration."
+          elif [[ "${#pending[@]}" -eq 0 ]]; then
+            echo "migration_needed=false" >> "$GITHUB_OUTPUT"
+            echo "0024 is already recorded; SQL will not be re-applied."
+          else
+            echo "::error::Refusing to proceed: expected only migration 0024 to be pending."
+            exit 1
+          fi
+
+      - name: Apply only through the protected repository migration runner
+        if: steps.preflight.outputs.migration_needed == 'true'
+        run: npm run migrate:db:apply
+
+      - name: Independently verify Development schema, migration ledger and preserved data
+        shell: bash
+        env:
+          EXPECTED_SUPPLIERS: ${{ steps.snapshot.outputs.suppliers }}
+          EXPECTED_PRODUCTS: ${{ steps.snapshot.outputs.products }}
+          EXPECTED_PURCHASE_ORDERS: ${{ steps.snapshot.outputs.purchase_orders }}
+          EXPECTED_INVOICES: ${{ steps.snapshot.outputs.invoices }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { Pool } from "@neondatabase/serverless";
+          const expectedHost = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech";
+          const expectedChecksum = process.env.EXPECTED_MIGRATION_SHA256;
+          const url = new URL(process.env.MIGRATION_DATABASE_URL || "");
+          if (url.hostname.toLowerCase() !== expectedHost || url.hostname.includes("-pooler.")) {
+            throw new Error("Post-apply verification refused a non-Development Neon endpoint.");
+          }
+          const pool = new Pool({ connectionString: process.env.MIGRATION_DATABASE_URL, max: 1 });
+          try {
+            const result = await pool.query(`
+              SELECT
+                current_database() AS database_name,
+                current_user AS role_name,
+                (SELECT count(*)::int FROM public.suppliers) AS suppliers,
+                (SELECT count(*)::int FROM public.products) AS products,
+                (SELECT count(*)::int FROM public.purchase_orders) AS purchase_orders,
+                (SELECT count(*)::int FROM public.invoices) AS invoices,
+                to_regclass('public.supplier_phone_numbers') IS NOT NULL AS phone_table,
+                to_regclass('public.suppliers_normalized_name_uq') IS NOT NULL AS normalized_name_guard,
+                to_regclass('public.products_supplier_id_idx') IS NOT NULL AS product_supplier_index,
+                (
+                  SELECT count(*) = 4
+                  FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='suppliers'
+                    AND column_name = ANY(ARRAY['address','payment_terms','minimum_order_usd','lead_time_days']::text[])
+                ) AS four_supplier_columns,
+                (
+                  SELECT count(*) = 1
+                  FROM pg_constraint
+                  WHERE conrelid='public.products'::regclass
+                    AND conname='products_supplier_id_fkey'
+                    AND convalidated
+                ) AS product_supplier_fk,
+                (
+                  SELECT count(*) = 4
+                  FROM pg_constraint
+                  WHERE conrelid='public.suppliers'::regclass
+                    AND convalidated
+                    AND conname = ANY(ARRAY[
+                      'suppliers_minimum_order_nonnegative_check',
+                      'suppliers_lead_time_range_check',
+                      'suppliers_currency_check',
+                      'suppliers_name_not_null'
+                    ]::text[])
+                ) AS supplier_constraints,
+                (
+                  SELECT convalidated AND pg_get_constraintdef(oid) LIKE '%display_order%5%'
+                  FROM pg_constraint
+                  WHERE conrelid='public.supplier_phone_numbers'::regclass
+                    AND conname='supplier_phone_numbers_display_order_check'
+                ) AS five_phone_limit,
+                EXISTS (
+                  SELECT 1 FROM public.app_schema_migrations
+                  WHERE version='0024'
+                    AND filename='0024_supplier_contacts_and_product_sourcing.sql'
+                    AND checksum=$1
+                ) AS ledger_checksum,
+                (
+                  SELECT applied_at FROM public.app_schema_migrations
+                  WHERE version='0024'
+                    AND filename='0024_supplier_contacts_and_product_sourcing.sql'
+                    AND checksum=$1
+                ) AS applied_at
+            `, [expectedChecksum]);
+            const row = result.rows[0];
+            const checks = [
+              ["Development database and migration owner", row.database_name === "erp_perfume" && row.role_name === "erp_owner"],
+              ["supplier, product, purchase-order and invoice counts preserved",
+                row.suppliers === Number(process.env.EXPECTED_SUPPLIERS) &&
+                row.products === Number(process.env.EXPECTED_PRODUCTS) &&
+                row.purchase_orders === Number(process.env.EXPECTED_PURCHASE_ORDERS) &&
+                row.invoices === Number(process.env.EXPECTED_INVOICES)],
+              ["supplier phone table and duplicate guard", row.phone_table && row.normalized_name_guard],
+              ["four supplier metadata columns", row.four_supplier_columns],
+              ["validated product-to-supplier foreign key", row.product_supplier_fk && row.product_supplier_index],
+              ["validated phone length/order limits", row.five_phone_limit],
+              ["0024 filename and SHA-256 recorded in migration ledger", row.ledger_checksum && Boolean(row.applied_at)]
+            ];
+            for (const [name, passed] of checks) console.log((passed ? "PASS " : "FAIL ") + name);
+            if (checks.some(([, passed]) => !passed)) {
+              throw new Error("One or more 0024 post-apply invariants failed.");
+            }
+            console.log("MIGRATION_0024_APPLIED_AT=" + new Date(row.applied_at).toISOString());
+            console.log("MIGRATION_0024_SHA256=" + expectedChecksum);
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Run build and deterministic unit tests
+        run: |
+          npm run build
+          npm run test:unit
+
+      - name: Install Playwright Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser E2E tests
+        run: npm run test:e2e
+
+      - name: Write migration summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Neon Development migration 0024"
+            echo "- Target: **Development only**"
+            echo "- Expected branch: br-nameless-surf-bezeav6n"
+            echo "- Production: **not targeted**"
+            echo "- Migration SHA-256: $EXPECTED_MIGRATION_SHA256"
+          } >> "$GITHUB_STEP_SUMMARY"
