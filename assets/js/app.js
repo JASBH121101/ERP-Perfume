@@ -1,5 +1,6 @@
 import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
 import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financial-snapshot.mjs';
+import { resolveReportingPeriod, isWithinReportingPeriod } from './reporting-periods.mjs';
 import { profileHasPermission } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
 import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss } from './hr-calculations.mjs';
@@ -106,6 +107,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let cashAccounts = [];
   let invoices = [];
   let invoiceDraftItems = [];
+  let analyticsPeriodPreset = 'all';
+  let analyticsCustomFrom = '';
+  let analyticsCustomTo = '';
   let employees = [];
   let employeeHistory = [];
   let employeeDocuments = [];
@@ -2655,32 +2659,61 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       tabsHtml+'<div class="hr-content">'+content+'</div></section>';
   }
   function renderAnalytics(){
-    const finance=financialSnapshot();
+    const period=resolveReportingPeriod(analyticsPeriodPreset,new Date(),analyticsCustomFrom,analyticsCustomTo);
+    const inPeriod=(record,fields)=>{
+      const value=fields.map(field=>record?.[field]).find(item=>item!==null&&item!==undefined&&item!=="");
+      return isWithinReportingPeriod(value,period);
+    };
+    const periodInvoices=invoices.filter(invoice=>inPeriod(invoice,['createdAt','invoiceDate','date']));
+    const periodExpenses=expenses.filter(expense=>inPeriod(expense,['createdAt','expenseDate','date']));
+    const periodPurchases=purchases.filter(purchase=>inPeriod(purchase,['createdAt','purchaseDate','date']));
+    const periodSupplierInvoices=supplierInvoices.filter(invoice=>inPeriod(invoice,['invoiceDate','createdAt','date']));
+    const finance=calculateFinancialSnapshot(periodInvoices,periodExpenses,roundMoney);
     const inventory=products.reduce((sum,p)=>sum+Number(p.unitCost||0)*Number(p.stock||0),0);
     const potential=products.reduce((sum,p)=>sum+Math.max(0,costSummary(p).profit)*Number(p.stock||0),0);
     const supplierPayables=calculatePayablesSnapshot(purchases,supplierInvoices,roundMoney);
-    const purchasesTotal=roundMoney(purchases.reduce((sum,p)=>sum+Number(p.totalUsd||0),0)+
-      supplierInvoices.filter(invoice=>invoice.status!=="Anulada").reduce((sum,invoice)=>sum+Number(invoice.amountUsd||0),0));
+    const purchasesTotal=roundMoney(periodPurchases.reduce((sum,p)=>sum+Number(p.totalUsd||0),0)+
+      periodSupplierInvoices.filter(invoice=>invoice.status!=="Anulada").reduce((sum,invoice)=>sum+Number(invoice.amountUsd||0),0));
+    // These are current outstanding balances, not period activity.
     const receivables=invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0);
     const payables=supplierPayables.total;
-    const paidRevenue=invoices.reduce((sum,i)=>sum+Number(i.paidUsd||0),0);
+    const paidRevenue=invoices.reduce((sum,invoice)=>{
+      const payments=Array.isArray(invoice.payments)?invoice.payments:[];
+      if(payments.length)return sum+payments.filter(payment=>isWithinReportingPeriod(payment.createdAt,period)).reduce((subtotal,payment)=>subtotal+Number(payment.amountUsd||0),0);
+      return sum+(isWithinReportingPeriod(invoice.createdAt,period)?Number(invoice.paidUsd||0):0);
+    },0);
+    const presetOptions=[
+      ['all','Todo el historial'],['month','Este mes'],['previous_month','Mes anterior'],
+      ['last_30','Últimos 30 días'],['last_90','Últimos 90 días'],['last_180','Últimos 180 días'],
+      ['year','Este año'],['custom','Rango personalizado']
+    ].map(([value,label])=>'<option value="'+value+'"'+(analyticsPeriodPreset===value?' selected':'')+'>'+label+'</option>').join('');
+    const fromValue=period.valid?period.from:(analyticsCustomFrom||'');
+    const toValue=period.valid?period.to:(analyticsCustomTo||'');
+    const rangePanel='<article class="panel analytics-range-panel"><div class="panel-heading"><div><h2>Ventana de consulta</h2><p>Filtra ventas, costos, gastos y compras por fecha. Saldos e inventario se muestran al día de hoy.</p></div></div>'+
+      '<div class="form-grid analytics-range-form">'+
+      '<label class="form-field"><span>Período</span><select id="analytics-period">'+presetOptions+'</select></label>'+
+      '<label class="form-field"><span>Desde</span><input id="analytics-from" type="date" value="'+esc(fromValue)+'"></label>'+
+      '<label class="form-field"><span>Hasta</span><input id="analytics-to" type="date" value="'+esc(toValue)+'"></label>'+
+      '<div class="full-field modal-actions"><button type="button" class="button button-primary" data-action="apply-analytics-range">Aplicar consulta</button><span class="table-secondary">'+esc(period.valid?period.label:'Revisa las fechas del rango personalizado.')+'</span></div></div></article>';
+    const rangeError=!period.valid?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Rango de fechas no válido</strong><p>Selecciona una fecha inicial y final válidas, y asegúrate de que la fecha inicial no sea posterior a la final.</p></div></div>':'';
     return heading(views.analytics,'')+
+      rangePanel+rangeError+
       '<div class="metric-grid">'+
-      metric('Ventas facturadas',money(finance.revenue),'chart',invoices.length+' facturas','productos vendidos · USD',false)+
+      metric('Ventas facturadas',money(finance.revenue),'chart',periodInvoices.length+' facturas en el período','productos vendidos · USD',false)+
       metric('Costo de ventas',money(finance.costOfSales),'boxes','Costo de productos vendidos','según costo guardado en factura',false)+
       metric('Utilidad bruta',money(finance.grossProfit),'spark','Venta neta de productos − costo','antes de gastos operativos',true)+
-      metric('Gastos operativos',money(finance.operatingExpenses),'receipt',expenses.length+' gastos','convertidos a USD',false)+
+      metric('Gastos operativos',money(finance.operatingExpenses),'receipt',periodExpenses.length+' gastos en el período','convertidos a USD',false)+
       metric('Resultado después de gastos',money(finance.netProfit),'wallet','Utilidad bruta + entrega − gastos','antes de impuestos y partidas no registradas',true)+
-      metric('Cobros recibidos',money(paidRevenue),'wallet','Facturas y abonos','flujo de cobros',false)+
+      metric('Cobros recibidos',money(paidRevenue),'wallet','Abonos con fecha dentro del período','flujo de efectivo cobrado · USD',false)+
       '</div>'+
       '<div class="summary-strip">'+
-      '<div class="summary-mini"><span>Valor del inventario a costo</span><strong>'+money(inventory)+'</strong></div>'+
-      '<div class="summary-mini"><span>Margen potencial del stock</span><strong>'+money(potential)+'</strong></div>'+
-      '<div class="summary-mini"><span>Compras y facturas proveedor</span><strong>'+money(purchasesTotal)+'</strong></div>'+
-      '<div class="summary-mini"><span>Cuentas por cobrar</span><strong>'+money(receivables)+'</strong></div>'+
-      '<div class="summary-mini"><span>Cuentas por pagar</span><strong>'+money(payables)+'</strong></div>'+
+      '<div class="summary-mini"><span>Valor del inventario a costo · hoy</span><strong>'+money(inventory)+'</strong></div>'+
+      '<div class="summary-mini"><span>Margen potencial del stock · hoy</span><strong>'+money(potential)+'</strong></div>'+
+      '<div class="summary-mini"><span>Compras y facturas proveedor · período</span><strong>'+money(purchasesTotal)+'</strong></div>'+
+      '<div class="summary-mini"><span>Cuentas por cobrar · saldo actual</span><strong>'+money(receivables)+'</strong></div>'+
+      '<div class="summary-mini"><span>Cuentas por pagar · saldo actual</span><strong>'+money(payables)+'</strong></div>'+
       '</div>'+
-      '<div class="notice-panel">'+svg('warning')+'<div><strong>Criterio del resultado</strong><p>La utilidad bruta se calcula con los renglones de facturas y su costo unitario registrado. El resultado después de gastos descuenta los gastos operativos capturados; no representa utilidad fiscal ni incorpora impuestos, nómina o ajustes que aún no estén registrados.</p></div></div>';
+      '<div class="notice-panel">'+svg('warning')+'<div><strong>Criterio del resultado</strong><p>La utilidad bruta se calcula con los renglones de facturas del período y su costo unitario registrado. El resultado después de gastos descuenta los gastos operativos capturados en el mismo rango; no representa utilidad fiscal ni incorpora impuestos, nómina o partidas no registradas. Los saldos por cobrar/pagar y el valor del inventario son posiciones actuales, no movimientos del período.</p></div></div>';
   }
   function supplierPayablesUsd(supplier){
     const supplierName=supplier.name;
@@ -4344,6 +4377,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     else if(name==='edit-employee')openBusinessDialog('employee',action.getAttribute('data-id'));
     else if(name==='go-hr-employees'){state.hrTab='employees';renderView();}
     else if(name==='export-dgi-book')exportDgiBook();
+    else if(name==='apply-analytics-range'){
+      const preset=document.getElementById('analytics-period')?.value||'all';
+      const from=document.getElementById('analytics-from')?.value||'';
+      const to=document.getElementById('analytics-to')?.value||'';
+      const candidate=resolveReportingPeriod(preset,new Date(),from,to);
+      if(!candidate.valid){toast('Selecciona un rango de fechas válido.');return;}
+      analyticsPeriodPreset=preset;
+      analyticsCustomFrom=preset==='custom'?from:'';
+      analyticsCustomTo=preset==='custom'?to:'';
+      renderView();
+    }
     else if(name==='reload-dgi-documents'){dgiDocumentsLoadAttempted=false;dgiDocumentsLoaded=false;loadDgiSupportDocuments(true);}
     else if(name==='download-dgi-document')downloadDgiDocument(action.getAttribute('data-id'),action);
     else if(name==='upload-employee-document')uploadEmployeeDocument(action);
