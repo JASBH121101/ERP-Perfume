@@ -2683,11 +2683,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const fromValue=period.valid?period.from:(analyticsCustomFrom||'');
     const toValue=period.valid?period.to:(analyticsCustomTo||'');
     const rangePanel='<article class="panel analytics-range-panel"><div class="panel-heading"><div><h2>Ventana de consulta</h2><p>Filtra ventas, costos, gastos y compras por fecha. Saldos e inventario se muestran al día de hoy.</p></div></div>'+
-      '<form class="form-grid analytics-range-form" onsubmit="return false">'+
+      '<div class="form-grid analytics-range-form">'+
       '<label class="form-field"><span>Período</span><select id="analytics-period">'+presetOptions+'</select></label>'+
       '<label class="form-field"><span>Desde</span><input id="analytics-from" type="date" value="'+esc(fromValue)+'"></label>'+
       '<label class="form-field"><span>Hasta</span><input id="analytics-to" type="date" value="'+esc(toValue)+'"></label>'+
-      '<div class="full-field modal-actions"><button type="button" class="button button-primary" data-action="apply-analytics-range">Aplicar consulta</button><span class="table-secondary">'+esc(period.valid?period.label:'Revisa las fechas del rango personalizado.')+'</span></div></form></article>';
+      '<div class="full-field modal-actions"><button type="button" class="button button-primary" data-action="apply-analytics-range">Aplicar consulta</button><span class="table-secondary">'+esc(period.valid?period.label:'Revisa las fechas del rango personalizado.')+'</span></div></div></article>';
     const rangeError=!period.valid?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Rango de fechas no válido</strong><p>Selecciona una fecha inicial y final válidas, y asegúrate de que la fecha inicial no sea posterior a la final.</p></div></div>':'';
     return heading(views.analytics,'')+
       rangePanel+rangeError+
