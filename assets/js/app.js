@@ -3405,7 +3405,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(state.view==='inventory'){
       const inventoryActions=root.querySelector('.inventory-page-actions');
       if(inventoryActions)inventoryActions.insertAdjacentHTML('afterbegin',renderExportActions());
-    }else if(pageActions){
+    }else if(pageActions&&!pageActions.querySelector('[data-action="toggle-export-menu"]')){
       pageActions.insertAdjacentHTML('afterbegin',renderExportActions());
     }
     applyPermissionNavigation();
