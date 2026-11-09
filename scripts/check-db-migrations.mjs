@@ -117,8 +117,13 @@ export async function verifyMigrationSources({
   if (manifest.snapshot?.branch !== "development" || manifest.snapshot?.readOnly !== true) {
     addError(errors, "The recorded database snapshot must be explicitly read-only Neon Development.");
   }
-  if (manifest.snapshot?.productionModified !== false) {
-    addError(errors, "The manifest must explicitly record that Production was not modified.");
+  // Keep two distinct facts: Production received its recorded 0001-0023 cutover,
+  // while the Development-only baseline reconciliation must never write to Production.
+  if (manifest.snapshot?.productionModified !== true) {
+    addError(errors, "The manifest must preserve the observed Production cutover history.");
+  }
+  if (manifest.snapshot?.productionModifiedByDevelopmentBaselineReconciliation !== false) {
+    addError(errors, "The manifest must explicitly attest that Development baseline reconciliation did not modify Production.");
   }
 
   const baseline = manifest.baselineReconciliation;
