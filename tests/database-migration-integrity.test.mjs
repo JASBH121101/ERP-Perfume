@@ -9,10 +9,10 @@ import { verifyMigrationSources } from "../scripts/check-db-migrations.mjs";
 test("repository migration sources match the reviewed integrity baseline", async () => {
   const result = await verifyMigrationSources();
   assert.deepEqual(result.errors, [], result.errors.join("\n"));
-  assert.equal(result.summary.sourceFiles, 23);
+  assert.equal(result.summary.sourceFiles, 24);
   assert.equal(result.summary.appliedLedgerRows, 19);
   assert.equal(result.summary.schemaPresentWithoutLedger, 4);
-  assert.deepEqual(result.summary.pendingMigrations, []);
+  assert.deepEqual(result.summary.pendingMigrations, ["0024"]);
 
   const manifest = JSON.parse(await readFile(
     new URL("../db/migration-integrity.json", import.meta.url),
@@ -38,7 +38,7 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(migration0023.database.status, "applied_checksum_verified");
   assert.equal(migration0023.database.ledgerChecksum, migration0023.sha256);
   assert.ok(Number.isFinite(Date.parse(migration0023.database.appliedAt)));
-  assert.equal(result.summary.nextMigrationVersion, "0024");
+  assert.equal(result.summary.nextMigrationVersion, "0025");
 });
 
 async function createFixture(t, namesAndContents) {

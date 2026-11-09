@@ -1922,3 +1922,160 @@ body[data-font-scale="extra"] { --ui-font-scale: 1.5; }
   .notification-panel-header { padding: 12px; }
   .notification-item { padding: 12px; }
 }
+
+
+/* Supplier contacts and inventory replenishment */
+.supplier-extra-phones-field {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.supplier-phone-list {
+  display: grid;
+  gap: 10px;
+}
+.supplier-phone-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.supplier-phone-row .form-field { min-width: 0; }
+.inventory-replenishment-panel .panel-heading { align-items: flex-start; }
+.inventory-replenishment-panel .summary-strip { margin: 12px 0 18px; }
+.inventory-replenishment-panel .form-helper { margin: 12px 0 0; }
+.inventory-replenishment-panel .data-table td { vertical-align: middle; }
+
+
+/* ERP typography system: prioritize dense operational reading over decorative display type. */
+:root {
+  --erp-font: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --erp-text: #292821;
+  --erp-muted: #625f57;
+  --erp-label: #514d44;
+}
+html, body {
+  font-family: var(--erp-font);
+  font-size: 15px;
+  color: var(--erp-text);
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+body[data-font-scale="normal"] { --ui-font-scale: 1.05; }
+body[data-font-scale="large"] { --ui-font-scale: 1.12; }
+body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
+body[data-font-scale="largest"] { --ui-font-scale: 1.3; }
+body[data-font-scale="huge"] { --ui-font-scale: 1.4; }
+body[data-font-scale="extra"] { --ui-font-scale: 1.5; }
+
+.page-heading h1,
+.panel-heading h2,
+.modal-heading h2,
+.metric-value,
+.summary-mini strong,
+.feature-card h3,
+.chart-summary strong {
+  font-family: var(--erp-font);
+  letter-spacing: normal;
+  font-weight: 650;
+}
+.page-heading h1 { font-size: clamp(25px, 2.5vw, 31px); line-height: 1.25; }
+.panel-heading h2 { font-size: 18px; line-height: 1.35; }
+.modal-heading h2 { font-size: 22px; line-height: 1.35; }
+.nav-item { font-size: calc(14px * var(--ui-font-scale)); line-height: 1.45; }
+.nav-caption, .eyebrow { font-size: calc(11px * var(--ui-font-scale)); letter-spacing: .7px; }
+.breadcrumb, .breadcrumb strong, .page-date, .page-heading p,
+.metric-label, .metric-foot, .panel-heading p,
+.panel-link, .section-link, .button, .period-select, .filter-select {
+  font-size: calc(13px * var(--ui-font-scale));
+}
+.data-table th {
+  color: #575247;
+  font-size: calc(12px * var(--ui-font-scale));
+  font-weight: 700;
+  letter-spacing: .25px;
+}
+.data-table td {
+  color: #403d36;
+  font-size: calc(13px * var(--ui-font-scale));
+  line-height: 1.5;
+}
+.table-secondary { color: #625e55; font-size: calc(12px * var(--ui-font-scale)); }
+.status-chip { font-size: calc(12px * var(--ui-font-scale)); }
+.form-field {
+  color: var(--erp-label);
+  font-size: calc(13px * var(--ui-font-scale));
+  font-weight: 650;
+  line-height: 1.4;
+}
+.form-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.form-field select, .form-field textarea {
+  min-height: 42px;
+  padding: 9px 11px;
+  color: #292821;
+  font-family: var(--erp-font);
+  font-size: calc(14px * var(--ui-font-scale));
+  line-height: 1.4;
+}
+.form-field input::placeholder, .form-field textarea::placeholder { color: #777268; opacity: 1; }
+.form-helper, .form-field small, .modal-note, .notice-panel p, .feature-card p {
+  color: #625e55;
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: 1.55;
+}
+.button { min-height: 40px; font-weight: 650; }
+.global-search input, .inline-search input {
+  font-family: var(--erp-font);
+  font-size: calc(13px * var(--ui-font-scale));
+}
+.metric-value, .summary-mini strong, .chart-summary strong {
+  font-variant-numeric: tabular-nums;
+}
+input, select, textarea, button { font-family: var(--erp-font); }
+@media (max-width: 720px) {
+  html, body { font-size: 15px; }
+  .data-table td { font-size: calc(13px * var(--ui-font-scale)); }
+  .form-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .form-field select, .form-field textarea { min-height: 44px; }
+}
+
+
+/* Final operational readability pass: larger text and a clear edit action on mobile. */
+html, body { font-size: 16px; }
+.nav-item { font-size: calc(15px * var(--ui-font-scale)); }
+.breadcrumb, .breadcrumb strong, .page-date, .page-heading p,
+.metric-label, .metric-foot, .panel-heading p,
+.panel-link, .section-link, .button, .period-select, .filter-select {
+  font-size: calc(14px * var(--ui-font-scale));
+}
+.data-table th { font-size: calc(13px * var(--ui-font-scale)); }
+.data-table td { font-size: calc(14px * var(--ui-font-scale)); line-height: 1.55; }
+.table-secondary { font-size: calc(13px * var(--ui-font-scale)); }
+.form-field { font-size: calc(14px * var(--ui-font-scale)); }
+.form-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.form-field select, .form-field textarea {
+  min-height: 44px;
+  font-size: calc(15px * var(--ui-font-scale));
+}
+.form-helper, .form-field small, .modal-note, .notice-panel p, .feature-card p {
+  font-size: calc(13px * var(--ui-font-scale));
+}
+.button { min-height: 42px; }
+.button-small { min-height: 36px; }
+.mobile-record-table.mobile-record-actions tbody td:last-child .button {
+  min-width: 112px;
+  justify-content: center;
+}
+@media (max-width: 720px) {
+  html, body { font-size: 16px; }
+  .mobile-record-table.mobile-record-actions tbody td:last-child {
+    grid-column: 1 / -1;
+    padding-top: 4px;
+  }
+  .mobile-record-table.mobile-record-actions tbody td:last-child .button {
+    width: 100%;
+    min-height: 46px;
+  }
+}

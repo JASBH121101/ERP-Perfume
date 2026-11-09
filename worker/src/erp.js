@@ -1,9 +1,9 @@
 import { loadUserPermissions, hasPermission, hasAnyModuleAccess } from "./permissions.js";
 
 const RESOURCE_DEFS = {
-  products: { table: "products", roles: ["owner", "admin", "inventory"], fields: ["sku","name","brand","category","concentration","gender","family","size_ml","presentation","purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","min_stock","location","active","barcode","description","supplier_name","wholesale_price_usd","tone","notes","images"], order: "name ASC" },
+  products: { table: "products", roles: ["owner", "admin", "inventory"], fields: ["sku","name","brand","category","concentration","gender","family","size_ml","presentation","purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","min_stock","location","active","barcode","description","supplier_id","supplier_name","wholesale_price_usd","tone","notes","images"], order: "name ASC" },
   customers: { table: "customers", roles: ["owner", "admin", "sales"], fields: ["name","contact","phone","email","notes","active","customer_type"], order: "name ASC" },
-  suppliers: { table: "suppliers", roles: ["owner", "admin", "inventory"], fields: ["name","contact","phone","email","currency","notes","active"], order: "name ASC" },
+  suppliers: { table: "suppliers", roles: ["owner", "admin", "inventory"], fields: ["name","contact","phone","email","currency","notes","active","address","payment_terms","minimum_order_usd","lead_time_days"], order: "name ASC" },
   orders: { table: "orders", roles: ["owner", "admin", "sales"], fields: ["order_number","customer_id","customer_name","phone","status","payment_status","payment_method","delivery_mode","currency","original_amount","exchange_rate","total_usd","discount_usd","delivery_fee_usd","notes"], order: "created_at DESC" },
   purchases: { table: "purchases", roles: ["owner", "admin", "inventory"], fields: ["purchase_number","supplier_id","supplier_name","currency","exchange_rate","total_usd","paid_usd","status","notes"], order: "created_at DESC" },
   purchase_orders: { table: "purchase_orders", roles: ["owner", "admin", "inventory"], fields: ["order_number","supplier_id","supplier_name","currency","exchange_rate","subtotal_usd","discount_usd","estimated_freight_usd","estimated_taxes_usd","total_usd","status","expected_delivery_date","payment_terms","notes","close_reason"], order: "created_at DESC" },
@@ -390,7 +390,7 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
       tx`SELECT * FROM customers ORDER BY name ASC LIMIT 2000`,
-      tx`SELECT * FROM suppliers ORDER BY name ASC LIMIT 1000`,
+      tx`SELECT s.*,COALESCE(p.additional_phones,'[]'::jsonb) AS additional_phones FROM suppliers s LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('phone',phone,'display_order',display_order) ORDER BY display_order) AS additional_phones FROM supplier_phone_numbers WHERE supplier_id=s.id) p ON TRUE ORDER BY s.name ASC LIMIT 1000`,
       tx`SELECT * FROM orders ORDER BY created_at DESC LIMIT 2000`,
       tx`SELECT * FROM order_items ORDER BY id ASC LIMIT 10000`,
       tx`SELECT * FROM purchases ORDER BY created_at DESC LIMIT 2000`,
@@ -505,6 +505,94 @@ function safeFields(def, body) {
   const values = keys.map((key) => body[key]);
   return { keys, values };
 }
+function normalizeSupplierPhone(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 8) return "+505" + digits;
+  if (digits.startsWith("505") && digits.length === 11) return "+" + digits;
+  if (digits.startsWith("00") && digits.length >= 10 && digits.length <= 17) return "+" + digits.slice(2);
+  if (raw.startsWith("+") && digits.length >= 8 && digits.length <= 15) return "+" + digits;
+  return null;
+}
+
+export function normalizeSupplierInput(body = {}) {
+  const name = String(body.name || "").trim().replace(/\s+/g, " ");
+  const contact = String(body.contact || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const phone = normalizeSupplierPhone(body.phone);
+  const currency = body.currency === "NIO" ? "NIO" : "USD";
+  const address = String(body.address || "").trim();
+  const paymentTerms = String(body.payment_terms || "").trim();
+  const minimumOrder = Number(body.minimum_order_usd || 0);
+  const rawLeadTime = body.lead_time_days;
+  const leadTime = rawLeadTime === null || rawLeadTime === "" || rawLeadTime === undefined ? null : Number(rawLeadTime);
+  const additional = body.additional_phones === undefined ? [] : body.additional_phones;
+  if (!name || name.length > 120) return { error: erpError(400, "INVALID_SUPPLIER_NAME", "El nombre del proveedor es obligatorio y admite hasta 120 caracteres.") };
+  if (contact.length > 120 || email.length > 180 || address.length > 300 || paymentTerms.length > 120) return { error: erpError(400, "INVALID_SUPPLIER_FIELD", "Revisa la longitud de contacto, correo, dirección o condiciones comerciales.") };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: erpError(400, "INVALID_SUPPLIER_EMAIL", "El correo del proveedor no es válido.") };
+  if (phone === null) return { error: erpError(400, "INVALID_SUPPLIER_PHONE", "El teléfono principal no es válido.") };
+  if (!Number.isFinite(minimumOrder) || minimumOrder < 0 || minimumOrder > 1000000) return { error: erpError(400, "INVALID_SUPPLIER_MINIMUM", "La compra mínima debe ser un importe válido y no negativo.") };
+  if (leadTime !== null && (!Number.isSafeInteger(leadTime) || leadTime < 0 || leadTime > 365)) return { error: erpError(400, "INVALID_SUPPLIER_LEAD_TIME", "El plazo de entrega debe estar entre 0 y 365 días.") };
+  if (!Array.isArray(additional) || additional.length > 5) return { error: erpError(400, "INVALID_SUPPLIER_PHONES", "Puedes registrar hasta cinco teléfonos adicionales.") };
+  const phones = additional.map(value => normalizeSupplierPhone(typeof value === "string" ? value : value?.phone));
+  if (phones.some(value => value === null)) return { error: erpError(400, "INVALID_SUPPLIER_PHONE", "Uno de los teléfonos adicionales no es válido.") };
+  const secondaryPhones = phones.filter(Boolean);
+  const unique = [phone, ...secondaryPhones].filter(Boolean);
+  if (new Set(unique).size !== unique.length) return { error: erpError(400, "DUPLICATE_SUPPLIER_PHONE", "No repitas el mismo teléfono en el proveedor.") };
+  return { value: {
+    name, contact: contact || null, phone: phone || null, email: email || null, currency,
+    address: address || null, payment_terms: paymentTerms || null, minimum_order_usd: minimumOrder,
+    lead_time_days: leadTime, notes: String(body.notes || "").trim() || null, active: body.active !== false,
+    additional_phones: secondaryPhones.map((number, index) => ({ phone: number, display_order: index + 1 }))
+  }};
+}
+
+export async function createSupplier(sql, user, body) {
+  const normalized = normalizeSupplierInput(body);
+  if (normalized.error) return normalized.error;
+  const supplier = normalized.value;
+  const query =
+    "WITH input AS (SELECT $1::text AS name,$2::text AS contact,$3::text AS phone,$4::text AS email,$5::text AS currency,$6::text AS notes,$7::boolean AS active,$8::text AS address,$9::text AS payment_terms,$10::numeric AS minimum_order_usd,$11::integer AS lead_time_days,$12::jsonb AS additional_phones), " +
+    "created AS (INSERT INTO suppliers(name,contact,phone,email,currency,notes,active,address,payment_terms,minimum_order_usd,lead_time_days) SELECT name,contact,phone,email,currency,notes,active,address,payment_terms,minimum_order_usd,lead_time_days FROM input RETURNING *), " +
+    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT created.id,phone.phone,phone.display_order FROM created CROSS JOIN input CROSS JOIN LATERAL jsonb_to_recordset(input.additional_phones) AS phone(phone text,display_order smallint) RETURNING supplier_id,phone,display_order), " +
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $13,'create','supplier',created.id::text,to_jsonb(created) FROM created) " +
+    "SELECT created.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('phone',p.phone,'display_order',p.display_order) ORDER BY p.display_order) FROM phone_rows p WHERE p.supplier_id=created.id),'[]'::jsonb) AS additional_phones FROM created";
+  try {
+    const rows = await sql.query(query, [supplier.name,supplier.contact,supplier.phone,supplier.email,supplier.currency,supplier.notes,supplier.active,supplier.address,supplier.payment_terms,supplier.minimum_order_usd,supplier.lead_time_days,JSON.stringify(supplier.additional_phones),user.id]);
+    return erpJson({ record: rows[0] }, 201);
+  } catch (error) {
+    if (error?.code === "23505") return erpError(409, "DUPLICATE_SUPPLIER", "Ya existe un proveedor con ese nombre o teléfono.");
+    if (error?.code === "23514" || error?.code === "22P02") return erpError(400, "INVALID_SUPPLIER", "Los datos del proveedor no cumplen las reglas del sistema.");
+    console.error("[erp] Supplier create failed:", error?.message || "database error");
+    return erpError(503, "SUPPLIER_CREATE_FAILED", "No se pudo guardar el proveedor.");
+  }
+}
+
+export async function updateSupplier(sql, user, id, body) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(id || ""))) return erpError(400, "INVALID_SUPPLIER_ID", "La referencia del proveedor no es válida.");
+  const normalized = normalizeSupplierInput(body);
+  if (normalized.error) return normalized.error;
+  const supplier = normalized.value;
+  const query =
+    "WITH changed AS (UPDATE suppliers SET name=$1,contact=$2,phone=$3,email=$4,currency=$5,notes=$6,active=$7,address=$8,payment_terms=$9,minimum_order_usd=$10,lead_time_days=$11,updated_at=NOW() WHERE id=$13::uuid RETURNING *), " +
+    "deleted_phones AS (DELETE FROM supplier_phone_numbers p USING changed c WHERE p.supplier_id=c.id RETURNING p.id), " +
+    "delete_barrier AS (SELECT count(*) FROM deleted_phones), " +
+    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT changed.id,phone.phone,phone.display_order FROM changed CROSS JOIN delete_barrier CROSS JOIN LATERAL jsonb_to_recordset($12::jsonb) AS phone(phone text,display_order smallint) RETURNING supplier_id,phone,display_order), " +
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $14,'update','supplier',changed.id::text,to_jsonb(changed) FROM changed) " +
+    "SELECT changed.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('phone',p.phone,'display_order',p.display_order) ORDER BY p.display_order) FROM phone_rows p WHERE p.supplier_id=changed.id),'[]'::jsonb) AS additional_phones FROM changed";
+  try {
+    const rows = await sql.query(query, [supplier.name,supplier.contact,supplier.phone,supplier.email,supplier.currency,supplier.notes,supplier.active,supplier.address,supplier.payment_terms,supplier.minimum_order_usd,supplier.lead_time_days,JSON.stringify(supplier.additional_phones),id,user.id]);
+    if (!rows[0]) return erpError(404, "SUPPLIER_NOT_FOUND", "No se encontró el proveedor.");
+    return erpJson({ record: rows[0] });
+  } catch (error) {
+    if (error?.code === "23505") return erpError(409, "DUPLICATE_SUPPLIER", "Ya existe un proveedor con ese nombre o teléfono.");
+    if (error?.code === "23514" || error?.code === "22P02") return erpError(400, "INVALID_SUPPLIER", "Los datos del proveedor no cumplen las reglas del sistema.");
+    console.error("[erp] Supplier update failed:", error?.message || "database error");
+    return erpError(503, "SUPPLIER_UPDATE_FAILED", "No se pudo actualizar el proveedor.");
+  }
+}
+
 
 export function normalizeEmployeeCreateInput(input = {}, options = {}) {
   const partial = options.partial === true;
@@ -678,6 +766,20 @@ async function updateGeneric(sql, user, resource, def, id, body) {
   const { keys, values } = safeFields(def, body);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
   if (keys.includes("created_by") || keys.includes("created_at")) return erpError(400, "INVALID_FIELD", "No se permite modificar la autoría ni la fecha de creación.");
+  if (def.table === "products" && keys.includes("supplier_id")) {
+    const supplierIndex = keys.indexOf("supplier_id");
+    const supplierId = values[supplierIndex] == null || values[supplierIndex] === "" ? null : String(values[supplierIndex]);
+    if (supplierId && !/^[0-9a-f-]{36}$/i.test(supplierId)) return erpError(400, "INVALID_SUPPLIER_ID", "Selecciona un proveedor válido.");
+    let supplierName = null;
+    if (supplierId) {
+      const linked = await sql.query("SELECT id,name FROM suppliers WHERE id=$1::uuid AND active=TRUE LIMIT 1", [supplierId]);
+      if (!linked[0]) return erpError(400, "SUPPLIER_NOT_AVAILABLE", "El proveedor seleccionado no existe o está inactivo.");
+      supplierName = linked[0].name;
+    }
+    const nameIndex = keys.indexOf("supplier_name");
+    if (nameIndex >= 0) values[nameIndex] = supplierName;
+    else { keys.push("supplier_name"); values.push(supplierName); }
+  }
   if (def.table === "products" && ["purchase_cost_usd","additional_cost_usd","unit_cost_usd"].some((key)=>keys.includes(key))) {
     const current = await sql.query("SELECT purchase_cost_usd,additional_cost_usd FROM products WHERE id=$1::uuid LIMIT 1",[id]);
     if (!current[0]) return erpError(404,"RECORD_NOT_FOUND","No se encontró el producto solicitado.");
@@ -807,9 +909,16 @@ export async function createProduct(sql, user, body) {
     return erpError(400, "INVALID_PRODUCT_COST", "El costo de compra y los costos adicionales deben ser valores no negativos.");
   }
   values.unit_cost_usd = Math.round((purchaseCost + additionalCost) * 100) / 100;
+  const supplierId = String(values.supplier_id || "").trim() || null;
+  if (supplierId && !/^[0-9a-f-]{36}$/i.test(supplierId)) return erpError(400, "INVALID_SUPPLIER_ID", "Selecciona un proveedor válido.");
+  if (supplierId) {
+    const linked = await sql.query("SELECT id,name FROM suppliers WHERE id=$1::uuid AND active=TRUE LIMIT 1", [supplierId]);
+    if (!linked[0]) return erpError(400, "SUPPLIER_NOT_AVAILABLE", "El proveedor seleccionado no existe o está inactivo.");
+    values.supplier_name = linked[0].name;
+  }
   const result = await sql.query(
-    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_name,wholesale_price_usd,tone,notes,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',$25 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $25,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
-    [sku,name,values.brand||null,values.category||null,values.concentration||null,values.gender||null,values.family||null,values.size_ml||null,values.presentation||null,values.purchase_cost_usd||0,values.additional_cost_usd||0,values.unit_cost_usd||0,values.price_usd||0,stock,values.min_stock||0,values.location||null,values.active!==false,values.barcode||null,values.description||null,values.supplier_name||null,values.wholesale_price_usd||null,values.tone||null,values.notes||null,JSON.stringify(values.images||[]),user.id]
+    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_id,supplier_name,wholesale_price_usd,tone,notes,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::uuid,$21,$22,$23,$24,$25::jsonb) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',$26 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $26,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
+    [sku,name,values.brand||null,values.category||null,values.concentration||null,values.gender||null,values.family||null,values.size_ml||null,values.presentation||null,values.purchase_cost_usd||0,values.additional_cost_usd||0,values.unit_cost_usd||0,values.price_usd||0,stock,values.min_stock||0,values.location||null,values.active!==false,values.barcode||null,values.description||null,supplierId,values.supplier_name||null,values.wholesale_price_usd||null,values.tone||null,values.notes||null,JSON.stringify(values.images||[]),user.id]
   );
   return erpJson({record:result[0]},201);
 }
@@ -2931,10 +3040,12 @@ export async function handleERPRequest(request, env, user, sql) {
   if (request.method === "POST" && !id) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     if (resource === "orders" || resource === "purchases" || resource === "invoices" || resource === "inventory_movements") return erpError(400, "USE_OPERATION_ENDPOINT", "Utiliza el flujo de operación específico para este registro.");
+    if (normalizedResource === "suppliers") return createSupplier(sql,user,body);
     return createGeneric(sql, user, normalizedResource, def, body);
   }
   if (request.method === "PATCH" && id) {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    if (normalizedResource === "suppliers") return updateSupplier(sql,user,id,body);
     if (normalizedResource === "orders" && Object.prototype.hasOwnProperty.call(body,"status")) {
       if (!canAccess(user, RESOURCE_DEFS.orders.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para cambiar pedidos.");
       return updateOrderStatus(sql,user,id,body);
