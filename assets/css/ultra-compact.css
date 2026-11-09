@@ -615,3 +615,47 @@ html, body { font-size: max(15px, calc(15px * var(--ui-font-scale, 1))); }
     padding: 8px;
   }
 }
+
+
+/* Clarify that the access selector switches permission templates, not modules. */
+.access-manager-section .access-role-picker {
+  display: flex;
+  flex: 0 0 230px;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 210px;
+}
+.access-manager-section .access-role-picker > label {
+  color: #687588;
+  font-size: max(11px, calc(10px * var(--ui-font-scale, 1)));
+  font-weight: 700;
+}
+.access-manager-section .access-role-picker .filter-select {
+  width: 100%;
+  min-width: 0;
+}
+.access-manager-section .access-template-help {
+  max-width: 78ch;
+  margin-top: 7px;
+  color: #526174;
+  font-size: max(12px, calc(11px * var(--ui-font-scale, 1)));
+  line-height: 1.5;
+}
+.access-manager-section .access-permission-dirty {
+  margin: 0;
+  padding: 9px 13px;
+  border-bottom: 1px solid #ead7b5;
+  color: #79572a;
+  background: #fbf6eb;
+  font-size: max(12px, calc(11px * var(--ui-font-scale, 1)));
+  font-weight: 650;
+}
+.access-manager-section .access-permission-dirty[hidden] { display: none; }
+@media (max-width: 720px) {
+  .access-manager-section .access-role-picker {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  .access-manager-section .panel-heading { align-items: stretch; }
+}
