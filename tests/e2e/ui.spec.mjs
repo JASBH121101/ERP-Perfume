@@ -776,7 +776,7 @@ test('CSV import parses the selected file and exposes an editable preview', asyn
   await expect(preview.locator('[data-import-field="name"]').nth(0)).toHaveValue('Sauvage Elixir');
   await expect(preview.locator('[data-import-field="name"]').nth(1)).toHaveValue('Stronger With You');
   await expect(preview.locator('[data-import-field="brand"]').nth(0)).toHaveValue('Dior');
-  await expect(dialog.getByRole('button', { name: 'Importar 2 productos a Neon' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Importar 2 productos' })).toBeEnabled();
   await expect(dialog.locator('[data-import-field="price_usd"]').first()).toHaveValue('109.99');
   await dialog.locator('[data-import-field="name"]').first().fill('Sauvage Elixir QA editado');
   await expect(dialog.locator('[data-import-field="name"]').first()).toHaveValue('Sauvage Elixir QA editado');
@@ -795,7 +795,7 @@ test('catalog import submits the reviewed rows to the backend endpoint', async (
   const importResponse = page.waitForResponse(response =>
     response.url().endsWith('/api/erp/products/import') && response.request().method() === 'POST'
   );
-  await dialog.getByRole('button', { name: 'Importar 1 productos a Neon' }).click();
+  await dialog.getByRole('button', { name: 'Importar 1 productos' }).click();
   const response = await importResponse;
   expect(response.status()).toBe(201);
   await expect(page.locator('#toast-region')).toContainText('1 productos importados');
@@ -955,7 +955,7 @@ test('inventory and catalog stay usable at mobile, tablet and desktop widths', a
     });
     expect(actionLayout.exportBottom).toBeGreaterThan(0);
     expect(actionLayout.exportRight).toBeLessThanOrEqual(viewport.width);
-    expect(actionLayout.summaryColumns).toBe(3);
+    expect(actionLayout.summaryColumns).toBe(viewport.width > 1180 ? 4 : 2);
     if (viewport.width <= 720) expect(actionLayout.filterColumns).toBe(2);
     const fixtureId = '00000000-0000-0000-0000-000000000101';
     const detailTrigger = page.locator('[data-action="inventory-view-product"][data-id="' + fixtureId + '"]');
@@ -1021,8 +1021,8 @@ test('owner resource monitor populates the sidebar after initial ERP load', asyn
   expect(bars.storage).toBe('13%');
   await navigateToView(page, 'resources');
   await expect(page.getByRole('heading', { name: 'Consumo y servicios' })).toBeVisible();
-  await expect(page.locator('.resource-metric-grid')).toContainText('Neon PostgreSQL');
-  await expect(page.locator('.resource-secondary-grid')).toContainText('GitHub Actions');
+  await expect(page.locator('.resource-metric-grid')).toContainText('Base de datos');
+  await expect(page.locator('.resource-secondary-grid')).toContainText('Automatización');
 });
 
 test('product action buttons keep New product above Import on mobile and ordered on desktop', async ({ page }) => {
