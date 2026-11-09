@@ -991,7 +991,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   function catalogPrintDocument(items, includePrices) {
     const generated = new Date().toLocaleDateString('es-NI', { day:'2-digit', month:'long', year:'numeric' });
     const safeItems = items.map(product => {
-      const detail = [product.brand, product.presentation, product.concentration, product.sizeMl ? product.sizeMl + ' ml' : ''].filter(Boolean).join(' · ');
+      const detail = [product.brand, product.presentation, String(product.concentration || '').trim(), product.sizeMl ? product.sizeMl + ' ml' : ''].filter(value => String(value || '').trim()).join(' · ');
       const stock = Number(product.stock || 0);
       const config = catalogConfigFor(product);
       const availability = stock <= config.minStock ? 'Últimas unidades' : 'Disponible';
@@ -1412,7 +1412,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const costs = costSummary(product);
     const fields = [
       ['Marca', product.brand], ['SKU', product.sku], ['Categoría', product.category],
-      ['Concentración', product.concentration], ['Género', product.gender], ['Familia olfativa', product.family],
+      ...(String(product.concentration || '').trim() ? [['Concentración', String(product.concentration).trim()]] : []), ['Género', product.gender], ['Familia olfativa', product.family],
       ['Contenido', product.sizeMl ? product.sizeMl + ' ml' : '—'], ['Presentación', product.presentation],
       ['Proveedor', product.supplier], ['Costo unitario', money(costs.unitCost)], ['Precio de venta', money(product.price)],
       ['Utilidad estimada', money(costs.profit)], ['Margen bruto', costs.margin.toFixed(1) + '%'],
