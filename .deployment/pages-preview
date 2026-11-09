@@ -65,3 +65,6 @@ Validation: ERP quality gate passed on PR #18 and main push; Development API Wor
 Preview release: record verified Development migration 0023 (six supporting FK indexes), environment-isolated API build and migration ledger integrity.
 Source commit: a5f30de69441107fcc429f2703d4a3d8e0181d81.
 Validation: guarded Development migration workflow, independent ledger/index verification, unit tests and browser E2E passed. Preview only; Production not targeted.
+
+Preview release: PR #37 — product authenticity classification (Original / Inspiración / Genérico) and conditional Inspired by reference field; API validation and database migration 0025 verified on Development and Production.
+Preview deployment only; Production Pages promotion remains separately gated.
