@@ -400,7 +400,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
           purchaseCost, additionalCost, unitCost, price, wholesalePrice: p.wholesale_price_usd == null ? null : Number(p.wholesale_price_usd),
           profit, margin: price > 0 ? profit / price * 100 : 0, stock: Number(p.stock || 0), minStock: Number(p.min_stock || 0),
           location: p.location || "", barcode: p.barcode || "", notes: p.notes || "", tone: p.tone || "art-violet",
-          supplier: p.supplier_name || "", images:Array.isArray(p.images)?p.images:[], active: p.active !== false, createdAt: p.created_at
+          supplierId: p.supplier_id || null, supplier: p.supplier_name || "", images:Array.isArray(p.images)?p.images:[], active: p.active !== false, createdAt: p.created_at
         };
       });
       inventoryMovements = (data.inventory_movements || []).map((m) => ({
@@ -412,8 +412,14 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       }));
       suppliers = (data.suppliers || []).map(s => ({
         id: s.id, name: s.name, contact: s.contact || "", phone: s.phone || "", email: s.email || "",
+        additionalPhones: Array.isArray(s.additional_phones) ? s.additional_phones.map(item => typeof item === "string" ? item : item?.phone).filter(Boolean) : [],
+        address: s.address || "", paymentTerms: s.payment_terms || "", minimumOrderUsd: Number(s.minimum_order_usd || 0),
+        leadTimeDays: s.lead_time_days == null ? null : Number(s.lead_time_days),
         currency: s.currency || "USD", notes: s.notes || "", active: s.active !== false
       }));
+      products.forEach(product => {
+        if (product.supplierId) product.supplier = suppliers.find(supplier => String(supplier.id) === String(product.supplierId))?.name || product.supplier || "";
+      });
       customers = (data.customers || []).map(x => ({
         id: x.id, name: x.name, contact: x.contact || x.phone || "", phone: x.phone || x.contact || "",
         email: x.email || "", customerType: x.customer_type || "particular", orders: 0, spent: 0,
@@ -1756,6 +1762,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   function formField(label,name,type,required,attrs){return '<label class="form-field"><span>'+label+(required?' '+requiredMark():'')+'</span><input name="'+name+'" type="'+(type||'text')+'"'+(required?' required':'')+' '+(attrs||'')+'></label>';}
   function selectField(label,name,options,required){return '<label class="form-field"><span>'+label+(required?' '+requiredMark():'')+'</span><select name="'+name+'"'+(required?' required':'')+'>'+options+'</select></label>';}
   function currencyField(selected){return selectField('Moneda de la operación','currency',currencyOptions(selected||'USD'),true);}
+  function supplierPhoneInputRow(index,value){
+    return '<div class="supplier-phone-row"><label class="form-field"><span>Teléfono adicional</span><input name="additionalPhone" type="tel" maxlength="24" autocomplete="tel" value="'+esc(value||'')+'" placeholder="Ej. 8888 8888"></label><button class="button button-quiet button-small" type="button" data-action="supplier-remove-phone" aria-label="Quitar teléfono adicional">Quitar</button></div>';
+  }
   function supplierOptions(){return suppliers.map((s,i)=>'<option value="'+i+'">'+esc(s.name)+'</option>').join('');}
   function searchableField(label,name,lookupType,required,fieldId){
     const id=fieldId||('business-'+name+'-search');
@@ -1974,10 +1983,26 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(typeof previewDialog.showModal==='function')previewDialog.showModal();
   }
   function openBusinessDialog(type,recordId){
-    const titles={customer:'Nuevo cliente',supplier:'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra','supplier-invoice':'Registrar factura de proveedor','supplier-invoice-payment':'Registrar pago a proveedor',expense:'Registrar gasto',cash:'Registrar recibo o pago','cash-account':'Nueva cuenta de caja o banco',invoice:'Nueva factura',payment:'Registrar abono',employee:recordId?'Editar colaborador':'Agregar colaborador','employee-history':'Historial del colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
+    const titles={customer:'Nuevo cliente',supplier:recordId?'Editar proveedor':'Nuevo proveedor',order:'Nuevo pedido',purchase:'Registrar compra','supplier-invoice':'Registrar factura de proveedor','supplier-invoice-payment':'Registrar pago a proveedor',expense:'Registrar gasto',cash:'Registrar recibo o pago','cash-account':'Nueva cuenta de caja o banco',invoice:'Nueva factura',payment:'Registrar abono',employee:recordId?'Editar colaborador':'Agregar colaborador','employee-history':'Historial del colaborador',attendance:'Registrar asistencia',leave:'Nueva solicitud de permiso o vacaciones','payroll-period':'Crear período de nómina','payroll-item':'Agregar partida de nómina','payroll-payment':'Pagar período de nómina'};
     let body='';
     if(type==='customer')body='<div class="form-grid">'+formField('Nombre del cliente','name','text',true,'maxlength="80"')+formField('Teléfono o contacto','contact','text',false,'maxlength="40"')+'</div>';
-    if(type==='supplier')body='<div class="form-grid">'+formField('Nombre del proveedor','name','text',true,'maxlength="80"')+formField('Contacto','contact','text',false,'maxlength="80"')+formField('Teléfono','phone','tel',false,'maxlength="40"')+formField('Correo','email','email',false,'maxlength="120"')+currencyField('USD')+'</div>';
+    const currentSupplier=type==='supplier'&&recordId?suppliers.find(item=>String(item.id)===String(recordId)):null;
+    if(type==='supplier'){
+      const phoneRows=(currentSupplier?.additionalPhones||[]).map((phone,index)=>supplierPhoneInputRow(index+1,phone)).join('');
+      body='<div class="form-grid">'+
+        formField('Nombre de la empresa / proveedor','name','text',true,'maxlength="120" autocomplete="organization" value="'+esc(currentSupplier?.name||'')+'"')+
+        formField('Persona de contacto (vendedor o encargado)','contact','text',false,'maxlength="120" autocomplete="name" value="'+esc(currentSupplier?.contact||'')+'"')+
+        formField('Teléfono principal','phone','tel',false,'maxlength="24" autocomplete="tel" value="'+esc(currentSupplier?.phone||'')+'" placeholder="Ej. 8888 8888"')+
+        '<div class="form-field supplier-extra-phones-field"><span>Teléfonos adicionales</span><div class="supplier-phone-list" data-supplier-phone-list>'+phoneRows+'</div><button class="button button-quiet button-small" type="button" data-action="supplier-add-phone">+ Agregar otro teléfono</button><small class="form-helper">Puedes guardar hasta cinco números adicionales.</small></div>'+
+        formField('Correo electrónico','email','email',false,'maxlength="180" autocomplete="email" value="'+esc(currentSupplier?.email||'')+'"')+
+        formField('Dirección del proveedor','address','text',false,'maxlength="300" value="'+esc(currentSupplier?.address||'')+'"')+
+        formField('Condiciones de pago','paymentTerms','text',false,'maxlength="120" placeholder="Ej. Contado o crédito a 15 días" value="'+esc(currentSupplier?.paymentTerms||'')+'"')+
+        formField('Compra mínima (USD)','minimumOrderUsd','number',false,'min="0" step="0.01" value="'+Number(currentSupplier?.minimumOrderUsd||0)+'"')+
+        formField('Plazo habitual de entrega (días)','leadTimeDays','number',false,'min="0" max="365" step="1" value="'+(currentSupplier?.leadTimeDays??'')+'"')+
+        currencyField(currentSupplier?.currency||'USD')+
+        formField('Notas','notes','text',false,'maxlength="1000" value="'+esc(currentSupplier?.notes||'')+'"')+
+        '</div>';
+    }
     if(type==='order'){
       if(!products.some(product=>product.active!==false)){toast('Registra primero un producto activo.');return;}
       body='<div class="form-grid">'+
