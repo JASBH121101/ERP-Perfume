@@ -217,7 +217,8 @@ async function installStatefulInventoryApi(page, options = {}) {
         min_stock: Number(payload.min_stock || 0), location: payload.location || null, active: true,
         barcode: payload.barcode || null, description: null, supplier_name: payload.supplier_name || null,
         wholesale_price_usd: payload.wholesale_price_usd || null, tone: payload.tone || 'art-violet',
-        notes: payload.notes || null, images: [], created_at: new Date().toISOString()
+        notes: payload.notes || null, authenticity_type: payload.authenticity_type || 'unspecified',
+        inspired_by: payload.inspired_by || null, images: [], created_at: new Date().toISOString()
       };
       data.products.push(record);
       if (record.stock > 0) {
@@ -870,6 +871,7 @@ test('product creation saves its opening balance and writes the first kardex ent
   expect(payload.inspired_by).toBe('Creed Aventus');
   await expect(dialog).not.toBeVisible();
   await expect(page.locator('#product-table-body')).toContainText('QA Inventory Created Perfume');
+  await expect(page.locator('#product-table-body')).toContainText('Inspirado en Creed Aventus');
 
   await navigateToView(page, 'inventory');
   await expect(page.locator('#inventory-product-body')).toContainText('QA Inventory Created Perfume');
