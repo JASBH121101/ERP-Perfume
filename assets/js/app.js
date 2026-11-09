@@ -2267,8 +2267,19 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if(!get('name'))throw new Error('El nombre del cliente es obligatorio.');
         await erpApi('customers',{method:'POST',body:JSON.stringify({name:get('name'),contact:get('contact'),phone:get('contact'),customer_type:'particular',active:true})});
       } else if(type==='supplier'){
-        if(!get('name'))throw new Error('El nombre del proveedor es obligatorio.');
-        await erpApi('suppliers',{method:'POST',body:JSON.stringify({name:get('name'),contact:get('contact'),phone:get('phone'),email:get('email'),currency,active:true})});
+        if(!get('name'))throw new Error('El nombre de la empresa proveedora es obligatorio.');
+        const additionalPhones=Array.from(businessForm.querySelectorAll('input[name="additionalPhone"]')).map(input=>input.value.trim()).filter(Boolean);
+        const supplierPayload={
+          name:get('name'),contact:get('contact'),phone:get('phone'),additional_phones:additionalPhones,
+          email:get('email'),address:get('address'),payment_terms:get('paymentTerms'),
+          minimum_order_usd:num('minimumOrderUsd'),lead_time_days:get('leadTimeDays')===''?null:num('leadTimeDays'),
+          notes:get('notes'),currency,active:currentSupplier?.active!==false
+        };
+        if(currentSupplier){
+          await erpApi('suppliers/'+encodeURIComponent(currentSupplier.id),{method:'PATCH',body:JSON.stringify(supplierPayload)});
+        }else{
+          await erpApi('suppliers',{method:'POST',body:JSON.stringify(supplierPayload)});
+        }
       } else if(type==='order'){
         const selectedIndex=get('customerIndex');
         const customer=selectedIndex!==''?customers[Number(selectedIndex)]:null;
@@ -2497,7 +2508,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if(lastInvoice)window.requestAnimationFrame(()=>showInvoicePreview(lastInvoice.id));
       } else {
         const messages={
-          customer:'Cliente guardado.',supplier:'Proveedor guardado.',order:'Pedido guardado.',
+          customer:'Cliente guardado.',supplier:businessForm.dataset.recordId?'Proveedor actualizado.':'Proveedor guardado.',order:'Pedido guardado.',
           'supplier-invoice':'Factura de proveedor registrada. El saldo pendiente ya está en cuentas por pagar.',
           'supplier-invoice-payment':'Pago aplicado a la factura del proveedor y salida registrada en caja/banco.',
           purchase:'Compra registrada: inventario, costo y cuenta por pagar actualizados.',
@@ -2782,9 +2793,20 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     return calculatePayablesSnapshot(legacy,documents,roundMoney).total;
   }
   function renderSuppliers(){
-    const rows=suppliers.map(s=>'<tr><td data-label="Proveedor / contacto" class="table-primary">'+esc(s.name)+'<small class="table-secondary">'+esc(s.contact||s.email||'Sin contacto')+'</small></td><td data-label="Teléfono">'+esc(s.phone||'—')+'</td><td data-label="Moneda habitual">'+(s.currency==='NIO'?'NIO · Córdoba':'USD · Dólar')+'</td><td data-label="Compras">'+purchases.filter(p=>p.supplier===s.name).length+'</td><td data-label="Saldo por pagar">'+money(supplierPayablesUsd(s))+'</td></tr>').join('');
+    const rows=suppliers.map(s=>{
+      const phones=[s.phone,...(s.additionalPhones||[])].filter(Boolean).map(esc).join('<small class="table-secondary">Alternativo</small>');
+      const terms=[s.paymentTerms||'Sin condiciones',s.leadTimeDays==null?'':s.leadTimeDays+' días'].filter(Boolean).join(' · ');
+      return '<tr><td data-label="Empresa / contacto" class="table-primary">'+esc(s.name)+'<small class="table-secondary">'+esc(s.contact||'Sin persona de contacto')+'</small></td>'+
+        '<td data-label="Teléfonos">'+(phones||'—')+'</td><td data-label="Correo">'+esc(s.email||'—')+'</td>'+
+        '<td data-label="Compra mínima / entrega">'+money(s.minimumOrderUsd||0)+' USD<small class="table-secondary">'+esc(terms||'—')+'</small></td>'+
+        '<td data-label="Moneda">'+(s.currency==='NIO'?'NIO · Córdoba':'USD · Dólar')+'</td>'+
+        '<td data-label="Saldo por pagar">'+money(supplierPayablesUsd(s))+'</td>'+
+        '<td data-label="Acciones"><button class="button button-quiet button-small" type="button" data-action="edit-supplier" data-id="'+esc(s.id)+'">Editar</button></td></tr>';
+    }).join('');
     const outstanding=calculatePayablesSnapshot(purchases,supplierInvoices,roundMoney).total;
-    return heading(views.suppliers,'<button class="button button-primary" data-action="new-supplier">'+svg('plus')+' Nuevo proveedor</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Proveedores</span><strong>'+suppliers.length+'</strong></div><div class="summary-mini"><span>Compras vinculadas</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Saldo por pagar USD</span><strong>'+money(outstanding)+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PROVEEDOR / CONTACTO</th><th>TELÉFONO</th><th>MONEDA HABITUAL</th><th>COMPRAS</th><th>SALDO USD</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
+    return heading(views.suppliers,'<button class="button button-primary" data-action="new-supplier">'+svg('plus')+' Nuevo proveedor</button>')+
+      '<div class="summary-strip"><div class="summary-mini"><span>Proveedores activos</span><strong>'+suppliers.filter(s=>s.active!==false).length+'</strong></div><div class="summary-mini"><span>Compras vinculadas</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Saldo por pagar USD</span><strong>'+money(outstanding)+'</strong></div></div>'+
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>EMPRESA / CONTACTO</th><th>TELÉFONOS</th><th>CORREO</th><th>COMPRA MÍNIMA / ENTREGA</th><th>MONEDA</th><th>SALDO USD</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
   }
   function purchaseOrderLineHtml(){
     const options=products.filter(product=>product.active!==false).map(product=>'<option value="'+esc(product.id)+'">'+esc(product.name)+' · '+esc(product.sku||'Sin SKU')+'</option>').join('');
@@ -4435,6 +4457,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const tab=action.getAttribute('data-tab');
       if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
     } else if(types[name])openBusinessDialog(types[name]);
+    else if(name==='edit-supplier')openBusinessDialog('supplier',action.getAttribute('data-id'));
+    else if(name==='supplier-add-phone'){
+      const list=businessForm.querySelector('[data-supplier-phone-list]');
+      const count=list?.querySelectorAll('input[name="additionalPhone"]').length||0;
+      if(!list)return;
+      if(count>=5){toast('Puedes registrar hasta cinco teléfonos adicionales.');return;}
+      list.insertAdjacentHTML('beforeend',supplierPhoneInputRow(count+1,''));
+    }
+    else if(name==='supplier-remove-phone'){
+      action.closest('.supplier-phone-row')?.remove();
+    }
     else if(name==='view-employee')openBusinessDialog('employee-history',action.getAttribute('data-id'));
     else if(name==='edit-employee')openBusinessDialog('employee',action.getAttribute('data-id'));
     else if(name==='go-hr-employees'){state.hrTab='employees';renderView();}
