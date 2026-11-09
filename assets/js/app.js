@@ -623,7 +623,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     expenses: { title: 'Gastos', eyebrow: 'FINANZAS', heading: 'Gastos operativos', subtitle: 'Controla egresos en dólares y córdobas.' },
     cash: { title: 'Caja y bancos', eyebrow: 'FINANZAS', heading: 'Caja y bancos', subtitle: 'Registra cobros, recibos y pagos por cuenta.' }
   };
-  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', purchaseTab: 'orders', inventoryMovementQuery: '', inventoryMovementActor: '', inventoryMovementSupplier: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, purchaseHistoryQuery: '', purchaseHistorySupplier: 'all', purchaseHistoryOrderStatus: 'all', purchaseHistoryReceiptStatus: 'all', purchaseHistoryStartDate: '', purchaseHistoryEndDate: '', catalogCategory: 'all', catalogShowPrices: true };
+  const state = { view: 'dashboard', query: '', filter: 'all', category: 'all', productStatus: 'active', hrTab: 'employees', purchaseTab: 'orders', inventoryMovementQuery: '', inventoryMovementActor: '', inventoryMovementSupplier: '', inventoryMovementType: 'all', inventoryMovementStartDate: '', inventoryMovementEndDate: '', inventoryMovementPage: 1, inventoryMovementPageSize: 25, inventoryProductQuery: '', inventoryProductCategory: 'all', inventoryProductStock: 'all', inventoryStockPage: 1, inventoryStockPageSize: 25, purchaseHistoryQuery: '', purchaseHistorySupplier: 'all', purchaseHistoryOrderStatus: 'all', purchaseHistoryReceiptStatus: 'all', purchaseHistoryStartDate: '', purchaseHistoryEndDate: '', catalogCategory: 'all', catalogShowPrices: true, restockDraft: null };
   const permissionViews = {
     dashboard: ["dashboard.view"], products: ["products.catalog.view"], catalog: ["products.catalog.view"], resources: [],
     inventory: ["inventory.stock.view","inventory.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"],
@@ -1384,6 +1384,45 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       pagination.replaceChildren(footer);
     }
   }
+  function renderReplenishmentPanel(activeProducts){
+    const candidates=(activeProducts||products).filter(product=>{
+      const minimum=Math.max(0,Number(product.minStock??0));
+      const target=minimum>0?minimum:(Number(product.stock||0)===0?1:0);
+      return Number(product.stock||0)<target;
+    }).sort((a,b)=>Number(a.stock||0)-Number(b.stock||0)||String(a.name).localeCompare(String(b.name),'es'));
+    const rows=candidates.map(product=>{
+      const minimum=Math.max(0,Number(product.minStock??0));
+      const target=minimum>0?minimum:1;
+      const shortage=Math.max(0,target-Number(product.stock||0));
+      const supplier=suppliers.find(item=>String(item.id)===String(product.supplierId));
+      const unitCost=Number(product.unitCost||product.purchaseCost||0);
+      const estimated=roundMoney(unitCost*shortage);
+      const source=supplier?(supplier.active===false?'Proveedor inactivo':supplier.name):'Sin proveedor asignado';
+      const action=supplier&&supplier.active!==false&&permissionGranted('purchases.purchase_orders.create')
+        ?'<button class="button button-primary button-small" type="button" data-action="create-restock-order" data-product-id="'+esc(product.id)+'">Preparar OC</button>'
+        :'<button class="button button-quiet button-small" type="button" data-action="assign-product-supplier" data-id="'+esc(product.id)+'">Asignar proveedor</button>';
+      return '<tr><td data-label="Producto" class="table-primary">'+esc(product.name)+'<small class="table-secondary">'+esc(product.sku||'')+'</small></td>'+
+        '<td data-label="Stock">'+Number(product.stock||0)+' / '+target+' uds.</td>'+
+        '<td data-label="Faltante">'+shortage+' uds.</td>'+
+        '<td data-label="Proveedor">'+esc(source)+'</td>'+
+        '<td data-label="Costo estimado">'+money(estimated)+' USD<small class="table-secondary">'+money(unitCost)+' USD / ud.</small></td>'+
+        '<td data-label="Acción">'+action+'</td></tr>';
+    }).join('');
+    const totalUnits=candidates.reduce((sum,product)=>{
+      const minimum=Math.max(0,Number(product.minStock??0));
+      const target=minimum>0?minimum:(Number(product.stock||0)===0?1:0);
+      return sum+Math.max(0,target-Number(product.stock||0));
+    },0);
+    const totalValue=roundMoney(candidates.reduce((sum,product)=>{
+      const minimum=Math.max(0,Number(product.minStock??0));
+      const target=minimum>0?minimum:(Number(product.stock||0)===0?1:0);
+      return sum+Math.max(0,target-Number(product.stock||0))*Number(product.unitCost||product.purchaseCost||0);
+    },0));
+    return '<article class="list-panel inventory-replenishment-panel"><div class="panel-heading"><div><h2>Sugerencias de reposición</h2><p>Calcula el faltante para recuperar el stock mínimo que configuraste por producto.</p></div><span class="ledger-count">'+candidates.length+' referencias</span></div>'+
+      '<div class="summary-strip"><div class="summary-mini"><span>Unidades faltantes</span><strong>'+totalUnits+'</strong></div><div class="summary-mini"><span>Costo estimado</span><strong>'+money(totalValue)+' USD</strong></div><div class="summary-mini"><span>Sin proveedor vinculado</span><strong>'+candidates.filter(p=>!suppliers.some(s=>String(s.id)===String(p.supplierId)&&s.active!==false)).length+'</strong></div></div>'+
+      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>PRODUCTO</th><th>STOCK / MÍNIMO</th><th>FALTANTE</th><th>PROVEEDOR</th><th>COSTO ESTIMADO</th><th>ACCIÓN</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay productos por debajo del stock mínimo.</td></tr>')+'</tbody></table></div>'+
+      '<p class="form-helper">La cantidad propuesta solo cubre el faltante hasta el mínimo configurado. El costo es una estimación con el costo unitario registrado; no genera compras ni movimientos sin confirmación.</p></article>';
+  }
   function renderInventory() {
     const activeProducts=products.filter(p=>p.active!==false);
     const categories=Array.from(new Set(activeProducts.map(p=>p.category).filter(Boolean))).sort((x,y)=>x.localeCompare(y,'es'));
@@ -1400,6 +1439,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="inventory-page-actions"></div>'+
       '<div class="summary-strip inventory-summary-strip"><div class="summary-mini"><span>Referencias activas</span><strong id="inventory-summary-active">'+Number(summary.activeProducts??activeProducts.length).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong id="inventory-summary-units">'+Number(summary.totalUnits??activeProducts.reduce((sum,p)=>sum+p.stock,0)).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Para reponer</span><strong id="inventory-summary-restock">'+Number(restockCount).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Agotados</span><strong id="inventory-summary-out">'+(summary.outOfStock==null?'—':Number(summary.outOfStock).toLocaleString('es-NI'))+'</strong></div></div><p class="form-hint" id="inventory-summary-error" role="status"></p>'+
       '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg('search')+'<input id="inventory-product-search" type="search" value="'+esc(state.inventoryProductQuery)+'" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>'+categoryOptions+'</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"'+(state.inventoryProductStock==='all'?' selected':'')+'>Todos los estados</option><option value="available"'+(state.inventoryProductStock==='available'?' selected':'')+'>Disponibles</option><option value="low"'+(state.inventoryProductStock==='low'?' selected':'')+'>Stock bajo</option><option value="out"'+(state.inventoryProductStock==='out'?' selected':'')+'>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">'+rows.length+' de '+activeProducts.length+' productos</span><span>Ordenados por menor existencia · consulta paginada</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th>CONSULTA</th></tr></thead><tbody id="inventory-product-body">'+(rows||'<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>')+'</tbody></table></div><div id="inventory-stock-pagination"></div></article>'+
+      renderReplenishmentPanel(activeProducts)+
       (["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"].some(permissionGranted)?renderInventoryLedger():"")+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Stock mínimo configurable por producto · Kardex íntegro</strong><p>Las existencias y el historial se consultan con totales y paginación del lado del servidor. Las salidas se bloquean si generan stock negativo; cada movimiento conserva el saldo anterior, la variación y el saldo resultante.</p></div></div>';
   }
@@ -3520,6 +3560,29 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       cash: renderCash
     };
     root.innerHTML = (renderers[state.view] || renderDashboard)();
+    if(state.view==='purchaseOrders'&&state.purchaseTab==='new'&&state.restockDraft){
+      const draft=state.restockDraft,poForm=document.getElementById('purchase-order-form');
+      const product=products.find(item=>String(item.id)===String(draft.productId));
+      const supplier=suppliers.find(item=>String(item.id)===String(draft.supplierId)&&item.active!==false);
+      if(poForm&&product&&supplier){
+        const currency=supplier.currency==='NIO'?'NIO':'USD';
+        poForm.elements.supplier_id.value=supplier.id;
+        poForm.elements.currency.value=currency;
+        poForm.elements.exchange_rate.value=String(exchangeRate);
+        if(Array.from(poForm.elements.payment_terms.options).some(option=>option.value===supplier.paymentTerms)){
+          poForm.elements.payment_terms.value=supplier.paymentTerms;
+        }
+        const line=poForm.querySelector('.purchase-order-line');
+        if(line){
+          line.querySelector('[name="product_id"]').value=product.id;
+          line.querySelector('[name="ordered_quantity"]').value=String(draft.quantity);
+          const cost=Number(product.unitCost||product.purchaseCost||0);
+          line.querySelector('[name="unit_cost_input"]').value=String(roundMoney(currency==='NIO'?cost*exchangeRate:cost));
+        }
+        setPurchaseOrderTab('products');
+      }
+      state.restockDraft=null;
+    }
     const pageActions=root.querySelector('.page-heading .heading-actions');
     if(state.view==='inventory'){
       const inventoryActions=root.querySelector('.inventory-page-actions');
@@ -4460,6 +4523,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const tab=action.getAttribute('data-tab');
       if(['employees','attendance','leaves','payroll'].includes(tab)){state.hrTab=tab;renderView();}
     } else if(types[name])openBusinessDialog(types[name]);
+    else if(name==='assign-product-supplier')openProductModal(action.getAttribute('data-id'));
+    else if(name==='create-restock-order'){
+      const product=products.find(item=>String(item.id)===String(action.getAttribute('data-product-id')));
+      const supplier=product&&suppliers.find(item=>String(item.id)===String(product.supplierId)&&item.active!==false);
+      if(!product||!supplier){toast('Asigna un proveedor activo al producto antes de preparar la orden.');return;}
+      const minimum=Math.max(0,Number(product.minStock??0));
+      const target=minimum>0?minimum:1;
+      const quantity=Math.max(1,target-Number(product.stock||0));
+      state.restockDraft={productId:product.id,supplierId:supplier.id,quantity};
+      state.purchaseTab='new';state.view='purchaseOrders';renderView();
+    }
     else if(name==='edit-supplier')openBusinessDialog('supplier',action.getAttribute('data-id'));
     else if(name==='supplier-add-phone'){
       const list=businessForm.querySelector('[data-supplier-phone-list]');
