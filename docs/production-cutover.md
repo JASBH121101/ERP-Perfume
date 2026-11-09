@@ -1,6 +1,6 @@
 # Production cutover — JB PARFUMS ERP
 
-Last reviewed: 2026-11-09. This runbook records the live state; it does not mean production is open for business yet.
+Last reviewed: 2026-11-09. This runbook records verified infrastructure state and remaining go-live gates.
 
 ## Neon Production database
 
@@ -9,94 +9,76 @@ Database: `erp_perfume`
 Branch: `production`  
 Branch ID: `br-royal-art-ben0apun`
 
-The clean migration chain `0001` through `0023` has been applied from the exact `main` sources. Each source SHA-256 was checked against `db/migration-integrity.json`, and each migration plus its ledger row was committed in one transaction.
+The production migration chain `0001` through `0023` is applied and reconciled against the reviewed sources.
 
-Read-only verification after migration:
+Verified database state:
 
-- 41 public application tables.
-- 9 managed `neon_auth` tables.
+- 41 public application tables and 9 managed `neon_auth` tables.
 - 23 migration ledger rows, versions `0001`–`0023`.
 - 0 unvalidated foreign keys.
 - 0 invalid or unready indexes.
-- 500 public columns, matching Development exactly by type, nullability, default, and numeric/string size.
-- No production customer, product, purchasing, sales, or inventory transactions were loaded.
+- Production schema matches Development across the 41 public application tables.
+- No production customer, product, purchasing, sales, or inventory transactions were loaded during cutover checks.
+- The least-privilege runtime role `jb_erp_runtime_sql` connects to `erp_perfume`; its access was checked independently.
 
-A temporary zero-compute branch `prod-prelaunch-backup-2026-11-09` was created before migration. Retain it until final production certification is complete.
-
-## Production runtime role
-
-The Production `jb_erp_runtime_sql` role has been created and configured from the reviewed Development grants.
-
-Verified as the actual login role:
-
-- 88 public table grants and 1,079 public column grants, matching Development.
-- 2 public sequence USAGE grants.
-- SELECT on the Neon Auth user record.
-- SELECT/INSERT/UPDATE on application tables where the reviewed policy allows them.
-- No DELETE on operational tables such as products.
-- DELETE only on `user_permission_overrides` and `role_template_permissions`.
-- Not a superuser; cannot create roles or databases; cannot bypass row-level security.
-- It cannot read `app_schema_migrations`.
-
-Never put the database connection string in Git. The Worker connection string is a Cloudflare secret.
+Do not drop application tables because they currently contain zero rows. All 41 public tables are functional application schema.
 
 ## Production Neon Auth identity
 
-Neon Auth is already provisioned on the Production branch. It has its own branch-specific base URL and JWKS endpoint, email/password sign-up, required email verification by OTP, shared Neon email delivery, and the production Pages origin in its trusted-origin list. Localhost access is disabled.
+Neon Auth is provisioned on the Production branch with its own branch-specific base URL and JWKS endpoint. Email/password sign-up is enabled, email verification by OTP is required, and the trusted origin is `https://erp-perfume.pages.dev`. Localhost access is disabled.
 
-Development currently contains the owner identity and an active browser session. Production is a separate Auth branch and currently has no user identity or session. Do not copy password hashes, browser cookies, sessions, or Auth internals between branches.
+Development and Production have separate identity directories and sessions. Do not copy password hashes, browser cookies, sessions, or Auth internals between branches.
 
-The Worker is configured with `BOOTSTRAP_OWNER_EMAIL`. On the first Production sign-up, use the configured owner email, complete the email OTP verification, then sign in. The Worker will create the matching ERP `app_users` owner profile automatically once the verified identity reaches `/api/auth/profile`. After the initial Production sign-in, the browser can restore the Production session without prompting for credentials on every visit.
+The Production owner identity must complete first sign-up and email OTP verification using the configured owner email. On the first verified owner request to `/api/auth/profile`, the Worker safely provisions the matching active ERP owner profile. This owner onboarding is a remaining go-live acceptance step.
 
 ## Cloudflare Production API
 
-A separate Worker script has been uploaded from the same bundled application code as the Development Worker:
+Worker: `jb-parfums-erp-api-production`  
+URL: `https://jb-parfums-erp-api-production.jaredblancoh19.workers.dev`
 
-- Script: `jb-parfums-erp-api-production`
-- Intended URL: `https://jb-parfums-erp-api-production.jaredblancoh19.workers.dev`
-- `ERP_ENVIRONMENT=production`
-- Production Neon Auth base URL and JWKS URL
-- R2 binding: `ERP_ASSETS` → `erp-perfume-assets`
-- CORS origin: `https://erp-perfume.pages.dev`
+Production Worker configuration was verified:
 
-The script currently has no `DATABASE_URL` secret and its `workers.dev` subdomain is disabled. It must not be exposed or used until the secret is added and the health preflight passes.
+- `ERP_ENVIRONMENT=production`.
+- `DATABASE_URL` is installed as a Cloudflare secret.
+- The database secret points to Neon Production, database `erp_perfume`, with runtime role `jb_erp_runtime_sql`.
+- Production Neon Auth base URL and JWKS URL are configured.
+- R2 binding `ERP_ASSETS` targets the private bucket `erp-perfume-assets`.
+- CORS allows the canonical Pages origin `https://erp-perfume.pages.dev`.
 
-### Required manual secret step
+The live `GET /api/health` response was checked from a browser on 2026-11-09 and returned `ok=true`, `environment=production`, with `database=true`, `authentication=true`, and `storage=true`.
 
-Cloudflare does not allow this assistant to transfer the generated Neon connection string between the Neon and Cloudflare secret stores. Do not paste the value into chat.
+The health response verifies database connectivity and the presence of Auth and storage configuration. It does not, by itself, prove a full browser sign-up/sign-in flow or a successful JWKS key fetch.
 
-In Neon Console, open project `erp-perfume` → branch `production` → database `erp_perfume`, and obtain the **pooled** connection string for role `jb_erp_runtime_sql`. In Cloudflare Dashboard, open Workers & Pages → `jb-parfums-erp-api-production` → Settings → Variables and Secrets → add a Secret named `DATABASE_URL` and paste that Production pooled connection string. Save it as a secret, not plain text.
+## Cloudflare Pages Production
 
-After that secret exists, enable the Worker `workers.dev` subdomain and verify:
+Pages project: `erp-perfume`  
+Canonical origin: `https://erp-perfume.pages.dev`  
+Source repository: `JASBH121101/ERP-Perfume`  
+Production branch: `main`
 
-- `GET /api/health`: `ok=true`, `environment=production`, database/authentication/storage services all true.
-- Production Auth JWKS endpoint responds with at least one key.
-- A verified owner sign-up creates exactly one active ERP owner profile.
-- A subsequent session restore works without repeated sign-in.
+The Pages project had Production auto-deployments disabled and no Production build variables. This was corrected on 2026-11-09:
 
-## Pages Production promotion
+- Production auto-deployments are enabled for `main` only.
+- Preview deployments remain disabled to prevent accidental mixing with Development.
+- Production build variable `ERP_DEPLOY_TARGET=production`.
+- Production build variable `ERP_API_BASE_URL=https://jb-parfums-erp-api-production.jaredblancoh19.workers.dev`.
+- Build runtime pinned with `NODE_VERSION=22`.
+- Build command remains `npm run build`, output directory `dist`.
 
-The Pages Preview remains configured against Development. Production Pages must point to the Production Worker, never the Development Worker.
+These build variables ensure the frontend build injects the Production Worker URL and refuses to fall back to the Development API. The next successful Pages production deployment must be checked for the current `main` commit and verified against the canonical origin before declaring the frontend cutover complete.
 
-The workflow `.github/workflows/wrangler-pages-deploy.yml` was updated on `main` so that:
-
-- Preview builds continue to use the Development Worker.
-- Production builds use the dedicated Production Worker URL.
-- Production API health is checked before the Pages deployment starts.
-- After deploy, frontend API URL, CORS, Worker health/environment and Production JWKS are verified.
-
-Do not manually promote Pages until the Production Worker secret is installed and its health preflight succeeds. This deployment has not been run as part of this runbook.
+Do not copy the preview's Development database secret or Neon Auth URLs into Production Pages. The browser frontend communicates with the Worker; the Worker owns the database secret and R2 binding.
 
 ## Storage and cleanup policy
 
-The existing R2 bucket was empty at the last inventory check. Keep it private; only the Worker should access it. Reassess environment separation for R2 before loading real product images or DGI files.
+The R2 bucket was private and empty at the last inventory check. Keep it private; only the Worker should access it. Verify upload/download flows with non-sensitive sample assets before loading real product images or DGI files.
 
-Do not drop application tables because they currently contain zero rows. All 41 public tables are part of the application schema. There were no confirmed test-only or unused tables.
+Keep Development and Production branches. Temporary QA and prelaunch backup branches are retained until the complete production certification is finished. Cleanup requires a separate explicit confirmation. Never delete Development or Production branches, their Auth schemas, or any functional public application tables.
 
-Keep Development and Production. Only after final API, identity, module and Pages certification may the temporary backup and the two QA-only branches be deleted:
+## Remaining production acceptance gates
 
-- `qa-full-erp-cert-2026-11-08`
-- `qa-db-fresh-migrations-2026-11-07`
-- `prod-prelaunch-backup-2026-11-09`
-
-Never delete the Development or Production branches, their Auth schemas, or any functional public application tables.
+1. Successful Pages production build and deployment from the current `main` commit.
+2. Verify canonical Pages HTML references the Production Worker URL.
+3. Complete first Production owner sign-up, OTP verification, owner-profile bootstrap, and session restore.
+4. Run authenticated smoke tests for the main ERP workflows and confirm audit records and role enforcement.
+5. Only then declare production cutover certified and request approval for temporary branch cleanup.
