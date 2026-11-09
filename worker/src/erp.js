@@ -1153,8 +1153,8 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
       "JOIN locked_order po ON po.id=pr.purchase_order_id WHERE pr.document_status='Emitida' GROUP BY pri.purchase_order_item_id),"+
       "matched AS MATERIALIZED (SELECT l.*,r.quantity_received,r.invoice_unit_cost_input,COALESCE(rv.reserved_quantity,0) reserved_quantity "+
       "FROM order_lines l JOIN requested r ON r.purchase_order_item_id=l.id LEFT JOIN reserved rv ON rv.purchase_order_item_id=l.id),"+
-      "merchandise AS MATERIALIZED (SELECT COALESCE(SUM(m.quantity_received*m.unit_cost_usd),0)::numeric gross_usd,"+
-      "COALESCE(SUM(m.quantity_received*m.unit_cost_input),0)::numeric gross_original FROM matched m),"+
+      "merchandise AS MATERIALIZED (SELECT COALESCE(SUM(m.quantity_received*(CASE WHEN i.currency='NIO' THEN m.invoice_unit_cost_input/i.exchange_rate ELSE m.invoice_unit_cost_input END)),0)::numeric gross_usd,"+
+      "COALESCE(SUM(m.quantity_received*m.invoice_unit_cost_input),0)::numeric gross_original FROM matched m CROSS JOIN input i),"+
       "validation AS MATERIALIZED (SELECT EXISTS(SELECT 1 FROM locked_order) order_exists,"+
       "COALESCE((SELECT status FROM locked_order),'') order_status,"+
       "COALESCE((SELECT currency FROM locked_order),'') order_currency,"+
@@ -1195,8 +1195,8 @@ export async function createPurchaseReceipt(sql,user,orderId,body) {
       "SELECT r.id,m.id,m.product_id,m.product_name,m.quantity_received,"+
       "ROUND((CASE WHEN i.currency='NIO' THEN m.invoice_unit_cost_input/i.exchange_rate ELSE m.invoice_unit_cost_input END) * "+
       "(1-CASE WHEN a.order_subtotal_usd>0 THEN a.order_discount_usd/a.order_subtotal_usd ELSE 0 END)+"+
-      "CASE WHEN a.expected_merchandise_usd>0 THEN i.freight_usd*m.unit_cost_usd*m.quantity_received/a.expected_merchandise_usd ELSE 0 END/NULLIF(m.quantity_received,0)+"+
-      "CASE WHEN a.expected_merchandise_usd>0 THEN i.taxes_usd*m.unit_cost_usd*m.quantity_received/a.expected_merchandise_usd ELSE 0 END/NULLIF(m.quantity_received,0),4),"+
+      "CASE WHEN a.expected_merchandise_usd>0 THEN i.freight_usd*(CASE WHEN i.currency='NIO' THEN m.invoice_unit_cost_input/i.exchange_rate ELSE m.invoice_unit_cost_input END)*m.quantity_received/a.expected_merchandise_usd ELSE 0 END/NULLIF(m.quantity_received,0)+"+
+      "CASE WHEN a.expected_merchandise_usd>0 THEN i.taxes_usd*(CASE WHEN i.currency='NIO' THEN m.invoice_unit_cost_input/i.exchange_rate ELSE m.invoice_unit_cost_input END)*m.quantity_received/a.expected_merchandise_usd ELSE 0 END/NULLIF(m.quantity_received,0),4),"+
       "m.invoice_unit_cost_input FROM matched m CROSS JOIN created_receipt r CROSS JOIN input i CROSS JOIN amount_check a RETURNING id),"+
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) "+
       "SELECT i.actor,'emit','purchase_receipt',r.id::text,jsonb_build_object('receipt_number',r.receipt_number,"+
