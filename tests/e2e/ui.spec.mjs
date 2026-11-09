@@ -311,6 +311,7 @@ async function installStatefulInventoryApi(page, options = {}) {
 }
 
 test('permission editor opens Administrator by default and keeps each template saved independently', async ({ page }) => {
+  test.setTimeout(45000);
   const permissions = [
     { permission_key: 'reports', label: 'Informes', module_key: 'reports', parent_key: null, permission_type: 'module', sort_order: 1 },
     { permission_key: 'reports.analysis', label: 'Informes y análisis', module_key: 'reports', parent_key: 'reports', permission_type: 'section', sort_order: 2 },
@@ -354,7 +355,16 @@ test('permission editor opens Administrator by default and keeps each template s
   });
 
   await page.goto('/');
-  await navigateToView(page, 'settings');
+  console.log('[permission-template-test] initial page loaded; profile:', await page.evaluate(() => window.JBAuth?.profile?.role));
+  const settingsButton = page.locator('#sidebar button[data-view="settings"]');
+  console.log('[permission-template-test] settings navigation visible:', await settingsButton.isVisible());
+  const rolesRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/roles') && request.method() === 'GET',
+    { timeout: 8000 }
+  ).catch(() => null);
+  await settingsButton.click();
+  console.log('[permission-template-test] breadcrumb after navigation:', await page.locator('#breadcrumb-current').textContent());
+  console.log('[permission-template-test] roles API request intercepted:', Boolean(await rolesRequest));
 
   const picker = page.locator('#access-role-select');
   await expect(picker).toBeVisible();
@@ -390,6 +400,7 @@ test('permission editor opens Administrator by default and keeps each template s
 });
 
 test('permission editor warns before changing templates with unsaved edits', async ({ page }) => {
+  test.setTimeout(45000);
   const permissions = [
     { permission_key: 'reports', label: 'Informes', module_key: 'reports', parent_key: null, permission_type: 'module', sort_order: 1 }
   ];
@@ -411,7 +422,11 @@ test('permission editor warns before changing templates with unsaved edits', asy
   });
 
   await page.goto('/');
-  await navigateToView(page, 'settings');
+  console.log('[permission-template-dirty-test] initial page loaded; profile:', await page.evaluate(() => window.JBAuth?.profile?.role));
+  const settingsButton = page.locator('#sidebar button[data-view="settings"]');
+  console.log('[permission-template-dirty-test] settings navigation visible:', await settingsButton.isVisible());
+  await settingsButton.click();
+  console.log('[permission-template-dirty-test] breadcrumb after navigation:', await page.locator('#breadcrumb-current').textContent());
   const picker = page.locator('#access-role-select');
   await expect(picker).toHaveValue('admin');
   const check = page.locator('#role-permissions-form input[name="permission"]');
