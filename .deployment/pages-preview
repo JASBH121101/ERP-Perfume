@@ -57,3 +57,7 @@ Preview release: responsive procurement workspace and staged purchase order flow
 Source commit: 1eb21435aa10f9a709683b2c9247c9083bfca689.
 Validation: 175 unit tests and 35/35 Playwright E2E passed; Development Worker deploy and health smoke checks passed. JB Expert QA source audit returned 89/100 (review required; no critical findings); not represented as a QA pass.
 Deployment boundary: Wrangler Pages Preview only. Pages Production and Neon Production untouched.
+
+Preview release: financial reporting date windows (full history, current/previous month, rolling 30/90/180 days, YTD and custom range), invoice-value-weighted landed freight/taxes, optional concentration display guard.
+Source commit: 1e9e60cafcd927a1a44b0a7bae3f080900c650fc.
+Validation: ERP quality gate passed on PR #18 and main push; Development API Worker deployed and health-checked. Preview only; Production remains gated pending Neon Production bootstrap and environment isolation.
