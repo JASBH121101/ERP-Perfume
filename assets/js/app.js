@@ -4865,6 +4865,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         await loadAccessManager(true);
         toast("Invitación enviada. La cuenta quedó bloqueada hasta que verifiques y actives sus permisos.");
       }catch(error){
+        identityCreated = identityCreated || error?.identityCreated === true;
         toast(identityCreated
           ? "La identidad se creó, pero falta preparar el perfil ERP. Reintenta desde Identidades pendientes. "+(error?.message||"")
           : (error?.message||"No se pudo crear la invitación."));
