@@ -220,7 +220,8 @@ function updateAuthControls() {
   const pill = $("#connection-pill");
   if (pill) {
     const indicator = pill.querySelector("i") || document.createElement("i");
-    pill.replaceChildren(indicator, document.createTextNode(" " + (authClient ? authEnvironment.toUpperCase() : "ACCESO SEGURO")));
+    const environmentLabel = authEnvironment === "production" ? "PRODUCCIÓN" : authEnvironment === "development" ? "DESARROLLO" : "ACCESO SEGURO";
+    pill.replaceChildren(indicator, document.createTextNode(" " + (authClient ? environmentLabel : "ACCESO SEGURO")));
     pill.classList.toggle("connected", Boolean(authClient));
   }
 
