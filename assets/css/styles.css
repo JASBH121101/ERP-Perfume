@@ -2040,3 +2040,42 @@ input, select, textarea, button { font-family: var(--erp-font); }
   .form-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
   .form-field select, .form-field textarea { min-height: 44px; }
 }
+
+
+/* Final operational readability pass: larger text and a clear edit action on mobile. */
+html, body { font-size: 16px; }
+.nav-item { font-size: calc(15px * var(--ui-font-scale)); }
+.breadcrumb, .breadcrumb strong, .page-date, .page-heading p,
+.metric-label, .metric-foot, .panel-heading p,
+.panel-link, .section-link, .button, .period-select, .filter-select {
+  font-size: calc(14px * var(--ui-font-scale));
+}
+.data-table th { font-size: calc(13px * var(--ui-font-scale)); }
+.data-table td { font-size: calc(14px * var(--ui-font-scale)); line-height: 1.55; }
+.table-secondary { font-size: calc(13px * var(--ui-font-scale)); }
+.form-field { font-size: calc(14px * var(--ui-font-scale)); }
+.form-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.form-field select, .form-field textarea {
+  min-height: 44px;
+  font-size: calc(15px * var(--ui-font-scale));
+}
+.form-helper, .form-field small, .modal-note, .notice-panel p, .feature-card p {
+  font-size: calc(13px * var(--ui-font-scale));
+}
+.button { min-height: 42px; }
+.button-small { min-height: 36px; }
+.mobile-record-table.mobile-record-actions tbody td:last-child .button {
+  min-width: 112px;
+  justify-content: center;
+}
+@media (max-width: 720px) {
+  html, body { font-size: 16px; }
+  .mobile-record-table.mobile-record-actions tbody td:last-child {
+    grid-column: 1 / -1;
+    padding-top: 4px;
+  }
+  .mobile-record-table.mobile-record-actions tbody td:last-child .button {
+    width: 100%;
+    min-height: 46px;
+  }
+}
