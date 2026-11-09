@@ -848,6 +848,9 @@ test('product creation saves its opening balance and writes the first kardex ent
   await form.locator('[name="name"]').fill('QA Inventory Created Perfume');
   await form.locator('[name="sku"]').fill('QA-NEW-201');
   await form.locator('[name="brand"]').fill('QA Atelier');
+  await form.locator('[name="authenticityType"]').selectOption('inspired');
+  await expect(form.locator('#product-inspired-by-field')).toBeVisible();
+  await form.locator('[name="inspiredBy"]').fill('Creed Aventus');
   await form.locator('[name="price"]').fill('42.50');
   await form.locator('[name="purchaseCost"]').fill('18');
   await form.locator('[name="additionalCost"]').fill('2');
@@ -863,6 +866,8 @@ test('product creation saves its opening balance and writes the first kardex ent
   expect(payload.sku).toBe('QA-NEW-201');
   expect(payload.stock).toBe(4);
   expect(payload.unit_cost_usd).toBe(20);
+  expect(payload.authenticity_type).toBe('inspired');
+  expect(payload.inspired_by).toBe('Creed Aventus');
   await expect(dialog).not.toBeVisible();
   await expect(page.locator('#product-table-body')).toContainText('QA Inventory Created Perfume');
 
