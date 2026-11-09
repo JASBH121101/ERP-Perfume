@@ -140,7 +140,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let clientErrorReportThrottle = 0;
   const accessManager = {
     attempted:false, loading:false, loaded:false, error:"",
-    users:[], pendingIdentities:[], roles:[], permissions:[], grants:[], audit:[], clientErrors:[]
+    users:[], pendingIdentities:[], roles:[], permissions:[], grants:[], audit:[], clientErrors:[],
+    lastInvite:null
   };
   let accessSelectedRole = "";
 
@@ -701,7 +702,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
     "clear-inventory-filters": ["inventory.view"], "clear-inventory-product-filters": ["inventory.view"], "inventory-month-filter": ["inventory.view"], "clear-purchase-filters": ["purchases.purchase_orders.view","purchases.receipts.view"], "purchase-month-filter": ["purchases.purchase_orders.view","purchases.receipts.view"],
     "inventory-page": ["inventory.view"], "inventory-stock-page": ["inventory.view"], "refresh-access-manager": ["users.accounts.view"],
-    "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
+    "provision-user-account": ["users.accounts.create"], "copy-worker-invite-link": ["users.accounts.create"], "resend-worker-invite": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
   };
   function applyPermissionActions() {
     root.querySelectorAll("button[data-action]").forEach((button) => {
@@ -3411,6 +3412,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<td><button class="button button-primary button-small" data-action="provision-user-account">Preparar cuenta ERP</button></td></tr>'
     ).join("");
 
+    const invitePanel = '<article class="panel"><div class="panel-heading"><div><h3>Invitar trabajador</h3><p>Crea una identidad individual, prepara su perfil ERP bloqueado y envía un código de verificación al correo indicado.</p></div><span class="ledger-count">Solo propietario</span></div>'+
+      '<form id="worker-invite-form" class="rate-form">'+
+      '<label class="form-field"><span>Correo electrónico</span><input name="email" type="email" maxlength="180" autocomplete="email" placeholder="trabajador@correo.com" required></label>'+
+      '<label class="form-field"><span>Nombre completo</span><input name="display_name" maxlength="180" autocomplete="name" placeholder="Nombre y apellidos" required></label>'+
+      '<label class="form-field"><span>Cargo</span><input name="position_title" maxlength="120" placeholder="Ej. Ventas, inventario, caja"></label>'+
+      '<label class="form-field"><span>Plantilla inicial</span><select name="role_template_key">'+roleOptions+'</select></label>'+
+      '<button class="button button-primary" type="submit">Crear cuenta y enviar código</button></form>'+
+      '<p class="form-helper">El trabajador recibe un código en su correo para verificarlo y otro para definir su propia contraseña. El enlace de configuración se comparte manualmente. La cuenta queda bloqueada hasta que tú la actives.</p>'+
+      (accessManager.lastInvite ? '<div class="notice-panel"><span>'+svg('mail')+'</span><div><strong>Invitación preparada para '+esc(accessManager.lastInvite.email)+'</strong><p>'+(accessManager.lastInvite.verificationSent?'Código de verificación enviado al correo.':'La cuenta quedó creada, pero el código no se pudo enviar: '+esc(accessManager.lastInvite.sendError||'pulsa Reenviar código para intentarlo de nuevo.'))+'</p><label class="form-field"><span>Enlace de configuración</span><input type="url" readonly value="'+esc(accessManager.lastInvite.url)+'"></label><div class="modal-actions"><button type="button" class="button button-quiet button-small" data-action="copy-worker-invite-link" data-invite-url="'+esc(accessManager.lastInvite.url)+'">Copiar enlace</button><button type="button" class="button button-quiet button-small" data-action="resend-worker-invite" data-invite-email="'+esc(accessManager.lastInvite.email)+'">Reenviar código</button></div></div></div>' : '')+
+      '</article>';
+
     const selectedRole = accessManager.roles.find(role=>role.role_key===accessSelectedRole);
     const granted = new Set(accessManager.grants.filter(grant=>grant.role_key===accessSelectedRole && grant.allowed===true).map(grant=>grant.permission_key));
     const moduleRows = accessManager.permissions.filter(permission=>permission.permission_type==="module");
@@ -3447,10 +3459,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     ).join("");
 
     return '<section class="access-manager-section">'+
-      '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
+      '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede crear cuentas, activar trabajadores, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
+      invitePanel+
       '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>El cargo es texto libre. El estado activo es lo que habilita la entrada al ERP.</p></div><span class="ledger-count">'+accessManager.users.length+' cuentas</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>La cuenta de acceso debe existir previamente. Esta acción crea el perfil ERP, inicialmente bloqueado; no crea la contraseña ni envía una invitación.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>Estas identidades ya existían en Neon Auth antes de habilitar el nuevo formulario. Puedes terminar de vincularlas aquí; su cuenta ERP también permanecerá bloqueada hasta que la actives.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p></div>'+
       '<select class="filter-select" id="access-role-select">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div>'+
@@ -4738,6 +4751,35 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       button.disabled=false;
       return;
     }
+    if(action==="copy-worker-invite-link"){
+      const inviteUrl=button.getAttribute("data-invite-url")||"";
+      if(!inviteUrl){toast("No hay un enlace de invitación disponible.");return;}
+      try{
+        if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(inviteUrl);
+        else {
+          const field=document.createElement("textarea");
+          field.value=inviteUrl;field.setAttribute("readonly","");field.style.position="fixed";field.style.opacity="0";
+          document.body.appendChild(field);field.select();
+          const copied=document.execCommand("copy");field.remove();
+          if(!copied)throw new Error("El navegador no permitió copiar el enlace.");
+        }
+        toast("Enlace de configuración copiado. Compártelo únicamente con el trabajador invitado.");
+      }catch(error){toast(error?.message||"No se pudo copiar el enlace.");}
+      return;
+    }
+    if(action==="resend-worker-invite"){
+      const email=button.getAttribute("data-invite-email")||"";
+      if(!email)return;
+      button.disabled=true;
+      try{
+        await window.JBAuth.sendVerificationCode(email);
+        if(accessManager.lastInvite?.email===email)accessManager.lastInvite.verificationSent=true;
+        await loadAccessManager(true);
+        toast("Nuevo código de verificación enviado a "+email+".");
+      }catch(error){toast(error?.message||"No se pudo reenviar el código.");}
+      finally{button.disabled=false;}
+      return;
+    }
     if(action==="provision-user-account"){
       const row=button.closest("tr");
       if(!row)return;
@@ -4890,6 +4932,58 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         toast("Recepción "+(result.record?.receipt_number||"emitida")+" pendiente de contabilización. El inventario sigue sin cambios.");
       }catch(error){toast(error?.message||"No se pudo emitir la recepción.");}
       finally{if(submit){submit.disabled=false;submit.textContent="Emitir recepción pendiente";}}
+      return;
+    }
+    if(form?.id==="worker-invite-form"){
+      event.preventDefault();
+      if(window.JBAuth?.profile?.role!=="owner"){toast("Solo el propietario puede invitar trabajadores.");return;}
+      if(!form.reportValidity())return;
+      const data=new FormData(form);
+      const email=String(data.get("email")||"").trim().toLowerCase();
+      const displayName=String(data.get("display_name")||"").trim();
+      const positionTitle=String(data.get("position_title")||"").trim();
+      const roleTemplateKey=String(data.get("role_template_key")||"viewer");
+      if(accessManager.users.some(item=>String(item.email||"").toLowerCase()===email)){
+        toast("Ese correo ya tiene una cuenta ERP. Revisa la tabla Cuentas ERP.");return;
+      }
+      if(accessManager.pendingIdentities.some(item=>String(item.email||"").toLowerCase()===email)){
+        toast("Ese correo ya tiene una identidad en Neon Auth. Termina su vinculación en Identidades pendientes.");return;
+      }
+      const submit=form.querySelector('[type="submit"]');
+      if(submit){submit.disabled=true;submit.textContent="Creando cuenta…";}
+      let identityCreated=false;
+      try{
+        await window.JBAuth.createAuthIdentity(email,displayName);
+        identityCreated=true;
+        try{
+          await erpApi("users",{method:"POST",body:JSON.stringify({
+            email,display_name:displayName,position_title:positionTitle,
+            role_template_key:roleTemplateKey,employee_id:null,must_change_password:true
+          })});
+        }catch(error){
+          await loadAccessManager(true);
+          throw new Error("La identidad de acceso se creó, pero falta vincular el perfil ERP. Aparecerá en «Identidades pendientes»: "+(error?.message||"revisa el correo."));
+        }
+        let verificationSent=false,sendError="";
+        try{
+          await window.JBAuth.sendVerificationCode(email);
+          verificationSent=true;
+        }catch(error){sendError=error?.message||"No se pudo enviar el código.";}
+        const setupUrl=new URL(window.location.href);
+        setupUrl.search="";
+        setupUrl.hash="";
+        setupUrl.searchParams.set("setup","invite");
+        setupUrl.searchParams.set("email",email);
+        accessManager.lastInvite={email,url:setupUrl.toString(),verificationSent,sendError};
+        form.reset();
+        await loadAccessManager(true);
+        toast(verificationSent?"Cuenta creada. Código enviado; comparte el enlace de configuración.":"Cuenta creada y bloqueada. No se pudo enviar el código; usa Reenviar código.");
+      }catch(error){
+        if(identityCreated)await loadAccessManager(true);
+        toast(error?.message||"No se pudo crear la invitación.");
+      }finally{
+        if(submit){submit.disabled=false;submit.textContent="Crear cuenta y enviar código";}
+      }
       return;
     }
     if(form?.id==="role-permissions-form"){
