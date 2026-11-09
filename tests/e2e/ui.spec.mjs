@@ -1525,9 +1525,7 @@ test('invitee verifies email and sets a personal password through the OTP activa
   await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'recovery-reset');
 
   await page.locator('#auth-otp').fill('654321');
-  const invitedPassword = Array.from({ length: 24 }, (_, index) =>
-    String.fromCharCode(65 + ((Date.now() + index * 17) % 26))
-  ).join('') + 'a1!';
+  const invitedPassword = 'Personal-Password-2026!';
   await page.locator('#auth-new-password').fill(invitedPassword);
   await page.locator('#auth-confirm-password').fill(invitedPassword);
   await page.locator('#auth-submit').click();
@@ -1549,6 +1547,6 @@ test('invitee verifies email and sets a personal password through the OTP activa
   expect(authCalls[3].payload).toEqual({
     email: 'trabajador.qa@example.test',
     otp: '654321',
-    password: 'Personal-Password-2026!'
+    password: invitedPassword
   });
 });
