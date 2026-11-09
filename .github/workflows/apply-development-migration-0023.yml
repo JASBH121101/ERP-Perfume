@@ -79,10 +79,9 @@ jobs:
         run: |
           set -euo pipefail
           report="$(npm run --silent migrate:db)"
-          printf '%s\\n' "$report"
+          printf '%s\n' "$report"
           mapfile -t pending < <(
-            printf '%s\\n' "$report" |
-              sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\\1/p'
+            printf '%s\n' "$report" | awk '/^[[:space:]]*pending / { print $2 }'
           )
           if [[ "${#pending[@]}" -eq 1 && "${pending[0]}" == "0023" ]]; then
             echo "migration_needed=true" >> "$GITHUB_OUTPUT"
