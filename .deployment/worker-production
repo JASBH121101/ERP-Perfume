@@ -1,1 +1,4 @@
-Deploy the pinned Production Worker to the separate jb-parfums-erp-api-production service and verify Neon Production, Neon Auth, R2, and CORS.
+Deploy the pinned Production Worker to the original production environment after the OTP invitation flow fix.
+Source baseline: 5be5601a4c8f3e5cf8bf4e0f234e039fc3ff85f9
+Target: jb-parfums-erp-api-production + Neon Production + Neon Auth Production + R2 erp-perfume-assets.
+Run production health preflight, tests, deploy with Wrangler, then verify health, Auth, storage and CORS.
