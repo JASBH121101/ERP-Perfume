@@ -117,8 +117,19 @@ export async function verifyMigrationSources({
   if (manifest.snapshot?.branch !== "development" || manifest.snapshot?.readOnly !== true) {
     addError(errors, "The recorded database snapshot must be explicitly read-only Neon Development.");
   }
-  if (manifest.snapshot?.productionModified !== false) {
-    addError(errors, "The manifest must explicitly record that Production was not modified.");
+  // Keep two distinct facts when a Production cutover has occurred:
+  // the cutover history is retained, while the Development-only baseline
+  // reconciliation must explicitly attest that it did not write to Production.
+  if (typeof manifest.snapshot?.productionModified !== "boolean") {
+    addError(errors, "The manifest must explicitly record whether Production has been modified.");
+  }
+  if (manifest.snapshot?.productionModified === true &&
+      manifest.snapshot?.productionModifiedByDevelopmentBaselineReconciliation !== false) {
+    addError(errors, "The manifest must explicitly attest that Development baseline reconciliation did not modify Production.");
+  }
+  if (manifest.snapshot?.productionModified === false &&
+      manifest.snapshot?.productionModifiedByDevelopmentBaselineReconciliation === true) {
+    addError(errors, "The manifest cannot claim Development baseline reconciliation modified an untouched Production database.");
   }
 
   const baseline = manifest.baselineReconciliation;

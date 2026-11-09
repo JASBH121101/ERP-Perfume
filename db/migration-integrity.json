@@ -72,7 +72,9 @@
     "productionRuntimeRole": "jb_erp_runtime_sql",
     "productionRuntimeRoleVerified": true,
     "productionOwnerAuthUsers": 0,
-    "productionBackupBranch": "br-lingering-bread-bejcvkss"
+    "productionBackupBranch": "br-lingering-bread-bejcvkss",
+    "productionModifiedByDevelopmentBaselineReconciliation": false,
+    "productionModificationNote": "Production's 0001-0023 cutover history is recorded above. The Development-only baseline reconciliation and this read-only source-integrity snapshot did not modify Production."
   },
   "migrations": [
     {

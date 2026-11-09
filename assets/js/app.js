@@ -774,11 +774,18 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const today = new Date();
     document.getElementById('page-date').textContent = today.toLocaleDateString('es-NI', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
+  function dashboardGreeting() {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'Buenos días';
+    if (hour >= 12 && hour < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  }
   function heading(meta, actions) {
     const dashboardClass = state.view === 'dashboard' ? ' page-heading-dashboard' : '';
     const hrClass = state.view === 'hr' ? ' page-heading-hr' : '';
+    const title = state.view === 'dashboard' ? dashboardGreeting() : meta.heading;
     const subtitle = state.view === 'hr' ? '' : '<p>' + meta.subtitle + '</p>';
-    return '<div class="page-heading' + dashboardClass + hrClass + '"><div><h1>' + meta.heading + '</h1>' + subtitle + '</div><div class="heading-actions">' + (actions || '') + '</div></div>';
+    return '<div class="page-heading' + dashboardClass + hrClass + '"><div><h1>' + title + '</h1>' + subtitle + '</div><div class="heading-actions">' + (actions || '') + '</div></div>';
   }
   function metric(label, value, symbol, change, note, gold) {
     return '<article class="metric-card"><div class="metric-top"><span class="metric-label">' + label + '</span><span class="metric-symbol">' + svg(symbol) + '</span></div><div class="metric-value">' + value + '</div><div class="metric-foot"><span class="metric-change' + (gold ? ' gold' : '') + '">' + change + '</span><span class="metric-caption">' + note + '</span></div></article>';
