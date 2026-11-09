@@ -600,7 +600,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     dashboard: { title: 'Resumen', eyebrow: 'CENTRO DE CONTROL', heading: 'Buenos días', subtitle: 'Una mirada clara al movimiento de tu negocio.' },
     products: { title: 'Productos', eyebrow: 'CATÁLOGO', heading: 'Catálogo de productos', subtitle: 'Administra las fragancias, sus precios y la disponibilidad.' },
     catalog: { title: 'Catálogo PDF', eyebrow: 'EDITORIAL · JB PARFUMS', heading: 'Catálogo de fragancias', subtitle: 'Selecciona las piezas que quieres presentar y genera un PDF premium para compartir o imprimir.' },
-    resources: { title: 'Resource Monitor', eyebrow: 'CONTROL DE RECURSOS', heading: 'Consumo y servicios', subtitle: 'Consulta el uso de la base de datos y del almacenamiento del sistema.' },
+    resources: { title: 'Consumo de recursos', eyebrow: 'CONTROL DE RECURSOS', heading: 'Consumo y servicios', subtitle: 'Consulta el uso de la base de datos y del almacenamiento del sistema.' },
     inventory: { title: 'Inventario', eyebrow: 'CONTROL DE EXISTENCIAS', heading: 'Inventario', subtitle: 'Consulta los niveles de stock y detecta reposiciones.' },
     orders: { title: 'Pedidos', eyebrow: 'OPERACIONES', heading: 'Pedidos y ventas', subtitle: 'Da seguimiento al estado de cada pedido.' },
     customers: { title: 'Clientes', eyebrow: 'RELACIONES', heading: 'Cartera de clientes', subtitle: 'Mantén organizada la información comercial.' },
