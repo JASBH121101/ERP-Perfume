@@ -52,3 +52,8 @@ Source commit: d9a4ec7a1668a2fd812c43e2508af4dc35ee87b8.
 Preview release: integrate PR #16 — procurement workflow, staged supplier-invoice receipts, controlled posting, inventory costing, immutable balanced purchase journal, duplicate invoice guard, migration integrity and operational UI updates.
 Source commit: c69e32cf76656399fb348014521602895e294914.
 Deployment boundary: preview only; Pages frontend uses the existing Development API Worker and Neon Development. Production remains gated until the Neon Production schema, Neon Auth, runtime role and least-privilege grants are provisioned and validated.
+
+Preview release: responsive procurement workspace and staged purchase order flow (Datos / Productos / Costos y notas).
+Source commit: 1eb21435aa10f9a709683b2c9247c9083bfca689.
+Validation: 175 unit tests and 35/35 Playwright E2E passed; Development Worker deploy and health smoke checks passed. JB Expert QA source audit returned 89/100 (review required; no critical findings); not represented as a QA pass.
+Deployment boundary: Wrangler Pages Preview only. Pages Production and Neon Production untouched.
