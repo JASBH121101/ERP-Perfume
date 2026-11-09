@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".deployment/worker-production"
+      - ".deployment/worker-production-release"
 
 permissions:
   contents: read
