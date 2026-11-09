@@ -3,55 +3,62 @@ import { test, expect } from "@playwright/test";
 
 const compactCss = readFileSync(new URL("../../assets/css/ultra-compact.css", import.meta.url), "utf8");
 
-test("opening a permission group does not stretch cards in the other column", async ({ page }) => {
+test("permission accordions rebalance masonry columns when sections expand and collapse", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  const modules = Array.from({ length: 8 }, (_, index) => {
+    const expanded = [0, 4].includes(index);
+    const rows = Array.from({ length: expanded ? 6 : 1 }, (_, row) =>
+      '<label class="permission-editor-row"><input type="checkbox"><span>Permiso ' + (index + 1) + '.' + (row + 1) + '</span><small>Acción</small></label>'
+    ).join("");
+    return '<details class="permission-editor-module"' + (expanded ? ' open' : '') + '><summary><span>Módulo ' + (index + 1) + '</span><small>1 / 3 permisos</small></summary><div class="permission-editor-module-content">' + rows + '</div></details>';
+  }).join("");
+
   await page.setContent(`
     <style>${compactCss}</style>
     <section class="access-manager-section">
       <form id="role-permissions-form">
-        <div class="permission-editor-grid">
-          <div class="permission-editor-column">
-            <details id="reports" class="permission-editor-module">
-              <summary><span>Informes</span><small>3 / 3 permisos</small></summary>
-              <div class="permission-editor-module-content">
-                <label class="permission-editor-row"><input type="checkbox" checked><span>Exportar informes</span><small>Acción</small></label>
-                <label class="permission-editor-row"><input type="checkbox" checked><span>Informes y análisis</span><small>Sección</small></label>
-                <label class="permission-editor-row"><input type="checkbox" checked><span>Informes</span><small>Módulo</small></label>
-              </div>
-            </details>
-            <details id="billing" class="permission-editor-module">
-              <summary><span>Facturación</span><small>7 / 7 permisos</small></summary>
-              <div class="permission-editor-module-content"><label class="permission-editor-row"><input type="checkbox"><span>Emitir factura</span><small>Acción</small></label></div>
-            </details>
-          </div>
-          <div class="permission-editor-column">
-            <details id="audit" class="permission-editor-module">
-              <summary><span>Auditoría</span><small>0 / 3 permisos</small></summary>
-              <div class="permission-editor-module-content"><label class="permission-editor-row"><input type="checkbox"><span>Consultar auditoría</span><small>Acción</small></label></div>
-            </details>
-            <details id="cash" class="permission-editor-module">
-              <summary><span>Caja y bancos</span><small>3 / 3 permisos</small></summary>
-              <div class="permission-editor-module-content"><label class="permission-editor-row"><input type="checkbox"><span>Ver caja</span><small>Acción</small></label></div>
-            </details>
-          </div>
-        </div>
+        <div class="permission-editor-grid">${modules}</div>
       </form>
     </section>
   `);
 
-  const auditBefore = await page.locator("#audit").boundingBox();
-  const cashBefore = await page.locator("#cash").boundingBox();
-  await page.locator("#reports > summary").click();
-  const reportsAfter = await page.locator("#reports").boundingBox();
-  const auditAfter = await page.locator("#audit").boundingBox();
-  const cashAfter = await page.locator("#cash").boundingBox();
+  const grid = page.locator(".permission-editor-grid");
+  const cards = page.locator(".permission-editor-module");
+  const measureColumns = async () => grid.evaluate(el => {
+    const rects = [...el.querySelectorAll(".permission-editor-module")].map(node => {
+      const rect = node.getBoundingClientRect();
+      return { left: Math.round(rect.left), top: rect.top, bottom: rect.bottom };
+    });
+    const groups = new Map();
+    for (const rect of rects) {
+      const bucket = groups.get(rect.left) || [];
+      bucket.push(rect);
+      groups.set(rect.left, bucket);
+    }
+    return [...groups.values()].map(items => ({
+      count: items.length,
+      height: Math.max(...items.map(item => item.bottom)) - Math.min(...items.map(item => item.top))
+    }));
+  });
 
-  expect(reportsAfter.height).toBeGreaterThan(auditAfter.height);
-  expect(auditAfter.height).toBeCloseTo(auditBefore.height, 0);
-  expect(cashAfter.y).toBeCloseTo(cashBefore.y, 0);
-  expect(await page.locator(".permission-editor-grid").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(2);
+  const initialColumns = await measureColumns();
+  expect(await grid.evaluate(el => getComputedStyle(el).columnCount)).toBe("2");
+  expect(initialColumns).toHaveLength(2);
+  expect(initialColumns.every(column => column.count >= 2)).toBe(true);
+  expect(Math.abs(initialColumns[0].height - initialColumns[1].height)).toBeLessThan(140);
+
+  // Expanding a third module must rebalance the cards rather than preserve
+  // a fixed even/odd assignment with one tall, visually empty neighboring area.
+  await cards.nth(2).locator("> summary").click();
+  const afterExpand = await measureColumns();
+  expect(afterExpand).toHaveLength(2);
+  expect(Math.abs(afterExpand[0].height - afterExpand[1].height)).toBeLessThan(180);
+
+  await cards.nth(0).locator("> summary").click();
+  const afterCollapse = await measureColumns();
+  expect(afterCollapse).toHaveLength(2);
+  expect(Math.abs(afterCollapse[0].height - afterCollapse[1].height)).toBeLessThan(140);
 });
-
 test("purchase history search and filters reflow cleanly at 150 percent effective width", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 850 });
   await page.setContent(`

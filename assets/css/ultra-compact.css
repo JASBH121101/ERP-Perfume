@@ -577,3 +577,41 @@ html, body { font-size: max(15px, calc(15px * var(--ui-font-scale, 1))); }
   .purchase-module-tab { flex-direction: column; gap: 3px; }
   .purchase-tab-count { min-width: 18px; padding: 1px 5px; }
 }
+
+
+/* True responsive masonry for permission accordions.
+   Cards reflow between columns when one or more groups expand or collapse. */
+.access-manager-section #role-permissions-form .permission-editor-grid {
+  display: block !important;
+  columns: 2;
+  column-gap: 14px;
+  column-fill: balance;
+  padding: 14px;
+}
+.access-manager-section #role-permissions-form .permission-editor-module {
+  display: inline-block;
+  vertical-align: top;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
+.access-manager-section #role-permissions-form .permission-editor-module-content {
+  display: block;
+}
+@media (max-width: 1050px) {
+  .access-manager-section #role-permissions-form .permission-editor-grid {
+    columns: 2;
+    column-gap: 10px;
+    padding: 10px;
+  }
+}
+@media (max-width: 620px) {
+  .access-manager-section #role-permissions-form .permission-editor-grid {
+    columns: 1;
+    column-gap: 0;
+    padding: 8px;
+  }
+}
