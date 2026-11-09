@@ -14,7 +14,7 @@ let authBaseUrl = "";
 let erpProfile = null;
 let profileError = "";
 let appLoaded = false;
-let allowOwnerSignUp = false;
+let allowInviteActivation = false;
 let authEnvironment = "unknown";
 
 async function readJson(response) {
@@ -123,7 +123,8 @@ function setAuthMode(mode, email = "") {
   const recoveryReset = mode === "recovery-reset";
   const signingIn = mode === "signin";
   const enteringPassword = signingIn || signingUp;
-  const showingOtp = verifying || recoveryReset;
+  const inviteVerifying = mode === "invite-verify";
+  const showingOtp = verifying || inviteVerifying || recoveryReset;
 
   authForm.dataset.mode = mode;
   $("#auth-name-field").hidden = !signingUp;
@@ -141,15 +142,17 @@ function setAuthMode(mode, email = "") {
   $("#auth-email").readOnly = showingOtp;
   $("#auth-forgot-password").hidden = !signingIn;
   $("#auth-back-to-signin").hidden = signingIn;
-  $("#auth-enroll-actions").hidden = !(signingIn && allowOwnerSignUp && !authUser);
+  $("#auth-enroll-actions").hidden = !(signingIn && allowInviteActivation && !authUser);
 
   const otpLabel = $("#auth-otp-label");
-  if (otpLabel) otpLabel.textContent = verifying ? "Código de verificación" : "Código de recuperación";
+  if (otpLabel) otpLabel.textContent = (verifying || inviteVerifying) ? "Código de verificación" : "Código de recuperación";
   const gateNote = $(".auth-gate-note");
   if (gateNote) {
     gateNote.textContent = signingUp
-      ? "Alta inicial del propietario: registrá el correo designado para administrar JB PARFUMS. La verificación OTP confirma el correo; el backend sigue validando que sea la identidad autorizada."
-      : "Iniciá sesión con una cuenta previamente creada y habilitada por el propietario. Verificar el correo no concede acceso al ERP por sí solo.";
+      ? "El registro público está deshabilitado. Las cuentas las crea únicamente el propietario."
+      : inviteVerifying
+        ? "Verificá el correo de la invitación. Después recibirás un segundo código para establecer tu contraseña personal. La verificación no activa permisos del ERP."
+        : "Iniciá sesión con una cuenta previamente creada y habilitada por el propietario. Verificar el correo no concede acceso al ERP por sí solo.";
   }
   const recoveryNote = $("#auth-recovery-note");
   if (recoveryNote) {
@@ -173,7 +176,9 @@ function setAuthMode(mode, email = "") {
       ? "Enviar código"
       : recoveryReset
         ? "Cambiar contraseña"
-        : signingUp
+        : inviteVerifying
+          ? "Verificar invitación"
+          : signingUp
           ? "Crear cuenta"
           : "Iniciar sesión";
   if (authFeedback) authFeedback.textContent = "";
@@ -271,7 +276,7 @@ async function initialize() {
     config = await readJson(response);
     authEnvironment = String(config.environment || "unknown").trim().toLowerCase();
     // The initial enrollment entry point is exposed only on the production deployment.
-    allowOwnerSignUp = authEnvironment === "production";
+    allowInviteActivation = true;
   } catch (error) {
     window.JBAuth = { mode: "unavailable", user: null, profile: null, getToken: async () => null };
     lockERP("No se pudo contactar al servicio seguro del ERP. " + (error?.message || "Intenta recargar."));
@@ -334,6 +339,28 @@ async function initialize() {
       if (result?.error) throw new Error(result.error.message || "No se pudo enviar el código.");
       return result;
     },
+    async createInvitedIdentity(email, name) {
+      if (erpProfile?.role !== "owner" || authUser?.role !== "admin") {
+        throw new Error("Solo el propietario puede crear invitaciones.");
+      }
+      const method = authClient?.admin?.createUser;
+      if (typeof method !== "function") throw new Error("La API administrativa de Neon Auth no está disponible.");
+      const bytes = new Uint8Array(36);
+      crypto.getRandomValues(bytes);
+      const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*-_";
+      const temporaryPassword = "Aa1!" + Array.from(bytes, value => alphabet[value % alphabet.length]).join("");
+      const result = await method({ email, name, password: temporaryPassword, role: "user" });
+      if (result?.error) throw new Error(result.error.message || "Neon Auth no pudo crear la identidad.");
+      const createdUser = result.data?.user || result.user || result.data || null;
+      try {
+        await window.JBAuth.sendVerificationCode(email);
+      } catch (error) {
+        const invitationError = new Error("La identidad se creó, pero no se pudo enviar el código de verificación. Reenvíalo desde Identidades pendientes. " + (error?.message || ""));
+        invitationError.identityCreated = true;
+        throw invitationError;
+      }
+      return createdUser;
+    },
     async sendPasswordRecoveryCode(email) {
       const method = authClient?.forgetPassword?.emailOtp;
       if (typeof method !== "function") throw new Error("La recuperación de contraseña por correo no está disponible.");
@@ -374,7 +401,7 @@ async function initialize() {
   } else {
     lockERP(authUser
       ? (profileError || "Tu cuenta todavía no puede acceder. Verifica tu correo y vuelve a iniciar sesión.")
-      : "Inicia sesión o crea una cuenta para acceder. Ningún módulo se muestra antes de validar tu perfil.");
+      : "Inicia sesión con una cuenta creada por el propietario. Si recibiste una invitación, usa Activar invitación para verificar tu correo y establecer tu contraseña.");
   }
 
   $("#auth-control")?.addEventListener("click", async () => {
@@ -426,6 +453,11 @@ async function initialize() {
         await window.JBAuth.signUp(email, password, name);
         setAuthMode("verify", email);
         setAuthFeedback("Cuenta creada. Te enviamos un código de seis dígitos; verifica el correo para activar el acceso inicial del propietario.");
+      } else if (mode === "invite-verify") {
+        await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
+        await window.JBAuth.sendPasswordRecoveryCode(email);
+        setAuthMode("recovery-reset", email);
+        setAuthFeedback("Correo verificado. Te enviamos otro código para que establezcas tu contraseña personal.");
       } else if (mode === "verify") {
         await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
         if (erpProfile) {
@@ -469,11 +501,17 @@ async function initialize() {
   });
 
   $("#auth-signup-start")?.addEventListener("click", () => {
-    if (!allowOwnerSignUp || authUser) return;
+    if (!allowInviteActivation || authUser) return;
     const email = String($("#auth-email")?.value || "").trim();
-    setAuthMode("signup", email);
-    setAuthFeedback("Usá el correo electrónico designado para el propietario del ERP. Otras identidades no recibirán permisos administrativos.");
-    $("#auth-name")?.focus();
+    if (!email) {
+      setAuthFeedback("Escribe el correo al que el propietario envió la invitación.", true);
+      $("#auth-email")?.focus();
+      return;
+    }
+    // The owner already sent the first verification OTP when creating the invite.
+    // Do not invalidate it by sending a second code as soon as the invitee opens the form.
+    setAuthMode("invite-verify", email);
+    setAuthFeedback("Ingresa el código que llegó en la invitación. Si no lo encuentras, pulsa Reenviar código.");
   });
 
   $("#auth-forgot-password")?.addEventListener("click", () => {
@@ -490,7 +528,7 @@ async function initialize() {
     const email = String($("#auth-email")?.value || "").trim();
     const resend = $("#auth-resend-code");
     const mode = authForm?.dataset.mode;
-    if (!email || !authClient || !["verify", "recovery-reset"].includes(mode)) return;
+    if (!email || !authClient || !["verify", "invite-verify", "recovery-reset"].includes(mode)) return;
 
     resend.disabled = true;
     setAuthFeedback("Enviando código…");

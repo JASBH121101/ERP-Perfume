@@ -1289,3 +1289,267 @@ test('mobile sidebar visual coverage checks drawer, scrim, viewport bounds and d
   await expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('body')).not.toHaveClass(/mobile-menu-open/);
 });
+
+
+// Invitation-flow regression coverage. Neon Auth and ERP HTTP calls are mocked;
+// these tests validate the real browser state machine without creating accounts
+// or sending messages to real mailboxes.
+async function installRealAuthBootstrapMock(page, { owner = false } = {}) {
+  await page.unroute('**/assets/js/bootstrap.mjs');
+  const bootstrapPath = path.join(process.cwd(), 'assets/js/bootstrap.mjs');
+  const bootstrapSource = (await readFile(bootstrapPath, 'utf8')).replace(
+    'import { createAuthClient } from "@neondatabase/auth";',
+    'const createAuthClient = () => window.__mockAuthClient;'
+  );
+  expect(bootstrapSource).not.toContain('import { createAuthClient } from "@neondatabase/auth";');
+  await page.route('**/assets/js/bootstrap.mjs', route => route.fulfill({
+    status: 200,
+    contentType: 'text/javascript; charset=utf-8',
+    body: bootstrapSource
+  }));
+
+  await page.addInitScript(({ ownerSession }) => {
+    window.__authCalls = [];
+    window.__mockOwnerSession = ownerSession;
+    const record = (method, payload) => window.__authCalls.push({ method, payload });
+    const success = (method) => async payload => {
+      record(method, payload);
+      return { data: { success: true }, error: null };
+    };
+    window.__mockAuthClient = {
+      getSession: async () => {
+        const user = window.__mockOwnerSession
+          ? { id: 'qa-owner-auth', email: 'qa-owner@example.test', name: 'QA Owner', role: 'admin' }
+          : null;
+        return {
+          data: {
+            session: user ? { id: 'qa-owner-session', user } : null,
+            user
+          },
+          error: null
+        };
+      },
+      getJWTToken: async () => 'header.payload.signature',
+      admin: {
+        createUser: async payload => {
+          record('admin.createUser', payload);
+          return {
+            data: {
+              user: {
+                id: 'qa-invited-auth',
+                email: payload.email,
+                name: payload.name,
+                role: payload.role,
+                emailVerified: false
+              }
+            },
+            error: null
+          };
+        }
+      },
+      emailOtp: {
+        sendVerificationOtp: success('emailOtp.sendVerificationOtp'),
+        verifyEmail: success('emailOtp.verifyEmail'),
+        resetPassword: success('emailOtp.resetPassword')
+      },
+      forgetPassword: {
+        emailOtp: success('forgetPassword.emailOtp')
+      },
+      signOut: async () => ({ data: { success: true }, error: null })
+    };
+  }, { ownerSession: owner });
+
+  await page.route('**/api/config', async route => {
+    const origin = new URL(route.request().url()).origin;
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'authenticated',
+        environment: 'test',
+        authBaseUrl: origin + '/fake-auth'
+      })
+    });
+  });
+  await page.route('**/fake-auth/token', route => route.fulfill({
+    status: 404,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'mock token helper fallback' })
+  }));
+  await page.route('**/api/auth/profile', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      user: {
+        id: 'qa-owner-profile',
+        name: 'QA Owner',
+        email: 'qa-owner@example.test',
+        role: 'owner',
+        active: true,
+        permissions: ['*']
+      }
+    })
+  }));
+}
+
+async function installInvitationERPApi(page) {
+  await page.unroute(workerPattern);
+  const requests = [];
+  let account = null;
+  await page.route(workerPattern, async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const pathname = url.pathname;
+    const method = request.method();
+    const fulfill = (body, status = 200) => route.fulfill({
+      status,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(body)
+    });
+
+    if (pathname.endsWith('/bootstrap') && method === 'GET') {
+      return fulfill({ data: fixture });
+    }
+    if (pathname.endsWith('/resource-usage') && method === 'GET') {
+      return fulfill({
+        updatedAt: '2026-11-09T00:00:00.000Z',
+        database: { sizeBytes: 1024, activeConnections: 1, transactionsCommitted: 10, transactionsRolledBack: 0 },
+        storage: { sizeBytes: 0, objectCount: 0, complete: true, scannedPages: 1 },
+        errors: { database: null, storage: null }
+      });
+    }
+    if (pathname === '/api/erp/users' && method === 'GET') {
+      return fulfill({
+        users: account ? [account] : [],
+        pendingIdentities: []
+      });
+    }
+    if (pathname === '/api/erp/roles' && method === 'GET') {
+      return fulfill({
+        roles: [
+          { role_key: 'viewer', name: 'Consulta' },
+          { role_key: 'sales', name: 'Ventas' }
+        ],
+        permissions: [],
+        grants: []
+      });
+    }
+    if ((pathname === '/api/erp/audit' || pathname === '/api/erp/client-errors') && method === 'GET') {
+      return fulfill({ records: [] });
+    }
+    if (pathname === '/api/erp/users' && method === 'POST') {
+      const payload = request.postDataJSON();
+      requests.push({ method, pathname, payload });
+      account = {
+        id: 'qa-erp-invited',
+        auth_user_id: 'qa-invited-auth',
+        ...payload,
+        role: 'viewer',
+        account_status: 'registered',
+        active: false
+      };
+      return fulfill({ record: account }, 201);
+    }
+
+    requests.push({ method, pathname, payload: request.postDataJSON?.() || null });
+    return fulfill({ records: [], data: fixture });
+  });
+  return { requests, getAccount: () => account };
+}
+
+test('owner invitation creates a Neon identity and an inactive ERP profile with the selected role', async ({ page }) => {
+  await installRealAuthBootstrapMock(page, { owner: true });
+  const api = await installInvitationERPApi(page);
+  await page.goto('/');
+  await navigateToView(page, 'settings');
+
+  const inviteForm = page.locator('#invite-worker-form');
+  await expect(inviteForm).toBeVisible();
+  await inviteForm.locator('[name="display_name"]').fill('Trabajador QA');
+  await inviteForm.locator('[name="email"]').fill('Trabajador.QA@example.test');
+  await inviteForm.locator('[name="position_title"]').fill('Vendedor');
+  await inviteForm.locator('[name="role_template_key"]').selectOption('sales');
+
+  await inviteForm.locator('[type="submit"]').click();
+  await expect(page.locator('#toast-region')).toContainText('Invitación enviada');
+
+  const authCalls = await page.evaluate(() => window.__authCalls);
+  expect(authCalls.map(call => call.method)).toEqual([
+    'admin.createUser',
+    'emailOtp.sendVerificationOtp'
+  ]);
+  expect(authCalls[0].payload).toMatchObject({
+    email: 'trabajador.qa@example.test',
+    name: 'Trabajador QA',
+    role: 'user'
+  });
+  expect(authCalls[0].payload.password).toMatch(/^Aa1!.{36}$/);
+  expect(authCalls[1].payload).toEqual({
+    email: 'trabajador.qa@example.test',
+    type: 'email-verification'
+  });
+
+  const createRequest = api.requests.find(item =>
+    item.method === 'POST' && item.pathname === '/api/erp/users'
+  );
+  expect(createRequest).toBeTruthy();
+  expect(createRequest.payload).toMatchObject({
+    email: 'trabajador.qa@example.test',
+    display_name: 'Trabajador QA',
+    position_title: 'Vendedor',
+    role_template_key: 'sales',
+    employee_id: null,
+    must_change_password: true
+  });
+  expect(createRequest.payload).not.toHaveProperty('password');
+  expect(api.getAccount()).toMatchObject({
+    active: false,
+    account_status: 'registered',
+    role_template_key: 'sales'
+  });
+});
+
+test('invitee verifies email and sets a personal password through the OTP activation flow', async ({ page }) => {
+  await installRealAuthBootstrapMock(page);
+  await page.goto('/');
+
+  const dialog = page.locator('#auth-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#auth-enroll-actions')).toBeVisible();
+  await page.locator('#auth-email').fill('trabajador.qa@example.test');
+  await page.locator('#auth-signup-start').click();
+  await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'invite-verify');
+  expect(await page.evaluate(() => window.__authCalls)).toEqual([]);
+
+  await page.locator('#auth-resend-code').click();
+  await expect(page.locator('#auth-feedback')).toContainText('Código enviado');
+  await page.locator('#auth-otp').fill('123456');
+  await page.locator('#auth-submit').click();
+  await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'recovery-reset');
+
+  await page.locator('#auth-otp').fill('654321');
+  const invitedPassword = 'Personal-Password-2026!';
+  await page.locator('#auth-new-password').fill(invitedPassword);
+  await page.locator('#auth-confirm-password').fill(invitedPassword);
+  await page.locator('#auth-submit').click();
+  await expect(page.locator('#auth-form')).toHaveAttribute('data-mode', 'signin');
+  await expect(page.locator('#auth-feedback')).toContainText('Contraseña actualizada');
+
+  const authCalls = await page.evaluate(() => window.__authCalls);
+  expect(authCalls.map(call => call.method)).toEqual([
+    'emailOtp.sendVerificationOtp',
+    'emailOtp.verifyEmail',
+    'forgetPassword.emailOtp',
+    'emailOtp.resetPassword'
+  ]);
+  expect(authCalls[1].payload).toEqual({
+    email: 'trabajador.qa@example.test',
+    otp: '123456'
+  });
+  expect(authCalls[2].payload).toEqual({ email: 'trabajador.qa@example.test' });
+  expect(authCalls[3].payload).toEqual({
+    email: 'trabajador.qa@example.test',
+    otp: '654321',
+    password: invitedPassword
+  });
+});

@@ -701,7 +701,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     "export-dgi-book": ["analytics.reports.export"], "go-hr-employees": ["hr.employees.view"],
     "clear-inventory-filters": ["inventory.view"], "clear-inventory-product-filters": ["inventory.view"], "inventory-month-filter": ["inventory.view"], "clear-purchase-filters": ["purchases.purchase_orders.view","purchases.receipts.view"], "purchase-month-filter": ["purchases.purchase_orders.view","purchases.receipts.view"],
     "inventory-page": ["inventory.view"], "inventory-stock-page": ["inventory.view"], "refresh-access-manager": ["users.accounts.view"],
-    "provision-user-account": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
+    "provision-user-account": ["users.accounts.create"], "send-invite-verification": ["users.accounts.create"], "save-user-access": ["users.accounts.edit"], "add-user-override": ["users.accounts.edit"], "remove-user-override": ["users.accounts.edit"]
   };
   function applyPermissionActions() {
     root.querySelectorAll("button[data-action]").forEach((button) => {
@@ -3408,7 +3408,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<td><input class="filter-select" data-pending-name value="'+esc(identity.display_name||"")+'" maxlength="180" placeholder="Nombre completo"></td>'+
       '<td><input class="filter-select" data-pending-position maxlength="120" placeholder="Cargo libre"></td>'+
       '<td><select class="filter-select" data-pending-role>'+roleOptions+'</select></td>'+
-      '<td><button class="button button-primary button-small" data-action="provision-user-account">Preparar cuenta ERP</button></td></tr>'
+      '<td><button class="button button-quiet button-small" data-action="send-invite-verification">Reenviar código</button> <button class="button button-primary button-small" data-action="provision-user-account">Preparar cuenta ERP</button></td></tr>'
     ).join("");
 
     const selectedRole = accessManager.roles.find(role=>role.role_key===accessSelectedRole);
@@ -3450,7 +3450,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>El cargo es texto libre. El estado activo es lo que habilita la entrada al ERP.</p></div><span class="ledger-count">'+accessManager.users.length+' cuentas</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>La cuenta de acceso debe existir previamente. Esta acción crea el perfil ERP, inicialmente bloqueado; no crea la contraseña ni envía una invitación.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Invitar trabajador</h3><p>El propietario crea la identidad, envía la verificación y prepara un perfil ERP bloqueado. La persona establecerá su propia contraseña desde el correo.</p></div></div>'+
+      '<form id="invite-worker-form" class="rate-form"><label class="form-field"><span>Nombre completo</span><input name="display_name" maxlength="180" placeholder="Nombre del trabajador" required></label><label class="form-field"><span>Correo electrónico</span><input name="email" type="email" maxlength="180" placeholder="trabajador@correo.com" required></label><label class="form-field"><span>Cargo</span><input name="position_title" maxlength="120" placeholder="Vendedor, bodeguero…"></label><label class="form-field"><span>Plantilla de permisos</span><select name="role_template_key">'+roleOptions+'</select></label><div class="modal-actions"><button class="button button-primary" type="submit">Crear y enviar invitación</button></div></form></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>Identidades de Neon Auth que todavía no tienen perfil ERP. Puedes reenviar el código o preparar el perfil bloqueado.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p></div>'+
       '<select class="filter-select" id="access-role-select">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div>'+
@@ -4738,6 +4740,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       button.disabled=false;
       return;
     }
+    if(action==="send-invite-verification"){
+      const row=button.closest("tr");
+      const email=row?.getAttribute("data-pending-email");
+      if(!email)return;
+      button.disabled=true;
+      try{await window.JBAuth.sendVerificationCode(email);toast("Si la identidad existe y el correo está habilitado, se envió un nuevo código.");}
+      catch(error){toast(error?.message||"No se pudo reenviar el código.");}
+      finally{button.disabled=false;}
+      return;
+    }
     if(action==="provision-user-account"){
       const row=button.closest("tr");
       if(!row)return;
@@ -4829,6 +4841,38 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   });
   document.addEventListener("submit",async function(event){
     const form=event.target;
+    if(form?.id==="invite-worker-form"){
+      event.preventDefault();
+      if(window.JBAuth?.profile?.role!=="owner"){toast("Solo el propietario puede invitar trabajadores.");return;}
+      if(!form.reportValidity())return;
+      const data=new FormData(form);
+      const payload={
+        email:String(data.get("email")||"").trim().toLowerCase(),
+        display_name:String(data.get("display_name")||"").trim(),
+        position_title:String(data.get("position_title")||"").trim(),
+        role_template_key:String(data.get("role_template_key")||"viewer"),
+        employee_id:null,
+        must_change_password:true
+      };
+      const submit=form.querySelector('[type="submit"]');
+      if(submit){submit.disabled=true;submit.textContent="Creando invitación…";}
+      let identityCreated=false;
+      try{
+        await window.JBAuth.createInvitedIdentity(payload.email,payload.display_name);
+        identityCreated=true;
+        await erpApi("users",{method:"POST",body:JSON.stringify(payload)});
+        form.reset();
+        await loadAccessManager(true);
+        toast("Invitación enviada. La cuenta quedó bloqueada hasta que verifiques y actives sus permisos.");
+      }catch(error){
+        identityCreated = identityCreated || error?.identityCreated === true;
+        toast(identityCreated
+          ? "La identidad se creó, pero falta preparar el perfil ERP. Reintenta desde Identidades pendientes. "+(error?.message||"")
+          : (error?.message||"No se pudo crear la invitación."));
+        await loadAccessManager(true);
+      }finally{if(submit){submit.disabled=false;submit.textContent="Crear y enviar invitación";}}
+      return;
+    }
     if(form?.id==="purchase-order-form"){
       event.preventDefault();
       if(!permissionGranted("purchases.purchase_orders.create")){toast("Tu cuenta no puede crear órdenes de compra.");return;}
