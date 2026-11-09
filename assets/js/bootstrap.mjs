@@ -158,12 +158,13 @@ function setAuthMode(mode, email = "") {
   if (recoveryNote) {
     recoveryNote.hidden = !(recoveryRequest || recoveryReset);
     recoveryNote.textContent = recoveryReset
-      ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña. El SMS aún no está habilitado: requiere verificar el celular y conectar un proveedor de mensajes."
+      ? "Introduce el NUEVO código de recuperación que acabamos de enviar. No reutilices el código de verificación de la invitación. Después establece tu contraseña personal. El SMS aún no está habilitado."
       : "Por ahora puedes recibir el código de recuperación en tu correo. El celular se guarda en RR. HH., pero todavía no está vinculado ni verificado para restablecer contraseñas por SMS.";
   }
 
   if (email) $("#auth-email").value = email;
-  if (!showingOtp) $("#auth-otp").value = "";
+  // A recovery OTP is a new credential challenge, never reuse the invitation-verification code.
+  if (!showingOtp || recoveryReset) $("#auth-otp").value = "";
   if (!recoveryReset) {
     $("#auth-new-password").value = "";
     $("#auth-confirm-password").value = "";
@@ -455,9 +456,12 @@ async function initialize() {
         setAuthFeedback("Cuenta creada. Te enviamos un código de seis dígitos; verifica el correo para activar el acceso inicial del propietario.");
       } else if (mode === "invite-verify") {
         await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
-        await window.JBAuth.sendPasswordRecoveryCode(email);
+        // Move to the second challenge immediately and clear the first OTP before requesting
+        // password recovery, so the invite code cannot remain in the recovery input.
         setAuthMode("recovery-reset", email);
-        setAuthFeedback("Correo verificado. Te enviamos otro código para que establezcas tu contraseña personal.");
+        setAuthFeedback("Correo verificado. Ahora te enviaremos un segundo código para crear tu contraseña.");
+        await window.JBAuth.sendPasswordRecoveryCode(email);
+        setAuthFeedback("Correo verificado. Introduce el NUEVO código de recuperación que acabamos de enviar.");
       } else if (mode === "verify") {
         await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
         if (erpProfile) {
