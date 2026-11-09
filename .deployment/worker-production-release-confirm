@@ -1,1 +1,1 @@
-Confirm guarded Production Worker rollout on PR merge.
+Confirm guarded Production Worker rollout on PR merge after verified Neon migration 0025; deploy only after health preflight passes.
