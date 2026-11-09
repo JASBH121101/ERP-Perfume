@@ -120,12 +120,14 @@ function setAuthMode(mode, email = "") {
   const signingUp = mode === "signup";
   const verifying = mode === "verify";
   const recoveryRequest = mode === "recovery-request";
-  const recoveryReset = mode === "recovery-reset";
+  const invitePasswordReset = mode === "invite-password-reset";
+  const recoveryReset = mode === "recovery-reset" || invitePasswordReset;
   const signingIn = mode === "signin";
   const enteringPassword = signingIn || signingUp;
   const inviteVerifying = mode === "invite-verify";
   const showingOtp = verifying || inviteVerifying || recoveryReset;
 
+  const previousMode = authForm.dataset.mode || "";
   authForm.dataset.mode = mode;
   $("#auth-name-field").hidden = !signingUp;
   $("#auth-name").required = signingUp;
@@ -145,25 +147,31 @@ function setAuthMode(mode, email = "") {
   $("#auth-enroll-actions").hidden = !(signingIn && allowInviteActivation && !authUser);
 
   const otpLabel = $("#auth-otp-label");
-  if (otpLabel) otpLabel.textContent = (verifying || inviteVerifying) ? "Código de verificación" : "Código de recuperación";
+  if (otpLabel) otpLabel.textContent = (verifying || inviteVerifying) ? "Código de verificación" : invitePasswordReset ? "Segundo código para crear contraseña" : "Código de recuperación";
   const gateNote = $(".auth-gate-note");
   if (gateNote) {
     gateNote.textContent = signingUp
       ? "El registro público está deshabilitado. Las cuentas las crea únicamente el propietario."
       : inviteVerifying
-        ? "Verificá el correo de la invitación. Después recibirás un segundo código para establecer tu contraseña personal. La verificación no activa permisos del ERP."
-        : "Iniciá sesión con una cuenta previamente creada y habilitada por el propietario. Verificar el correo no concede acceso al ERP por sí solo.";
+        ? "Ingresá el código de verificación que recibiste para confirmar tu correo. Después enviaremos un segundo código para crear tu contraseña."
+        : invitePasswordReset
+          ? "Tu correo ya está verificado. Ahora introducí el segundo código que acabamos de enviar para establecer tu contraseña. El primer código ya no sirve en este paso. Esto todavía no activa tu acceso al ERP."
+          : "Iniciá sesión con una cuenta previamente creada y habilitada por el propietario. Verificar el correo no concede acceso al ERP por sí solo.";
   }
   const recoveryNote = $("#auth-recovery-note");
   if (recoveryNote) {
     recoveryNote.hidden = !(recoveryRequest || recoveryReset);
-    recoveryNote.textContent = recoveryReset
-      ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña. El SMS aún no está habilitado: requiere verificar el celular y conectar un proveedor de mensajes."
+    recoveryNote.textContent = invitePasswordReset
+      ? "Revisá el correo más reciente: introducí el segundo código enviado después de verificar tu correo. Luego establecé tu contraseña. No uses el código anterior."
+      : recoveryReset
+        ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña. El SMS aún no está habilitado: requiere verificar el celular y conectar un proveedor de mensajes."
       : "Por ahora puedes recibir el código de recuperación en tu correo. El celular se guarda en RR. HH., pero todavía no está vinculado ni verificado para restablecer contraseñas por SMS.";
   }
 
   if (email) $("#auth-email").value = email;
-  if (!showingOtp) $("#auth-otp").value = "";
+  // Verification and password-reset OTPs are different credentials. Clear
+  // the previous value whenever the UI advances to another authentication step.
+  if (previousMode !== mode || !showingOtp) $("#auth-otp").value = "";
   if (!recoveryReset) {
     $("#auth-new-password").value = "";
     $("#auth-confirm-password").value = "";
@@ -455,9 +463,12 @@ async function initialize() {
         setAuthFeedback("Cuenta creada. Te enviamos un código de seis dígitos; verifica el correo para activar el acceso inicial del propietario.");
       } else if (mode === "invite-verify") {
         await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
+        // Move to the password step immediately. If email delivery fails, the
+        // invitee can resend the reset code without reusing the consumed OTP.
+        setAuthMode("invite-password-reset", email);
+        setAuthFeedback("Correo verificado. Enviando el segundo código para crear tu contraseña…");
         await window.JBAuth.sendPasswordRecoveryCode(email);
-        setAuthMode("recovery-reset", email);
-        setAuthFeedback("Correo verificado. Te enviamos otro código para que establezcas tu contraseña personal.");
+        setAuthFeedback("Correo verificado. Te enviamos un segundo código. Revisá Gmail, introducilo aquí y establecé tu contraseña.");
       } else if (mode === "verify") {
         await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
         if (erpProfile) {
@@ -471,7 +482,7 @@ async function initialize() {
         await window.JBAuth.sendPasswordRecoveryCode(email);
         setAuthMode("recovery-reset", email);
         setAuthFeedback("Si existe una cuenta con ese correo, enviamos un código de seis dígitos. Revisa también la carpeta de spam.");
-      } else if (mode === "recovery-reset") {
+      } else if (mode === "recovery-reset" || mode === "invite-password-reset") {
         const otp = String(data.get("otp") || "").trim();
         const password = String(data.get("newPassword") || "");
         const confirmation = String(data.get("confirmPassword") || "");
@@ -533,9 +544,11 @@ async function initialize() {
     resend.disabled = true;
     setAuthFeedback("Enviando código…");
     try {
-      if (mode === "recovery-reset") {
+      if (mode === "recovery-reset" || mode === "invite-password-reset") {
         await window.JBAuth.sendPasswordRecoveryCode(email);
-        setAuthFeedback("Si existe una cuenta con ese correo, enviamos un nuevo código.");
+        setAuthFeedback(mode === "invite-password-reset"
+          ? "Enviamos un nuevo segundo código para crear tu contraseña. Usá el más reciente."
+          : "Si existe una cuenta con ese correo, enviamos un nuevo código.");
       } else {
         await window.JBAuth.sendVerificationCode(email);
         setAuthFeedback("Código enviado. Revisa tu bandeja de entrada y la carpeta de spam.");
