@@ -2660,7 +2660,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   function renderAnalytics(){
     const period=resolveReportingPeriod(analyticsPeriodPreset,new Date(),analyticsCustomFrom,analyticsCustomTo);
-    const inPeriod=(record,fields)=>fields.some(field=>isWithinReportingPeriod(record?.[field],period));
+    const inPeriod=(record,fields)=>{
+      const value=fields.map(field=>record?.[field]).find(item=>item!==null&&item!==undefined&&item!=="");
+      return isWithinReportingPeriod(value,period);
+    };
     const periodInvoices=invoices.filter(invoice=>inPeriod(invoice,['createdAt','invoiceDate','date']));
     const periodExpenses=expenses.filter(expense=>inPeriod(expense,['createdAt','expenseDate','date']));
     const periodPurchases=purchases.filter(purchase=>inPeriod(purchase,['createdAt','purchaseDate','date']));
@@ -2674,7 +2677,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     // These are current outstanding balances, not period activity.
     const receivables=invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0);
     const payables=supplierPayables.total;
-    const paidRevenue=periodInvoices.reduce((sum,i)=>sum+Number(i.paidUsd||0),0);
+    const paidRevenue=invoices.reduce((sum,invoice)=>{
+      const payments=Array.isArray(invoice.payments)?invoice.payments:[];
+      if(payments.length)return sum+payments.filter(payment=>isWithinReportingPeriod(payment.createdAt,period)).reduce((subtotal,payment)=>subtotal+Number(payment.amountUsd||0),0);
+      return sum+(isWithinReportingPeriod(invoice.createdAt,period)?Number(invoice.paidUsd||0):0);
+    },0);
     const presetOptions=[
       ['all','Todo el historial'],['month','Este mes'],['previous_month','Mes anterior'],
       ['last_30','Últimos 30 días'],['last_90','Últimos 90 días'],['last_180','Últimos 180 días'],
@@ -2697,7 +2704,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       metric('Utilidad bruta',money(finance.grossProfit),'spark','Venta neta de productos − costo','antes de gastos operativos',true)+
       metric('Gastos operativos',money(finance.operatingExpenses),'receipt',periodExpenses.length+' gastos en el período','convertidos a USD',false)+
       metric('Resultado después de gastos',money(finance.netProfit),'wallet','Utilidad bruta + entrega − gastos','antes de impuestos y partidas no registradas',true)+
-      metric('Cobros aplicados',money(paidRevenue),'wallet','Facturas emitidas en el período','según abonos asociados a esas facturas',false)+
+      metric('Cobros recibidos',money(paidRevenue),'wallet','Abonos con fecha dentro del período','flujo de efectivo cobrado · USD',false)+
       '</div>'+
       '<div class="summary-strip">'+
       '<div class="summary-mini"><span>Valor del inventario a costo · hoy</span><strong>'+money(inventory)+'</strong></div>'+
