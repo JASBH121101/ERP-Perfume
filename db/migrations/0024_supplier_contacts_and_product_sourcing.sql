@@ -28,6 +28,42 @@ CREATE TABLE public.supplier_phone_numbers (
 CREATE INDEX supplier_phone_numbers_supplier_idx
   ON public.supplier_phone_numbers (supplier_id, display_order);
 
+-- Preserve legacy contact values that are clearly phone numbers as secondary phone records.
+WITH legacy_contact AS (
+  SELECT id,
+         regexp_replace(contact, '\D', '', 'g') AS digits,
+         regexp_replace(COALESCE(phone, ''), '\D', '', 'g') AS primary_digits
+  FROM public.suppliers
+  WHERE NULLIF(BTRIM(contact), '') IS NOT NULL
+), legacy_phone AS (
+  SELECT id,
+         CASE
+           WHEN length(digits) = 8 THEN '+505' || digits
+           WHEN left(digits, 3) = '505' AND length(digits) = 11 THEN '+' || digits
+           WHEN left(digits, 2) = '00' AND length(digits) BETWEEN 10 AND 17 THEN '+' || substr(digits, 3)
+         END AS normalized_phone,
+         primary_digits
+  FROM legacy_contact
+  WHERE (length(digits) = 8)
+     OR (left(digits, 3) = '505' AND length(digits) = 11)
+     OR (left(digits, 2) = '00' AND length(digits) BETWEEN 10 AND 17)
+)
+INSERT INTO public.supplier_phone_numbers(supplier_id, phone, display_order)
+SELECT id, normalized_phone, 1
+FROM legacy_phone
+WHERE normalized_phone IS NOT NULL
+  AND regexp_replace(normalized_phone, '\D', '', 'g') <> primary_digits
+ON CONFLICT (supplier_id, phone) DO NOTHING;
+
+UPDATE public.suppliers
+SET contact = NULL, updated_at = NOW()
+WHERE NULLIF(BTRIM(contact), '') IS NOT NULL
+  AND (
+    length(regexp_replace(contact, '\D', '', 'g')) = 8
+    OR (left(regexp_replace(contact, '\D', '', 'g'), 3) = '505' AND length(regexp_replace(contact, '\D', '', 'g')) = 11)
+    OR (left(regexp_replace(contact, '\D', '', 'g'), 2) = '00' AND length(regexp_replace(contact, '\D', '', 'g')) BETWEEN 10 AND 17)
+  );
+
 ALTER TABLE public.products
   ADD COLUMN supplier_id UUID;
 
