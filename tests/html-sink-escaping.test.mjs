@@ -29,6 +29,20 @@ test("inventory product HTML escapes dynamic text and attribute values at the in
   }
 });
 
+test("inventory pagination builds controls with DOM APIs instead of interpolated HTML", () => {
+  const renderer = sectionBetween(
+    appSource,
+    "function renderInventoryProductRows()",
+    "function renderInventory()"
+  );
+  assert.match(renderer, /pagination\.replaceChildren\(footer\)/);
+  assert.match(renderer, /rangeLabel\.textContent=/);
+  assert.match(renderer, /count\.textContent=/);
+  assert.match(renderer, /previous\.disabled=state\.inventoryStockPage<=1/);
+  assert.match(renderer, /next\.disabled=state\.inventoryStockPage>=pages/);
+  assert.doesNotMatch(renderer, /pagination\.innerHTML\s*=/);
+});
+
 test("catalog import preview escapes CSV-derived values at the insertion sink", () => {
   const preview = sectionBetween(
     appSource,
