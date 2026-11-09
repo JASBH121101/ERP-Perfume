@@ -117,13 +117,14 @@ async function refreshProfile() {
 
 function setAuthMode(mode, email = "") {
   if (!authForm) return;
-  const signingUp = mode === "signup";
+  const signingUp = false; // El registro público permanece deshabilitado en todos los entornos.
   const verifying = mode === "verify";
+  const inviteVerification = mode === "invite-verify";
   const recoveryRequest = mode === "recovery-request";
   const recoveryReset = mode === "recovery-reset";
   const signingIn = mode === "signin";
   const enteringPassword = signingIn || signingUp;
-  const showingOtp = verifying || recoveryReset;
+  const showingOtp = verifying || inviteVerification || recoveryReset;
 
   authForm.dataset.mode = mode;
   $("#auth-name-field").hidden = !signingUp;
@@ -144,7 +145,7 @@ function setAuthMode(mode, email = "") {
   $("#auth-enroll-actions").hidden = !(signingIn && allowOwnerSignUp && !authUser);
 
   const otpLabel = $("#auth-otp-label");
-  if (otpLabel) otpLabel.textContent = verifying ? "Código de verificación" : "Código de recuperación";
+  if (otpLabel) otpLabel.textContent = inviteVerification ? "Código de invitación" : verifying ? "Código de verificación" : "Código de recuperación";
   const gateNote = $(".auth-gate-note");
   if (gateNote) {
     gateNote.textContent = signingUp
@@ -153,10 +154,12 @@ function setAuthMode(mode, email = "") {
   }
   const recoveryNote = $("#auth-recovery-note");
   if (recoveryNote) {
-    recoveryNote.hidden = !(recoveryRequest || recoveryReset);
-    recoveryNote.textContent = recoveryReset
-      ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña. El SMS aún no está habilitado: requiere verificar el celular y conectar un proveedor de mensajes."
-      : "Por ahora puedes recibir el código de recuperación en tu correo. El celular se guarda en RR. HH., pero todavía no está vinculado ni verificado para restablecer contraseñas por SMS.";
+    recoveryNote.hidden = !(recoveryRequest || recoveryReset || inviteVerification);
+    recoveryNote.textContent = inviteVerification
+      ? "Introduce el código que recibiste en el correo al que se envió la invitación. Después verificarás la dirección y definirás tu propia contraseña."
+      : recoveryReset
+        ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña."
+        : "Recibirás un código de recuperación en tu correo. El celular todavía no está vinculado ni verificado para restablecer contraseñas por SMS.";
   }
 
   if (email) $("#auth-email").value = email;
@@ -167,14 +170,14 @@ function setAuthMode(mode, email = "") {
   }
   if (!signingUp) $("#auth-name").value = "";
 
-  $("#auth-submit").textContent = verifying
-    ? "Verificar correo"
-    : recoveryRequest
-      ? "Enviar código"
-      : recoveryReset
-        ? "Cambiar contraseña"
-        : signingUp
-          ? "Crear cuenta"
+  $("#auth-submit").textContent = inviteVerification
+    ? "Confirmar invitación"
+    : verifying
+      ? "Verificar correo"
+      : recoveryRequest
+        ? "Enviar código"
+        : recoveryReset
+          ? "Definir contraseña"
           : "Iniciar sesión";
   if (authFeedback) authFeedback.textContent = "";
 }
@@ -270,8 +273,8 @@ async function initialize() {
     if (!response.ok) throw new Error("El backend respondió con estado " + response.status + ".");
     config = await readJson(response);
     authEnvironment = String(config.environment || "unknown").trim().toLowerCase();
-    // The initial enrollment entry point is exposed only on the production deployment.
-    allowOwnerSignUp = authEnvironment === "production";
+    // El alta pública del propietario también está deshabilitada; las cuentas nuevas se crean desde el panel owner.
+    allowOwnerSignUp = false;
   } catch (error) {
     window.JBAuth = { mode: "unavailable", user: null, profile: null, getToken: async () => null };
     lockERP("No se pudo contactar al servicio seguro del ERP. " + (error?.message || "Intenta recargar."));
@@ -327,6 +330,18 @@ async function initialize() {
       await refreshProfile();
       return result;
     },
+    async createAuthIdentity(email, name) {
+      const createUser = authClient?.admin?.createUser;
+      if (typeof createUser !== "function") {
+        throw new Error("Neon Auth no habilitó la administración de usuarios para esta sesión.");
+      }
+      const randomBytes = new Uint8Array(32);
+      crypto.getRandomValues(randomBytes);
+      const initialPassword = Array.from(randomBytes, byte => byte.toString(16).padStart(2, "0")).join("");
+      const result = await createUser({ email, password: initialPassword, name, role: "user" });
+      if (result?.error) throw new Error(result.error.message || "Neon Auth no pudo crear la identidad.");
+      return result?.data?.user || result?.user || result?.data || null;
+    },
     async sendVerificationCode(email) {
       const method = authClient?.emailOtp?.sendVerificationOtp;
       if (typeof method !== "function") throw new Error("El envío de códigos de verificación no está disponible.");
@@ -374,7 +389,14 @@ async function initialize() {
   } else {
     lockERP(authUser
       ? (profileError || "Tu cuenta todavía no puede acceder. Verifica tu correo y vuelve a iniciar sesión.")
-      : "Inicia sesión o crea una cuenta para acceder. Ningún módulo se muestra antes de validar tu perfil.");
+      : "Inicia sesión con una cuenta creada y habilitada por el propietario.");
+    const inviteParams = new URLSearchParams(window.location.search);
+    const inviteEmail = String(inviteParams.get("email") || "").trim();
+    if (!authUser && inviteParams.get("setup") === "invite" && inviteEmail) {
+      setAuthMode("invite-verify", inviteEmail);
+      setAuthFeedback("Invitación de JB PARFUMS. Introduce el código de seis dígitos enviado a tu correo.");
+      $("#auth-otp")?.focus();
+    }
   }
 
   $("#auth-control")?.addEventListener("click", async () => {
@@ -435,6 +457,11 @@ async function initialize() {
           setAuthMode("signin", email);
           setAuthFeedback("Correo verificado. Inicia sesión para validar tu perfil del ERP.");
         }
+      } else if (mode === "invite-verify") {
+        await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
+        setAuthMode("recovery-reset", email);
+        await window.JBAuth.sendPasswordRecoveryCode(email);
+        setAuthFeedback("Correo verificado. Te enviamos otro código para que establezcas tu contraseña personal.");
       } else if (mode === "recovery-request") {
         await window.JBAuth.sendPasswordRecoveryCode(email);
         setAuthMode("recovery-reset", email);
@@ -448,7 +475,10 @@ async function initialize() {
         await window.JBAuth.resetPasswordWithEmailOtp(email, otp, password);
         setAuthMode("signin", email);
         $("#auth-password").value = "";
-        setAuthFeedback("Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña.");
+        const isInviteSetup = new URLSearchParams(window.location.search).get("setup") === "invite";
+        setAuthFeedback(isInviteSetup
+          ? "Contraseña creada. Tu cuenta sigue bloqueada hasta que el propietario active el acceso al ERP."
+          : "Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña.");
       } else {
         await window.JBAuth.signIn(email, String(data.get("password") || ""));
         if (erpProfile) {
@@ -490,7 +520,7 @@ async function initialize() {
     const email = String($("#auth-email")?.value || "").trim();
     const resend = $("#auth-resend-code");
     const mode = authForm?.dataset.mode;
-    if (!email || !authClient || !["verify", "recovery-reset"].includes(mode)) return;
+    if (!email || !authClient || !["verify", "invite-verify", "recovery-reset"].includes(mode)) return;
 
     resend.disabled = true;
     setAuthFeedback("Enviando código…");
