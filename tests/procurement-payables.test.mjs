@@ -194,6 +194,11 @@ test("purchase receipt emission stores supplier invoice and reserves quantities 
   assert.equal(captured.values[11], actor.id);
   assert.match(captured.statement, /document_status='Emitida'/);
   assert.match(captured.statement, /reserved_quantity/);
+  assert.match(captured.statement, /SUM\\(m\\.quantity_received\\*\\(CASE WHEN i\\.currency='NIO' THEN m\\.invoice_unit_cost_input\\/i\\.exchange_rate ELSE m\\.invoice_unit_cost_input END\\)\\)/);
+  assert.match(captured.statement, /i\\.freight_usd\\*\\(CASE WHEN i\\.currency='NIO' THEN m\\.invoice_unit_cost_input\\/i\\.exchange_rate ELSE m\\.invoice_unit_cost_input END\\)\\*m\\.quantity_received\\/a\\.expected_merchandise_usd/);
+  assert.match(captured.statement, /i\\.taxes_usd\\*\\(CASE WHEN i\\.currency='NIO' THEN m\\.invoice_unit_cost_input\\/i\\.exchange_rate ELSE m\\.invoice_unit_cost_input END\\)\\*m\\.quantity_received\\/a\\.expected_merchandise_usd/);
+  assert.doesNotMatch(captured.statement, /i\\.freight_usd\\*m\\.unit_cost_usd/);
+  assert.doesNotMatch(captured.statement, /i\\.taxes_usd\\*m\\.unit_cost_usd/);
   assert.match(captured.statement, /supplier_invoice_number/);
   assert.ok(captured.statement.includes("pg_advisory_xact_lock(hashtextextended(po.supplier_id::text||':'||i.invoice_number,0))"));
   assert.ok(captured.statement.includes("FROM purchase_receipts existing JOIN purchase_orders existing_order"));
