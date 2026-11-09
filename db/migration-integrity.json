@@ -376,10 +376,10 @@
     {
       "filename": "0024_supplier_contacts_and_product_sourcing.sql",
       "version": "0024",
-      "sha256": "44fa55128450097ce5ebc6143048792de5b20e1e6c12ac0740dc5c94213e70c7",
+      "sha256": "84c9d4d16fc2b7f978b37544575dd7089624b3dcfbd6eb4fc1d65769ecda5347",
       "database": {
         "status": "pending",
-        "note": "Additive supplier metadata, up to five secondary phone numbers, migration of numeric legacy contact values into secondary phone rows, normalized supplier-name duplicate guard and nullable product-to-supplier relationship. Not yet applied to Development or Production."
+        "note": "Additive supplier metadata, up to five secondary phone numbers, safe migration of numeric-only legacy contact values into secondary phone rows, normalized supplier-name duplicate guard and nullable product-to-supplier relationship. Not yet applied to Development or Production."
       }
     }
   ],
