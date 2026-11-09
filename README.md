@@ -6,7 +6,7 @@ ERP web application for JB PARFUMS.
 
 The application is authenticated through Neon Auth. The frontend remains locked until the Cloudflare Worker validates the session and resolves an ERP profile and role.
 
-Operational modules are connected to the Neon `development` database through the authenticated Worker API. The current development database has the schema and migration history in place, but the operational tables are currently empty; no real commercial records have been loaded yet.
+The Development API uses Neon `development`. Neon `production` has now received the clean application migration chain `0001`–`0023` and its schema matches Development. Neither branch has real commercial records loaded. Production cutover is still gated on the separate Production Worker secret, initial owner sign-up/verification, live API checks and Pages promotion. See [Production cutover](docs/production-cutover.md).
 
 ## Connected operational modules
 
@@ -42,8 +42,8 @@ These are database-backed workflows, not browser-local DEMO datasets. However, t
 
 - **Frontend:** static HTML, CSS and JavaScript, bundled with esbuild into `dist/`.
 - **Hosting:** Cloudflare Pages project `erp-perfume`, publishing from GitHub `main`.
-- **API:** standalone Cloudflare Worker `jb-parfums-erp-api`, source in `worker/src/`.
-- **Database:** Neon PostgreSQL, database `erp_perfume`; the deployed Worker is configured for the `development` branch during validation.
+- **API:** separate Cloudflare Workers: `jb-parfums-erp-api` for Development and `jb-parfums-erp-api-production` for the isolated Production target; both use the same source bundle.
+- **Database:** Neon PostgreSQL database `erp_perfume`, with independent `development` and `production` branches. Production schema and migrations are installed; its Worker still requires the Production-only `DATABASE_URL` secret and public endpoint enablement before cutover.
 - **Identity:** Neon Managed Auth. The Worker validates JWTs, verified email, account status and ERP roles.
 - **Files:** private Cloudflare R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
 - **CI/CD:** GitHub Actions runs the ERP quality gate, JB Expert QA and Worker deployment workflow. Pages publishes the static frontend from `main`.
@@ -55,8 +55,9 @@ These are database-backed workflows, not browser-local DEMO datasets. However, t
 - The repository is maintained directly on `main`, as the single integration branch.
 - Cloudflare Pages production deploys from `main`.
 - The standalone API Worker is deployed independently from `worker/`.
-- The deployed Worker currently uses Neon `development`; Neon `production` has not been migrated to the application schema and is not the application runtime target.
-- Do not point the Worker to Neon Production or apply production migrations until the Development workflows have passed review and the owner explicitly authorizes a production cutover.
+- The Development Worker remains pinned to Neon `development`; it must never be repointed to Production.
+- Neon `production` has the canonical `0001`–`0023` schema and a least-privilege `jb_erp_runtime_sql` role. The dedicated Production Worker is isolated but not yet public: install its Production `DATABASE_URL` secret and complete health/authentication tests before promoting Pages.
+- First-time Production owner access uses the configured owner email with Neon Auth OTP verification; the Worker then provisions the ERP owner profile. Development sessions and passwords are not copied between branches.
 - Secrets are never committed to GitHub or copied into documentation.
 
 ## Build and tests
@@ -70,4 +71,4 @@ npm test
 
 The GitHub Actions workflows run static checks, unit tests, browser tests and the separate JB Expert QA source/visual audit. A green source/visual QA run does not replace database-backed end-to-end testing against the live Worker.
 
-See [Backend setup](docs/backend-setup.md) for deployment and runtime configuration.
+See [Backend setup](docs/backend-setup.md) for runtime architecture and [Production cutover](docs/production-cutover.md) for the current release gate and required final checks.
