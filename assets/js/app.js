@@ -400,6 +400,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
           purchaseCost, additionalCost, unitCost, price, wholesalePrice: p.wholesale_price_usd == null ? null : Number(p.wholesale_price_usd),
           profit, margin: price > 0 ? profit / price * 100 : 0, stock: Number(p.stock || 0), minStock: Number(p.min_stock || 0),
           location: p.location || "", barcode: p.barcode || "", notes: p.notes || "", tone: p.tone || "art-violet",
+          authenticityType: p.authenticity_type || "unspecified", inspiredBy: p.inspired_by || "",
           supplierId: p.supplier_id || null, supplier: p.supplier_name || "", images:Array.isArray(p.images)?p.images:[], active: p.active !== false, createdAt: p.created_at
         };
       });
@@ -763,8 +764,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const margin = Number(product.price) > 0 ? (profit / Number(product.price)) * 100 : 0;
     return { unitCost, profit, margin };
   }
+  function authenticityLabel(product) {
+    if (product.authenticityType === 'original') return 'Original';
+    if (product.authenticityType === 'inspired') return 'Inspiración';
+    if (product.authenticityType === 'generic') return 'Genérico / sin referencia';
+    return 'Sin clasificar';
+  }
   function productMeta(product) {
-    return [product.sku, product.brand, product.concentration, product.sizeMl ? product.sizeMl + ' ml' : '']
+    const authenticity = product.authenticityType === 'inspired' && product.inspiredBy
+      ? 'Inspirado en ' + product.inspiredBy : authenticityLabel(product);
+    return [product.sku, product.brand, product.concentration, product.sizeMl ? product.sizeMl + ' ml' : '', authenticity]
       .filter(Boolean).map(esc).join(' · ');
   }
   function orderStatus(value) {
@@ -1493,6 +1502,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const costs = costSummary(product);
     const fields = [
       ['Marca', product.brand], ['SKU', product.sku], ['Categoría', product.category],
+      ['Clasificación', authenticityLabel(product)],
+      ...(product.authenticityType === 'inspired' ? [['Inspirado en', product.inspiredBy]] : []),
       ...(String(product.concentration || '').trim() ? [['Concentración', String(product.concentration).trim()]] : []), ['Género', product.gender], ['Familia olfativa', product.family],
       ['Contenido', product.sizeMl ? product.sizeMl + ' ml' : '—'], ['Presentación', product.presentation],
       ['Proveedor', product.supplier], ['Costo unitario', money(costs.unitCost)], ['Precio de venta', money(product.price)],
@@ -3645,6 +3656,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     document.getElementById('unit-profit-preview').classList.toggle('negative-value', profit < 0 && price > 0);
     document.getElementById('gross-margin-preview').classList.toggle('negative-value', margin !== null && margin < 0);
   }
+  function updateProductAuthenticityFields() {
+    const isInspired = form.elements.authenticityType?.value === 'inspired';
+    const referenceField = document.getElementById('product-inspired-by-field');
+    const referenceInput = form.elements.inspiredBy;
+    if (referenceField) referenceField.hidden = !isInspired;
+    if (referenceInput) {
+      referenceInput.required = isInspired;
+      if (!isInspired) referenceInput.value = '';
+    }
+  }
   function openProductModal(productId) {
     const product = productId == null ? null : products.find(function (item) { return String(item.id) === String(productId); });
     if (productId != null && !product) return;
@@ -3652,6 +3673,14 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(form.elements.supplierId)form.elements.supplierId.innerHTML='<option value="">Sin proveedor asignado</option>'+suppliers.filter(item=>item.active!==false).map(item=>'<option value="'+esc(item.id)+'">'+esc(item.name)+'</option>').join('');
     const fields = ['name','brand','sku','category','concentration','gender','family','sizeMl','presentation','barcode','supplierId','purchaseCost','additionalCost','price','wholesalePrice','stock','minStock','location','notes'];
     if (product) fields.forEach(function (field) { if (form.elements[field]) form.elements[field].value = product[field] == null ? '' : String(product[field]); });
+    const legacyAuthenticityOption = form.elements.authenticityType?.querySelector('option[value="unspecified"]');
+    if (legacyAuthenticityOption) {
+      legacyAuthenticityOption.hidden = !product;
+      legacyAuthenticityOption.disabled = !product;
+    }
+    if (form.elements.authenticityType) form.elements.authenticityType.value = product ? (product.authenticityType || 'unspecified') : '';
+    if (form.elements.inspiredBy) form.elements.inspiredBy.value = product?.inspiredBy || '';
+    updateProductAuthenticityFields();
     form.elements.stock.readOnly = Boolean(product);
     form.elements.stock.value = product ? String(product.stock) : (form.elements.stock.value || '');
     document.getElementById('modal-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
@@ -4187,6 +4216,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target && event.target.id === 'stock-movement-type') updateStockQuantityMode();
   });
   form.addEventListener('input', updateProductCostPreview);
+  form.elements.authenticityType?.addEventListener('change', updateProductAuthenticityFields);
   form.elements.productImages?.addEventListener('change',()=>{
     const files=Array.from(form.elements.productImages.files||[]);
     const existing=products.find(product=>String(product.id)===String(form.dataset.editingId||''));
@@ -4218,13 +4248,22 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const editingId=form.dataset.editingId;
     const existing=editingId?products.find(product=>String(product.id)===editingId):null;
     const name=value('name'),price=number('price'),stock=number('stock'),minStock=number('minStock');
+    const authenticityType=value('authenticityType'),inspiredBy=value('inspiredBy');
     const purchaseCost=number('purchaseCost'),additionalCost=number('additionalCost');
     const sku=value('sku')||(existing?existing.sku:makeSku());
     const wholesalePrice=number('wholesalePrice');
     const files=Array.from(form.elements.productImages?.files||[]);
     const invalid=[price,minStock,purchaseCost,additionalCost,wholesalePrice].some(n=>!Number.isFinite(n)||n<0);
+    const allowedAuthenticityTypes=['original','inspired','generic'];
+    const legacyUnclassified=Boolean(existing&&authenticityType==='unspecified'&&(!existing.authenticityType||existing.authenticityType==='unspecified'));
     if(!name||price<=0||!Number.isInteger(minStock)||invalid||(!existing&&(!Number.isInteger(stock)||stock<0))){
       toast('Revisa nombre, precio, costos y existencias iniciales.');if(button)button.disabled=false;return;
+    }
+    if((!allowedAuthenticityTypes.includes(authenticityType)&&!legacyUnclassified)||
+       (authenticityType==='inspired'&&(!inspiredBy||inspiredBy.length>120))||
+       (authenticityType!=='inspired'&&inspiredBy)){
+      toast(authenticityType==='inspired'?'Indica el perfume original en el que está inspirado.':'Selecciona si el perfume es original, de inspiración o genérico.');
+      if(button)button.disabled=false;return;
     }
     if(files.length+Number(existing?.images?.length||0)>3){toast('Cada producto puede conservar hasta tres fotografías. Elimina una antes de agregar otra.');if(button)button.disabled=false;return;}
     if(files.some(file=>file.size>PRODUCT_IMAGE_MAX_INPUT_BYTES||!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))){
@@ -4241,7 +4280,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       purchase_cost_usd:purchaseCost,additional_cost_usd:additionalCost,unit_cost_usd:unitCost,
       price_usd:price,min_stock:minStock,location:value('location')||null,active:existing?existing.active!==false:true,
       barcode:value('barcode')||null,supplier_id:value('supplierId')||null,supplier_name:null,
-      wholesale_price_usd:wholesalePrice||null,tone:existing?.tone||'art-violet',notes:value('notes')||null
+      wholesale_price_usd:wholesalePrice||null,tone:existing?.tone||'art-violet',notes:value('notes')||null,
+      authenticity_type:authenticityType,inspired_by:authenticityType==='inspired'?inspiredBy:null
     };
     let savedProductId=existing?.id||null;
     let saved=false;
