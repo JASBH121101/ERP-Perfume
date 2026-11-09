@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0024",
+  "nextMigrationVersion": "0025",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -371,6 +371,15 @@
         "ledgerChecksum": "b52ac981b67baed17bdba4ace9c27b87115d655c55b136c7d2bb560e3fbf2731",
         "appliedAt": "2026-11-09T03:19:59.978Z",
         "note": "Applied by guarded Development workflow run 42555758501 through the protected migration runner. The live Development database identity, migration filename, SHA-256 ledger entry and six valid indexes were independently verified. Production was not targeted."
+      }
+    },
+    {
+      "filename": "0024_supplier_contacts_and_product_sourcing.sql",
+      "version": "0024",
+      "sha256": "cc15b17422aa9b6f66c2fcd608fc7c11c689cc773b9fac68d67a950039199494",
+      "database": {
+        "status": "pending",
+        "note": "Additive supplier metadata, up to five secondary phone numbers, a normalized supplier-name duplicate guard and a nullable product-to-supplier relationship. Not yet applied to Development or Production."
       }
     }
   ],
