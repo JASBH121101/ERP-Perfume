@@ -20,7 +20,8 @@ test("product creation stores opening stock and its initial movement in one SQL 
 
   const result = await readResponse(await createProduct(sql, actor, {
     sku: "QA-UNIT-01", name: "Perfume QA", stock: 4, min_stock: 2,
-    purchase_cost_usd: 18, additional_cost_usd: 2, price_usd: 42.5
+    purchase_cost_usd: 18, additional_cost_usd: 2, price_usd: 42.5,
+    authenticity_type: "inspired", inspired_by: "Creed Aventus"
   }));
 
   assert.equal(result.status, 201);
@@ -31,7 +32,31 @@ test("product creation stores opening stock and its initial movement in one SQL 
   assert.match(captured.statement, /INSERT INTO audit_log/);
   assert.equal(captured.values[13], 4);
   assert.equal(captured.values[19], null); // No supplier selected in this fixture.
-  assert.equal(captured.values[25], actor.id);
+  assert.equal(captured.values[25], "inspired");
+  assert.equal(captured.values[26], "Creed Aventus");
+  assert.equal(captured.values[27], actor.id);
+});
+
+
+test("product creation requires a valid authenticity classification and inspiration reference", async () => {
+  let calls = 0;
+  const sql = { async query() { calls += 1; return [{ id: productId }]; } };
+  const base = { sku: "QA-AUTH-01", name: "Perfume QA", stock: 0, price_usd: 20 };
+  const invalidCases = [
+    {},
+    { authenticity_type: "counterfeit" },
+    { authenticity_type: "inspired" },
+    { authenticity_type: "inspired", inspired_by: " " },
+    { authenticity_type: "inspired", inspired_by: "x".repeat(121) },
+    { authenticity_type: "original", inspired_by: "Creed Aventus" },
+    { authenticity_type: "generic", inspired_by: "Dior Sauvage" }
+  ];
+  for (const extra of invalidCases) {
+    const result = await readResponse(await createProduct(sql, actor, { ...base, ...extra }));
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error.code, "INVALID_PRODUCT_AUTHENTICITY");
+  }
+  assert.equal(calls, 0);
 });
 
 test("product creation rejects invalid opening stock before reaching Neon", async () => {
@@ -45,6 +70,24 @@ test("product creation rejects invalid opening stock before reaching Neon", asyn
     assert.equal(result.body.error.code, "INVALID_PRODUCT");
   }
   assert.equal(calls, 0);
+});
+
+test("product creation accepts the supported non-inspired authenticity types", async () => {
+  for (const authenticity_type of ["original", "generic"]) {
+    let captured = null;
+    const sql = { async query(statement, values) {
+      captured = { statement, values };
+      return [{ id: productId, authenticity_type, inspired_by: null }];
+    }};
+    const result = await readResponse(await createProduct(sql, actor, {
+      sku: "QA-" + authenticity_type.toUpperCase(), name: "Perfume QA", stock: 0,
+      price_usd: 24, authenticity_type, inspired_by: null
+    }));
+    assert.equal(result.status, 201);
+    assert.equal(captured.values[25], authenticity_type);
+    assert.equal(captured.values[26], null);
+    assert.equal(captured.values[27], actor.id);
+  }
 });
 
 test("manual stock movements lock the product row and write an auditable ledger entry", async () => {

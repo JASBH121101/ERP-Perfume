@@ -217,7 +217,8 @@ async function installStatefulInventoryApi(page, options = {}) {
         min_stock: Number(payload.min_stock || 0), location: payload.location || null, active: true,
         barcode: payload.barcode || null, description: null, supplier_name: payload.supplier_name || null,
         wholesale_price_usd: payload.wholesale_price_usd || null, tone: payload.tone || 'art-violet',
-        notes: payload.notes || null, images: [], created_at: new Date().toISOString()
+        notes: payload.notes || null, authenticity_type: payload.authenticity_type || 'unspecified',
+        inspired_by: payload.inspired_by || null, images: [], created_at: new Date().toISOString()
       };
       data.products.push(record);
       if (record.stock > 0) {
@@ -848,6 +849,9 @@ test('product creation saves its opening balance and writes the first kardex ent
   await form.locator('[name="name"]').fill('QA Inventory Created Perfume');
   await form.locator('[name="sku"]').fill('QA-NEW-201');
   await form.locator('[name="brand"]').fill('QA Atelier');
+  await form.locator('[name="authenticityType"]').selectOption('inspired');
+  await expect(form.locator('#product-inspired-by-field')).toBeVisible();
+  await form.locator('[name="inspiredBy"]').fill('Creed Aventus');
   await form.locator('[name="price"]').fill('42.50');
   await form.locator('[name="purchaseCost"]').fill('18');
   await form.locator('[name="additionalCost"]').fill('2');
@@ -863,8 +867,11 @@ test('product creation saves its opening balance and writes the first kardex ent
   expect(payload.sku).toBe('QA-NEW-201');
   expect(payload.stock).toBe(4);
   expect(payload.unit_cost_usd).toBe(20);
+  expect(payload.authenticity_type).toBe('inspired');
+  expect(payload.inspired_by).toBe('Creed Aventus');
   await expect(dialog).not.toBeVisible();
   await expect(page.locator('#product-table-body')).toContainText('QA Inventory Created Perfume');
+  await expect(page.locator('#product-table-body')).toContainText('Inspirado en Creed Aventus');
 
   await navigateToView(page, 'inventory');
   await expect(page.locator('#inventory-product-body')).toContainText('QA Inventory Created Perfume');
