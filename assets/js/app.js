@@ -4420,7 +4420,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(action==="purchase-order-tab"){setPurchaseOrderTab(button.getAttribute("data-tab"));return;}
     if(action==="purchase-section-tab"){
       const tab=button.getAttribute("data-tab");
-      if(["orders","receipts","new"].includes(tab)){state.purchaseTab=tab;refreshPurchaseOrdersView(false);}
+      if(["orders","receipts","new"].includes(tab)){state.purchaseTab=tab;renderView();}
       return;
     }
     if(action==="add-purchase-order-line"){
