@@ -724,6 +724,7 @@ test('catalog import explicitly accepts CSV, PDF, PNG, JPG and JPEG', async ({ p
   await page.getByRole('button', { name: /Importar catálogo/ }).click();
   const dialog = page.locator('#catalog-import-dialog');
   await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText(/Neon|Cloudflare|\\bR2\\b/i);
   const accept = await dialog.locator('#catalog-import-file').getAttribute('accept');
   for (const extension of ['.csv', '.pdf', '.png', '.jpg', '.jpeg']) expect(accept).toContain(extension);
   await expect(dialog).toContainText('Admite CSV, PDF, PNG, JPG y JPEG');
@@ -842,6 +843,8 @@ test('product creation saves its opening balance and writes the first kardex ent
   const dialog = page.locator('#product-dialog');
   const form = page.locator('#product-form');
   await expect(dialog).toBeVisible();
+  await expect(form.locator('#save-product')).toHaveText('Guardar');
+  await expect(dialog).not.toContainText(/Neon|Cloudflare|\\bR2\\b/i);
   await form.locator('[name="name"]').fill('QA Inventory Created Perfume');
   await form.locator('[name="sku"]').fill('QA-NEW-201');
   await form.locator('[name="brand"]').fill('QA Atelier');
@@ -1120,16 +1123,25 @@ test('all six font scale levels apply and enforce their boundaries', async ({ pa
   ];
   const decrease = page.locator('#font-decrease');
   const increase = page.locator('#font-increase');
+  const navigationText = page.locator('.nav-item').first();
 
   await decrease.click();
   await decrease.click();
+  let fontAt100 = 0;
+  let fontAt150 = 0;
 
   for (let index = 0; index < levels.length; index++) {
     const [value, label] = levels[index];
     await expect(page.locator('#font-scale-label')).toHaveText(label);
     await expect(page.locator('body')).toHaveAttribute('data-font-scale', value);
+    const computedFont = await navigationText.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize));
+    if (value === 'normal') fontAt100 = computedFont;
+    if (value === 'extra') fontAt150 = computedFont;
     if (index < levels.length - 1) await increase.click();
   }
+
+  expect(fontAt100).toBeGreaterThan(0);
+  expect(fontAt150).toBeGreaterThan(fontAt100 * 1.4);
 
   await expect(increase).toBeDisabled();
   for (let index = levels.length - 1; index > 0; index--) await decrease.click();
@@ -1137,6 +1149,49 @@ test('all six font scale levels apply and enforce their boundaries', async ({ pa
   await expect(page.locator('#font-scale-label')).toHaveText('100%');
 });
 
+
+
+
+test('inventory summary cards stay symmetrical at desktop, tablet and mobile widths', async ({ page }) => {
+  await installStatefulInventoryApi(page);
+  const viewports = [
+    { width: 1440, height: 900, columns: 4 },
+    { width: 1024, height: 900, columns: 2 },
+    { width: 390, height: 844, columns: 2 }
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto('/');
+    await navigateToView(page, 'inventory');
+    const summary = page.locator('.inventory-summary-strip');
+    await expect(summary.locator('.summary-mini')).toHaveCount(4);
+    const layout = await summary.evaluate(element => {
+      const cards = [...element.querySelectorAll('.summary-mini')];
+      const widths = cards.map(card => card.getBoundingClientRect().width);
+      return {
+        columns: getComputedStyle(element).gridTemplateColumns.split(' ').length,
+        widths,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth
+      };
+    });
+    expect(layout.columns).toBe(viewport.columns);
+    expect(Math.max(...layout.widths) - Math.min(...layout.widths)).toBeLessThan(2);
+    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth + 1);
+  }
+});
+
+test('interface action labels do not expose infrastructure provider names', async ({ page }) => {
+  await page.goto('/');
+  const views = ['products', 'inventory', 'purchaseOrders', 'dgi', 'settings', 'hr'];
+  for (const view of views) {
+    await navigateToView(page, view);
+    const labels = await page.locator('button:visible').allTextContents();
+    const exposedNames = labels.filter(label => /Neon|Cloudflare|\\bR2\\b/i.test(label));
+    expect(exposedNames, 'provider names found in button labels on ' + view).toEqual([]);
+  }
+});
 
 test('mobile sidebar visual coverage checks drawer, scrim, viewport bounds and dismissal', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
