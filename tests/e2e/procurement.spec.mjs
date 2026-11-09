@@ -359,6 +359,8 @@ test('procurement UI creates a mult-line order, receives partially, records supp
   console.log('POFLOW: new order tab selected');
   const orderForm = page.locator('#purchase-order-form');
   await expect(orderForm).toBeVisible();
+  await expect(orderForm.locator('[name="supplier_id"] option[value="' + ids.supplier + '"]')).toHaveCount(1, { timeout: 15000 });
+  await expect(orderForm.locator('[name="product_id"] option[value="' + ids.productA + '"]')).toHaveCount(1, { timeout: 15000 });
   await expect(orderForm.getByText('Código de orden')).toHaveCount(0);
   await expect(orderForm.locator('input[value="Se asigna al generar"]')).toHaveCount(0);
   await orderForm.locator('[name="supplier_id"]').selectOption(ids.supplier);
@@ -564,6 +566,7 @@ test('procurement history combines monthly, supplier and status filters and hand
   await page.locator('[data-action="purchase-section-tab"][data-tab="orders"]').click();
   await expect(page.locator('tr').filter({ hasText: '17' }).filter({ hasText: 'Proveedor QA' })).toHaveCount(0);
 
+  await expect(page.locator('[data-action="toggle-export-menu"]')).toHaveCount(1);
   await page.locator('[data-action="toggle-export-menu"]').click();
   await expect(page.locator('#current-export-menu')).toBeVisible();
   const [download] = await Promise.all([
