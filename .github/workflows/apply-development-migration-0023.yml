@@ -186,6 +186,9 @@ jobs:
       - name: Run deterministic unit tests
         run: npm run test:unit
 
+      - name: Install Playwright Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+
       - name: Run browser E2E tests
         run: npm run test:e2e
 
