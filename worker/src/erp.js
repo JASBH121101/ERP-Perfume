@@ -764,6 +764,20 @@ async function updateGeneric(sql, user, resource, def, id, body) {
   const { keys, values } = safeFields(def, body);
   if (!keys.length) return erpError(400, "NO_VALID_FIELDS", "Incluye al menos un campo válido.");
   if (keys.includes("created_by") || keys.includes("created_at")) return erpError(400, "INVALID_FIELD", "No se permite modificar la autoría ni la fecha de creación.");
+  if (def.table === "products" && keys.includes("supplier_id")) {
+    const supplierIndex = keys.indexOf("supplier_id");
+    const supplierId = values[supplierIndex] == null || values[supplierIndex] === "" ? null : String(values[supplierIndex]);
+    if (supplierId && !/^[0-9a-f-]{36}$/i.test(supplierId)) return erpError(400, "INVALID_SUPPLIER_ID", "Selecciona un proveedor válido.");
+    let supplierName = null;
+    if (supplierId) {
+      const linked = await sql.query("SELECT id,name FROM suppliers WHERE id=$1::uuid AND active=TRUE LIMIT 1", [supplierId]);
+      if (!linked[0]) return erpError(400, "SUPPLIER_NOT_AVAILABLE", "El proveedor seleccionado no existe o está inactivo.");
+      supplierName = linked[0].name;
+    }
+    const nameIndex = keys.indexOf("supplier_name");
+    if (nameIndex >= 0) values[nameIndex] = supplierName;
+    else { keys.push("supplier_name"); values.push(supplierName); }
+  }
   if (def.table === "products" && ["purchase_cost_usd","additional_cost_usd","unit_cost_usd"].some((key)=>keys.includes(key))) {
     const current = await sql.query("SELECT purchase_cost_usd,additional_cost_usd FROM products WHERE id=$1::uuid LIMIT 1",[id]);
     if (!current[0]) return erpError(404,"RECORD_NOT_FOUND","No se encontró el producto solicitado.");
@@ -893,9 +907,16 @@ export async function createProduct(sql, user, body) {
     return erpError(400, "INVALID_PRODUCT_COST", "El costo de compra y los costos adicionales deben ser valores no negativos.");
   }
   values.unit_cost_usd = Math.round((purchaseCost + additionalCost) * 100) / 100;
+  const supplierId = String(values.supplier_id || "").trim() || null;
+  if (supplierId && !/^[0-9a-f-]{36}$/i.test(supplierId)) return erpError(400, "INVALID_SUPPLIER_ID", "Selecciona un proveedor válido.");
+  if (supplierId) {
+    const linked = await sql.query("SELECT id,name FROM suppliers WHERE id=$1::uuid AND active=TRUE LIMIT 1", [supplierId]);
+    if (!linked[0]) return erpError(400, "SUPPLIER_NOT_AVAILABLE", "El proveedor seleccionado no existe o está inactivo.");
+    values.supplier_name = linked[0].name;
+  }
   const result = await sql.query(
-    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_name,wholesale_price_usd,tone,notes,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',$25 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $25,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
-    [sku,name,values.brand||null,values.category||null,values.concentration||null,values.gender||null,values.family||null,values.size_ml||null,values.presentation||null,values.purchase_cost_usd||0,values.additional_cost_usd||0,values.unit_cost_usd||0,values.price_usd||0,stock,values.min_stock||0,values.location||null,values.active!==false,values.barcode||null,values.description||null,values.supplier_name||null,values.wholesale_price_usd||null,values.tone||null,values.notes||null,JSON.stringify(values.images||[]),user.id]
+    "WITH created AS (INSERT INTO products (sku,name,brand,category,concentration,gender,family,size_ml,presentation,purchase_cost_usd,additional_cost_usd,unit_cost_usd,price_usd,stock,min_stock,location,active,barcode,description,supplier_id,supplier_name,wholesale_price_usd,tone,notes,images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::uuid,$21,$22,$23,$24,$25::jsonb) RETURNING *), movement AS (INSERT INTO inventory_movements(product_id,movement_type,quantity,quantity_delta,previous_stock,new_stock,note,reference_type,created_by) SELECT id,'Entrada',$14,$14,0,$14,'Existencias iniciales','product',$26 FROM created WHERE $14>0 RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $26,'create','product',id::text,to_jsonb(created) FROM created) SELECT * FROM created",
+    [sku,name,values.brand||null,values.category||null,values.concentration||null,values.gender||null,values.family||null,values.size_ml||null,values.presentation||null,values.purchase_cost_usd||0,values.additional_cost_usd||0,values.unit_cost_usd||0,values.price_usd||0,stock,values.min_stock||0,values.location||null,values.active!==false,values.barcode||null,values.description||null,supplierId,values.supplier_name||null,values.wholesale_price_usd||null,values.tone||null,values.notes||null,JSON.stringify(values.images||[]),user.id]
   );
   return erpJson({record:result[0]},201);
 }
