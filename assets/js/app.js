@@ -600,7 +600,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     dashboard: { title: 'Resumen', eyebrow: 'CENTRO DE CONTROL', heading: 'Buenos días', subtitle: 'Una mirada clara al movimiento de tu negocio.' },
     products: { title: 'Productos', eyebrow: 'CATÁLOGO', heading: 'Catálogo de productos', subtitle: 'Administra las fragancias, sus precios y la disponibilidad.' },
     catalog: { title: 'Catálogo PDF', eyebrow: 'EDITORIAL · JB PARFUMS', heading: 'Catálogo de fragancias', subtitle: 'Selecciona las piezas que quieres presentar y genera un PDF premium para compartir o imprimir.' },
-    resources: { title: 'Resource Monitor', eyebrow: 'CONTROL DE RECURSOS', heading: 'Consumo y servicios', subtitle: 'Supervisa las mediciones disponibles de Neon y Cloudflare R2, sin confundirlas con las cuotas del proveedor.' },
+    resources: { title: 'Monitor de recursos', eyebrow: 'CONTROL DE RECURSOS', heading: 'Consumo y servicios', subtitle: 'Consulta el estado y el consumo de los servicios de tu ERP.' },
     inventory: { title: 'Inventario', eyebrow: 'CONTROL DE EXISTENCIAS', heading: 'Inventario', subtitle: 'Consulta los niveles de stock y detecta reposiciones.' },
     orders: { title: 'Pedidos', eyebrow: 'OPERACIONES', heading: 'Pedidos y ventas', subtitle: 'Da seguimiento al estado de cada pedido.' },
     customers: { title: 'Clientes', eyebrow: 'RELACIONES', heading: 'Cartera de clientes', subtitle: 'Mantén organizada la información comercial.' },
@@ -835,11 +835,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       metric('Alertas de inventario',String(low).padStart(2,'0'),'warning',activeProducts.length+' productos activos','stock bajo o agotado',true)+
       '</section>'+
       '<section class="dashboard-grid">'+
-      '<article class="panel"><div class="panel-heading"><div><h2>Ventas facturadas · últimos 7 días</h2><p>Importes tomados de comprobantes registrados</p></div><button class="panel-link" data-view="analytics">Ver informes '+svg('arrow')+'</button></div><div class="chart-summary"><strong>'+money(finance.revenue)+'</strong><span>total facturado histórico · USD</span></div><div class="stock-summary dashboard-sales-bars">'+bars+'</div><div class="chart-note"><i></i> Solo incluye facturas guardadas en Neon.</div></article>'+
-      '<article class="panel"><div class="panel-heading"><div><h2>Productos destacados</h2><p>Productos activos con más unidades disponibles</p></div><button class="panel-link" data-view="products">Catálogo '+svg('arrow')+'</button></div><div class="top-products">'+(topRows||'<div class="empty-state">Todavía no hay productos registrados.</div>')+'</div><div class="panel-footer-note">Precios, costos y existencias consultados desde Neon.</div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h2>Ventas facturadas · últimos 7 días</h2><p>Importes tomados de comprobantes registrados</p></div><button class="panel-link" data-view="analytics">Ver informes '+svg('arrow')+'</button></div><div class="chart-summary"><strong>'+money(finance.revenue)+'</strong><span>total facturado histórico · USD</span></div><div class="stock-summary dashboard-sales-bars">'+bars+'</div><div class="chart-note"><i></i> Solo incluye facturas registradas.</div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h2>Productos destacados</h2><p>Productos activos con más unidades disponibles</p></div><button class="panel-link" data-view="products">Catálogo '+svg('arrow')+'</button></div><div class="top-products">'+(topRows||'<div class="empty-state">Todavía no hay productos registrados.</div>')+'</div><div class="panel-footer-note">Precios, costos y existencias según los registros actuales.</div></article>'+
       '</section>'+
       '<section class="lower-grid"><article class="panel"><div class="panel-heading"><div><h2>Facturas recientes</h2><p>Actividad comercial registrada</p></div><button class="panel-link" data-view="billing">Ver todas '+svg('arrow')+'</button></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FACTURA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>'+(invoiceRows||'<tr><td colspan="5"><div class="empty-state">Todavía no hay facturas.</div></td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel inventory-status-panel"><div class="panel-heading"><div><h2>Estado del inventario</h2><p>Distribución de productos por nivel de existencias</p></div><button class="panel-link" data-view="inventory">Consultar existencias '+svg('arrow')+'</button></div><div class="inventory-donut-layout">'+donutMarkup+'<div class="donut-legend">'+stockLegend+'</div></div><div class="panel-footer-note">Conteo por referencia activa, calculado con existencias y stock mínimo registrados en Neon.</div></article></section>';
+      '<article class="panel inventory-status-panel"><div class="panel-heading"><div><h2>Estado del inventario</h2><p>Distribución de productos por nivel de existencias</p></div><button class="panel-link" data-view="inventory">Consultar existencias '+svg('arrow')+'</button></div><div class="inventory-donut-layout">'+donutMarkup+'<div class="donut-legend">'+stockLegend+'</div></div><div class="panel-footer-note">Conteo por referencia activa, calculado con las existencias y el stock mínimo registrados.</div></article></section>';
   }
   function needsRestock(product) {
     return product.stock <= (Number.isInteger(product.minStock) ? product.minStock : 3);
@@ -881,7 +881,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="summary-strip"><div class="summary-mini"><span>Productos activos</span><strong>' + activeCount + '</strong></div><div class="summary-mini"><span>Desactivados</span><strong>' + inactiveCount + '</strong></div><div class="summary-mini"><span>Requieren reposición</span><strong>' + products.filter(function (product) { return product.active !== false && needsRestock(product); }).length + '</strong></div></div>' +
       '<div class="toolbar products-toolbar"><div class="toolbar-left"><label class="inline-search">' + svg('search') + '<input id="view-search" type="search" value="' + esc(state.query) + '" aria-label="Buscar productos"></label></div><div class="toolbar-right"><select class="filter-select" id="product-status-filter" aria-label="Estado del producto"><option value="active"' + (state.productStatus === 'active' ? ' selected' : '') + '>Activos</option><option value="inactive"' + (state.productStatus === 'inactive' ? ' selected' : '') + '>Desactivados</option><option value="all"' + (state.productStatus === 'all' ? ' selected' : '') + '>Todos</option></select><select class="filter-select" id="category-filter" aria-label="Filtrar por categoría"><option value="all"' + (state.category === 'all' ? ' selected' : '') + '>Todas las categorías</option>' + categoryOptions + '</select><select class="filter-select" id="stock-filter" aria-label="Filtrar por stock"><option value="all"' + (state.filter === 'all' ? ' selected' : '') + '>Todos los estados</option><option value="available"' + (state.filter === 'available' ? ' selected' : '') + '>Disponibles</option><option value="low"' + (state.filter === 'low' ? ' selected' : '') + '>Stock bajo</option><option value="out"' + (state.filter === 'out' ? ' selected' : '') + '>Agotados</option></select></div></div>' +
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO / COSTO</th><th>EXISTENCIAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody id="product-table-body">' + productTable(filteredProducts()) + '</tbody></table></div></article>' +
-      '<div class="notice-panel"><span>' + svg('spark') + '</span><div><strong>Catálogo conectado a Neon Development</strong><p>Las fichas se guardan en PostgreSQL. Las existencias iniciales y los movimientos posteriores quedan registrados en el kardex.</p></div></div>';
+      '<div class="notice-panel"><span>' + svg('spark') + '</span><div><strong>Catálogo sincronizado</strong><p>Las fichas, existencias iniciales y movimientos se gestionan desde el ERP y quedan registrados en el kardex.</p></div></div>';
   }
   function catalogConfigFor(product) {
     const saved = catalogSettings && catalogSettings[String(product.id)] || {};
@@ -951,7 +951,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       error +
       '<div class="catalog-editor-heading"><div><span class="eyebrow">SELECCIÓN EDITORIAL</span><strong>' + selected.length + ' productos en esta vista</strong></div><span>Las existencias se consultan desde el inventario</span></div>' +
       '<section class="catalog-editor-list">' + (rows || '<div class="empty-state">No hay productos activos para esta categoría.</div>') + '</section>' +
-      '<div class="notice-panel catalog-note"><span>' + svg('spark') + '</span><div><strong>Un solo origen de fotografías</strong><p>Las imágenes se reutilizan desde Cloudflare R2. El catálogo PDF se genera al solicitarlo y no crea copias permanentes de los archivos.</p></div></div>';
+      '<div class="notice-panel catalog-note"><span>' + svg('spark') + '</span><div><strong>Un solo origen de fotografías</strong><p>Las imágenes se reutilizan desde la biblioteca de archivos. El catálogo PDF se genera al solicitarlo y no crea copias permanentes.</p></div></div>';
   }
   function collectCatalogSettings() {
     const next = { ...(catalogSettings || {}) };
@@ -1176,7 +1176,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const empty=inventoryMovementPageError||(total?'No hay movimientos que coincidan con los filtros.':'Todavía no hay movimientos registrados.');
     const emptyRow=inventoryMovementLoading?'':'<tr><td colspan="6"><div class="empty-state">'+esc(empty)+'</div></td></tr>';
     return '<div class="table-wrap"><table class="data-table inventory-ledger-table"><thead><tr><th>FECHA</th><th>PRODUCTO</th><th>TIPO</th><th>VARIACIÓN</th><th>STOCK RESULTANTE</th><th>RESPONSABLE</th><th>PROVEEDOR / ORDEN</th><th>NOTA</th></tr></thead><tbody id="inventory-movement-body">'+(pageRows||emptyRow.replace('colspan="6"','colspan="8"'))+'</tbody></table></div>'+
-      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos · Página '+state.inventoryMovementPage+' de '+totalPages+(serverPage?' · consultados en Neon':' · vista inicial')+'</span>'+
+      '<div class="inventory-ledger-footer"><span class="inventory-ledger-range">Mostrando '+rangeStart+'–'+rangeEnd+' de '+total+' movimientos · Página '+state.inventoryMovementPage+' de '+totalPages+(serverPage?' · consultados en el servidor':' · vista inicial')+'</span>'+
       '<div class="inventory-ledger-pagination"><button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="previous" '+(state.inventoryMovementPage<=1?'disabled':'')+'>Anterior</button>'+
       '<span class="ledger-count">Página '+state.inventoryMovementPage+' de '+totalPages+'</span>'+
       '<button class="button button-quiet button-small" type="button" data-action="inventory-page" data-page="next" '+(state.inventoryMovementPage>=totalPages?'disabled':'')+'>Siguiente</button></div></div>';
@@ -1221,7 +1221,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       inventoryMovementLoading=false;
       inventoryMovementPageRows=[];
       inventoryMovementTotal=0;
-      inventoryMovementPageError=error?.message||'No se pudo consultar el historial en Neon.';
+      inventoryMovementPageError=error?.message||'No se pudo consultar el historial.';
       refreshInventoryMovementResults();
     }
   }
@@ -1242,7 +1242,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       refreshInventoryCategoryOptions(data.categories||[]);
     }catch(error){
       const note=document.getElementById('inventory-summary-error');
-      if(note)note.textContent=error?.message||'No se pudo actualizar el resumen desde Neon.';
+      if(note)note.textContent=error?.message||'No se pudo actualizar el resumen.';
     }
   }
   function refreshInventoryCategoryOptions(serverCategories) {
@@ -1305,7 +1305,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         return '<button type="button" class="inventory-archive-month'+(selected?' is-active':'')+'" data-action="inventory-month-filter" data-start="'+startValue+'" data-end="'+endValue+'">'+label+'</button>';
       }).join('')+'</div></details>'
     ).join('');
-    return '<article class="list-panel ledger-panel inventory-ledger-panel"><div class="panel-heading"><div><h2>Historial de movimientos</h2><p>Consulta por período, responsable, proveedor y tipo; filtros combinables en Neon.</p></div><span class="ledger-count" id="inventory-movement-total">'+movementCount.toLocaleString('es-NI')+' movimientos</span></div>'+
+    return '<article class="list-panel ledger-panel inventory-ledger-panel"><div class="panel-heading"><div><h2>Historial de movimientos</h2><p>Consulta por período, responsable, proveedor y tipo; filtros combinables.</p></div><span class="ledger-count" id="inventory-movement-total">'+movementCount.toLocaleString('es-NI')+' movimientos</span></div>'+
       '<details class="inventory-archive"><summary>'+svg('clock')+' Archivo mensual <span>Selecciona un mes para consultar su historial completo</span></summary><div class="inventory-archive-years">'+archiveYears+'</div></details>'+
       '<div class="toolbar products-toolbar inventory-ledger-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg('search')+'<input id="inventory-movement-search" type="search" value="'+esc(state.inventoryMovementQuery)+'" placeholder="Producto, SKU o documento" aria-label="Buscar en el kardex"></label></div>'+
       '<div class="toolbar-right"><select class="filter-select" id="inventory-movement-type" aria-label="Filtrar movimientos por tipo">'+typeOptions+'</select>'+
@@ -1395,7 +1395,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="summary-strip inventory-summary-strip"><div class="summary-mini"><span>Referencias activas</span><strong id="inventory-summary-active">'+Number(summary.activeProducts??activeProducts.length).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Unidades en stock</span><strong id="inventory-summary-units">'+Number(summary.totalUnits??activeProducts.reduce((sum,p)=>sum+p.stock,0)).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Para reponer</span><strong id="inventory-summary-restock">'+Number(restockCount).toLocaleString('es-NI')+'</strong></div><div class="summary-mini"><span>Agotados</span><strong id="inventory-summary-out">'+(summary.outOfStock==null?'—':Number(summary.outOfStock).toLocaleString('es-NI'))+'</strong></div></div><p class="form-hint" id="inventory-summary-error" role="status"></p>'+
       '<article class="list-panel inventory-stock-panel"><div class="toolbar products-toolbar inventory-products-toolbar"><div class="toolbar-left"><label class="inline-search">'+svg('search')+'<input id="inventory-product-search" type="search" value="'+esc(state.inventoryProductQuery)+'" placeholder="Nombre, SKU, código o ubicación" aria-label="Buscar productos en existencias"></label></div><div class="toolbar-right"><select class="filter-select" id="inventory-product-category" aria-label="Categoría de existencias"><option value="all">Todas las categorías</option>'+categoryOptions+'</select><select class="filter-select" id="inventory-product-stock" aria-label="Estado de existencias"><option value="all"'+(state.inventoryProductStock==='all'?' selected':'')+'>Todos los estados</option><option value="available"'+(state.inventoryProductStock==='available'?' selected':'')+'>Disponibles</option><option value="low"'+(state.inventoryProductStock==='low'?' selected':'')+'>Stock bajo</option><option value="out"'+(state.inventoryProductStock==='out'?' selected':'')+'>Agotados</option></select><button class="button button-quiet button-small" type="button" data-action="clear-inventory-product-filters">Limpiar</button></div></div><div class="inventory-products-meta"><span id="inventory-product-count">'+rows.length+' de '+activeProducts.length+' productos</span><span>Ordenados por menor existencia · consulta paginada</span></div><div class="table-wrap"><table class="data-table inventory-stock-table"><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>STOCK</th><th>ESTADO</th><th>ACCIÓN SUGERIDA</th><th>CONSULTA</th></tr></thead><tbody id="inventory-product-body">'+(rows||'<tr><td colspan="6"><div class="empty-state">No hay productos que coincidan con los filtros.</div></td></tr>')+'</tbody></table></div><div id="inventory-stock-pagination"></div></article>'+
       (["inventory.receipts.view","purchases.receipts.view","inventory.manual_out.view","inventory.adjustments.view","inventory.movements.reverse"].some(permissionGranted)?renderInventoryLedger():"")+
-      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Stock mínimo configurable por producto · Kardex íntegro</strong><p>Las existencias y el historial se consultan directamente en Neon, con totales y paginación del lado del servidor. Las salidas se bloquean si generan stock negativo; cada movimiento conserva el saldo anterior, la variación y el saldo resultante.</p></div></div>';
+      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Stock mínimo configurable por producto · Kardex íntegro</strong><p>Las existencias y el historial se consultan con totales y paginación del lado del servidor. Las salidas se bloquean si generan stock negativo; cada movimiento conserva el saldo anterior, la variación y el saldo resultante.</p></div></div>';
   }
   function openInventoryReversalDialog(movementId) {
     if (!permissionGranted('inventory.movements.reverse')) {
@@ -1558,7 +1558,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       ];
     }else if(state.view==='settings'){
       headers=['Parámetro','Valor'];
-      rows=[['Sistema','JB PARFUMS ERP'],['Entorno de base de datos','Neon Development'],['Moneda base','USD'],['Tipo de cambio vigente',exchangeRate],['Rol de la cuenta',window.JBAuth?.profile?.role||'']];
+      rows=[['Sistema','JB PARFUMS ERP'],['Entorno de datos','Desarrollo'],['Moneda base','USD'],['Tipo de cambio vigente',exchangeRate],['Rol de la cuenta',window.JBAuth?.profile?.role||'']];
     }else if(state.view==='purchases'){
       headers=['Compra','Proveedor','Fecha','Moneda','Importe original','Tipo de cambio','Total USD','Pagado USD','Saldo USD','Estado'];
       rows=purchases.map(p=>[p.purchaseNumber,p.supplier,dateText(p.createdAt),p.currency,p.originalTotal,p.exchangeRate,p.totalUsd,p.paidUsd,Math.max(0,p.totalUsd-p.paidUsd),p.status]);
@@ -1627,7 +1627,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         records.push(...(Array.isArray(response.records)?response.records:[]));
       }
     }
-    if(records.length!==total)throw new Error('La exportación no recibió todos los registros de Neon; no se generó un archivo parcial.');
+    if(records.length!==total)throw new Error('La exportación no recibió todos los registros; no se generó un archivo parcial.');
     return records;
   }
   async function buildInventoryExportDataset() {
@@ -1694,7 +1694,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       return '<tr><td><span class="table-primary">' + esc(item.name) + '</span><small class="table-secondary">' + esc(item.sku || '—') + '</small></td><td>' + item.quantity + '</td><td>' + money(item.unitPrice) + '</td><td class="table-primary">' + money(lineTotal) + '</td></tr>';
     }).join('');
     document.getElementById('order-detail-title').textContent = order.id;
-    document.getElementById('order-detail-subtitle').textContent = 'Pedido registrado · ' + order.date + ' · Consulta de datos guardados en Neon.';
+    document.getElementById('order-detail-subtitle').textContent = 'Pedido registrado · ' + order.date + ' · Verifica sus productos, importes y estado antes de continuar.';
     document.getElementById('order-detail-content').innerHTML =
       '<section class="order-detail-grid">' +
         '<div class="detail-field"><span>Cliente</span><strong>' + esc(order.customer) + '</strong></div>' +
@@ -1742,7 +1742,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       await loadERPFromNeon(true);
       orderDialog.close();
       renderView();
-      toast('Estado del pedido actualizado. El inventario se ajustó en Neon.');
+      toast('Estado del pedido actualizado. El inventario se ajustó correctamente.');
     } catch(error) {
       toast(error?.message||'No se pudo actualizar el pedido.');
     } finally {
@@ -2144,8 +2144,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
     const secureHR=type==='employee'&&window.JBAuth&&window.JBAuth.mode==='authenticated';
-    document.querySelector('#business-dialog .eyebrow').textContent=window.JBAuth?.profile?'GESTIÓN · NEON DEVELOPMENT':'ACCESO REQUERIDO';
-    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':(type==='employee-history'?'Cerrar':(recordId&&type==='employee'?'Guardar cambios':'Guardar en Neon')))));
+    document.querySelector('#business-dialog .eyebrow').textContent=window.JBAuth?.profile?'GESTIÓN':'ACCESO REQUERIDO';
+    document.getElementById('business-save').textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':(type==='employee-history'?'Cerrar':(recordId&&type==='employee'?'Guardar cambios':'Guardar')))));
     document.getElementById('business-save').hidden=type==='employee-history';
     if(type==='employee'){
       const contractSelect=businessForm.querySelector('[name="contractType"]');
@@ -2468,30 +2468,30 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       renderView();
       if(type==='invoice'){
         const lastInvoice=invoices[0];
-        toast('Factura registrada en Neon Development. Revisa su estado y saldo en Facturación.');
+        toast('Factura registrada. Revisa su estado y saldo en Facturación.');
         if(lastInvoice)window.requestAnimationFrame(()=>showInvoicePreview(lastInvoice.id));
       } else {
         const messages={
-          customer:'Cliente guardado en Neon.',supplier:'Proveedor guardado en Neon.',order:'Pedido guardado en Neon.',
+          customer:'Cliente guardado.',supplier:'Proveedor guardado.',order:'Pedido guardado.',
           'supplier-invoice':'Factura de proveedor registrada. El saldo pendiente ya está en cuentas por pagar.',
           'supplier-invoice-payment':'Pago aplicado a la factura del proveedor y salida registrada en caja/banco.',
           purchase:'Compra registrada: inventario, costo y cuenta por pagar actualizados.',
-          expense:'Gasto registrado en Neon y reflejado en caja y resultados.',cash:'Movimiento registrado en Caja y bancos.',
+          expense:'Gasto registrado y reflejado en caja y resultados.',cash:'Movimiento registrado en Caja y bancos.',
           payment:'Abono de cliente registrado.', 'purchase-payment':'Abono a proveedor registrado.',
-          employee:'Colaborador registrado en Neon Development.',
+          employee:'Colaborador registrado.',
           'cash-account':'Cuenta creada y saldo inicial registrado.',
-          attendance:'Asistencia registrada en Neon.',
+          attendance:'Asistencia registrada.',
           leave:'Solicitud de permiso o vacaciones registrada.',
           'payroll-period':'Período de nómina creado en estado Borrador.',
           'payroll-item':'Partida de nómina calculada y registrada en NIO.',
           'payroll-payment':'Nómina pagada. Se registró el egreso y la salida de caja/banco.'
         };
-        toast(messages[type]||'Operación guardada en Neon.');
+        toast(messages[type]||'Operación guardada.');
       }
     } catch(error) {
-      toast(error?.message||'No se pudo completar la operación en Neon.');
+      toast(error?.message||'No se pudo completar la operación.');
     } finally {
-      if(button){button.disabled=false;button.textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar en Neon')));}
+      if(button){button.disabled=false;button.textContent=type==='invoice'?'Generar factura':(type==='supplier-invoice'?'Registrar factura':(type==='supplier-invoice-payment'?'Registrar pago':(type==='payment'||type==='purchase-payment'?'Registrar abono':'Guardar')));}
     }
   }
   function dateText(value){
@@ -2511,7 +2511,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   function renderCustomers(){
     const rows=customers.map(c=>'<tr><td data-label="Cliente / contacto" class="table-primary">'+esc(c.name)+'<small class="table-secondary">'+esc(c.contact||'Sin contacto')+'</small></td><td data-label="Pedidos">'+Number(c.orders||0)+'</td><td data-label="Importe en pedidos USD" class="table-primary">'+money(c.spent)+'</td><td data-label="Desde">'+esc(c.since||'—')+'</td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td></tr>').join('');
-    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>PEDIDOS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes conectados</strong><p>Los datos y el historial comercial se consultan desde Neon Development.</p></div></div>';
+    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>PEDIDOS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes conectados</strong><p>Los datos y el historial comercial se mantienen sincronizados con el sistema.</p></div></div>';
   }
   function renderOrders(){
     const rows=orders.map(o=>'<tr><td data-label="Referencia" class="table-primary">'+esc(o.id)+'</td><td data-label="Cliente">'+esc(o.customer)+'</td><td data-label="Fecha">'+esc(o.date)+'</td><td data-label="Total / cobro" class="table-primary">'+money(o.amount)+'<small class="table-secondary">Cobro: '+moneyInCurrency(o.paymentAmount==null?o.amount:o.paymentAmount,o.paymentCurrency||'USD')+'</small></td><td data-label="Estado">'+orderStatus(o.status)+'</td><td data-label="Detalle"><button class="table-action" data-action="preview-order" data-id="'+esc(o.id)+'" aria-label="Ver pedido '+esc(o.id)+'">'+svg('eye')+'</button></td></tr>').join('');
@@ -2565,8 +2565,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(backendMode&&!auth.profile)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Cuenta pendiente de autorización</strong><p>'+esc(auth.profileError||'Verifica tu correo y vuelve a iniciar sesión.')+'</p></div></div>';
     if(backendMode&&!hrRecordsLoaded){
       if(!hrRecordsLoading&&!hrLoadAttempted)loadHRFromAPI(false);
-      const message=hrLoadError||'Consultando los registros protegidos de Neon…';
-      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>RR. HH. · Neon Development</strong><p>'+esc(message)+'</p>'+(hrLoadError?'<button class="button button-quiet button-small" data-action="reload-hr">Reintentar</button>':'')+'</div></div>';
+      const message=hrLoadError||'Consultando los registros protegidos…';
+      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>RR. HH. no disponible</strong><p>'+esc(message)+'</p>'+(hrLoadError?'<button class="button button-quiet button-small" data-action="reload-hr">Reintentar</button>':'')+'</div></div>';
     }
     const activeEmployees=employees.filter(e=>e.status==='Activo');
     const activeCommissions=hrCommissions.filter(c=>['Pendiente','Asignada'].includes(c.status));
@@ -3083,7 +3083,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(button){button.disabled=true;button.textContent='Guardando…';}
     try{
       await erpApi('settings',{method:'PATCH',body:JSON.stringify({setting_key:'dgi_compliance',setting_value:value})});
-      dgiCompliance=value;renderView();toast('Configuración DGI guardada en Neon Development.');
+      dgiCompliance=value;renderView();toast('Configuración DGI guardada.');
     }catch(error){toast(error?.message||'No se pudo guardar la configuración DGI.');}
     finally{if(button){button.disabled=false;button.textContent='Guardar configuración DGI';}}
   }
@@ -3096,16 +3096,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     data.set('exchange_rate',String(exchangeRate));
     data.set('formal_invoice',form.querySelector('[name="formalInvoice"]')?.checked?'true':'false');
     if(data.get('document_type')==='dgi_payment'&&!String(data.get('fiscal_period')||'')){toast('Indica el período al que corresponde el pago DGI.');return;}
-    if(button){button.disabled=true;button.textContent='Subiendo a R2…';}
+    if(button){button.disabled=true;button.textContent='Guardando respaldo…';}
     try{
       const auth=window.JBAuth,token=await auth?.getToken();
       if(!auth?.profile||!token)throw new Error('Inicia sesión para archivar documentos tributarios.');
       const response=await fetch(auth.apiUrl('/api/erp/dgi-support-documents'),{method:'POST',headers:{authorization:'Bearer '+token},body:data,cache:'no-store'});
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(result?.error?.message||'No se pudo guardar el documento.');
-      dgiDocumentsLoaded=false;dgiDocumentsLoadAttempted=false;await loadDgiSupportDocuments(true);renderView();toast('Documento archivado en Neon y Cloudflare R2.');
+      dgiDocumentsLoaded=false;dgiDocumentsLoadAttempted=false;await loadDgiSupportDocuments(true);renderView();toast('Documento archivado.');
     }catch(error){toast(error?.message||'No se pudo archivar el documento.');}
-    finally{if(button){button.disabled=false;button.textContent='Guardar respaldo en R2';}}
+    finally{if(button){button.disabled=false;button.textContent='Guardar respaldo';}}
   }
   async function downloadDgiDocument(id,button){
     const documentRecord=dgiSupportDocuments.find(item=>String(item.id)===String(id));
@@ -3188,8 +3188,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<label class="form-field"><span><input type="checkbox" name="formalInvoice"> Factura formal emitida por proveedor inscrito</span></label>'+
       formField('Archivo PDF / JPG / PNG','file','file',true,'accept="application/pdf,image/jpeg,image/png"')+
       formField('Notas','notes','text',false,'maxlength="300"')+
-      '<p class="form-helper full-field">Archivos privados en el bucket R2 existente. Máximo 5 MB. Al escoger “Pago DGI”, indica también el período pagado para conciliarlo.</p>'+
-      '<div class="full-field modal-actions"><button class="button button-primary" type="submit">Guardar respaldo en R2</button></div></form></article>';
+      '<p class="form-helper full-field">Archivos privados. Máximo 5 MB. Al escoger “Pago DGI”, indica también el período pagado para conciliarlo.</p>'+
+      '<div class="full-field modal-actions"><button class="button button-primary" type="submit">Guardar respaldo</button></div></form></article>';
     const monthStatus=limitSales||limitAverage||limitStock?'warning':'success';
     const dgiAlert=regime==='not_confirmed'?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Régimen tributario pendiente de confirmar</strong><p>El ERP no supone que JB PARFUMS está inscrito en Cuota Fija. Confirma con la DGI la elegibilidad y el monto de la cuota antes de marcarlo aquí.</p></div></div>':'';
     const periodNotice=regime==='cuota_fija'?'<div class="notice-panel"><span>'+svg(overdue?'warning':'spark')+'</span><div><strong>Pago de Cuota Fija · período '+esc(dgiPaymentPeriod)+'</strong><p>'+(dgiPayment?'El comprobante del período está archivado. Importe registrado: '+moneyInCurrency(dgiPayment.amountNio,'NIO')+'.':(cuota>0?'Cuota configurada: '+moneyInCurrency(cuota,'NIO')+'. ':'Aún no se ha configurado el monto de cuota. ')+(overdue?'La fecha usual de pago de los primeros 15 días ya pasó; verifica el estado con la DGI.':'El pago del período anterior vence dentro de los primeros 15 días de este mes.'))+'</p></div></div>':'';
@@ -3209,7 +3209,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       periodNotice+
       settingsForm+
       docForm+
-      (dgiDocumentsError?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Archivo DGI no disponible</strong><p>'+esc(dgiDocumentsError)+'</p><button type="button" class="button button-quiet button-small" data-action="reload-dgi-documents">Reintentar consulta</button></div></div>':'')+'<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados en Neon y R2.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
+      (dgiDocumentsError?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Archivo DGI no disponible</strong><p>'+esc(dgiDocumentsError)+'</p><button type="button" class="button button-quiet button-small" data-action="reload-dgi-documents">Reintentar consulta</button></div></div>':'')+'<article class="list-panel"><div class="panel-heading"><div><h2>Archivo de respaldos tributarios</h2><p>'+dgiSupportDocuments.length+' documentos archivados.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>TIPO / PERÍODO</th><th>EMISOR</th><th>IMPORTE</th><th>FACTURA FORMAL</th><th>ARCHIVO</th><th></th></tr></thead><tbody>'+(documents||'<tr><td colspan="7">Todavía no hay documentos archivados.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Alcance del libro auxiliar y de los umbrales</strong><p>Los indicadores incluyen cobros asociados a facturas y movimientos de caja sin vínculo documental, sin duplicar cobros ya ligados a una factura. Los movimientos sin clasificar se incluyen preventivamente, pero pueden ser aportes, préstamos o transferencias y no ventas; por eso pueden sobreestimar los ingresos de ventas. Clasifícalos y concílialos antes de tomar una decisión tributaria. El tipo de cambio, las fechas y los registros faltantes afectan el resultado. Son indicadores de control, no una declaración fiscal ni certificación de elegibilidad. Este módulo no presenta declaraciones ni sustituye la validación de un contador o una respuesta escrita de la DGI.</p></div></div>';
   }
   function renderSettings(){
@@ -3219,15 +3219,15 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<form id="exchange-rate-form" class="rate-form"><label class="form-field"><span>Tipo de cambio · C$ por US$ 1 '+requiredMark()+'</span><input name="exchangeRate" type="number" min="0.0001" max="100000" step="0.0001" value="'+exchangeRate.toFixed(4)+'" required></label><button class="button button-primary" type="submit">Guardar tipo de cambio</button></form>'+
       '<p class="form-helper">Tasa vigente: '+rateLabel(exchangeRate)+'. Cada operación conserva la tasa que tenía al registrarse.</p></article>'+
       '<div class="feature-grid">'+
-      featureCard('settings','Cuenta y permisos','Sesión de Neon Auth activa. Rol actual: '+role+'. Los módulos aplican permisos según el perfil.')+
-      featureCard('receipt','Base de datos','Neon PostgreSQL · Desarrollo. Los registros operativos se consultan y actualizan en el servidor.')+
-      featureCard('boxes','Archivos y fotografías','Bucket R2 privado vinculado al Worker. Integración de carga y gestión de archivos en la siguiente fase.')+
-      featureCard('chart','Consumo y costos','Sin consultas periódicas ni tareas cron. Revisar los contadores de Neon, Workers y R2 en sus paneles antes de ampliar tráfico.')+
+      featureCard('settings','Cuenta y permisos','Sesión activa. Rol actual: '+role+'. Los módulos aplican permisos según el perfil.')+
+      featureCard('receipt','Base de datos','Los registros operativos se consultan y actualizan de forma segura desde el servidor.')+
+      featureCard('boxes','Archivos y fotografías','Biblioteca privada para fotografías y documentos. Los archivos se asocian a sus registros correspondientes.')+
+      featureCard('chart','Consumo y costos','Sin consultas periódicas ni tareas programadas. Revisa el consumo desde el monitor de recursos antes de ampliar el uso.')+
       featureCard('users','Personal y nómina','RR. HH. permanece habilitado. La nómina legal requiere configurar deducciones y prestaciones conforme a la normativa vigente.')+
       featureCard('spark','Trazabilidad','Las operaciones comerciales, cambios relevantes y ajustes de inventario registran auditoría.')+
       '</div>'+
       renderAccessManager()+
-      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Entorno de trabajo: Neon Development</strong><p>Los cambios de esta etapa se prueban en Desarrollo. Neon Production no recibe migraciones ni datos hasta validar el sistema y revisar los consumos.</p></div></div>';
+      '<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Entorno de trabajo: Desarrollo</strong><p>Las pruebas de esta etapa se realizan en un entorno separado. Producción permanece sin cambios hasta completar la validación.</p></div></div>';
   }
   async function loadAccessManager(force = false) {
     if (window.JBAuth?.profile?.role !== "owner") return;
@@ -3348,7 +3348,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>El cargo es texto libre. El estado activo es lo que habilita la entrada al ERP.</p></div><span class="ledger-count">'+accessManager.users.length+' cuentas</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>La identidad ya debe existir en Neon Auth. Esta acción crea el perfil ERP, inicialmente bloqueado; no crea la contraseña ni envía una invitación.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>La cuenta ya debe existir en el servicio de acceso. Esta acción crea el perfil ERP, inicialmente bloqueado; no crea la contraseña ni envía una invitación.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p></div>'+
       '<select class="filter-select" id="access-role-select">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div>'+
@@ -3540,10 +3540,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     form.elements.stock.readOnly = Boolean(product);
     form.elements.stock.value = product ? String(product.stock) : (form.elements.stock.value || '');
     document.getElementById('modal-title').textContent = product ? 'Editar producto' : 'Nuevo producto';
-    document.getElementById('save-product').textContent = product ? 'Guardar cambios' : 'Guardar en Neon';
+    document.getElementById('save-product').textContent = product ? 'Guardar cambios' : 'Guardar';
     document.querySelector('#product-dialog .modal-note').textContent = product
-      ? 'Edición de ficha en Neon. Las existencias no se modifican aquí: registra entradas, salidas o ajustes desde Existencias.'
-      : 'La ficha y las existencias iniciales se guardarán en Neon Development.';
+      ? 'Edición de ficha. Las existencias no se modifican aquí: registra entradas, salidas o ajustes desde Existencias.'
+      : 'La ficha y las existencias iniciales se guardarán en el sistema.';
     updateProductCostPreview();
     mountProductImageGallery(document.getElementById('product-image-gallery'),product||{images:[]});
     if (typeof dialog.showModal === 'function') dialog.showModal();
@@ -3705,7 +3705,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   function openCatalogImport() {
     const dialog=document.createElement('dialog');
     dialog.className='modal catalog-import-dialog';dialog.id='catalog-import-dialog';
-    dialog.innerHTML='<form method="dialog" class="modal-card catalog-import-card"><div class="modal-heading"><div><span class="eyebrow">CATÁLOGO · IMPORTACIÓN</span><h2>Importar productos</h2></div><button type="button" class="icon-button modal-close" data-import-close aria-label="Cerrar">×</button></div><p class="modal-note">Admite CSV, PDF, PNG, JPG y JPEG. CSV conserva las columnas; PDF e imágenes usan lectura de texto y OCR local. Revisa y corrige los datos antes de guardarlos en Neon.</p><div class="form-grid"><label class="form-field full-field"><span>Seleccionar archivo</span><input id="catalog-import-file" type="file" accept=".csv,.pdf,.png,.jpg,.jpeg,text/csv,application/pdf,image/png,image/jpeg" required></label><label class="form-field full-field"><span>Importe detectado en PDF / imagen</span><select id="catalog-import-amount"><option value="none">No asignar automáticamente</option><option value="price">Asignar a precio de venta (USD)</option><option value="cost">Asignar a costo de compra (USD)</option></select><small class="form-helper">No se supondrá si una cifra detectada es costo o precio. En PDF e imágenes la detección es preliminar.</small></label></div><p id="catalog-import-status" class="form-helper" role="status">Selecciona un archivo para comenzar.</p><div id="catalog-import-preview" class="table-wrap" style="max-height:42vh;overflow:auto"></div><div class="modal-actions"><button type="button" class="button button-quiet" data-import-close>Cancelar</button><button type="button" class="button button-primary" id="catalog-import-save" disabled>Importar productos a Neon</button></div></form>';
+    dialog.innerHTML='<form method="dialog" class="modal-card catalog-import-card"><div class="modal-heading"><div><span class="eyebrow">CATÁLOGO · IMPORTACIÓN</span><h2>Importar productos</h2></div><button type="button" class="icon-button modal-close" data-import-close aria-label="Cerrar">×</button></div><p class="modal-note">Admite CSV, PDF, PNG, JPG y JPEG. CSV conserva las columnas; PDF e imágenes usan lectura de texto y OCR local. Revisa y corrige los datos antes de importarlos.</p><div class="form-grid"><label class="form-field full-field"><span>Seleccionar archivo</span><input id="catalog-import-file" type="file" accept=".csv,.pdf,.png,.jpg,.jpeg,text/csv,application/pdf,image/png,image/jpeg" required></label><label class="form-field full-field"><span>Importe detectado en PDF / imagen</span><select id="catalog-import-amount"><option value="none">No asignar automáticamente</option><option value="price">Asignar a precio de venta (USD)</option><option value="cost">Asignar a costo de compra (USD)</option></select><small class="form-helper">No se supondrá si una cifra detectada es costo o precio. En PDF e imágenes la detección es preliminar.</small></label></div><p id="catalog-import-status" class="form-helper" role="status">Selecciona un archivo para comenzar.</p><div id="catalog-import-preview" class="table-wrap" style="max-height:42vh;overflow:auto"></div><div class="modal-actions"><button type="button" class="button button-quiet" data-import-close>Cancelar</button><button type="button" class="button button-primary" id="catalog-import-save" disabled>Importar productos</button></div></form>';
     document.body.appendChild(dialog);
     let records=[];
     const statusNode=dialog.querySelector('#catalog-import-status');
@@ -3726,7 +3726,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
           '<td><input class="filter-select" style="min-width:75px" data-import-index="' + index + '" data-import-field="stock" type="number" min="0" step="1" value="' + Number(record.stock || 0) + '" aria-label="Stock"></td>' +
           '<td><button type="button" class="table-action table-action-danger" data-import-remove="' + index + '" aria-label="Quitar fila">×</button></td></tr>'
         ).join('') + '</tbody></table>';
-      saveButton.disabled=false;saveButton.textContent='Importar '+records.length+' productos a Neon';
+      saveButton.disabled=false;saveButton.textContent='Importar '+records.length+' productos';
     };
     fileInput.addEventListener('change',async()=>{
       const file=fileInput.files?.[0];records=[];renderPreview();saveButton.disabled=true;
@@ -3780,7 +3780,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         if(!Number.isInteger(Number(record.stock))||Number(record.stock)<0){status('El stock debe ser un entero igual o mayor que cero.');return;}
         if(Number(record.price_usd)<0||Number(record.purchase_cost_usd)<0){status('Los precios y costos no pueden ser negativos.');return;}
       }
-      saveButton.disabled=true;status('Guardando productos, existencias iniciales y kardex en Neon…');
+      saveButton.disabled=true;status('Guardando productos, existencias iniciales e historial…');
       try{
         const payload=records.map(record=>{
           const clean={...record};delete clean._detected_amount;
@@ -3846,7 +3846,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         return;
       } else if (name === 'reload-erp') {
         action.disabled=true;
-        loadERPFromNeon(true).then(()=>renderView()).catch(error=>toast(error?.message||'No se pudo cargar Neon.')).finally(()=>{action.disabled=false;});
+        loadERPFromNeon(true).then(()=>renderView()).catch(error=>toast(error?.message||'No se pudo cargar la información.')).finally(()=>{action.disabled=false;});
       } else if (name === 'reload-catalog-settings') {
         action.disabled=true;
         loadCatalogSettings(true).then(()=>renderView()).finally(()=>{action.disabled=false;});
@@ -4176,8 +4176,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       form.reset();form.dataset.editingId='';form.elements.stock.readOnly=false;
       clearPendingProductImagePreviews();const uploadStatus=document.getElementById('product-image-upload-status');if(uploadStatus)uploadStatus.textContent='';
       updateProductCostPreview();dialog.close();
-      if(existing){renderView();toast('Producto y ficha actualizados en Neon.');}
-      else{goToView('products');toast('Producto y fotografías guardados en Neon y R2.');}
+      if(existing){renderView();toast('Producto y ficha actualizados.');}
+      else{goToView('products');toast('Producto y fotografías guardados correctamente.');}
     }catch(error){
       if(saved){
         try{await loadERPFromNeon(true);}catch{}
@@ -4185,7 +4185,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         toast('Producto guardado; hubo un problema al recargar los datos: '+(error?.message||'error de conexión.'));
       }else toast(error?.message||'No se pudo guardar el producto.');
     }finally{
-      if(button){button.disabled=false;button.textContent=existing?'Guardar cambios':'Guardar en Neon';}
+      if(button){button.disabled=false;button.textContent=existing?'Guardar cambios':'Guardar';}
     }
   });
   function makeSku() {
@@ -4266,11 +4266,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
           inventoryMovements=inventoryMovements.slice(0,5000);
         }
         renderView();
-        toast('Movimiento guardado en Neon. La recarga falló; el saldo quedó actualizado. Recarga los datos antes de otra operación.');
+        toast('Movimiento guardado. La recarga falló; el saldo quedó actualizado. Recarga los datos antes de otra operación.');
         return;
       }
       renderView();
-      toast(movementType+' registrado en Neon: '+product.name+'.');
+      toast(movementType+' registrado: '+product.name+'.');
     }catch(error){toast(error?.message||'No se pudo registrar el movimiento.');}
     finally{if(button){button.disabled=false;button.textContent='Registrar movimiento';}}
   });
@@ -4440,7 +4440,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
           const updated=products.find(item=>String(item.id)===String(productId));
           if(detailDialog.open)mountProductImageGallery(document.getElementById('product-detail-images'),updated);
           if(dialog.open)mountProductImageGallery(document.getElementById('product-image-gallery'),updated);
-          renderView();toast('Imagen eliminada de R2 y desvinculada del producto.');
+          renderView();toast('Imagen eliminada y desvinculada del producto.');
         })
         .catch(error=>toast(error?.message||'No se pudo eliminar la imagen.'))
         .finally(()=>{action.disabled=false;});
@@ -4813,7 +4813,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     storedFontLevel = 1;
   }
   setFontLevel(storedFontLevel, false);
-  root.innerHTML=heading(views.dashboard,'')+'<div class="notice-panel"><span>'+svg('clock')+'</span><div><strong>Conectando con Neon Development</strong><p>Consultando los registros operativos y permisos de esta cuenta…</p></div></div>';
+  root.innerHTML=heading(views.dashboard,'')+'<div class="notice-panel"><span>'+svg('clock')+'</span><div><strong>Cargando información del ERP</strong><p>Consultando los registros operativos y permisos de la cuenta…</p></div></div>';
   loadERPFromNeon(true).then(function(){
     renderView();
     // Populate the owner's sidebar monitor once per session; the five-minute
