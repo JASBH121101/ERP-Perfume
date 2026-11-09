@@ -47,7 +47,28 @@ jobs:
       - name: Install ERP dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Build static ERP
+      - name: Resolve API endpoint for the selected environment
+        id: api-endpoint
+        env:
+          ERP_PRODUCTION_API_BASE_URL: ${{ vars.ERP_PRODUCTION_API_BASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_TARGET" = "production" ]; then
+            if [ -z "${ERP_PRODUCTION_API_BASE_URL:-}" ]; then
+              echo "::error::Production deploy is blocked. Configure the ERP_PRODUCTION_API_BASE_URL repository variable only after the dedicated Production API Worker and Neon Production are ready."
+              exit 1
+            fi
+            api_url="$ERP_PRODUCTION_API_BASE_URL"
+          else
+            api_url="https://jb-parfums-erp-api.jaredblancoh19.workers.dev"
+          fi
+          echo "api_url=$api_url" >> "$GITHUB_OUTPUT"
+
+      - name: Build static ERP with environment-specific API
+        env:
+          ERP_DEPLOY_TARGET: ${{ env.DEPLOY_TARGET }}
+          ERP_API_BASE_URL: ${{ steps.api-endpoint.outputs.api_url }}
         run: npm run build
 
       - name: Run unit tests
@@ -109,6 +130,7 @@ jobs:
             sleep 5
           done
           grep -q '<html' "$RUNNER_TEMP/preview.html"
+          grep -qF "<meta name=\"jb-api-base-url\" content=\"$API_URL\">" "$RUNNER_TEMP/preview.html"
 
           echo "Checking Worker CORS preflight from the Preview origin..."
           curl --fail --silent --show-error --max-time 15 \
