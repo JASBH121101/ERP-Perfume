@@ -503,12 +503,12 @@ body[data-font-scale="larger"] { --ui-font-scale: 1.2; }
 
 
 /* Secure Neon Auth controls */
+.auth-modal [hidden],
 .auth-control[hidden],
-#auth-name-field[hidden],
-#auth-password-field[hidden],
-#auth-otp-field[hidden],
-#auth-mode-switch[hidden],
-#auth-resend-code[hidden] { display: none !important; }
+#auth-mode-switch[hidden] { display: none !important; }
+.auth-enroll-actions { display: grid; gap: 9px; padding-top: 13px; border-top: 1px solid #eee8de; }
+.auth-enroll-actions p { margin: 0; color: #817768; font-size: 10px; line-height: 1.55; }
+.auth-enroll-actions .button { width: 100%; min-height: 45px; }
 .auth-control { white-space: nowrap; }
 .demo-pill.connected { color: #b9e8d0; border-color: rgba(91, 180, 134, .32); background: rgba(42, 114, 82, .16); }
 .demo-pill.connected i { background: #62c995; box-shadow: 0 0 0 3px rgba(98, 201, 149, .13); }
