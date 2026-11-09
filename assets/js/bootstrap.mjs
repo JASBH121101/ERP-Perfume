@@ -53,10 +53,10 @@ async function getToken() {
       const directToken = extractJwt(body);
       if (response.ok && directToken) return directToken;
       endpointError = response.ok
-        ? "Neon Auth respondió, pero no entregó un JWT."
-        : "Neon Auth respondió HTTP " + response.status + " al solicitar el JWT.";
+        ? "El servicio de acceso respondió, pero no entregó una sesión válida."
+        : "El servicio de acceso respondió HTTP " + response.status + " al solicitar el JWT.";
     } catch (error) {
-      endpointError = "No se pudo consultar el endpoint de sesión de Neon Auth. " +
+      endpointError = "No se pudo consultar el servicio de sesión. " +
         (error?.message || "Comprueba la conexión y las cookies del navegador.");
     }
   }
@@ -75,7 +75,7 @@ async function getToken() {
   const sessionToken = extractJwt(authSession);
   if (sessionToken) return sessionToken;
 
-  throw new Error(endpointError || "Neon Auth no entregó un JWT válido. Cierra sesión, vuelve a iniciar y comprueba que el navegador permita cookies.");
+  throw new Error(endpointError || "No se recibió una sesión válida. Cierra sesión, vuelve a iniciar y comprueba que el navegador permita cookies.");
 }
 
 async function refreshProfile() {
@@ -156,7 +156,7 @@ function setAuthMode(mode, email = "") {
     recoveryNote.hidden = !(recoveryRequest || recoveryReset);
     recoveryNote.textContent = recoveryReset
       ? "Escribe el código de seis dígitos recibido por correo y establece tu nueva contraseña. El SMS aún no está habilitado: requiere verificar el celular y conectar un proveedor de mensajes."
-      : "Por ahora puedes recibir el código de recuperación en tu correo. El celular se guarda en RR. HH., pero todavía no está vinculado y verificado en Neon Auth para restablecer contraseñas por SMS.";
+      : "Por ahora puedes recibir el código de recuperación en tu correo. El celular se guarda en RR. HH., pero todavía no está vinculado ni verificado para restablecer contraseñas por SMS.";
   }
 
   if (email) $("#auth-email").value = email;
@@ -220,7 +220,7 @@ function updateAuthControls() {
   const pill = $("#connection-pill");
   if (pill) {
     const indicator = pill.querySelector("i") || document.createElement("i");
-    pill.replaceChildren(indicator, document.createTextNode(" " + (authClient ? "NEON · " + authEnvironment.toUpperCase() : "ACCESO SEGURO")));
+    pill.replaceChildren(indicator, document.createTextNode(" " + (authClient ? authEnvironment.toUpperCase() : "ACCESO SEGURO")));
     pill.classList.toggle("connected", Boolean(authClient));
   }
 
@@ -299,7 +299,7 @@ async function initialize() {
     authSession = null;
     authUser = null;
     erpProfile = null;
-    lockERP("No se pudo inicializar Neon Auth. " + (error?.message || "Intenta recargar."));
+    lockERP("No se pudo inicializar el servicio de acceso. " + (error?.message || "Intenta recargar."));
     return;
   }
 
@@ -315,7 +315,7 @@ async function initialize() {
     refreshProfile,
     async signUp(email, password, name) {
       const method = authClient?.signUp?.email;
-      if (typeof method !== "function") throw new Error("Neon Auth no tiene disponible el registro por correo y contraseña.");
+      if (typeof method !== "function") throw new Error("El registro por correo y contraseña no está disponible.");
       const result = await method({ email, password, name });
       if (result?.error) throw new Error(result.error.message || "No se pudo crear la cuenta.");
       return result;
@@ -328,28 +328,28 @@ async function initialize() {
     },
     async sendVerificationCode(email) {
       const method = authClient?.emailOtp?.sendVerificationOtp;
-      if (typeof method !== "function") throw new Error("Neon Auth no expone el envío de códigos OTP en esta configuración.");
+      if (typeof method !== "function") throw new Error("El envío de códigos de verificación no está disponible.");
       const result = await method({ email, type: "email-verification" });
       if (result?.error) throw new Error(result.error.message || "No se pudo enviar el código.");
       return result;
     },
     async sendPasswordRecoveryCode(email) {
       const method = authClient?.forgetPassword?.emailOtp;
-      if (typeof method !== "function") throw new Error("Neon Auth no tiene disponible la recuperación de contraseña por correo OTP.");
+      if (typeof method !== "function") throw new Error("La recuperación de contraseña por correo no está disponible.");
       const result = await method({ email });
       if (result?.error) throw new Error(result.error.message || "No se pudo solicitar el código de recuperación.");
       return result;
     },
     async resetPasswordWithEmailOtp(email, otp, password) {
       const method = authClient?.emailOtp?.resetPassword;
-      if (typeof method !== "function") throw new Error("Neon Auth no tiene disponible el cambio de contraseña por OTP.");
+      if (typeof method !== "function") throw new Error("El cambio de contraseña no está disponible.");
       const result = await method({ email, otp, password });
       if (result?.error) throw new Error(result.error.message || "El código no es válido o ya expiró.");
       return result;
     },
     async verifyEmail(email, otp) {
       const method = authClient?.emailOtp?.verifyEmail;
-      if (typeof method !== "function") throw new Error("Neon Auth no expone la verificación OTP en esta configuración.");
+      if (typeof method !== "function") throw new Error("La verificación del código no está disponible.");
       const result = await method({ email, otp });
       if (result?.error) throw new Error(result.error.message || "El código no es válido o ha expirado.");
       await refreshProfile();
@@ -414,7 +414,7 @@ async function initialize() {
     const email = String(data.get("email") || "").trim();
     const submit = $("#auth-submit");
     submit.disabled = true;
-    setAuthFeedback(mode === "verify" ? "Verificando correo…" : "Conectando con Neon Auth…");
+    setAuthFeedback(mode === "verify" ? "Verificando correo…" : "Conectando…");
 
     try {
       if (mode === "signup") {
@@ -424,7 +424,7 @@ async function initialize() {
         if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
         await window.JBAuth.signUp(email, password, name);
         setAuthMode("verify", email);
-        setAuthFeedback("Cuenta creada en Neon. Te enviamos un código de seis dígitos; verifica el correo para activar el acceso inicial del propietario.");
+        setAuthFeedback("Cuenta creada. Te enviamos un código de seis dígitos; verifica el correo para activar el acceso inicial del propietario.");
       } else if (mode === "verify") {
         await window.JBAuth.verifyEmail(email, String(data.get("otp") || "").trim());
         if (erpProfile) {
