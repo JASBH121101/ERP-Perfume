@@ -4958,7 +4958,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         try{
           await erpApi("users",{method:"POST",body:JSON.stringify({
             email,display_name:displayName,position_title:positionTitle,
-            role_template_key:roleTemplateKey,employee_id:null,must_change_password:true
+            role_template_key:roleTemplateKey,employee_id:null,must_change_password:false
           })});
         }catch(error){
           await loadAccessManager(true);
