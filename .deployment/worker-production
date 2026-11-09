@@ -1,0 +1,1 @@
+Deploy the pinned Production Worker to the separate jb-parfums-erp-api-production service and verify Neon Production, Neon Auth, R2, and CORS.
