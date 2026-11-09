@@ -554,9 +554,9 @@ export async function createSupplier(sql, user, body) {
   const query =
     "WITH input AS (SELECT $1::text AS name,$2::text AS contact,$3::text AS phone,$4::text AS email,$5::text AS currency,$6::text AS notes,$7::boolean AS active,$8::text AS address,$9::text AS payment_terms,$10::numeric AS minimum_order_usd,$11::integer AS lead_time_days,$12::jsonb AS additional_phones), " +
     "created AS (INSERT INTO suppliers(name,contact,phone,email,currency,notes,active,address,payment_terms,minimum_order_usd,lead_time_days) SELECT name,contact,phone,email,currency,notes,active,address,payment_terms,minimum_order_usd,lead_time_days FROM input RETURNING *), " +
-    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT created.id,phone.phone,phone.display_order FROM created CROSS JOIN input CROSS JOIN LATERAL jsonb_to_recordset(input.additional_phones) AS phone(phone text,display_order smallint) RETURNING id), " +
+    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT created.id,phone.phone,phone.display_order FROM created CROSS JOIN input CROSS JOIN LATERAL jsonb_to_recordset(input.additional_phones) AS phone(phone text,display_order smallint) RETURNING supplier_id,phone,display_order), " +
     "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $13,'create','supplier',created.id::text,to_jsonb(created) FROM created) " +
-    "SELECT created.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('phone',p.phone,'display_order',p.display_order) ORDER BY p.display_order) FROM supplier_phone_numbers p WHERE p.supplier_id=created.id),'[]'::jsonb) AS additional_phones FROM created";
+    "SELECT created.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('phone',p.phone,'display_order',p.display_order) ORDER BY p.display_order) FROM phone_rows p WHERE p.supplier_id=created.id),'[]'::jsonb) AS additional_phones FROM created";
   try {
     const rows = await sql.query(query, [supplier.name,supplier.contact,supplier.phone,supplier.email,supplier.currency,supplier.notes,supplier.active,supplier.address,supplier.payment_terms,supplier.minimum_order_usd,supplier.lead_time_days,JSON.stringify(supplier.additional_phones),user.id]);
     return erpJson({ record: rows[0] }, 201);
@@ -577,9 +577,9 @@ export async function updateSupplier(sql, user, id, body) {
     "WITH changed AS (UPDATE suppliers SET name=$1,contact=$2,phone=$3,email=$4,currency=$5,notes=$6,active=$7,address=$8,payment_terms=$9,minimum_order_usd=$10,lead_time_days=$11,updated_at=NOW() WHERE id=$13::uuid RETURNING *), " +
     "deleted_phones AS (DELETE FROM supplier_phone_numbers p USING changed c WHERE p.supplier_id=c.id RETURNING p.id), " +
     "delete_barrier AS (SELECT count(*) FROM deleted_phones), " +
-    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT changed.id,phone.phone,phone.display_order FROM changed CROSS JOIN delete_barrier CROSS JOIN LATERAL jsonb_to_recordset($12::jsonb) AS phone(phone text,display_order smallint) RETURNING id), " +
+    "phone_rows AS (INSERT INTO supplier_phone_numbers(supplier_id,phone,display_order) SELECT changed.id,phone.phone,phone.display_order FROM changed CROSS JOIN delete_barrier CROSS JOIN LATERAL jsonb_to_recordset($12::jsonb) AS phone(phone text,display_order smallint) RETURNING supplier_id,phone,display_order), " +
     "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $14,'update','supplier',changed.id::text,to_jsonb(changed) FROM changed) " +
-    "SELECT changed.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('phone',p.phone,'display_order',p.display_order) ORDER BY p.display_order) FROM supplier_phone_numbers p WHERE p.supplier_id=changed.id),'[]'::jsonb) AS additional_phones FROM changed";
+    "SELECT changed.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('phone',p.phone,'display_order',p.display_order) ORDER BY p.display_order) FROM phone_rows p WHERE p.supplier_id=changed.id),'[]'::jsonb) AS additional_phones FROM changed";
   try {
     const rows = await sql.query(query, [supplier.name,supplier.contact,supplier.phone,supplier.email,supplier.currency,supplier.notes,supplier.active,supplier.address,supplier.payment_terms,supplier.minimum_order_usd,supplier.lead_time_days,JSON.stringify(supplier.additional_phones),id,user.id]);
     if (!rows[0]) return erpError(404, "SUPPLIER_NOT_FOUND", "No se encontró el proveedor.");
