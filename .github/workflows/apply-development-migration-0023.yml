@@ -1,0 +1,203 @@
+name: Guarded Neon Development migration 0023
+
+on:
+  push:
+    branches:
+      - feature/database-migration-0023
+    paths:
+      - .github/workflows/apply-development-migration-0023.yml
+      - db/migrations/0023_supporting_foreign_key_indexes.sql
+      - db/migration-integrity.json
+      - scripts/migrate-db.mjs
+      - scripts/check-db-migrations.mjs
+      - tests/database-migration-integrity.test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jb-parfums-erp-development-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply-development:
+    if: github.ref == 'refs/heads/feature/database-migration-0023'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.ERP_MIGRATION_DATABASE_URL }}
+      ERP_ENVIRONMENT: development
+      ERP_MIGRATION_BRANCH: development
+      ERP_MIGRATION_BRANCH_ID: br-nameless-surf-bezeav6n
+      ERP_EXPECTED_NEON_ENDPOINT_HOST: ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech
+      ERP_MIGRATIONS_APPROVED: YES
+      EXPECTED_MIGRATION_SHA256: b52ac981b67baed17bdba4ace9c27b87115d655c55b136c7d2bb560e3fbf2731
+
+    steps:
+      - name: Check out the reviewed main-based migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/database-migration-0023
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify pinned migration sources
+        run: npm run check:db
+
+      - name: Require exact Development-only migration configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MIGRATION_DATABASE_URL:-}" || {
+            echo "::error::ERP_MIGRATION_DATABASE_URL is not configured."
+            exit 1
+          }
+          test "${ERP_ENVIRONMENT}" = "development"
+          test "${ERP_MIGRATION_BRANCH}" = "development"
+          test "${ERP_MIGRATION_BRANCH_ID}" = "br-nameless-surf-bezeav6n"
+          test "${ERP_EXPECTED_NEON_ENDPOINT_HOST}" = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech"
+          test "${ERP_MIGRATIONS_APPROVED}" = "YES"
+          node --input-type=module -e '
+            const url = new URL(process.env.MIGRATION_DATABASE_URL);
+            if (url.hostname.toLowerCase() !== process.env.ERP_EXPECTED_NEON_ENDPOINT_HOST ||
+                url.hostname.includes("-pooler.")) {
+              throw new Error("Only the pinned direct Development endpoint may be used.");
+            }
+          '
+
+      - name: Run read-only preflight and require migration 0023 only
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(npm run --silent migrate:db)"
+          printf '%s\\n' "$report"
+          mapfile -t pending < <(
+            printf '%s\\n' "$report" |
+              sed -nE 's/^[[:space:]]*pending ([0-9]{4}) .*/\\1/p'
+          )
+          if [[ "${#pending[@]}" -eq 1 && "${pending[0]}" == "0023" ]]; then
+            echo "migration_needed=true" >> "$GITHUB_OUTPUT"
+            echo "Preflight confirms 0023 is the only pending migration."
+          elif [[ "${#pending[@]}" -eq 0 ]]; then
+            echo "migration_needed=false" >> "$GITHUB_OUTPUT"
+            echo "0023 is already recorded; SQL will not be re-applied."
+          else
+            echo "::error::Refusing to proceed: expected only migration 0023 to be pending."
+            exit 1
+          fi
+
+      - name: Apply only through the protected repository migration runner
+        if: steps.preflight.outputs.migration_needed == 'true'
+        run: npm run migrate:db:apply
+
+      - name: Independently verify Development identity, six indexes and migration ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { Pool } from "@neondatabase/serverless";
+
+          const expectedHost = "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech";
+          const expectedChecksum = process.env.EXPECTED_MIGRATION_SHA256;
+          const url = new URL(process.env.MIGRATION_DATABASE_URL || "");
+          if (url.hostname.toLowerCase() !== expectedHost || url.hostname.includes("-pooler.")) {
+            throw new Error("Post-apply verification refused a non-Development Neon endpoint.");
+          }
+
+          const pool = new Pool({
+            connectionString: process.env.MIGRATION_DATABASE_URL,
+            max: 1,
+            connectionTimeoutMillis: 10000,
+            idleTimeoutMillis: 5000
+          });
+          try {
+            const result = await pool.query(`
+              SELECT
+                current_database() AS database_name,
+                current_user AS role_name,
+                (
+                  SELECT count(*) = 6
+                  FROM pg_index i
+                  JOIN pg_class idx ON idx.oid=i.indexrelid
+                  JOIN pg_namespace n ON n.oid=idx.relnamespace
+                  WHERE n.nspname='public'
+                    AND idx.relname = ANY(ARRAY[
+                      'app_users_role_template_key_idx',
+                      'purchase_journal_entries_created_by_idx',
+                      'purchase_orders_approved_by_idx',
+                      'purchase_orders_rejected_by_idx',
+                      'purchase_receipts_emitted_by_idx',
+                      'purchase_receipts_posted_by_idx'
+                    ]::text[])
+                    AND i.indisvalid AND i.indisready
+                ) AS six_indexes_valid,
+                (
+                  SELECT count(*) = 6
+                  FROM pg_indexes
+                  WHERE schemaname='public'
+                    AND indexname = ANY(ARRAY[
+                      'app_users_role_template_key_idx',
+                      'purchase_journal_entries_created_by_idx',
+                      'purchase_orders_approved_by_idx',
+                      'purchase_orders_rejected_by_idx',
+                      'purchase_receipts_emitted_by_idx',
+                      'purchase_receipts_posted_by_idx'
+                    ]::text[])
+                ) AS six_indexes_visible,
+                EXISTS (
+                  SELECT 1 FROM public.app_schema_migrations
+                  WHERE version='0023'
+                    AND filename='0023_supporting_foreign_key_indexes.sql'
+                    AND checksum=$1
+                ) AS ledger_checksum,
+                (
+                  SELECT applied_at FROM public.app_schema_migrations
+                  WHERE version='0023'
+                    AND filename='0023_supporting_foreign_key_indexes.sql'
+                    AND checksum=$1
+                ) AS applied_at
+            `, [expectedChecksum]);
+
+            const row = result.rows[0];
+            const checks = [
+              ["Development database and migration owner", row.database_name === "erp_perfume" && row.role_name === "erp_owner"],
+              ["six supporting indexes exist and are valid", row.six_indexes_valid && row.six_indexes_visible],
+              ["0023 filename and SHA-256 are recorded in the ledger", row.ledger_checksum && Boolean(row.applied_at)]
+            ];
+            for (const [name, passed] of checks) console.log((passed ? "PASS " : "FAIL ") + name);
+            if (checks.some(([, passed]) => !passed)) {
+              throw new Error("One or more 0023 post-apply invariants failed.");
+            }
+            console.log("MIGRATION_0023_APPLIED_AT=" + new Date(row.applied_at).toISOString());
+            console.log("MIGRATION_0023_SHA256=" + expectedChecksum);
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Run deterministic unit tests
+        run: npm run test:unit
+
+      - name: Run browser E2E tests
+        run: npm run test:e2e
+
+      - name: Write migration summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Neon Development migration 0023"
+            echo "- Target: **Development only**"
+            echo "- Expected branch: br-nameless-surf-bezeav6n"
+            echo "- Production: **not targeted**"
+            echo "- Migration SHA-256: $EXPECTED_MIGRATION_SHA256"
+          } >> "$GITHUB_STEP_SUMMARY"
