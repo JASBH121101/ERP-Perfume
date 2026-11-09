@@ -537,13 +537,14 @@ export function normalizeSupplierInput(body = {}) {
   if (!Array.isArray(additional) || additional.length > 5) return { error: erpError(400, "INVALID_SUPPLIER_PHONES", "Puedes registrar hasta cinco teléfonos adicionales.") };
   const phones = additional.map(value => normalizeSupplierPhone(typeof value === "string" ? value : value?.phone));
   if (phones.some(value => value === null)) return { error: erpError(400, "INVALID_SUPPLIER_PHONE", "Uno de los teléfonos adicionales no es válido.") };
-  const unique = [phone, ...phones].filter(Boolean);
+  const secondaryPhones = phones.filter(Boolean);
+  const unique = [phone, ...secondaryPhones].filter(Boolean);
   if (new Set(unique).size !== unique.length) return { error: erpError(400, "DUPLICATE_SUPPLIER_PHONE", "No repitas el mismo teléfono en el proveedor.") };
   return { value: {
     name, contact: contact || null, phone: phone || null, email: email || null, currency,
     address: address || null, payment_terms: paymentTerms || null, minimum_order_usd: minimumOrder,
     lead_time_days: leadTime, notes: String(body.notes || "").trim() || null, active: body.active !== false,
-    additional_phones: phones.map((number, index) => ({ phone: number, display_order: index + 1 }))
+    additional_phones: secondaryPhones.map((number, index) => ({ phone: number, display_order: index + 1 }))
   }};
 }
 
