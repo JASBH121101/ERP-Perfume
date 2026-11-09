@@ -134,9 +134,11 @@ Not every resource supports generic update or delete. Financial, payroll and inv
 
 ## Database migrations
 
-Repository sources now contain migrations `0001` through `0023`. Development still has historical ledger/source discrepancies: `0012`–`0014` have expected HR objects without ledger rows; `0002`, `0003`, `0006`, `0008`, `0009`, `0017` and `0018` retain source/checksum provenance exceptions. Do not replay those historical files or invent ledger rows. A disposable clean-install branch successfully executed `0001`–`0019`; schema comparison exposed four clean-install gaps, addressed by the new pending forward migration `0020_align_clean_install_schema.sql`. The 0020 migration has been applied and verified on two isolated QA branches (one clean-install branch and one Development clone); it has not been applied to Development or Production. See `docs/database-reliability-gate.md`, `db/migration-integrity.json` and `docs/migration-runner.md`.
+Repository sources contain the canonical migration chain `0001` through `0023`. Development retains explicitly documented historical ledger/source provenance exceptions and schema-satisfied versions without ledger rows; never replay those versions or fabricate Development ledger entries. See `docs/database-reliability-gate.md`, `db/migration-integrity.json` and `docs/migration-runner.md`.
 
-See `docs/migration-audit-2026-11-06.md` for the read-only audit, observed checksums and reconciliation rules. Do not replay versions already represented by live objects. Migrations are not automatically executed by GitHub Actions, Pages or Wrangler Worker deployments. The controlled local runner is `npm run migrate:db` (check only) and `npm run migrate:db:apply` (requires explicit approval, exact Development branch ID and pinned Development endpoint host). Neon Production was not changed; do not apply Production migrations without an explicitly approved cutover and backup plan.
+Neon Production was initialized from an empty public application schema using the exact `main` SQL sources `0001`–`0023`. All 23 Production ledger rows contain the matching manifest SHA-256. A live comparison confirms exact parity with Development across 500 public columns, all 640 constraints, all 153 indexes, all 8 triggers and all 5 sequences. Production has zero unvalidated foreign keys and zero invalid/unready indexes. The Development-only migration runner remains pinned to Development and must not be repurposed or pointed at Production.
+
+Migrations are not automatically executed by Pages or Worker deployment. Keep migration application separate from runtime deployment, preserve each migration's SHA-256 provenance, and use the reviewed Production release procedure in `docs/production-cutover.md`.
 
 ## Validation
 
