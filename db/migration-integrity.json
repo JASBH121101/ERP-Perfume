@@ -12,7 +12,7 @@
     "branchId": "br-nameless-surf-bezeav6n",
     "observedDate": "2026-11-09",
     "readOnly": true,
-    "ledgerRows": 19,
+    "ledgerRows": 20,
     "ledgerVersions": [
       "0001",
       "0002",
@@ -32,18 +32,19 @@
       "0019",
       "0021",
       "0022",
-      "0023"
+      "0023",
+      "0024"
     ],
     "productionInspected": true,
     "productionModified": true,
-    "note": "Updated after the clean 0001-0023 migration chain was applied to Neon Production. Read-only verification on 2026-11-09 confirmed 41 public application tables, 9 managed Neon Auth tables, 23 ledger rows (0001-0023), the least-privilege runtime role and zero unvalidated foreign keys or invalid indexes. The Development-only migration baseline and ledger snapshot remain unchanged. Production currently has no Auth user; the Development owner identity is separate and must complete first sign-up/OTP in Production.",
+    "note": "Read-only reconciliation on 2026-11-09 verified Development migration 0024 (SHA-256 and applied_at 2026-11-09T20:26:45.286258Z) and Production migration 0024 (SHA-256 and applied_at 2026-11-09T18:33:47.235066Z). Development ledger has 20 rows, including 0024 and the approved historical exceptions; Production ledger has 24 rows (0001-0024). Product authenticity migration 0025 remains pending. No business data was modified by this inspection.",
     "developmentEndpointHost": "ep-lingering-field-bethkduo.c-9.us-east-2.aws.neon.tech",
     "productionEndpointHost": "ep-snowy-surf-ber3pjus.c-9.us-east-2.aws.neon.tech",
     "productionInspectionDate": "2026-11-09",
     "productionBranchId": "br-royal-art-ben0apun",
     "productionPublicApplicationTables": 41,
     "productionAuthTables": 9,
-    "productionLedgerRows": 23,
+    "productionLedgerRows": 24,
     "productionLedgerVersions": [
       "0001",
       "0002",
@@ -67,14 +68,15 @@
       "0020",
       "0021",
       "0022",
-      "0023"
+      "0023",
+      "0024"
     ],
     "productionRuntimeRole": "jb_erp_runtime_sql",
     "productionRuntimeRoleVerified": true,
     "productionOwnerAuthUsers": 0,
     "productionBackupBranch": "br-lingering-bread-bejcvkss",
     "productionModifiedByDevelopmentBaselineReconciliation": false,
-    "productionModificationNote": "Production's 0001-0023 cutover history is recorded above. The Development-only baseline reconciliation and this read-only source-integrity snapshot did not modify Production."
+    "productionModificationNote": "Production's 0001-0024 cutover history is recorded above. Read-only reconciliation and the Development baseline process did not write to Production."
   },
   "migrations": [
     {
@@ -378,8 +380,10 @@
       "version": "0024",
       "sha256": "84c9d4d16fc2b7f978b37544575dd7089624b3dcfbd6eb4fc1d65769ecda5347",
       "database": {
-        "status": "pending",
-        "note": "Additive supplier metadata, up to five secondary phone numbers, safe migration of numeric-only legacy contact values into secondary phone rows, normalized supplier-name duplicate guard and nullable product-to-supplier relationship. Not yet applied to Development or Production."
+        "status": "applied_checksum_verified",
+        "ledgerChecksum": "84c9d4d16fc2b7f978b37544575dd7089624b3dcfbd6eb4fc1d65769ecda5347",
+        "appliedAt": "2026-11-09T20:26:45.286258Z",
+        "note": "Verified against the live Development migration ledger on 2026-11-09. Production independently records the same migration checksum as applied at 2026-11-09T18:33:47.235066Z."
       }
     },
     {
