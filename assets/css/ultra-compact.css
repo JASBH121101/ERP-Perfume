@@ -1,0 +1,281 @@
+/* JB PARFUMS — Ultra-compact global interface
+   Visual-only overrides. No business logic, API, or data behavior changes. */
+:root {
+  --jb-ui-space-1: 4px;
+  --jb-ui-space-2: 6px;
+  --jb-ui-space-3: 8px;
+  --jb-ui-space-4: 12px;
+  --jb-ui-control-height: 36px;
+  --jb-ui-border: #e5e8ed;
+  --jb-ui-muted: #77808b;
+}
+html, body { max-width: 100%; overflow-x: clip; }
+*, *::before, *::after { box-sizing: border-box; }
+.app-shell { min-height: 100svh; }
+@media (min-width: 721px) {
+  .sidebar { width: 232px; padding: 17px 13px 12px; }
+  .main-panel { width: calc(100% - 244px); margin-left: 244px; min-width: 0; }
+  .content-wrap { width: 100%; max-width: 1760px; padding: 18px clamp(18px, 2.1vw, 30px) 20px; }
+}
+.brand { min-height: 40px; gap: 9px; padding-inline: 6px; }
+.brand-mark { width: 36px; height: 36px; }
+.workspace-switcher { min-height: 48px; margin-top: 12px; padding: 7px 9px; }
+.nav-caption { margin-top: 13px; margin-bottom: 5px; font-size: 9px; letter-spacing: 1.25px; }
+.nav-caption-spaced { margin-top: 17px; }
+.primary-nav { gap: 2px; }
+.nav-item { min-height: 35px; padding-inline: 9px; gap: 9px; border-radius: 7px; font-size: 12px; }
+.nav-icon, .nav-icon svg { width: 15px; height: 15px; }
+.sidebar-bottom { margin-top: auto; }
+.storage-card { margin-bottom: 8px; padding: 9px 9px 8px; border-radius: 7px; }
+.storage-card p { margin: 5px 0; font-size: 10px; line-height: 1.35; }
+.topbar { min-height: 56px; padding-inline: clamp(14px, 2vw, 24px); box-shadow: none; }
+.topbar-actions { gap: 8px; }
+.breadcrumb, .breadcrumb strong { font-size: 11px; }
+.global-search { width: clamp(170px, 20vw, 250px); height: 34px; border-radius: 7px; }
+.page-context { min-height: 16px; margin-bottom: 5px; }
+.page-context .eyebrow, .eyebrow { font-size: 10px; letter-spacing: 1.15px; }
+.page-date { font-size: 11px; }
+.page-heading { align-items: center; gap: 12px; margin-bottom: 14px; }
+.page-heading h1 { font-size: clamp(23px, 2vw, 30px); line-height: 1.15; letter-spacing: -.55px; }
+.page-heading p { margin-top: 4px; font-size: 13px; line-height: 1.4; }
+.heading-actions { gap: 6px; }
+.heading-actions .button { min-height: 34px; }
+
+.button {
+  min-height: var(--jb-ui-control-height);
+  padding: 0 11px;
+  gap: 7px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.button.button-small { min-height: 29px; padding: 0 8px; border-radius: 6px; font-size: 11px; }
+.icon-button { width: 34px; height: 34px; border-radius: 7px; }
+.period-select, .filter-select {
+  min-height: 34px;
+  height: 34px;
+  min-width: 0;
+  padding: 0 25px 0 9px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.filter-select[type="date"], input[type="date"].filter-select {
+  width: 142px;
+  min-width: 132px;
+  padding-inline: 8px;
+  font-size: 11px;
+}
+.form-grid { gap: 10px 11px; }
+.form-field, .form-grid label { min-width: 0; gap: 5px; font-size: 12px; line-height: 1.3; }
+.form-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.form-field select, .form-field textarea,
+.form-grid input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.form-grid select, .form-grid textarea {
+  min-height: 35px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.form-field textarea, .form-grid textarea { min-height: 64px; }
+.form-field input:focus, .form-field select:focus,
+.form-grid input:focus, .form-grid select:focus,
+.form-grid textarea:focus { outline: 2px solid #b9965a55; outline-offset: 1px; box-shadow: none; }
+.modal-actions { flex-wrap: wrap; gap: 7px; margin-top: 14px; padding-top: 10px; }
+.modal-actions .button { min-width: 0; }
+.page-context, .page-heading, .toolbar, .panel-heading { min-width: 0; }
+
+/* Flatten decorative wrappers; retain semantic section boundaries and controls. */
+.panel, .list-panel, .feature-card {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.panel, .list-panel { padding: 0 0 10px !important; margin-bottom: 10px; border-bottom: 1px solid var(--jb-ui-border) !important; }
+.panel-heading { align-items: center; gap: 8px; margin-bottom: 8px; }
+.panel-heading h2, .feature-card h3 { font-size: 14px; line-height: 1.25; letter-spacing: -.1px; }
+.panel-heading p, .feature-card p { margin-top: 3px; font-size: 12px; line-height: 1.4; }
+.dashboard-grid, .lower-grid, .feature-grid { gap: 10px; margin-bottom: 10px; }
+.metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.metric-card {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #f5f6f7;
+  box-shadow: none;
+}
+.metric-label, .metric-foot, .metric-caption { font-size: 11px; line-height: 1.3; }
+.metric-symbol { width: 25px; height: 25px; border: 0; border-radius: 6px; }
+.metric-symbol svg { width: 14px; height: 14px; }
+.metric-value { margin-top: 7px; font-size: clamp(20px, 1.8vw, 25px); line-height: 1.15; }
+.metric-foot { margin-top: 5px; }
+.summary-strip { gap: 0; margin-bottom: 10px; border-block: 1px solid var(--jb-ui-border); }
+.summary-mini { min-width: 0; padding: 8px 10px; border: 0; border-right: 1px solid var(--jb-ui-border); border-radius: 0; background: transparent; }
+.summary-mini:last-child { border-right: 0; }
+.summary-mini span { font-size: 10px; line-height: 1.25; }
+.summary-mini strong { margin-top: 3px; font: 600 18px/1.15 "DM Sans", sans-serif; }
+.notice-panel {
+  margin-top: 8px;
+  padding: 7px 10px;
+  gap: 8px;
+  border: 0;
+  border-left: 2px solid #c4a36e;
+  border-radius: 0;
+  color: #76664d;
+  background: transparent;
+}
+.notice-panel svg { width: 14px; height: 14px; flex-basis: 14px; }
+.notice-panel strong { margin-bottom: 2px; font-size: 11px; }
+.notice-panel p { font-size: 11px; line-height: 1.4; }
+.toolbar { align-items: center; gap: 7px; margin-bottom: 9px; }
+.toolbar-left, .toolbar-right { min-width: 0; gap: 6px; }
+.inline-search {
+  width: min(100%, 260px);
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  padding-inline: 8px;
+  gap: 6px;
+  border-radius: 7px;
+}
+.inline-search svg { width: 13px; height: 13px; }
+.inline-search input { min-width: 0; font-size: 12px; }
+.data-table { border-collapse: collapse; }
+.data-table th { padding: 7px 8px; font-size: 9px; letter-spacing: .45px; background: transparent; }
+.data-table td { padding: 8px; font-size: 11px; line-height: 1.3; }
+.table-primary { font-size: 12px; }
+.table-secondary { margin-top: 2px; font-size: 10px; line-height: 1.25; }
+.status-chip { padding: 3px 6px; gap: 4px; font-size: 10px; }
+.status-chip:before { width: 4px; height: 4px; }
+.empty-state { min-height: 75px; padding: 16px 10px; font-size: 12px; }
+.product-cell { gap: 7px; }
+.product-cell .product-art { width: 29px; height: 32px; flex-basis: 29px; }
+
+/* Procurement: search should be sized to its purpose; filters stay aligned. */
+.purchase-module-tabs {
+  width: fit-content;
+  max-width: 100%;
+  gap: 4px;
+  margin: 0 0 9px;
+  padding: 3px;
+  border: 0;
+  border-bottom: 1px solid var(--jb-ui-border);
+  border-radius: 0;
+  background: transparent;
+}
+.purchase-module-tab {
+  flex: 0 1 auto;
+  min-width: 118px;
+  min-height: 34px;
+  padding: 6px 10px;
+  gap: 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.purchase-tab-count { min-width: 18px; height: 18px; padding: 0 5px; font-size: 10px; }
+.purchase-history-tools .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.purchase-history-tools .toolbar-left { flex: 0 0 245px; width: 245px; min-width: 0; }
+.purchase-history-tools .inline-search { width: 100%; min-width: 0; min-height: 34px; height: 34px; }
+.purchase-history-tools .toolbar-right {
+  display: grid;
+  flex: 1 1 650px;
+  grid-template-columns: minmax(145px, 1fr) minmax(130px, 1fr) minmax(145px, 1fr) 138px 138px auto;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-width: 0;
+}
+.purchase-history-tools .filter-select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  padding-inline: 7px 20px;
+  font-size: 11px;
+}
+.purchase-history-tools .filter-select[type="date"] { width: 100%; min-width: 0; padding-inline: 7px; }
+.purchase-history-tools .toolbar-right .button { min-height: 32px; padding: 0 8px; white-space: nowrap; }
+.purchase-history-tools .panel-heading { margin: 3px 0 0; }
+.purchase-orders-summary-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.purchase-orders-list-panel { padding-bottom: 6px !important; }
+.purchase-receipts-panel { padding-bottom: 8px !important; }
+.purchase-order-create { padding: 10px 12px !important; }
+.purchase-order-create .panel-heading { margin-bottom: 8px; }
+.purchase-order-step-tabs { gap: 4px; padding: 3px; }
+.po-step-tab { min-height: 34px; padding: 5px 8px; gap: 5px; font-size: 11px; }
+.po-step-number { font-size: 9px; }
+.po-step-panel { padding-top: 9px; }
+.po-form-footer { margin-top: 10px; padding-top: 8px; }
+.po-form-footer .button { min-height: 34px; }
+
+/* Prevent long labels and actions from stretching rows or overflowing. */
+button, .button, select, input, textarea { max-width: 100%; }
+.data-table td, .data-table th { overflow-wrap: anywhere; }
+.heading-actions, .modal-actions, .toolbar-right { min-width: 0; }
+@media (max-width: 1180px) {
+  .purchase-history-tools .toolbar { align-items: stretch; flex-wrap: wrap; }
+  .purchase-history-tools .toolbar-left { flex: 1 1 100%; width: 100%; }
+  .purchase-history-tools .inline-search { max-width: 280px; }
+  .purchase-history-tools .toolbar-right {
+    flex: 1 1 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .purchase-history-tools .toolbar-right .button { grid-column: 1 / -1; justify-self: end; }
+}
+@media (max-width: 720px) {
+  .content-wrap { padding: 13px 11px 18px; }
+  .page-context { margin-bottom: 4px; gap: 8px; }
+  .page-date { font-size: 10px; text-align: right; }
+  .page-heading { align-items: flex-start; margin-bottom: 10px; gap: 7px; }
+  .page-heading h1 { font-size: clamp(21px, 5.5vw, 27px); line-height: 1.15; }
+  .page-heading p { margin-top: 3px; font-size: 12px; line-height: 1.35; }
+  .heading-actions { flex-wrap: wrap; }
+  .heading-actions .button { min-height: 33px; }
+  .button { min-height: 36px; padding-inline: 9px; font-size: 12px; }
+  .icon-button { width: 33px; height: 33px; }
+  .panel, .list-panel { padding-bottom: 8px !important; margin-bottom: 8px; }
+  .panel-heading { margin-bottom: 6px; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .metric-card { padding: 9px 10px; }
+  .metric-value { margin-top: 5px; font-size: 20px; }
+  .summary-mini { padding: 7px 6px; }
+  .summary-mini span { font-size: 9px; }
+  .summary-mini strong { font-size: 16px; }
+  .toolbar { align-items: stretch; flex-wrap: wrap; }
+  .toolbar-left, .toolbar-right { width: 100%; flex-wrap: wrap; }
+  .inline-search { width: 100%; max-width: 100%; }
+  .filter-select { min-height: 35px; height: 35px; }
+  .purchase-module-tabs { width: 100%; overflow-x: auto; }
+  .purchase-module-tab { flex: 1 0 auto; min-width: 0; }
+  .purchase-history-tools .toolbar-left { width: 100%; flex-basis: 100%; }
+  .purchase-history-tools .inline-search { width: 100%; max-width: 100%; }
+  .purchase-history-tools .toolbar-right { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .purchase-history-tools .toolbar-right .button { grid-column: 1 / -1; width: auto; justify-self: end; }
+  .purchase-history-tools .filter-select[type="date"] { min-width: 0; width: 100%; }
+  .data-table th { padding: 6px 6px; }
+  .data-table td { padding: 7px 6px; }
+  .notice-panel { margin-top: 5px; padding: 6px 8px; }
+  .modal-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modal-actions .button { width: 100%; min-width: 0; white-space: normal; }
+  .auth-modal .modal-actions { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 420px) {
+  .topbar { min-height: 54px; }
+  .content-wrap { padding-inline: 9px; }
+  .metric-grid { gap: 5px; }
+  .metric-card { padding: 8px; }
+  .purchase-history-tools .toolbar-right { gap: 5px; }
+  .purchase-module-tab { padding-inline: 7px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
