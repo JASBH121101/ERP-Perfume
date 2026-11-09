@@ -10,9 +10,9 @@ test("repository migration sources match the reviewed integrity baseline", async
   const result = await verifyMigrationSources();
   assert.deepEqual(result.errors, [], result.errors.join("\n"));
   assert.equal(result.summary.sourceFiles, 25);
-  assert.equal(result.summary.appliedLedgerRows, 20);
+  assert.equal(result.summary.appliedLedgerRows, 21);
   assert.equal(result.summary.schemaPresentWithoutLedger, 4);
-  assert.deepEqual(result.summary.pendingMigrations, ["0025"]);
+  assert.deepEqual(result.summary.pendingMigrations, []);
 
   const manifest = JSON.parse(await readFile(
     new URL("../db/migration-integrity.json", import.meta.url),
@@ -22,11 +22,13 @@ test("repository migration sources match the reviewed integrity baseline", async
   const migration0022 = manifest.migrations.find(item => item.version === "0022");
   const migration0023 = manifest.migrations.find(item => item.version === "0023");
   const migration0024 = manifest.migrations.find(item => item.version === "0024");
-  assert.equal(manifest.snapshot.ledgerRows, 20);
+  const migration0025 = manifest.migrations.find(item => item.version === "0025");
+  assert.equal(manifest.snapshot.ledgerRows, 21);
   assert.ok(manifest.snapshot.ledgerVersions.includes("0021"));
   assert.ok(manifest.snapshot.ledgerVersions.includes("0022"));
   assert.ok(manifest.snapshot.ledgerVersions.includes("0023"));
   assert.ok(manifest.snapshot.ledgerVersions.includes("0024"));
+  assert.ok(manifest.snapshot.ledgerVersions.includes("0025"));
   assert.equal(migration0021.database.status, "applied_checksum_verified");
   assert.equal(migration0021.database.ledgerChecksum, migration0021.sha256);
   assert.ok(Number.isFinite(Date.parse(migration0021.database.appliedAt)));
@@ -43,6 +45,10 @@ test("repository migration sources match the reviewed integrity baseline", async
   assert.equal(migration0024.database.status, "applied_checksum_verified");
   assert.equal(migration0024.database.ledgerChecksum, migration0024.sha256);
   assert.ok(Number.isFinite(Date.parse(migration0024.database.appliedAt)));
+  assert.equal(migration0025.database.status, "applied_checksum_verified");
+  assert.equal(migration0025.database.ledgerChecksum, migration0025.sha256);
+  assert.ok(Number.isFinite(Date.parse(migration0025.database.appliedAt)));
+  assert.ok(Number.isFinite(Date.parse(migration0025.database.productionAppliedAt)));
   assert.equal(result.summary.nextMigrationVersion, "0026");
 });
 
