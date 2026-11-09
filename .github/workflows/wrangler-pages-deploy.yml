@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - ".deployment/pages-preview"
+      - ".deployment/pages-production"
   workflow_dispatch:
     inputs:
       target:
@@ -30,7 +31,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      DEPLOY_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'preview' }}
+      DEPLOY_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (contains(github.event.head_commit.message, '[deploy:production]') && 'production' || 'preview') }}
       CLOUDFLARE_ACCOUNT_ID: ddfbc84938d4d2795dd70d524b4197c9
     steps:
       - name: Check out the approved GitHub main revision
