@@ -517,7 +517,9 @@ test("new product unit cost is derived from purchase and additional costs", asyn
     additional_cost_usd: 5,
     unit_cost_usd: 999,
     price_usd: 50,
-    stock: 0
+    stock: 0,
+    authenticity_type: "original",
+    inspired_by: null
   }), {}, owner, sql);
   assert.equal(response.status, 201);
   assert.equal(insertParams[11], 25);
