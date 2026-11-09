@@ -2848,7 +2848,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const outstanding=calculatePayablesSnapshot(purchases,supplierInvoices,roundMoney).total;
     return heading(views.suppliers,'<button class="button button-primary" data-action="new-supplier">'+svg('plus')+' Nuevo proveedor</button>')+
       '<div class="summary-strip"><div class="summary-mini"><span>Proveedores activos</span><strong>'+suppliers.filter(s=>s.active!==false).length+'</strong></div><div class="summary-mini"><span>Compras vinculadas</span><strong>'+purchases.length+'</strong></div><div class="summary-mini"><span>Saldo por pagar USD</span><strong>'+money(outstanding)+'</strong></div></div>'+
-      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>EMPRESA / CONTACTO</th><th>TELÉFONOS</th><th>CORREO</th><th>COMPRA MÍNIMA / ENTREGA</th><th>MONEDA</th><th>SALDO USD</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
+      '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>EMPRESA / CONTACTO</th><th>TELÉFONOS</th><th>CORREO</th><th>COMPRA MÍNIMA / ENTREGA</th><th>MONEDA</th><th>SALDO USD</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay proveedores registrados.</td></tr>')+'</tbody></table></div></article>';
   }
   function purchaseOrderLineHtml(){
     const options=products.filter(product=>product.active!==false).map(product=>'<option value="'+esc(product.id)+'">'+esc(product.name)+' · '+esc(product.sku||'Sin SKU')+'</option>').join('');
