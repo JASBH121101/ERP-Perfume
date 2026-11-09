@@ -1,4 +1,4 @@
-# Backend setup — Neon Development
+# Backend setup — Neon Development and Production
 
 This repository uses `main` as its single integration branch. Cloudflare Pages publishes the static ERP interface; a separate Cloudflare Worker handles authenticated API requests. Pages Functions are intentionally not used.
 
@@ -6,9 +6,9 @@ This repository uses `main` as its single integration branch. Cloudflare Pages p
 
 - Frontend: static HTML/CSS/JavaScript, bundled with esbuild into `dist/`.
 - Hosting: Cloudflare Pages project `erp-perfume`, connected to GitHub `main`.
-- API: Cloudflare Worker `jb-parfums-erp-api`, source in `worker/src/index.js` and `worker/src/erp.js`.
-- Worker configuration used by the controlled Development deployment: root `wrangler.toml`.
-- Database: Neon PostgreSQL database `erp_perfume`; the deployed Worker is configured to use the Neon `development` branch.
+- API: Development Worker `jb-parfums-erp-api` and isolated Production Worker `jb-parfums-erp-api-production`, built from the same `worker/src/` application bundle.
+- Worker configuration for Development remains root `wrangler.toml`; Production uses its own isolated Cloudflare script bindings.
+- Database: Neon PostgreSQL database `erp_perfume`, with independent `development` and `production` branches. Development Worker remains pinned to Development.
 - Identity: Neon Managed Auth; the Worker verifies signed JWTs, verified email, account status and ERP role.
 - Files: private Cloudflare R2 bucket `erp-perfume-assets`, bound to the Worker as `ERP_ASSETS`.
 - Frontend API origin: `https://jb-parfums-erp-api.jaredblancoh19.workers.dev`.
@@ -42,16 +42,16 @@ The GitHub workflows have separate responsibilities:
 
 - `.github/workflows/ui-checks.yml` builds the frontend, checks Worker syntax, runs unit tests and Playwright browser tests.
 - `.github/workflows/jb-expert-qa.yml` runs the source, completeness, interaction and responsive visual audit.
-- `.github/workflows/deploy-worker.yml` currently validates the Development Worker source, build and unit tests. It does **not** upload or deploy the Worker.
+- `.github/workflows/deploy-worker.yml` validates and deploys the Development Worker only. Production uses a separate script and must never be repointed through the Development deployment.
 - `.github/workflows/wrangler-pages-deploy.yml` publishes a controlled Pages Preview from the `.deployment/pages-preview` marker or manual dispatch. Production is a separate explicit workflow choice.
 
-The last verified Pages Preview deployment is on branch `wrangler-preview` and has the alias `https://wrangler-preview.erp-perfume.pages.dev`. The active Worker is `jb-parfums-erp-api`; its current runtime variables report `ERP_ENVIRONMENT=development`, and its configured CORS origins include the Pages production domain and the Preview alias.
+The last verified Pages Preview deployment is on branch `wrangler-preview` and has the alias `https://wrangler-preview.erp-perfume.pages.dev`. The Development Worker `jb-parfums-erp-api` reports `ERP_ENVIRONMENT=development` and allows the Production Pages origin for the Preview environment. A distinct `jb-parfums-erp-api-production` script has been uploaded with `ERP_ENVIRONMENT=production`, Production Neon Auth endpoints and R2 binding. Its `DATABASE_URL` secret and `workers.dev` route are intentionally still disabled until the owner adds the Production pooled URL as a Cloudflare Secret.
 
 Worker uploads are a separate, controlled operation. Do not assume that a green Worker validation job means the Worker was deployed. Do not create or request a second Cloudflare token merely to run validation. Before any Worker upload, confirm the intended source revision, environment bindings and Development-only target; verify the new active version after upload.
 
 ## Worker database secret
 
-The deployed Worker currently exposes a `DATABASE_URL` binding of type `secret_text`. Cloudflare does not return the secret value when settings are inspected, so its existence is confirmed but its exact database target cannot be proven from the binding metadata alone.
+The Development Worker exposes a `DATABASE_URL` binding of type `secret_text`. Cloudflare does not return the secret value when settings are inspected, so its exact target is not independently proven from binding metadata alone. The separate Production Worker has not yet received its `DATABASE_URL` secret.
 
 Expected secret target:
 
@@ -64,7 +64,7 @@ On 2026-11-05, the Development runtime role received its least-privilege grants:
 
 Cloudflare masks the `DATABASE_URL` secret value. The role permissions are now ready, but the exact username embedded in the active Worker secret cannot be independently verified from Cloudflare settings. Confirm it with an authenticated live Worker request before treating the runtime connection as fully certified.
 
-The Worker also has the Neon Auth base URL and JWKS URL configured for the Development Auth endpoint, `ERP_ENVIRONMENT=development`, the configured owner bootstrap email and the private R2 bucket binding.
+The Development Worker has Development Neon Auth URLs and `ERP_ENVIRONMENT=development`. The Production Worker uses the Production branch Auth base URL and JWKS URL, `ERP_ENVIRONMENT=production`, the same configured owner bootstrap email and a private R2 bucket binding.
 
 Before real business transactions, verify the live Worker endpoint:
 
@@ -134,7 +134,7 @@ Not every resource supports generic update or delete. Financial, payroll and inv
 
 ## Database migrations
 
-Repository sources now contain migrations `0001` through `0020`. Development still has historical ledger/source discrepancies: `0012`–`0014` have expected HR objects without ledger rows; `0002`, `0003`, `0006`, `0008`, `0009`, `0017` and `0018` retain source/checksum provenance exceptions. Do not replay those historical files or invent ledger rows. A disposable clean-install branch successfully executed `0001`–`0019`; schema comparison exposed four clean-install gaps, addressed by the new pending forward migration `0020_align_clean_install_schema.sql`. The 0020 migration has been applied and verified on two isolated QA branches (one clean-install branch and one Development clone); it has not been applied to Development or Production. See `docs/database-reliability-gate.md`, `db/migration-integrity.json` and `docs/migration-runner.md`.
+Repository sources now contain migrations `0001` through `0023`. Development still has historical ledger/source discrepancies: `0012`–`0014` have expected HR objects without ledger rows; `0002`, `0003`, `0006`, `0008`, `0009`, `0017` and `0018` retain source/checksum provenance exceptions. Do not replay those historical files or invent ledger rows. A disposable clean-install branch successfully executed `0001`–`0019`; schema comparison exposed four clean-install gaps, addressed by the new pending forward migration `0020_align_clean_install_schema.sql`. The 0020 migration has been applied and verified on two isolated QA branches (one clean-install branch and one Development clone); it has not been applied to Development or Production. See `docs/database-reliability-gate.md`, `db/migration-integrity.json` and `docs/migration-runner.md`.
 
 See `docs/migration-audit-2026-11-06.md` for the read-only audit, observed checksums and reconciliation rules. Do not replay versions already represented by live objects. Migrations are not automatically executed by GitHub Actions, Pages or Wrangler Worker deployments. The controlled local runner is `npm run migrate:db` (check only) and `npm run migrate:db:apply` (requires explicit approval, exact Development branch ID and pinned Development endpoint host). Neon Production was not changed; do not apply Production migrations without an explicitly approved cutover and backup plan.
 
@@ -155,9 +155,10 @@ Before using real records, verify the live Worker `/api/health`, sign in using t
 
 ## Environment boundary and operational safeguards
 
-- The deployed Worker is configured with `ERP_ENVIRONMENT=development` and a Neon Development connection.
-- Neon Production currently has no application tables in its `public` schema and is not the runtime target.
-- Do not change the Worker connection to Production or apply Production migrations without explicit owner approval.
+- The Development Worker is configured with `ERP_ENVIRONMENT=development` and a Neon Development connection. It remains separate from Production.
+- Neon Production has 41 public application tables and migration ledger versions `0001`–`0023`. Its schema was compared with Development: all 500 public columns match by data type, nullability, defaults and sizing; zero foreign keys are unvalidated and zero indexes are invalid/unready.
+- Production has a distinct least-privilege `jb_erp_runtime_sql` role. It has 88 public table grants, 1,079 public column grants and 2 sequence grants, with no general operational DELETE and no superuser/role/database creation privileges.
+- The Production Worker must not be exposed until its `DATABASE_URL` secret is installed and `/api/health` passes with `environment=production`.
 - The R2 bucket is private; only the Worker receives its bucket binding.
 - No application migrations run automatically during deployment.
 - Optional AI repair is disabled by default. No AI repair execution is part of the normal deployment.
@@ -173,3 +174,6 @@ Before using real records, verify the live Worker `/api/health`, sign in using t
 
 The existing Playwright procurement and inventory tests intercept the API and use in-memory QA fixtures. They verify browser interactions and request payloads, but do not prove that the live Worker can write to Neon. The source/visual QA and CI checks likewise do not replace this live runtime verification.
 
+
+
+See [Production cutover](production-cutover.md) for the live Production schema state, owner identity bootstrap, Worker secret step, and final Pages gate.
