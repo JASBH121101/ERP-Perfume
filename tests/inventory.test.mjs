@@ -30,7 +30,8 @@ test("product creation stores opening stock and its initial movement in one SQL 
   assert.match(captured.statement, /Existencias iniciales/);
   assert.match(captured.statement, /INSERT INTO audit_log/);
   assert.equal(captured.values[13], 4);
-  assert.equal(captured.values[24], actor.id);
+  assert.equal(captured.values[19], null); // No supplier selected in this fixture.
+  assert.equal(captured.values[25], actor.id);
 });
 
 test("product creation rejects invalid opening stock before reaching Neon", async () => {
