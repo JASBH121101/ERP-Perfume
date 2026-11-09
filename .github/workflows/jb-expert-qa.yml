@@ -17,6 +17,22 @@ on:
       - "jb-expert-qa.config.json"
       - "wrangler.toml"
       - ".github/workflows/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "index.html"
+      - "docs/**"
+      - "assets/**"
+      - "functions/**"
+      - "worker/**"
+      - "db/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "jb-expert-qa.config.json"
+      - "wrangler.toml"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
