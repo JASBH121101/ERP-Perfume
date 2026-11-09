@@ -1627,7 +1627,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         records.push(...(Array.isArray(response.records)?response.records:[]));
       }
     }
-    if(records.length!==total)throw new Error('La exportación no recibió todos los registros de Neon; no se generó un archivo parcial.');
+    if(records.length!==total)throw new Error('La exportación no recibió todos los registros; no se generó un archivo parcial.');
     return records;
   }
   async function buildInventoryExportDataset() {
@@ -2511,7 +2511,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   function renderCustomers(){
     const rows=customers.map(c=>'<tr><td data-label="Cliente / contacto" class="table-primary">'+esc(c.name)+'<small class="table-secondary">'+esc(c.contact||'Sin contacto')+'</small></td><td data-label="Pedidos">'+Number(c.orders||0)+'</td><td data-label="Importe en pedidos USD" class="table-primary">'+money(c.spent)+'</td><td data-label="Desde">'+esc(c.since||'—')+'</td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td></tr>').join('');
-    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>PEDIDOS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes conectados</strong><p>Los datos y el historial comercial se consultan desde Neon Development.</p></div></div>';
+    return heading(views.customers,'<button class="button button-primary" data-action="new-customer">'+svg('plus')+' Nuevo cliente</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Clientes</span><strong>'+customers.length+'</strong></div><div class="summary-mini"><span>Pedidos acumulados</span><strong>'+customers.reduce((s,c)=>s+Number(c.orders||0),0)+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(customers.reduce((s,c)=>s+Number(c.spent||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CLIENTE / CONTACTO</th><th>PEDIDOS</th><th>PEDIDOS USD</th><th>DESDE</th><th>ESTADO</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin clientes registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('warning')+'<div><strong>Clientes conectados</strong><p>Los datos y el historial comercial se consultan desde el sistema.</p></div></div>';
   }
   function renderOrders(){
     const rows=orders.map(o=>'<tr><td data-label="Referencia" class="table-primary">'+esc(o.id)+'</td><td data-label="Cliente">'+esc(o.customer)+'</td><td data-label="Fecha">'+esc(o.date)+'</td><td data-label="Total / cobro" class="table-primary">'+money(o.amount)+'<small class="table-secondary">Cobro: '+moneyInCurrency(o.paymentAmount==null?o.amount:o.paymentAmount,o.paymentCurrency||'USD')+'</small></td><td data-label="Estado">'+orderStatus(o.status)+'</td><td data-label="Detalle"><button class="table-action" data-action="preview-order" data-id="'+esc(o.id)+'" aria-label="Ver pedido '+esc(o.id)+'">'+svg('eye')+'</button></td></tr>').join('');
@@ -2565,8 +2565,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(backendMode&&!auth.profile)return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>Cuenta pendiente de autorización</strong><p>'+esc(auth.profileError||'Verifica tu correo y vuelve a iniciar sesión.')+'</p></div></div>';
     if(backendMode&&!hrRecordsLoaded){
       if(!hrRecordsLoading&&!hrLoadAttempted)loadHRFromAPI(false);
-      const message=hrLoadError||'Consultando los registros protegidos de Neon…';
-      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>RR. HH. · Neon Development</strong><p>'+esc(message)+'</p>'+(hrLoadError?'<button class="button button-quiet button-small" data-action="reload-hr">Reintentar</button>':'')+'</div></div>';
+      const message=hrLoadError||'Consultando los registros protegidos…';
+      return heading(views.hr,'')+'<div class="notice-panel">'+svg('warning')+'<div><strong>RR. HH. · INFORMACIÓN PROTEGIDA</strong><p>'+esc(message)+'</p>'+(hrLoadError?'<button class="button button-quiet button-small" data-action="reload-hr">Reintentar</button>':'')+'</div></div>';
     }
     const activeEmployees=employees.filter(e=>e.status==='Activo');
     const activeCommissions=hrCommissions.filter(c=>['Pendiente','Asignada'].includes(c.status));
@@ -3083,7 +3083,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(button){button.disabled=true;button.textContent='Guardando…';}
     try{
       await erpApi('settings',{method:'PATCH',body:JSON.stringify({setting_key:'dgi_compliance',setting_value:value})});
-      dgiCompliance=value;renderView();toast('Configuración DGI guardada en Neon Development.');
+      dgiCompliance=value;renderView();toast('Configuración DGI guardada.');
     }catch(error){toast(error?.message||'No se pudo guardar la configuración DGI.');}
     finally{if(button){button.disabled=false;button.textContent='Guardar configuración DGI';}}
   }
@@ -3189,7 +3189,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       formField('Archivo PDF / JPG / PNG','file','file',true,'accept="application/pdf,image/jpeg,image/png"')+
       formField('Notas','notes','text',false,'maxlength="300"')+
       '<p class="form-helper full-field">Los archivos se guardan en el almacenamiento privado. Máximo 5 MB. Al escoger “Pago DGI”, indica también el período pagado para conciliarlo.</p>'+
-      '<div class="full-field modal-actions"><button class="button button-primary" type="submit">Guardar respaldo en R2</button></div></form></article>';
+      '<div class="full-field modal-actions"><button class="button button-primary" type="submit">Guardar respaldo</button></div></form></article>';
     const monthStatus=limitSales||limitAverage||limitStock?'warning':'success';
     const dgiAlert=regime==='not_confirmed'?'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Régimen tributario pendiente de confirmar</strong><p>El ERP no supone que JB PARFUMS está inscrito en Cuota Fija. Confirma con la DGI la elegibilidad y el monto de la cuota antes de marcarlo aquí.</p></div></div>':'';
     const periodNotice=regime==='cuota_fija'?'<div class="notice-panel"><span>'+svg(overdue?'warning':'spark')+'</span><div><strong>Pago de Cuota Fija · período '+esc(dgiPaymentPeriod)+'</strong><p>'+(dgiPayment?'El comprobante del período está archivado. Importe registrado: '+moneyInCurrency(dgiPayment.amountNio,'NIO')+'.':(cuota>0?'Cuota configurada: '+moneyInCurrency(cuota,'NIO')+'. ':'Aún no se ha configurado el monto de cuota. ')+(overdue?'La fecha usual de pago de los primeros 15 días ya pasó; verifica el estado con la DGI.':'El pago del período anterior vence dentro de los primeros 15 días de este mes.'))+'</p></div></div>':'';
