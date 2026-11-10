@@ -78,5 +78,5 @@ test("all published 2026 sectors have a positive wage and a valid effective wind
 
 test("unknown sector and invalid date fail closed", () => {
   assert.equal(getMinimumWageForSector("unknown", "2026-11-10").code, "UNKNOWN_MINIMUM_WAGE_SECTOR");
-  assert.equal(getMinimumWageForSector("commerce", "2026-02-30").available, true); // Date format is checked; the caller must provide normalized business dates.
+  assert.equal(getMinimumWageForSector("commerce", "2026-02-30").code, "INVALID_MINIMUM_WAGE_DATE");
 });
