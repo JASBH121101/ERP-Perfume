@@ -351,6 +351,13 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   }
   function hydrateProductImageSlots(){
     const slots=Array.from(document.querySelectorAll("[data-product-image-slot]")).slice(0,60);
+    if(productImageObserver){
+      for(const observedSlot of productImageObservedSlots){
+        if(observedSlot.isConnected)continue;
+        productImageObserver.unobserve(observedSlot);
+        productImageObservedSlots.delete(observedSlot);
+      }
+    }
     if(!slots.length)return;
     if(typeof IntersectionObserver!=="function"){
       slots.forEach(slot=>{void loadProductImageSlot(slot);});
@@ -366,11 +373,6 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
           void loadProductImageSlot(slot);
         });
       },{rootMargin:"240px 0px",threshold:0.01});
-    }
-    for(const observedSlot of productImageObservedSlots){
-      if(observedSlot.isConnected)continue;
-      productImageObserver.unobserve(observedSlot);
-      productImageObservedSlots.delete(observedSlot);
     }
     slots.forEach(slot=>{
       if(!slot.isConnected||slot.querySelector("img")||productImageObservedSlots.has(slot))return;
