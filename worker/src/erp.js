@@ -1931,7 +1931,7 @@ export async function createPayrollItem(sql,user,body) {
     if(payrollContext.employee_status!=="Activo")return erpError(404,"ACTIVE_EMPLOYEE_NOT_FOUND","El colaborador no existe o está inactivo.");
     const frequency=String(payrollContext.period_frequency||"monthly");
     if(!["monthly","biweekly","weekly"].includes(frequency))return erpError(400,"INVALID_PAYROLL_FREQUENCY","La frecuencia de nómina no es válida.");
-    const periodEndDate=String(payrollContext.period_end||"").slice(0,10);
+    const periodEndDate=payrollContext.period_end instanceof Date ? payrollContext.period_end.toISOString().slice(0,10) : String(payrollContext.period_end||"").slice(0,10);
     const wageCheck=validateMonthlyMinimumWage({
       salaryNio:payrollContext.salary_nio,status:payrollContext.employee_status,
       workSchedule:payrollContext.work_schedule,effectiveDate:periodEndDate,settings:laborSettings
