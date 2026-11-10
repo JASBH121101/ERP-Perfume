@@ -177,7 +177,7 @@ async function refreshProfile() {
       profileSpan({ status: response.status });
       const serverTiming = response.headers.get("server-timing") || "";
       const timingLabels = {
-        jwt: "Worker: verificar JWT",
+        signature: "Worker: validar firma",
         identity_db: "Worker: consultar identidad",
         permissions: "Worker: cargar permisos"
       };
