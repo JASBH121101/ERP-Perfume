@@ -42,7 +42,7 @@ test("minimum wage validation accepts the exact floor and salaries above it", ()
   }
 });
 
-test("part-time schedules are flagged for hourly review instead of applying a full-time monthly floor", () => {
+test("reduced schedules cannot bypass the full monthly minimum-wage rule without an approved hourly configuration", () => {
   const result = validateMonthlyMinimumWage({
     salaryNio: 5000,
     status: "Activo",
@@ -50,9 +50,9 @@ test("part-time schedules are flagged for hourly review instead of applying a fu
     effectiveDate: "2026-11-10",
     settings: { sector_code: "commerce" }
   });
-  assert.equal(result.valid, true);
-  assert.equal(result.reviewRequired, true);
-  assert.equal(result.code, "PARTIAL_SCHEDULE_REQUIRES_HOURLY_REVIEW");
+  assert.equal(result.valid, false);
+  assert.equal(result.code, "MINIMUM_WAGE_VIOLATION");
+  assert.equal(result.minimumSalaryNio, 11350.08);
 });
 
 test("inactive staff records do not trigger a new-hire minimum-wage rejection", () => {
