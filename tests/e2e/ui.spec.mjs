@@ -1678,3 +1678,52 @@ test('invitee verifies email and sets a personal password through the OTP activa
     password: invitedPassword
   });
 });
+
+test('workspace header stays reachable during scroll and contextual help expands', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.locator('#db-connection-status')).toHaveText('Conectado');
+
+  await navigateToView(page, 'cash');
+  const helpSummary = page.locator('.context-help summary');
+  await expect(helpSummary).toContainText('Alcance del libro de caja y bancos');
+  await helpSummary.click();
+  await expect(page.locator('.context-help-content')).toBeVisible();
+  await expect(page.locator('.context-help-content')).toContainText('no consulta entidades bancarias');
+
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.id = 'qa-sticky-scroll-space';
+    spacer.style.height = '1800px';
+    document.querySelector('.content-wrap').append(spacer);
+    window.scrollTo(0, 900);
+  });
+
+  const topbar = page.locator('.topbar');
+  expect(await topbar.evaluate(node => getComputedStyle(node).position)).toBe('sticky');
+  await expect.poll(() => topbar.evaluate(node => Math.round(node.getBoundingClientRect().top))).toBe(0);
+  await expect(page.locator('#menu-toggle')).toBeVisible();
+  await page.locator('#menu-toggle').click();
+  await expect(page.locator('#sidebar')).toHaveClass(/open/);
+  await expect(page.locator('#mobile-scrim')).toHaveClass(/visible/);
+
+  await navigateToView(page, 'billing');
+  await expect(page.getByRole('heading', { name: 'Facturación' })).toBeVisible();
+  await expect(page.locator('#sidebar')).not.toHaveClass(/open/);
+
+  await page.setViewportSize({ width: 1365, height: 900 });
+  await page.goto('/');
+  await expect(page.locator('#db-connection-status')).toHaveText('Conectado');
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.id = 'qa-desktop-sticky-scroll-space';
+    spacer.style.height = '1800px';
+    document.querySelector('.content-wrap').append(spacer);
+    window.scrollTo(0, 900);
+  });
+  await expect.poll(() => topbar.evaluate(node => Math.round(node.getBoundingClientRect().top))).toBe(0);
+  const collapse = page.locator('#sidebar-collapse');
+  await expect(collapse).toBeVisible();
+  await collapse.click();
+  await expect(page.locator('body')).toHaveClass(/sidebar-collapsed/);
+});
