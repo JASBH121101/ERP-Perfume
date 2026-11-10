@@ -42,6 +42,9 @@ function withCors(request, env, response) {
     headers.set("access-control-allow-origin", origin);
     headers.set("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
     headers.set("access-control-allow-headers", "authorization, content-type");
+    if (headers.has("server-timing")) {
+      headers.set("access-control-expose-headers", "server-timing");
+    }
     headers.set("access-control-max-age", "86400");
   }
   return new Response(response.body, {
