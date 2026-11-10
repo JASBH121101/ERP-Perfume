@@ -2121,7 +2121,7 @@ export async function addInvoicePayment(sql, user, body) {
     const rows = await sql.query(
       "WITH target AS MATERIALIZED (SELECT id,invoice_number,total_usd,paid_usd,status FROM invoices WHERE id=$1::uuid FOR UPDATE), " +
       "updated AS (UPDATE invoices i SET paid_usd=t.paid_usd+$2,status=CASE WHEN t.paid_usd+$2>=t.total_usd THEN 'Pagada' ELSE 'Abono parcial' END,updated_at=NOW() " +
-      "FROM target t WHERE i.id=t.id AND LOWER(BTRIM(COALESCE(t.status,''))) NOT IN ('anulada','anulado','cancelada','cancelado','void','voided') " +
+      "FROM target t WHERE i.id=t.id AND LOWER(BTRIM(COALESCE(t.status,''))) NOT IN ('anulada','anulado','cancelada','cancelado','cancelled','canceled','void','voided') " +
       "AND t.paid_usd+$2<=t.total_usd RETURNING i.*), " +
       "payment AS (INSERT INTO invoice_payments(invoice_id,currency,original_amount,exchange_rate,amount_usd,account_name,payment_method,created_by) " +
       "SELECT id,$3,$4,$5,$2,$6,$7,$8 FROM updated RETURNING id), " +
@@ -2135,7 +2135,7 @@ export async function addInvoicePayment(sql, user, body) {
     );
     const result = rows[0] || {};
     if (!result.invoice_exists) return erpError(404, "INVOICE_NOT_FOUND", "No se encontró la factura.");
-    if (["anulada","anulado","cancelada","cancelado","void","voided"].includes(String(result.invoice_status || "").trim().toLowerCase())) {
+    if (["anulada","anulado","cancelada","cancelado","cancelled","canceled","void","voided"].includes(String(result.invoice_status || "").trim().toLowerCase())) {
       return erpError(409, "INVOICE_VOIDED", "No se puede registrar un abono sobre una factura anulada o cancelada.");
     }
     if (!result.record) return erpError(409, "PAYMENT_EXCEEDS_BALANCE", "El abono supera el saldo pendiente de la factura.");
