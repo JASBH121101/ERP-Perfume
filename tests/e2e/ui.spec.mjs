@@ -1727,3 +1727,20 @@ test('workspace header stays reachable during scroll and contextual help expands
   await collapse.click();
   await expect(page.locator('body')).toHaveClass(/sidebar-collapsed/);
 });
+
+test('text entry fields stay visually clean without example placeholders across ERP modules', async ({ page }) => {
+  await page.setViewportSize({ width: 1365, height: 900 });
+  await page.goto('/');
+  await expect(page.locator('#db-connection-status')).toHaveText('Conectado');
+
+  const views = await page.locator('#sidebar button[data-view]').evaluateAll(nodes =>
+    [...new Set(nodes.map(node => node.getAttribute('data-view')).filter(Boolean))]
+  );
+  for (const view of views) {
+    await navigateToView(page, view);
+    await expect(page.locator('input[placeholder], textarea[placeholder]')).toHaveCount(0);
+  }
+
+  await expect(page.locator('#product-form [name="name"]')).toHaveAttribute('required', '');
+  await expect(page.locator('#exchange-rate-form [name="exchangeRate"]')).toHaveAttribute('required', '');
+});
