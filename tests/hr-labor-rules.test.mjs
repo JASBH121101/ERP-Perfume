@@ -76,6 +76,15 @@ test("all published 2026 sectors have a positive wage and a valid effective wind
   }
 });
 
+test("special-regime minimum wage has a separate January-to-December 2026 validity window", () => {
+  const valid = getMinimumWageForSector("regimen_especial", "2026-12-31");
+  const expired = getMinimumWageForSector("regimen_especial", "2027-01-01");
+  assert.equal(valid.available, true);
+  assert.equal(valid.amountNio, 9986.46);
+  assert.equal(expired.available, false);
+  assert.equal(expired.code, "MINIMUM_WAGE_TABLE_EXPIRED");
+});
+
 test("unknown sector and invalid date fail closed", () => {
   assert.equal(getMinimumWageForSector("unknown", "2026-11-10").code, "UNKNOWN_MINIMUM_WAGE_SECTOR");
   assert.equal(getMinimumWageForSector("commerce", "2026-02-30").code, "INVALID_MINIMUM_WAGE_DATE");
