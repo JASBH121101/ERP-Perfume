@@ -2885,7 +2885,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     ));
     const analyticsCharts=chartCards.length
       ? '<section class="analytics-chart-grid" aria-label="Gráficas de rendimiento">'+chartCards.join("")+'</section>'
-      : '<div class="notice-panel"><span>'+svg("info")+'</span><div><strong>Gráficas sin fuentes autorizadas</strong><p>Tu perfil necesita acceso de consulta a facturas, gastos o catálogo para mostrar estas visualizaciones.</p></div></div>';
+      : '<div class="notice-panel"><span>'+svg("chart")+'</span><div><strong>Gráficas sin fuentes autorizadas</strong><p>Tu perfil necesita acceso de consulta a facturas, gastos o catálogo para mostrar estas visualizaciones.</p></div></div>';
     const presetOptions=[
       ['all','Todo el historial'],['month','Este mes'],['previous_month','Mes anterior'],
       ['last_30','Últimos 30 días'],['last_90','Últimos 90 días'],['last_180','Últimos 180 días'],
