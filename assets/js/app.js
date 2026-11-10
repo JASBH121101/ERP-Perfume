@@ -5,6 +5,7 @@ import { profileHasPermission } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
 import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss } from './hr-calculations.mjs';
 import { getContractReminders } from './hr-contract-reminders.mjs';
+import { recordPerformance, startPerformanceSpan } from './performance-metrics.mjs';
 
 'use strict';
 
@@ -153,10 +154,21 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const headers = new Headers(options.headers || {});
     headers.set("authorization", "Bearer " + token);
     if (options.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+    const requestStarted = performance.now();
     const response = await fetch(auth.apiUrl("/api/erp/" + path.replace(/^\/+/, "")), {
       ...options, headers, cache: "no-store"
     });
     const body = await response.json().catch(() => ({}));
+    if (path === "bootstrap") {
+      const headerBytes = Number(response.headers.get("content-length"));
+      const payloadBytes = Number.isFinite(headerBytes) && headerBytes > 0
+        ? headerBytes
+        : new TextEncoder().encode(JSON.stringify(body)).byteLength;
+      recordPerformance("API bootstrap", performance.now() - requestStarted, {
+        status: response.status,
+        bytes: payloadBytes
+      });
+    }
     if (!response.ok) throw new Error(body?.error?.message || "La operación no se pudo completar (HTTP " + response.status + ").");
     return body;
   }
@@ -192,16 +204,25 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(productAssetUrlCache.has(key))return productAssetUrlCache.get(key);
     const auth=window.JBAuth;
     if(!auth?.profile)throw new Error("Inicia sesión para consultar las imágenes.");
+    const imageSpan=startPerformanceSpan("Carga de imágenes R2");
     const pending=(async()=>{
-      const token=await auth.getToken();
-      const response=await fetch(auth.apiUrl("/api/erp/assets?key="+encodeURIComponent(key)),{
-        headers:{authorization:"Bearer "+token},cache:"no-store"
-      });
-      if(!response.ok){
-        const body=await response.json().catch(()=>({}));
-        throw new Error(body?.error?.message||"No se pudo consultar la imagen.");
+      try{
+        const token=await auth.getToken();
+        const response=await fetch(auth.apiUrl("/api/erp/assets?key="+encodeURIComponent(key)),{
+          headers:{authorization:"Bearer "+token},cache:"no-store"
+        });
+        if(!response.ok){
+          const body=await response.json().catch(()=>({}));
+          imageSpan({status:response.status});
+          throw new Error(body?.error?.message||"No se pudo consultar la imagen.");
+        }
+        const blob=await response.blob();
+        imageSpan({status:response.status,bytes:blob.size});
+        return URL.createObjectURL(blob);
+      }catch(error){
+        imageSpan({status:599});
+        throw error;
       }
-      return URL.createObjectURL(await response.blob());
     })();
     productAssetUrlCache.set(key,pending);
     try{return await pending;}catch(error){productAssetUrlCache.delete(key);throw error;}
@@ -335,20 +356,50 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }else if(cached){URL.revokeObjectURL(cached);}
     productAssetUrlCache.delete(key);
   }
-  async function hydrateProductImageSlots(){
+  let productImageObserver=null;
+  const productImageObservedSlots=new Set();
+  async function loadProductImageSlot(slot){
+    const product=products.find(item=>String(item.id)===slot.getAttribute("data-product-image-slot"));
+    const image=product?.images?.[0];
+    if(!image?.key||!slot.isConnected)return;
+    try{
+      const url=await productAssetUrl(image.key);
+      if(!slot.isConnected)return;
+      const img=document.createElement("img");
+      img.src=url;img.alt=product.name;img.loading="lazy";img.decoding="async";
+      slot.replaceChildren(img);
+    }catch{}
+  }
+  function hydrateProductImageSlots(){
     const slots=Array.from(document.querySelectorAll("[data-product-image-slot]")).slice(0,60);
-    await Promise.all(slots.map(async slot=>{
-      const product=products.find(item=>String(item.id)===slot.getAttribute("data-product-image-slot"));
-      const image=product?.images?.[0];
-      if(!image?.key)return;
-      try{
-        const url=await productAssetUrl(image.key);
-        if(!slot.isConnected)return;
-        const img=document.createElement("img");
-        img.src=url;img.alt=product.name;img.loading="lazy";
-        slot.replaceChildren(img);
-      }catch{}
-    }));
+    if(productImageObserver){
+      for(const observedSlot of productImageObservedSlots){
+        if(observedSlot.isConnected)continue;
+        productImageObserver.unobserve(observedSlot);
+        productImageObservedSlots.delete(observedSlot);
+      }
+    }
+    if(!slots.length)return;
+    if(typeof IntersectionObserver!=="function"){
+      slots.forEach(slot=>{void loadProductImageSlot(slot);});
+      return;
+    }
+    if(!productImageObserver){
+      productImageObserver=new IntersectionObserver(entries=>{
+        entries.forEach(entry=>{
+          if(!entry.isIntersecting)return;
+          const slot=entry.target;
+          productImageObserver.unobserve(slot);
+          productImageObservedSlots.delete(slot);
+          void loadProductImageSlot(slot);
+        });
+      },{rootMargin:"240px 0px",threshold:0.01});
+    }
+    slots.forEach(slot=>{
+      if(!slot.isConnected||slot.querySelector("img")||productImageObservedSlots.has(slot))return;
+      productImageObservedSlots.add(slot);
+      productImageObserver.observe(slot);
+    });
   }
   async function mountProductImageGallery(container,product){
     if(!container)return;
@@ -383,8 +434,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (erpDataLoading || (erpDataLoaded && !force)) return;
     erpDataLoading = true;
     erpLoadError = "";
+    const loadSpan = startPerformanceSpan("Carga completa de datos ERP");
     try {
       const response = await erpApi("bootstrap");
+      const mappingStarted = performance.now();
       const data = response.data || {};
       const rawProducts = Array.isArray(data.products) ? data.products : [];
       products = rawProducts.map((p) => {
@@ -588,6 +641,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       }
 
       erpDataLoaded = true;
+      recordPerformance("Preparar datos en navegador", performance.now() - mappingStarted, {
+        status: 200,
+        count: products.length + orders.length + customers.length + suppliers.length
+      });
       void loadNotifications({ silent:true });
       hrRecordsLoaded = Array.isArray(data.employees);
       hrLoadAttempted = true;
@@ -600,6 +657,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       if(dbStatus)dbStatus.textContent='Error';
       throw error;
     } finally {
+      loadSpan({ status: erpDataLoaded ? 200 : 599 });
       erpDataLoading = false;
     }
   }
@@ -3545,6 +3603,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(document.visibilityState==='visible'&&window.navigator.onLine&&window.JBAuth?.profile)loadNotifications({silent:true});
   },120000);
   function renderView() {
+    const renderSpan = startPerformanceSpan("Render interfaz");
     if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
     const meta = views[state.view] || views.dashboard;
     document.getElementById('breadcrumb-current').textContent = meta.title;
@@ -3615,6 +3674,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     document.querySelector('.page-context')?.classList.toggle('page-context-hr',state.view==='hr');
     document.getElementById('product-count').textContent = String(products.filter(function (product) { return product.active !== false; }).length).padStart(2, '0');
     hydrateProductImageSlots();
+    renderSpan({ status: 200 });
   }
   function goToView(view) {
     if (!views[view] || !canViewERPView(view)) return;

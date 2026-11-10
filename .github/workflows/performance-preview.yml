@@ -1,0 +1,207 @@
+name: ERP isolated performance preview
+
+on:
+  push:
+    branches:
+      - perf/erp-loading-optimization
+    paths:
+      - "assets/**"
+      - "index.html"
+      - "worker/**"
+      - "scripts/**"
+      - ".github/workflows/performance-preview.yml"
+      - "package.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: erp-perf-preview-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-measure:
+    name: Deploy Development preview and compare browser performance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ddfbc84938d4d2795dd70d524b4197c9
+      API_URL: https://jb-parfums-erp-api.jaredblancoh19.workers.dev
+      PREVIEW_URL: https://wrangler-preview.erp-perfume.pages.dev
+      PRODUCTION_URL: https://erp-perfume.pages.dev
+
+    steps:
+      - name: Check out exact optimization branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install ERP dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify isolated Development and Preview configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '^name = "jb-parfums-erp-api"$' worker/wrangler.toml
+          grep -q '^ERP_ENVIRONMENT = "development"$' worker/wrangler.toml
+          grep -q '^bucket_name = "erp-perfume-assets"$' worker/wrangler.toml
+          echo "PASS: preview Worker targets Development and the dedicated ERP assets bucket."
+
+      - name: Validate Worker, build and unit tests before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module --check < worker/src/index.js
+          node --input-type=module --check < worker/src/erp.js
+          node --input-type=module --check < worker/src/permissions.js
+          npm run test:unit
+
+      - name: Confirm Cloudflare credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || {
+            echo "::error::CLOUDFLARE_API_TOKEN is not configured."
+            exit 1
+          }
+
+      - name: Preflight current Development API before updating preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 \
+            "$API_URL/api/health" \
+            -H "Origin: $PREVIEW_URL" \
+            -o "$RUNNER_TEMP/dev-health-before.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const health = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/dev-health-before.json", "utf8"));
+          if (health.ok !== true || health.environment !== "development") {
+            throw new Error("Existing Development API is not healthy or not pinned to Development; refusing preview update.");
+          }
+          if (health.services?.database !== true || health.services?.authentication !== true || health.services?.storage !== true) {
+            throw new Error("Development database, authentication or R2 health failed; refusing preview update.");
+          }
+          console.log("Development API preflight passed.");
+          NODE
+
+      - name: Deploy optimization branch to the Development API Worker only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4 deploy --config worker/wrangler.toml
+
+      - name: Verify Development API after Worker deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 \
+            "$API_URL/api/health" \
+            -H "Origin: $PREVIEW_URL" \
+            -D "$RUNNER_TEMP/dev-health.headers" \
+            -o "$RUNNER_TEMP/dev-health-after.json"
+          grep -iqF "access-control-allow-origin: $PREVIEW_URL" "$RUNNER_TEMP/dev-health.headers"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const health = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/dev-health-after.json", "utf8"));
+          if (health.ok !== true || health.environment !== "development") {
+            throw new Error("Optimized Worker is not healthy and pinned to Development.");
+          }
+          if (health.services?.database !== true || health.services?.authentication !== true || health.services?.storage !== true) {
+            throw new Error("One or more Development services are unhealthy after deployment.");
+          }
+          console.log("Optimized Development API and R2 bindings are healthy.");
+          NODE
+
+      - name: Build optimized frontend with the Development API endpoint
+        env:
+          ERP_DEPLOY_TARGET: preview
+          ERP_API_BASE_URL: https://jb-parfums-erp-api.jaredblancoh19.workers.dev
+        run: npm run build
+
+      - name: Publish optimization branch to Pages Preview only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4 pages deploy dist --project-name=erp-perfume --branch=wrangler-preview
+
+      - name: Verify isolated Pages Preview build and API binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 15 "$PREVIEW_URL/" -o "$RUNNER_TEMP/preview.html"; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::Pages Preview did not become reachable."
+              exit 1
+            fi
+            sleep 5
+          done
+          grep -qF "<meta name=\"jb-api-base-url\" content=\"$API_URL\">" "$RUNNER_TEMP/preview.html"
+          echo "PASS: Pages Preview loads and points to the Development API."
+
+      - name: Install Chromium and run before/after performance comparison
+        run: |
+          npx playwright install --with-deps chromium
+          PERF_BASELINE_URL="$PRODUCTION_URL" \
+          PERF_PREVIEW_URL="$PREVIEW_URL" \
+          PERF_REPETITIONS=5 \
+          PERF_OUTPUT="$RUNNER_TEMP/performance-report.json" \
+          node scripts/performance-audit.mjs
+
+      - name: Upload browser performance report
+        if: always() && hashFiles('${{ runner.temp }}/performance-report.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: erp-performance-before-after
+          path: ${{ runner.temp }}/performance-report.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Write deployment and performance summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## ERP isolated performance preview"
+            echo "- Source: \`$GITHUB_SHA\`"
+            echo "- API deployment: **Development Worker only** (\`jb-parfums-erp-api\`)"
+            echo "- Frontend deployment: **Pages Preview only** (\`$PREVIEW_URL\`)"
+            echo "- Production deployment: **not performed**"
+            echo "- Database migrations or data writes: **not performed**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s "$RUNNER_TEMP/performance-report.json" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Browser measurements" >> "$GITHUB_STEP_SUMMARY"
+            node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { readFileSync } from "node:fs";
+          const report = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/performance-report.json", "utf8"));
+          const fmt = value => value == null ? "n/a" : Number.isInteger(value) ? String(value) : value.toFixed(1);
+          console.log("| Profile | Metric | Production baseline | Preview optimized | Change |");
+          console.log("|---|---|---:|---:|---:|");
+          for (const [profile, result] of Object.entries(report.profiles)) {
+            for (const [metric, label, unit] of [
+              ["ttfbMs", "TTFB", " ms"],
+              ["domContentLoadedMs", "DOM ready", " ms"],
+              ["loadMs", "Load", " ms"],
+              ["lcpMs", "LCP / FCP fallback", " ms"],
+              ["transferredBytes", "Transferred", " B"],
+              ["jsBytes", "JavaScript", " B"],
+              ["cssBytes", "CSS", " B"]
+            ]) {
+              const before = result.baseline.summary?.[metric];
+              const after = result.preview.summary?.[metric];
+              const change = result.comparison[metric + "ChangePercent"];
+              console.log("| " + profile + " | " + label + " | " + fmt(before) + unit + " | " + fmt(after) + unit + " | " + (change == null ? "n/a" : fmt(change) + "%") + " |");
+            }
+          }
+          NODE
+          fi

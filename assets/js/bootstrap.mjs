@@ -1,5 +1,7 @@
 import { createAuthClient } from "@neondatabase/auth";
 import { profileIdentityKey, profileMatchesAuthUser } from "./permission-utils.mjs";
+import { recordPerformance, startPerformanceSpan } from "./performance-metrics.mjs";
+import { createJwtTokenCache } from "./jwt-token-cache.mjs";
 
 const $ = (selector) => document.querySelector(selector);
 const authDialog = $("#auth-dialog");
@@ -18,6 +20,7 @@ let appLoaded = false;
 let appLoadedProfileKey = "";
 let allowInviteActivation = false;
 let authEnvironment = "unknown";
+const sessionTokenCache = createJwtTokenCache();
 
 async function readJson(response) {
   try { return await response.json(); } catch { return {}; }
@@ -36,46 +39,66 @@ function extractJwt(value) {
   return candidates.find((item) => typeof item === "string" && item.split(".").length === 3) || null;
 }
 
-async function getToken() {
+async function requestSessionToken() {
+  const tokenSpan = startPerformanceSpan("Obtener JWT");
+  if (!authBaseUrl) {
+    tokenSpan({ status: 401 });
+    return { token: null, error: "" };
+  }
+  try {
+    const response = await fetch(authBaseUrl + "/token", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      headers: { accept: "application/json" }
+    });
+    const body = await readJson(response);
+    const token = extractJwt(body);
+    if (response.ok && token) {
+      tokenSpan({ status: 200 });
+      return { token, error: "" };
+    }
+    tokenSpan({ status: response.status || 401 });
+    return {
+      token: null,
+      error: response.ok
+        ? "El servicio de acceso respondió, pero no entregó una sesión válida."
+        : "El servicio de acceso respondió HTTP " + response.status + " al solicitar el JWT."
+    };
+  } catch (error) {
+    tokenSpan({ status: 599 });
+    return {
+      token: null,
+      error: "No se pudo consultar el servicio de sesión. " +
+        (error?.message || "Comprueba la conexión y las cookies del navegador.")
+    };
+  }
+}
+
+async function getToken(prefetchedToken = null) {
   if (!authClient) return null;
 
-  // Fetch the short-lived JWT from Neon Auth using its HttpOnly session cookie.
-  // Do not use authClient.token(): SDK versions may return cached session data
-  // rather than the signed JWT required by the ERP Worker.
-  let endpointError = "";
-  if (authBaseUrl) {
-    try {
-      const response = await fetch(authBaseUrl + "/token", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-        headers: { accept: "application/json" }
-      });
-      const body = await readJson(response);
-      const directToken = extractJwt(body);
-      if (response.ok && directToken) return directToken;
-      endpointError = response.ok
-        ? "El servicio de acceso respondió, pero no entregó una sesión válida."
-        : "El servicio de acceso respondió HTTP " + response.status + " al solicitar el JWT.";
-    } catch (error) {
-      endpointError = "No se pudo consultar el servicio de sesión. " +
-        (error?.message || "Comprueba la conexión y las cookies del navegador.");
-    }
-  }
+  // Reuse only a short-lived JWT in memory; simultaneous callers share one
+  // cookie-backed request. The Worker still verifies every authenticated call.
+  const tokenResult = prefetchedToken
+    ? await prefetchedToken
+    : await sessionTokenCache.request(requestSessionToken);
+  if (tokenResult?.token) return tokenResult.token;
+  let endpointError = tokenResult?.error || "";
 
   // Use the documented client helper when available, then session payloads.
   try {
     if (typeof authClient.getJWTToken === "function") {
       const result = await authClient.getJWTToken();
       const helperToken = extractJwt(result);
-      if (helperToken) return helperToken;
+      if (helperToken) return sessionTokenCache.remember(helperToken);
     }
   } catch (error) {
     if (!endpointError) endpointError = error?.message || "No se pudo renovar la sesión.";
   }
 
   const sessionToken = extractJwt(authSession);
-  if (sessionToken) return sessionToken;
+  if (sessionToken) return sessionTokenCache.remember(sessionToken);
 
   throw new Error(endpointError || "No se recibió una sesión válida. Cierra sesión, vuelve a iniciar y comprueba que el navegador permita cookies.");
 }
@@ -109,7 +132,20 @@ function updateSidebarIdentity(profile) {
 
 async function refreshProfile() {
   if (!authClient) return null;
-  const result = await authClient.getSession();
+
+  // Start a fresh cache generation, then request the cookie-backed JWT in
+  // parallel with Neon Auth session discovery. Other callers can share it.
+  sessionTokenCache.clear();
+  const tokenRequest = sessionTokenCache.request(requestSessionToken);
+  const sessionSpan = startPerformanceSpan("Sesión Neon Auth");
+  let result;
+  try {
+    result = await authClient.getSession();
+    sessionSpan({ status: result?.error ? 500 : 200 });
+  } catch (error) {
+    sessionSpan({ status: 599 });
+    throw error;
+  }
   if (result?.error) throw new Error(result.error.message || "No se pudo consultar la sesión.");
 
   const data = result?.data || null;
@@ -122,17 +158,43 @@ async function refreshProfile() {
   if (!authUser) return null;
 
   try {
-    const token = await getToken();
+    let token;
+    try {
+      token = await getToken(tokenRequest);
+    } catch (error) {
+      throw error;
+    }
     if (!token) {
       profileError = "No se pudo obtener un token válido de la sesión.";
       return null;
     }
 
-    const response = await fetch(apiUrl("/api/auth/profile"), {
-      headers: { authorization: "Bearer " + token },
-      cache: "no-store"
-    });
-    const body = await readJson(response);
+    const profileSpan = startPerformanceSpan("Validar perfil ERP");
+    let response, body;
+    try {
+      response = await fetch(apiUrl("/api/auth/profile"), {
+        headers: { authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      body = await readJson(response);
+      profileSpan({ status: response.status });
+      const serverTiming = response.headers.get("server-timing") || "";
+      const timingLabels = {
+        signature: "Worker: validar firma",
+        identity_db: "Worker: consultar identidad",
+        permissions: "Worker: cargar permisos"
+      };
+      for (const metric of serverTiming.split(",")) {
+        const match = metric.trim().match(/^([a-z_]+);dur=([0-9.]+)$/i);
+        if (!match || !timingLabels[match[1]]) continue;
+        recordPerformance(timingLabels[match[1]], Number(match[2]), {
+          status: response.status
+        });
+      }
+    } catch (error) {
+      profileSpan({ status: 599 });
+      throw error;
+    }
     if (response.ok && body.user) {
       if (!profileMatchesAuthUser(body.user, authUser)) {
         erpProfile = null;
@@ -302,7 +364,14 @@ async function openERP() {
       return false;
     }
     if (!appLoaded) {
-      await import("./app.js?v=20261110-auth-isolation-1");
+      const appImportSpan = startPerformanceSpan("Importar cliente ERP");
+      try {
+        await import("./app.js?v=20261110-perf-diagnostics-1");
+        appImportSpan({ status: 200 });
+      } catch (error) {
+        appImportSpan({ status: 599 });
+        throw error;
+      }
       appLoaded = true;
       appLoadedProfileKey = nextProfileKey;
     }
@@ -324,15 +393,21 @@ async function openERP() {
 async function initialize() {
   document.body.classList.add("auth-pending");
   let config;
+  const configSpan = startPerformanceSpan("Config API");
 
   try {
-    const response = await fetch(apiUrl("/api/config"), { cache: "no-store" });
-    if (!response.ok) throw new Error("El backend respondió con estado " + response.status + ".");
+    const response = await fetch(apiUrl("/api/config"), { cache: "default" });
+    if (!response.ok) {
+      configSpan({ status: response.status });
+      throw new Error("El backend respondió con estado " + response.status + ".");
+    }
     config = await readJson(response);
+    configSpan({ status: response.status });
     authEnvironment = String(config.environment || "unknown").trim().toLowerCase();
     // The initial enrollment entry point is exposed only on the production deployment.
     allowInviteActivation = true;
   } catch (error) {
+    configSpan({ status: 599 });
     window.JBAuth = { mode: "unavailable", user: null, profile: null, getToken: async () => null };
     lockERP("No se pudo contactar al servicio seguro del ERP. " + (error?.message || "Intenta recargar."));
     return;
@@ -382,6 +457,7 @@ async function initialize() {
       return result;
     },
     async signIn(email, password) {
+      sessionTokenCache.clear();
       const result = await authClient.signIn.email({ email, password });
       if (result?.error) throw new Error(result.error.message || "No se pudo iniciar sesión.");
       await refreshProfile();
@@ -442,6 +518,7 @@ async function initialize() {
       if (!authClient) return;
       const result = await authClient.signOut();
       if (result?.error) throw new Error(result.error.message || "No se pudo cerrar sesión.");
+      sessionTokenCache.clear();
       authSession = null;
       authUser = null;
       erpProfile = null;
