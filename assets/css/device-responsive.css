@@ -584,3 +584,31 @@ input[type="radio"] {
     white-space: normal;
   }
 }
+
+
+/* Tablet page headers: stack titles above action groups in the sidebar workspace. */
+@media (min-width: 721px) and (max-width: 950px) {
+  .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .page-heading > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .page-heading .heading-actions {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .page-heading .heading-actions > * {
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 1 auto;
+  }
+}
