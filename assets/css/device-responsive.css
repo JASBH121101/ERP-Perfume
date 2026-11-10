@@ -367,3 +367,33 @@ input[type="radio"] {
   }
 }
 
+/* Mobile icon actions: preserve a reliable tap area without stretching the row. */
+@media (max-width: 760px) {
+  .table-action {
+    box-sizing: border-box;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 40px;
+    width: 40px !important;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .mobile-record-table.mobile-record-actions tbody td:last-child > .table-action,
+  .mobile-record-table.mobile-record-actions tbody td:last-child .table-action {
+    width: 40px !important;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    flex: 0 0 40px;
+  }
+
+  .mobile-record-table.mobile-record-actions tbody td:last-child .button:not(.table-action) {
+    min-height: 40px;
+  }
+}
+
