@@ -73,14 +73,15 @@ test.describe('responsive account controls',()=>{
       const label=card.querySelector('.user-access-controls > label');
       const checkbox=label.querySelector('input');
       const button=card.querySelector('button');
-      return {cardWidth:card.getBoundingClientRect().width,labelWidth:label.getBoundingClientRect().width,checkboxWidth:checkbox.getBoundingClientRect().width,buttonWidth:button.getBoundingClientRect().width,buttonHeight:button.getBoundingClientRect().height,controlsDisplay:getComputedStyle(card.querySelector('.user-access-controls')).display,alignItems:getComputedStyle(card.querySelector('.user-access-controls')).alignItems};
+      return {cardWidth:card.getBoundingClientRect().width,labelWidth:label.getBoundingClientRect().width,checkboxWidth:checkbox.getBoundingClientRect().width,buttonWidth:button.getBoundingClientRect().width,buttonHeight:button.getBoundingClientRect().height,controlsDisplay:getComputedStyle(card.querySelector('.user-access-controls')).display,labelAlignSelf:getComputedStyle(label).alignSelf,buttonAlignSelf:getComputedStyle(button).alignSelf};
     });
     expect(metrics.checkboxWidth).toBe(18);
     expect(metrics.labelWidth).toBeLessThan(metrics.cardWidth*.7);
     expect(metrics.buttonWidth).toBeLessThan(metrics.cardWidth*.7);
     expect(metrics.buttonHeight).toBeGreaterThanOrEqual(36);
     expect(metrics.controlsDisplay).toBe('flex');
-    expect(metrics.alignItems).toBe('flex-start');
+    expect(metrics.labelAlignSelf).toBe('flex-start');
+    expect(metrics.buttonAlignSelf).toBe('flex-start');
   });
 
   test('all ERP modules fit mobile, tablet and desktop viewports with responsive evidence',async({page})=>{
