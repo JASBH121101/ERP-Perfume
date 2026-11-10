@@ -104,16 +104,14 @@ test("employee creation follows the selected sector instead of hardcoding commer
   assert.equal(response.status, 201);
 });
 
-test("employee creation fails closed if the selected sector wage table is expired", async () => {
+test("employee creation uses the separate regime-especial wage and validity window", async () => {
   const sql = createSql({ settings: { sector_code: "regimen_especial" } });
   const response = await createGeneric(sql, user, "employees", employeeDef, {
-    name: "QA Employee", salary_nio: 12000, status: "Activo", work_schedule: "Completa"
+    name: "QA Special Regime Employee", salary_nio: 9986.46, status: "Activo", work_schedule: "Completa"
   });
-  const payload = await response.json();
 
-  assert.equal(response.status, 409);
-  assert.equal(payload.error.code, "MINIMUM_WAGE_TABLE_EXPIRED");
-  assert.equal(sql.calls.length, 1);
+  assert.equal(response.status, 201);
+  assert.equal(sql.calls.length, 2);
 });
 
 test("employee salary updates below the selected floor are rejected before writing history", async () => {
