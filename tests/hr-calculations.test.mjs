@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate,
-  calculateInss, calculateCommission, convertCommissionForPayroll
+  calculateInss, calculateCommission, convertCommissionForPayroll,
+  calculateAnnualLaborIR, calculateLaborIR, calculateInatec, calculateEmployerLaborCost
 } from "../assets/js/hr-calculations.mjs";
 
 test("tenure renders complete years, months and days", () => {
@@ -75,3 +76,32 @@ test("payroll converts USD commission using the frozen payroll exchange rate", (
   assert.throws(() => convertCommissionForPayroll(-1, 36.6), RangeError);
   assert.throws(() => convertCommissionForPayroll(10, 0), RangeError);
 });
+
+
+test("paid vacation settlement reduces the live balance without double-counting a linked leave request",()=>{
+ const r=calculateVacationBalance({hireDate:"2026-01-01",employeeId:"e1",asOf:"2026-07-01",
+ leaveRequests:[{id:"leave-1",employeeId:"e1",leaveType:"Vacaciones",status:"Aprobado",days:5,endDate:"2026-06-10"}],
+ settlements:[
+ {employeeId:"e1",leaveRequestId:"leave-1",settlementType:"Disfrute",status:"Pagada",days:5},
+ {employeeId:"e1",settlementType:"Compensacion",status:"Pendiente",days:2},
+ {employeeId:"e1",settlementType:"Compensacion",status:"Pagada",days:1}
+ ]});
+ assert.equal(r.accruedDays,15); assert.equal(r.usedDays,1);
+ assert.equal(r.compensatedDays,1); assert.equal(r.balanceDays,13);
+});
+test("Nicaragua progressive annual labor IR uses marginal bands",()=>{
+ assert.equal(calculateAnnualLaborIR(100000).annualTaxNio,0);
+ assert.equal(calculateAnnualLaborIR(150000).annualTaxNio,7500);
+ assert.equal(calculateAnnualLaborIR(250000).annualTaxNio,25000);
+ const r=calculateLaborIR({monthlyGrossNio:15000,monthlyEmployeeInssNio:1050,monthsRemaining:12});
+ assert.equal(r.projectedAnnualNetIncomeNio,167400); assert.equal(r.annualTaxNio,10110);
+ assert.equal(r.monthlyWithholdingNio,842.5);
+});
+test("INATEC and employer labor cost separate employer contributions from employee deductions",()=>{
+ assert.deepEqual(calculateInatec({baseSalaryNio:10000,employerRate:2}),{contributionBaseNio:10000,employerInatecNio:200});
+ const r=calculateEmployerLaborCost({baseSalaryNio:10000,employerInssRate:21.5,inatecRate:2});
+ assert.equal(r.employerInssNio,2150); assert.equal(r.employerInatecNio,200);
+ assert.equal(r.vacationProvisionNio,833.33); assert.equal(r.aguinaldoProvisionNio,833.33);
+ assert.equal(r.totalEmployerCostNio,14016.66);
+});
+test("invalid INATEC rates are rejected",()=>assert.throws(()=>calculateInatec({baseSalaryNio:10000,employerRate:101}),RangeError));
