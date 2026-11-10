@@ -681,7 +681,7 @@ export function normalizeEmployeeCreateInput(input = {}, options = {}) {
   return { value };
 }
 
-async function createGeneric(sql, user, resource, def, body) {
+export async function createGeneric(sql, user, resource, def, body) {
   let input = body || {};
   if (def.table === "employees") {
     const normalized = normalizeEmployeeCreateInput(input);
@@ -727,7 +727,7 @@ async function createGeneric(sql, user, resource, def, body) {
   }
 }
 
-async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
+export async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
   const input = { ...(body || {}) };
   const effectiveDate = String(input.effective_date || new Date().toISOString().slice(0, 10));
   const changeReason = String(input.change_reason || '').trim();
@@ -747,7 +747,7 @@ async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
   if(!currentRows[0])return erpError(404,'RECORD_NOT_FOUND','No se encontró el colaborador solicitado.');
   const currentEmployee=currentRows[0];
   const scheduleIndex=keys.indexOf('work_schedule');
-  const wageCheckRequired=salaryIndex>=0||(statusIndex>=0&&String(values[statusIndex])==='Activo')||scheduleIndex>=0;
+  const wageCheckRequired=true;
   if(wageCheckRequired){
     const laborRows=await sql.query("SELECT setting_value FROM app_settings WHERE setting_key='hr_labor_settings' LIMIT 1");
     const laborSettings=laborRows[0]?.setting_value||{sector_code:"commerce"};
@@ -2963,6 +2963,19 @@ export async function handleERPRequest(request, env, user, sql) {
           Object.keys(value).some(field => !allowed.has(field)) ||
           !MINIMUM_WAGE_SECTORS.some(sector => sector.code === String(value.sector_code || ""))) {
         return erpError(400,"INVALID_HR_LABOR_SETTINGS","Selecciona una actividad económica válida para la tabla de salario mínimo vigente.");
+      }
+      const wageRule = getMinimumWageForSector(String(value.sector_code), new Date().toISOString().slice(0,10));
+      if (!wageRule.available) return erpError(409,wageRule.code,"La tabla de salario mínimo de ese sector no está vigente. Actualiza la normativa antes de cambiar el sector.");
+      const activeEmployees = await sql.query("SELECT id,salary_nio,work_schedule,status FROM employees WHERE status='Activo' LIMIT 1000");
+      const violations = activeEmployees.filter(employee => !validateMonthlyMinimumWage({
+        salaryNio:employee.salary_nio,
+        status:employee.status,
+        workSchedule:employee.work_schedule,
+        settings:value
+      }).valid);
+      if (violations.length) {
+        return erpError(409,"ACTIVE_EMPLOYEES_BELOW_MINIMUM_WAGE",
+          "No se puede aplicar ese sector: hay "+violations.length+" colaboradores activos por debajo del salario mínimo seleccionado. Corrige sus salarios antes de cambiar la configuración.");
       }
     }
     if (key === "hr_inss_settings") {
