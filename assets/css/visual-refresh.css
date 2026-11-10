@@ -643,6 +643,7 @@ body.sidebar-collapsed .main-panel{width:calc(100% - 82px);margin-left:82px}
  .dashboard-chart-grid>.analytics-chart-card-wide{grid-column:auto}
  .dashboard-donut-layout{grid-template-columns:108px minmax(0,1fr);gap:12px;min-height:126px}
  .dashboard-donut-ring{width:108px;height:108px}
+ .dashboard-cashflow-chart-wrap{overflow-x:auto;padding-bottom:3px}
  .dashboard-cashflow-chart{min-width:410px}
  .dashboard-cashflow-chart-wrap{overflow-x:auto}
 }
