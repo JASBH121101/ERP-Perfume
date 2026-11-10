@@ -26,8 +26,8 @@ test("supplier spending is aggregated by supplier identity and excludes cancelle
     {supplierId:"s2",supplier:"Casa B",totalUsd:80,status:"Recibida"},
     {supplierId:"s2",supplier:"Casa B",totalUsd:999,status:"Anulada"}
   ]),[
-    {key:"id:s2",name:"Casa B",amountUsd:80,purchaseCount:1},
-    {key:"id:s1",name:"Casa A",amountUsd:100,purchaseCount:2}
+    {key:"id:s1",name:"Casa A",amountUsd:100,purchaseCount:2},
+    {key:"id:s2",name:"Casa B",amountUsd:80,purchaseCount:1}
   ]);
 });
 
