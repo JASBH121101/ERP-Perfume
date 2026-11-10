@@ -503,3 +503,37 @@ input[type="radio"] {
   }
 }
 
+/* Settings exchange form: mobile children must align to the form's inner edge. */
+@media (max-width: 560px) {
+  .settings-rate-panel .rate-form {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    justify-items: stretch;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+  .settings-rate-panel .rate-form > .form-field,
+  .settings-rate-panel .rate-form > .button {
+    box-sizing: border-box;
+    display: block;
+    position: static;
+    align-self: stretch !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+  .settings-rate-panel .rate-form > .form-field input {
+    box-sizing: border-box;
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+}
+
