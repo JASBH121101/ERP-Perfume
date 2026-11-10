@@ -406,7 +406,11 @@
       "sha256": "0e0a47ea8dd8b092a58da04a349ad9b4bcd92e97dc78f6bde43f0d8b323d3c29",
       "database": {
         "status": "pending",
-        "note": "Not part of the pinned read-only Development baseline snapshot. The additive migration has been applied and validated on live Development; Production application is pending the production cutover."
+        "note": "Not part of the pinned read-only baseline snapshot (which ends at 0025). Subsequently applied transactionally and checksum-verified on live Development and Production on 2026-11-10. Pending only relative to the immutable baseline snapshot; both live databases are current through 0026.",
+        "developmentAppliedAt": "2026-11-10T13:05:02.480Z",
+        "productionAppliedAt": "2026-11-10T13:47:35.336Z",
+        "developmentLedgerChecksum": "0e0a47ea8dd8b092a58da04a349ad9b4bcd92e97dc78f6bde43f0d8b323d3c29",
+        "productionLedgerChecksum": "0e0a47ea8dd8b092a58da04a349ad9b4bcd92e97dc78f6bde43f0d8b323d3c29"
       }
     }
   ],
