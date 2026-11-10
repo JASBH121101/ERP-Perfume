@@ -92,6 +92,33 @@ test("dedicated business routes map to their own permissions", () => {
     "settings.general.manage");
 });
 
+test("DGI documents and support files require effective DGI permissions, including the module parent", () => {
+  const deniedContext = {
+    owner: false,
+    permissions: [
+      { key: "dashboard.view", parentKey: null, allowed: true },
+      { key: "dgi.view", parentKey: null, allowed: false },
+      { key: "dgi.documents.view", parentKey: "dgi.view", allowed: true },
+      { key: "dgi.documents.manage", parentKey: "dgi.documents.view", allowed: true }
+    ]
+  };
+  const allowedContext = {
+    owner: false,
+    permissions: [
+      { key: "dgi.view", parentKey: null, allowed: true },
+      { key: "dgi.documents.view", parentKey: "dgi.view", allowed: true },
+      { key: "dgi.documents.manage", parentKey: "dgi.documents.view", allowed: true }
+    ]
+  };
+
+  assert.equal(resolveRoutePermission("dgi-support-documents", "GET", "", [], null), "dgi.documents.view");
+  assert.equal(resolveRoutePermission("dgi-support-documents", "POST", "", [], {}), "dgi.documents.manage");
+  assert.equal(hasPermission(deniedContext, "dgi.documents.view"), false);
+  assert.equal(hasPermission(deniedContext, "dgi.documents.manage"), false);
+  assert.equal(hasPermission(allowedContext, "dgi.documents.view"), true);
+  assert.equal(hasPermission(allowedContext, "dgi.documents.manage"), true);
+});
+
 test("owner-only management routes resolve to dedicated granular permissions", () => {
   assert.equal(resolveRoutePermission("users", "GET", "", [], null), "users.accounts.view");
   assert.equal(resolveRoutePermission("users", "POST", "", [], {}), "users.accounts.create");

@@ -3,7 +3,7 @@ import { calculateFinancialSnapshot, calculatePayablesSnapshot, isVoidedInvoice 
 import { resolveReportingPeriod, isWithinReportingPeriod } from './reporting-periods.mjs';
 import { buildFinancialTrendSeries, buildTopSellingProducts, buildExpenseCategorySeries, buildInventoryCategorySeries } from './analytics-charts.mjs';
 import { buildProcurementStatusSeries, buildSupplierSpendSeries, buildCustomerRevenueSeries, buildCashFlowTrendSeries } from './dashboard-summary.mjs';
-import { profileHasPermission } from './permission-utils.mjs';
+import { profileHasPermission, profileIdentityKey } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
 import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss, calculatePayrollWithholding, calculateProductPricing } from './hr-calculations.mjs';
 import { getContractReminders } from './hr-contract-reminders.mjs';
@@ -3816,11 +3816,47 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }catch(error){toast(error?.message||'No se pudo abrir la notificación.');}
     finally{button.disabled=false;}
   }
+  let permissionProfileRefresh = null;
+  async function refreshActivePermissionProfile() {
+    const auth = window.JBAuth;
+    if (!auth?.profile || typeof auth.refreshProfile !== 'function' || permissionProfileRefresh) return;
+    const previousKey = profileIdentityKey(auth.profile);
+    permissionProfileRefresh = (async () => {
+      let refreshed = null;
+      try {
+        refreshed = await auth.refreshProfile();
+      } catch (error) {
+        console.error('[auth] Permission refresh failed:', error?.message || 'unknown error');
+      }
+      // Fail closed if the account/profile can no longer be validated.
+      if (!refreshed) {
+        window.location.reload();
+        return;
+      }
+      // Reload all in-memory records when grants, role or account status change.
+      // The Worker rehydrates data using the newly effective permissions.
+      if (profileIdentityKey(refreshed) !== previousKey) window.location.reload();
+    })();
+    try {
+      await permissionProfileRefresh;
+    } finally {
+      permissionProfileRefresh = null;
+    }
+  }
   document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='visible'&&window.JBAuth?.profile)loadNotifications({silent:true});
+    if(document.visibilityState==='visible'&&window.JBAuth?.profile){
+      void refreshActivePermissionProfile();
+      void loadNotifications({silent:true});
+    }
+  });
+  window.addEventListener('focus',function(){
+    if(document.visibilityState==='visible'&&window.JBAuth?.profile)void refreshActivePermissionProfile();
   });
   window.setInterval(function(){
-    if(document.visibilityState==='visible'&&window.navigator.onLine&&window.JBAuth?.profile)loadNotifications({silent:true});
+    if(document.visibilityState==='visible'&&window.navigator.onLine&&window.JBAuth?.profile){
+      void refreshActivePermissionProfile();
+      void loadNotifications({silent:true});
+    }
   },120000);
   function renderView() {
     if (!canViewERPView(state.view)) state.view = firstPermittedView() || "dashboard";
@@ -3895,7 +3931,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     hydrateProductImageSlots();
   }
   function goToView(view) {
-    if (!views[view] || !canViewERPView(view)) return;
+    if (!views[view]) return;
+    // Keep the sidebar synchronized with the current effective profile before
+    // handling navigation. A revoked grant must hide the item and deny the route.
+    applyPermissionNavigation();
+    if (!canViewERPView(view)) {
+      if (!canViewERPView(state.view)) {
+        state.view = firstPermittedView() || "dashboard";
+        renderView();
+      }
+      return;
+    }
     state.view = view;
     state.query = '';
     state.filter = 'all';

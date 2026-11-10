@@ -790,7 +790,7 @@ test('custom role can open DGI but cannot export reports without the explicit ex
   await expect(page.locator('[data-action="export-dgi-book"]')).toBeHidden();
 });
 
-test('custom role without DGI permission is returned to an allowed module', async ({ page }) => {
+test('custom role without DGI permission cannot open DGI and its navigation is removed', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
   await page.evaluate(() => {
@@ -799,10 +799,13 @@ test('custom role without DGI permission is returned to an allowed module', asyn
       permissions: ['dashboard.view']
     };
   });
-  await page.locator('#sidebar button[data-view="dgi"]').click();
+  const dgiNavigation = page.locator('#sidebar button[data-view="dgi"]');
+  // It is initially visible because the shared E2E bootstrap starts as owner.
+  // goToView must re-check the live profile, remove the stale link, and deny access.
+  await dgiNavigation.click();
+  await expect(dgiNavigation).toBeHidden();
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
-  await page.locator('#sidebar button[data-view="dashboard"]').click();
-  await expect(page.locator('#sidebar button[data-view="dgi"]')).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Control tributario DGI' })).toHaveCount(0);
 });
 
 test('DGI workspace displays thresholds as alerts and starts with regime unconfirmed', async ({ page }) => {
