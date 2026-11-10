@@ -1,5 +1,6 @@
 import { createAuthClient } from "@neondatabase/auth";
 import { profileIdentityKey, profileMatchesAuthUser } from "./permission-utils.mjs";
+import { recordPerformance, startPerformanceSpan } from "./performance-metrics.mjs";
 
 const $ = (selector) => document.querySelector(selector);
 const authDialog = $("#auth-dialog");
@@ -109,7 +110,9 @@ function updateSidebarIdentity(profile) {
 
 async function refreshProfile() {
   if (!authClient) return null;
+  const sessionSpan = startPerformanceSpan("Sesión Neon Auth");
   const result = await authClient.getSession();
+  sessionSpan({ status: result?.error ? 500 : 200 });
   if (result?.error) throw new Error(result.error.message || "No se pudo consultar la sesión.");
 
   const data = result?.data || null;
@@ -122,17 +125,21 @@ async function refreshProfile() {
   if (!authUser) return null;
 
   try {
+    const tokenSpan = startPerformanceSpan("Obtener JWT");
     const token = await getToken();
+    tokenSpan({ status: token ? 200 : 401 });
     if (!token) {
       profileError = "No se pudo obtener un token válido de la sesión.";
       return null;
     }
 
+    const profileSpan = startPerformanceSpan("Validar perfil ERP");
     const response = await fetch(apiUrl("/api/auth/profile"), {
       headers: { authorization: "Bearer " + token },
       cache: "no-store"
     });
     const body = await readJson(response);
+    profileSpan({ status: response.status });
     if (response.ok && body.user) {
       if (!profileMatchesAuthUser(body.user, authUser)) {
         erpProfile = null;
@@ -302,7 +309,9 @@ async function openERP() {
       return false;
     }
     if (!appLoaded) {
+      const appImportSpan = startPerformanceSpan("Importar cliente ERP");
       await import("./app.js?v=20261110-auth-isolation-1");
+      appImportSpan({ status: 200 });
       appLoaded = true;
       appLoadedProfileKey = nextProfileKey;
     }
@@ -324,15 +333,21 @@ async function openERP() {
 async function initialize() {
   document.body.classList.add("auth-pending");
   let config;
+  const configSpan = startPerformanceSpan("Config API");
 
   try {
     const response = await fetch(apiUrl("/api/config"), { cache: "no-store" });
-    if (!response.ok) throw new Error("El backend respondió con estado " + response.status + ".");
+    if (!response.ok) {
+      configSpan({ status: response.status });
+      throw new Error("El backend respondió con estado " + response.status + ".");
+    }
     config = await readJson(response);
+    configSpan({ status: response.status });
     authEnvironment = String(config.environment || "unknown").trim().toLowerCase();
     // The initial enrollment entry point is exposed only on the production deployment.
     allowInviteActivation = true;
   } catch (error) {
+    configSpan({ status: 599 });
     window.JBAuth = { mode: "unavailable", user: null, profile: null, getToken: async () => null };
     lockERP("No se pudo contactar al servicio seguro del ERP. " + (error?.message || "Intenta recargar."));
     return;
