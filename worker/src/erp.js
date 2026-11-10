@@ -2028,7 +2028,7 @@ async function createVacationLedgerEntry(sql,user,body) {
       "COALESCE((SELECT SUM(v.days_delta) FROM hr_vacation_ledger v WHERE v.employee_id=e.id AND v.effective_date<=$2::date),0)),2) AS available_days FROM employee e), " +
     "created AS (INSERT INTO hr_vacation_ledger(employee_id,entry_type,effective_date,days_delta,amount_nio,notes,created_by) " +
       "SELECT id,$3,$2,$4,$5,$6,$7 FROM balance WHERE hire_date IS NOT NULL AND " +
-      "($3<>'cash_settlement' OR status<>'Activo') AND ($4>=0 OR ABS($4)<=available_days) RETURNING *), " +
+      "($3<>'cash_settlement' OR status='Inactivo') AND ($4>=0 OR ABS($4)<=available_days) RETURNING *), " +
     "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $7,'create','hr_vacation_ledger',id::text,to_jsonb(created) FROM created) " +
     "SELECT created.* FROM created",
     [employeeId,effectiveDate,entryType,daysDelta,amount,notes,user.id]
@@ -2036,7 +2036,7 @@ async function createVacationLedgerEntry(sql,user,body) {
   if(!rows[0]){
     const employee=await sql.query("SELECT status,hire_date FROM employees WHERE id=$1::uuid",[employeeId]);
     if(!employee[0])return erpError(404,"EMPLOYEE_NOT_FOUND","No existe el colaborador.");
-    if(entryType==="cash_settlement"&&employee[0].status==="Activo")return erpError(409,"EMPLOYEE_NOT_TERMINATED","La liquidación monetaria de vacaciones solo se admite al terminar la relación laboral.");
+    if(entryType==="cash_settlement"&&employee[0].status!=="Inactivo")return erpError(409,"EMPLOYEE_NOT_TERMINATED","La liquidación monetaria solo se admite para un colaborador marcado como inactivo.");
     return erpError(409,"VACATION_BALANCE_EXCEEDED","La operación supera el saldo de vacaciones disponible o la fecha no es válida.");
   }
   return erpJson({record:rows[0]},201);
