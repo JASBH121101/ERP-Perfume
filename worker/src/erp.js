@@ -1979,7 +1979,7 @@ export async function createPayrollItem(sql,user,body) {
         "SELECT p.id,e.id,$3,$4,$5,ct.commission_usd,ct.commission_nio,ct.commission_exchange_rate,c.employee_inss,c.employer_inss,tc.current_taxable,tc.ir_withheld,c.employer_inatec,ac.aguinaldo_nio, " +
         "ROUND($3+$4+ct.commission_nio+ac.aguinaldo_nio-$5-c.employee_inss-tc.ir_withheld,2),$6 " +
         "FROM period p CROSS JOIN employee e CROSS JOIN commission_totals ct CROSS JOIN contribution c CROSS JOIN aguinaldo_calc ac CROSS JOIN tax_calc tc " +
-        "WHERE p.status='Borrador' AND ((p.period_type='Ordinaria' AND $5<=($3+$4+ct.commission_nio-c.employee_inss-tc.ir_withheld)) OR " +
+        "WHERE p.status='Borrador' AND ((p.period_type='Ordinaria' AND $3>=$12 AND $5<=($3+$4+ct.commission_nio-c.employee_inss-tc.ir_withheld)) OR " +
         "(p.period_type='Aguinaldo' AND $3=0 AND $4=0 AND $5=0 AND ac.aguinaldo_nio>0)) RETURNING *), " +
       "assigned AS (UPDATE employee_commissions ec SET status='Asignada',payroll_period_id=$1::uuid FROM selected_commissions selected WHERE ec.id=selected.id AND EXISTS(SELECT 1 FROM created) RETURNING ec.id), " +
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $9,'create','hr_payroll_item',created.id::text,to_jsonb(created) FROM created) " +
