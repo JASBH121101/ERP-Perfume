@@ -1,5 +1,5 @@
 const roundCurrency = value => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
-const CANCELLED = new Set(["anulada","anulado","cancelada","cancelado","void"]);
+const CANCELLED = new Set(["anulada","anulado","cancelada","cancelado","void","voided"]);
 
 export function buildProcurementStatusSeries(purchaseOrders) {
   const definitions = [
