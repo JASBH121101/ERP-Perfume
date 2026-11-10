@@ -60,3 +60,12 @@ test("dashboard aggregations safely handle missing collections and invalid value
   assert.deepEqual(buildCustomerRevenueSeries(null),[]);
   assert.equal(buildCashFlowTrendSeries([] ,new Date(2026,10,10)).buckets.length,6);
 });
+
+
+test("customer revenue also excludes English voided invoices", () => {
+  const result = buildCustomerRevenueSeries([
+    { customerId: "c1", customer: "Cliente A", totalUsd: 35, status: "Pagada" },
+    { customerId: "c1", customer: "Cliente A", totalUsd: 900, status: "Voided" }
+  ]);
+  assert.deepEqual(result, [{ key: "id:c1", name: "Cliente A", revenueUsd: 35, invoiceCount: 1 }]);
+});

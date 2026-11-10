@@ -2109,21 +2109,37 @@ async function createExpense(sql,user,body) {
   }
 }
 
-async function addInvoicePayment(sql, user, body) {
+export async function addInvoicePayment(sql, user, body) {
   const original = Number(body.original_amount), rate = Number(body.exchange_rate || 1), usd = Number(body.amount_usd);
   if (!body.invoice_id || !Number.isFinite(original) || original <= 0 || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(usd) || usd <= 0 || !body.account_name) return erpError(400, "INVALID_PAYMENT", "Revisa factura, importe, tipo de cambio y cuenta.");
   const currency = body.currency === "NIO" ? "NIO" : "USD";
-  const expected=currency==="NIO"?original/rate:original;
-  if(Math.abs(expected-usd)>0.02)return erpError(400,"AMOUNT_CONVERSION_MISMATCH","El abono no coincide con el importe convertido a USD.");
-  const account=await sql.query("SELECT id FROM cash_accounts WHERE name=$1 AND currency=$2 AND active=TRUE LIMIT 1",[body.account_name,currency]);
-  if(!account[0])return erpError(400,"CASH_ACCOUNT_NOT_FOUND","La cuenta de cobro no existe o no coincide con la moneda.");
+  const expected = currency === "NIO" ? original / rate : original;
+  if (Math.abs(expected - usd) > 0.02) return erpError(400, "AMOUNT_CONVERSION_MISMATCH", "El abono no coincide con el importe convertido a USD.");
+  const account = await sql.query("SELECT id FROM cash_accounts WHERE name=$1 AND currency=$2 AND active=TRUE LIMIT 1", [body.account_name, currency]);
+  if (!account[0]) return erpError(400, "CASH_ACCOUNT_NOT_FOUND", "La cuenta de cobro no existe o no coincide con la moneda.");
   try {
     const rows = await sql.query(
-      "WITH target AS (SELECT id,invoice_number,total_usd,paid_usd FROM invoices WHERE id=$1::uuid FOR UPDATE), updated AS (UPDATE invoices i SET paid_usd=t.paid_usd+$2,status=CASE WHEN t.paid_usd+$2>=t.total_usd THEN 'Pagada' ELSE 'Abono parcial' END,updated_at=NOW() FROM target t WHERE i.id=t.id AND t.paid_usd+$2<=t.total_usd RETURNING i.*), payment AS (INSERT INTO invoice_payments(invoice_id,currency,original_amount,exchange_rate,amount_usd,account_name,payment_method,created_by) SELECT id,$3,$4,$5,$2,$6,$7,$8 FROM updated RETURNING id), cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) SELECT 'income','Abono factura '||invoice_number,(SELECT id FROM cash_accounts WHERE name=$6 AND currency=$3 AND active=TRUE LIMIT 1),$3,$4,$5,$2,'invoice',id::text,$8 FROM updated RETURNING id), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $8,'payment','invoice',id::text,jsonb_build_object('amount_usd',$2,'currency',$3,'original_amount',$4) FROM updated) SELECT * FROM updated",
-      [body.invoice_id,usd,currency,original,rate,body.account_name,body.payment_method || null,user.id]
+      "WITH target AS MATERIALIZED (SELECT id,invoice_number,total_usd,paid_usd,status FROM invoices WHERE id=$1::uuid FOR UPDATE), " +
+      "updated AS (UPDATE invoices i SET paid_usd=t.paid_usd+$2,status=CASE WHEN t.paid_usd+$2>=t.total_usd THEN 'Pagada' ELSE 'Abono parcial' END,updated_at=NOW() " +
+      "FROM target t WHERE i.id=t.id AND LOWER(BTRIM(COALESCE(t.status,''))) NOT IN ('anulada','anulado','cancelada','cancelado','cancelled','canceled','void','voided') " +
+      "AND t.paid_usd+$2<=t.total_usd RETURNING i.*), " +
+      "payment AS (INSERT INTO invoice_payments(invoice_id,currency,original_amount,exchange_rate,amount_usd,account_name,payment_method,created_by) " +
+      "SELECT id,$3,$4,$5,$2,$6,$7,$8 FROM updated RETURNING id), " +
+      "cash AS (INSERT INTO cash_entries(direction,concept,account_id,currency,original_amount,exchange_rate,amount_usd,source_type,source_id,created_by) " +
+      "SELECT 'income','Abono factura '||invoice_number,(SELECT id FROM cash_accounts WHERE name=$6 AND currency=$3 AND active=TRUE LIMIT 1),$3,$4,$5,$2,'invoice',id::text,$8 FROM updated RETURNING id), " +
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
+      "SELECT $8,'payment','invoice',id::text,jsonb_build_object('amount_usd',$2,'currency',$3,'original_amount',$4) FROM updated RETURNING id) " +
+      "SELECT EXISTS(SELECT 1 FROM target) AS invoice_exists,(SELECT status FROM target) AS invoice_status," +
+      "(SELECT to_jsonb(u) FROM updated u) AS record",
+      [body.invoice_id, usd, currency, original, rate, body.account_name, body.payment_method || null, user.id]
     );
-    if (!rows[0]) return erpError(409, "PAYMENT_EXCEEDS_BALANCE", "La factura no existe o el abono supera su saldo pendiente.");
-    return erpJson({ record: rows[0] }, 201);
+    const result = rows[0] || {};
+    if (!result.invoice_exists) return erpError(404, "INVOICE_NOT_FOUND", "No se encontró la factura.");
+    if (["anulada","anulado","cancelada","cancelado","cancelled","canceled","void","voided"].includes(String(result.invoice_status || "").trim().toLowerCase())) {
+      return erpError(409, "INVOICE_VOIDED", "No se puede registrar un abono sobre una factura anulada o cancelada.");
+    }
+    if (!result.record) return erpError(409, "PAYMENT_EXCEEDS_BALANCE", "El abono supera el saldo pendiente de la factura.");
+    return erpJson({ record: result.record }, 201);
   } catch (error) {
     console.error("[erp] Invoice payment failed:", error?.message || "database error");
     return erpError(503, "PAYMENT_FAILED", "No se pudo registrar el abono.");

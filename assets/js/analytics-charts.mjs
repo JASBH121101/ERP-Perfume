@@ -1,3 +1,5 @@
+import { isVoidedInvoice } from "./financial-snapshot.mjs";
+
 function validDate(value) {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
   if (value == null || value === "") return null;
@@ -81,6 +83,7 @@ export function buildFinancialTrendSeries(invoices = [], expenses = [], period =
     buckets[index][field] += Number.isFinite(Number(amount)) ? Number(amount) : 0;
   };
   for (const invoice of Array.isArray(invoices) ? invoices : []) {
+    if (isVoidedInvoice(invoice)) continue;
     const date = invoice?.createdAt ?? invoice?.invoiceDate ?? invoice?.date;
     const valid = validDate(date);
     if (!valid || valid < start || valid > new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) continue;
@@ -109,6 +112,7 @@ export function buildFinancialTrendSeries(invoices = [], expenses = [], period =
 export function buildTopSellingProducts(invoices = [], limit = 5) {
   const totals = new Map();
   for (const invoice of Array.isArray(invoices) ? invoices : []) {
+    if (isVoidedInvoice(invoice)) continue;
     for (const item of Array.isArray(invoice?.items) ? invoice.items : []) {
       const name = String(item?.name || "Producto sin nombre").trim();
       const key = String(item?.productId || item?.sku || name);
