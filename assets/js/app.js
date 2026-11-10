@@ -3598,9 +3598,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<p class="form-helper">Tasa vigente: '+rateLabel(exchangeRate)+'. Cada operación conserva la tasa que tenía al registrarse.</p></article>'+
       '<div class="feature-grid">'+
       featureCard('settings','Cuenta y permisos','Sesión autenticada. Rol actual: '+role+'. Los módulos aplican permisos según el perfil.')+
-      featureCard('receipt','Base de datos','Base de datos · Desarrollo. Los registros operativos se consultan y actualizan en el servidor.')+
+      featureCard('receipt','Datos operativos','Los registros operativos se consultan y actualizan desde el sistema.')+
       featureCard('boxes','Archivos y fotografías','Almacenamiento privado vinculado al sistema. Los archivos se gestionan desde este módulo.')+
-      featureCard('chart','Consumo y costos','Sin consultas periódicas ni tareas cron. Revisar los indicadores de uso antes de ampliar la operación.')+
+      featureCard('chart','Consumo y costos','Consulta el uso de recursos y revisa los umbrales antes de ampliar la operación.')+
       featureCard('users','Personal y nómina','RR. HH. permanece habilitado. La nómina legal requiere configurar deducciones y prestaciones conforme a la normativa vigente.')+
       featureCard('spark','Trazabilidad','Las operaciones comerciales, cambios relevantes y ajustes de inventario registran auditoría.')+
       '</div>'+
