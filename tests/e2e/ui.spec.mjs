@@ -876,6 +876,40 @@ test('HR benefits allow the owner to configure the activity sector and show its 
   await expect(page.locator('#hr-labor-settings-form')).toContainText('8,320.48');
 });
 
+test('HR payroll base salary follows monthly, biweekly and weekly period frequency', async ({ page }) => {
+  const api = await installHRFixtureApi(page);
+  api.data.employees[0].salary_nio = 12000;
+  api.data.hr_payroll_periods = [
+    {
+      id: 'qa-payroll-biweekly', period_start: '2026-11-01', period_end: '2026-11-15',
+      period_type: 'Ordinaria', period_frequency: 'biweekly', commission_exchange_rate: 36.6, status: 'Borrador'
+    },
+    {
+      id: 'qa-payroll-weekly', period_start: '2026-11-02', period_end: '2026-11-08',
+      period_type: 'Ordinaria', period_frequency: 'weekly', commission_exchange_rate: 36.6, status: 'Borrador'
+    },
+    {
+      id: 'qa-payroll-monthly', period_start: '2026-11-01', period_end: '2026-11-30',
+      period_type: 'Ordinaria', period_frequency: 'monthly', commission_exchange_rate: 36.6, status: 'Borrador'
+    }
+  ];
+  await page.goto('/');
+  await navigateToView(page, 'hr');
+  await page.locator('.hr-tabs [data-tab="payroll"]').click();
+  await page.locator('[data-action="new-payroll-item"]').click();
+
+  const dialog = page.locator('#business-dialog');
+  const period = dialog.locator('[name="payrollPeriodId"]');
+  const salary = dialog.locator('[name="baseSalaryNio"]');
+  await expect(dialog).toBeVisible();
+  await expect(salary).toHaveValue('6000.00');
+
+  await period.selectOption('qa-payroll-weekly');
+  await expect(salary).toHaveValue('2769.23');
+  await period.selectOption('qa-payroll-monthly');
+  await expect(salary).toHaveValue('12000.00');
+});
+
 test('mobile navigation opens and closes after selecting a module', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
