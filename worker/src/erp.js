@@ -1,4 +1,5 @@
 import { loadUserPermissions, hasPermission, hasAnyModuleAccess } from "./permissions.js";
+import { MINIMUM_WAGE_SECTORS, validateMonthlyMinimumWage } from "../../assets/js/hr-labor-rules.mjs";
 
 const RESOURCE_DEFS = {
   products: { table: "products", roles: ["owner", "admin", "inventory"], fields: ["sku","name","brand","category","concentration","gender","family","size_ml","presentation","authenticity_type","inspired_by","purchase_cost_usd","additional_cost_usd","unit_cost_usd","price_usd","min_stock","location","active","barcode","description","supplier_id","supplier_name","wholesale_price_usd","tone","notes","images"], order: "name ASC" },
@@ -495,6 +496,7 @@ async function readBootstrap(sql, user, permissionContext) {
     result.hr_payroll_periods = payrollPeriods;
     result.hr_payroll_items = payrollItems;
     result.hr_inss_settings = settings.find((setting) => setting.setting_key === "hr_inss_settings")?.setting_value || { regime:"integral", employer_band:"under_50", employee_rate:7, employer_rate:21.5 };
+    result.hr_labor_settings = settings.find((setting) => setting.setting_key === "hr_labor_settings")?.setting_value || { sector_code:"commerce" };
     result.hr_commissions = await sql.query(
       "SELECT ec.*, e.name AS employee_name, i.invoice_number FROM employee_commissions ec " +
       "JOIN employees e ON e.id=ec.employee_id JOIN invoices i ON i.id=ec.invoice_id " +
@@ -685,6 +687,16 @@ async function createGeneric(sql, user, resource, def, body) {
     const normalized = normalizeEmployeeCreateInput(input);
     if (normalized.error) return erpError(400, normalized.error.code, normalized.error.message);
     input = normalized.value;
+    const laborRows = await sql.query("SELECT setting_value FROM app_settings WHERE setting_key='hr_labor_settings' LIMIT 1");
+    const laborSettings = laborRows[0]?.setting_value || { sector_code:"commerce" };
+    const wageCheck = validateMonthlyMinimumWage({
+      salaryNio: input.salary_nio,
+      status: input.status || "Activo",
+      workSchedule: input.work_schedule || "Por definir",
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      settings: laborSettings
+    });
+    if (!wageCheck.valid) return erpError(409, wageCheck.code, wageCheck.message);
     delete input.employee_code; // PostgreSQL assigns a permanent unique employee identifier.
   }
   const { keys, values } = safeFields(def, input);
@@ -731,15 +743,35 @@ async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
   if(statusIndex>=0&&!['Activo','Inactivo','Suspendido'].includes(String(values[statusIndex])))return erpError(400,'INVALID_EMPLOYEE_STATUS','Selecciona un estado laboral válido.');
   const salaryIndex=keys.indexOf('salary_nio');
   if(salaryIndex>=0&&(!Number.isFinite(Number(values[salaryIndex]))||Number(values[salaryIndex])<0))return erpError(400,'INVALID_SALARY','El salario mensual debe ser válido y no negativo.');
+  const currentRows=await sql.query("SELECT salary_nio,work_schedule,status FROM employees WHERE id=$1::uuid LIMIT 1",[id]);
+  if(!currentRows[0])return erpError(404,'RECORD_NOT_FOUND','No se encontró el colaborador solicitado.');
+  const currentEmployee=currentRows[0];
+  const scheduleIndex=keys.indexOf('work_schedule');
+  const wageCheckRequired=salaryIndex>=0||(statusIndex>=0&&String(values[statusIndex])==='Activo')||scheduleIndex>=0;
+  if(wageCheckRequired){
+    const laborRows=await sql.query("SELECT setting_value FROM app_settings WHERE setting_key='hr_labor_settings' LIMIT 1");
+    const laborSettings=laborRows[0]?.setting_value||{sector_code:"commerce"};
+    const wageCheck=validateMonthlyMinimumWage({
+      salaryNio:salaryIndex>=0?values[salaryIndex]:currentEmployee.salary_nio,
+      status:statusIndex>=0?values[statusIndex]:currentEmployee.status,
+      workSchedule:scheduleIndex>=0?values[scheduleIndex]:currentEmployee.work_schedule,
+      effectiveDate,
+      settings:laborSettings
+    });
+    if(!wageCheck.valid)return erpError(409,wageCheck.code,wageCheck.message);
+  }
   const requiresReason=keys.some(key=>['position','department','salary_nio','commission_enabled','commission_rate','status','contract_type','work_schedule','contract_start_date','contract_end_date'].includes(key));
   if(requiresReason&&!changeReason)return erpError(400,'EMPLOYEE_CHANGE_REASON_REQUIRED','Indica el motivo del cambio laboral, salarial o de estado.');
   if(changeReason.length>300)return erpError(400,'EMPLOYEE_CHANGE_REASON_TOO_LONG','El motivo no puede superar 300 caracteres.');
   keys.push('updated_at');values.push(new Date().toISOString());
+  const salarySnapshotIndex=values.length+1;values.push(currentEmployee.salary_nio);
+  const scheduleSnapshotIndex=values.length+1;values.push(currentEmployee.work_schedule);
+  const statusSnapshotIndex=values.length+1;values.push(currentEmployee.status);
   const assignments=keys.map((key,index)=>'"'+key+'" = $'+(index+1)).join(', ');
   const idIndex=values.length+1,dateIndex=values.length+2,reasonIndex=values.length+3,actorIndex=values.length+4;
   const query=
     'WITH old AS MATERIALIZED (SELECT * FROM employees WHERE id=$'+idIndex+'::uuid FOR UPDATE), '+
-    'changed AS (UPDATE employees AS e SET '+assignments+' FROM old o WHERE e.id=o.id RETURNING e.*), '+
+    'changed AS (UPDATE employees AS e SET '+assignments+' FROM old o WHERE e.id=o.id AND o.salary_nio IS NOT DISTINCT FROM $'+salarySnapshotIndex+' AND o.work_schedule IS NOT DISTINCT FROM $'+scheduleSnapshotIndex+' AND o.status IS NOT DISTINCT FROM $'+statusSnapshotIndex+' RETURNING e.*), '+
     'position_event AS (INSERT INTO employee_history(employee_id,event_type,effective_date,from_position,to_position,from_department,to_department,reason,changed_by) '+
     'SELECT n.id,\'position\',$'+dateIndex+'::date,o.position,n.position,o.department,n.department,$'+reasonIndex+',$'+actorIndex+' FROM old o JOIN changed n ON n.id=o.id '+
     'WHERE o.position IS DISTINCT FROM n.position OR o.department IS DISTINCT FROM n.department RETURNING id), '+
@@ -756,7 +788,7 @@ async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
     'SELECT * FROM changed';
   try {
     const rows=await sql.query(query,[...values,id,effectiveDate,changeReason||'Actualización de datos',user.id]);
-    if(!rows[0])return erpError(404,'RECORD_NOT_FOUND','No se encontró el colaborador solicitado.');
+    if(!rows[0])return erpError(409,'EMPLOYEE_CHANGED_CONCURRENTLY','El expediente cambió durante la actualización. Recarga el colaborador y vuelve a intentar.');
     return erpJson({record:rows[0]});
   } catch(error) {
     if(error?.code==='23505')return erpError(409,'DUPLICATE_RECORD','El código o dato único ya está en uso.');
@@ -2909,7 +2941,7 @@ export async function handleERPRequest(request, env, user, sql) {
   if (resource === "settings" && request.method === "PATCH") {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     const key = String(body.setting_key || "");
-    if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance","hr_inss_settings","hr_tax_settings","hr_pricing_settings"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
+    if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance","hr_inss_settings","hr_tax_settings","hr_pricing_settings","hr_labor_settings"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
     const value = body.setting_value;
     if (key === "default_exchange_rate" && (!Number.isFinite(Number(value?.value)) || Number(value.value) <= 0 || Number(value.value) > 100000)) return erpError(400, "INVALID_EXCHANGE_RATE", "El tipo de cambio debe ser mayor que cero.");
     if (key === "hr_tax_settings") {
@@ -2924,6 +2956,14 @@ export async function handleERPRequest(request, env, user, sql) {
       const allowed=new Set(["target_margin_percent","commission_rate_percent","commission_basis","payment_fee_percent","other_variable_cost_percent"]);
       if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).some(field=>!allowed.has(field))||!Object.prototype.hasOwnProperty.call(value,"target_margin_percent")||!Number.isFinite(Number(value.target_margin_percent))||Number(value.target_margin_percent)<0||Number(value.target_margin_percent)>90||!Number.isFinite(Number(value.commission_rate_percent||0))||Number(value.commission_rate_percent||0)<0||Number(value.commission_rate_percent||0)>100||!Number.isFinite(Number(value.payment_fee_percent||0))||Number(value.payment_fee_percent||0)<0||Number(value.payment_fee_percent||0)>100||!Number.isFinite(Number(value.other_variable_cost_percent||0))||Number(value.other_variable_cost_percent||0)<0||Number(value.other_variable_cost_percent||0)>100||!["gross_profit","sales"].includes(String(value.commission_basis||"gross_profit")))
         return erpError(400,"INVALID_HR_PRICING_SETTINGS","La configuración de precios contiene porcentajes o bases no válidas.");
+    }
+    if (key === "hr_labor_settings") {
+      const allowed = new Set(["sector_code"]);
+      if (!value || typeof value !== "object" || Array.isArray(value) ||
+          Object.keys(value).some(field => !allowed.has(field)) ||
+          !MINIMUM_WAGE_SECTORS.some(sector => sector.code === String(value.sector_code || ""))) {
+        return erpError(400,"INVALID_HR_LABOR_SETTINGS","Selecciona una actividad económica válida para la tabla de salario mínimo vigente.");
+      }
     }
     if (key === "hr_inss_settings") {
       const allowed = new Set(["regime","employer_band","employee_rate","employer_rate"]);
