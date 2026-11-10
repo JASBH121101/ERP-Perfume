@@ -405,8 +405,8 @@
       "version": "0026",
       "sha256": "0e0a47ea8dd8b092a58da04a349ad9b4bcd92e97dc78f6bde43f0d8b323d3c29",
       "database": {
-        "status": "development_applied",
-        "note": "Validated in Neon Development; Production deployment follows verified PR checks."
+        "status": "pending",
+        "note": "Not part of the pinned read-only Development baseline snapshot. The additive migration has been applied and validated on live Development; Production application is pending the production cutover."
       }
     }
   ],
