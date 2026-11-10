@@ -472,3 +472,34 @@ input[type="radio"] {
   }
 }
 
+/* Settings: constrain the exchange-rate form and its children to the panel box. */
+.settings-rate-panel,
+.settings-rate-panel .rate-form,
+.settings-rate-panel .rate-form > .form-field,
+.settings-rate-panel .rate-form > .button,
+.settings-rate-panel .rate-form input {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+.settings-rate-panel .rate-form {
+  width: 100%;
+}
+.settings-rate-panel .rate-form > .form-field {
+  width: 100%;
+}
+.settings-rate-panel .rate-form input {
+  width: 100%;
+}
+@media (max-width: 560px) {
+  .settings-rate-panel .rate-form {
+    width: 100%;
+    gap: 10px;
+  }
+  .settings-rate-panel .rate-form > .form-field,
+  .settings-rate-panel .rate-form > .button {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
