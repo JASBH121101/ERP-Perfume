@@ -403,10 +403,10 @@
     {
       "filename": "0026_hr_payroll_tax_and_vacation_ledger.sql",
       "version": "0026",
-      "sha256": "d03bc896ecbe395419a7d31646c8d71bcc60ebf9cffd560e161377624526ee75",
+      "sha256": "0e0a47ea8dd8b092a58da04a349ad9b4bcd92e97dc78f6bde43f0d8b323d3c29",
       "database": {
-        "status": "pending",
-        "note": "Additive HR schema update. Validate in Development, back up Production, then apply before deploying code."
+        "status": "development_applied",
+        "note": "Validated in Neon Development; Production deployment follows verified PR checks."
       }
     }
   ],
