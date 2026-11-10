@@ -721,7 +721,7 @@ async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
   const changeReason = String(input.change_reason || '').trim();
   delete input.effective_date; delete input.change_reason; delete input.employee_code; delete input.hire_date;
   if (!/^[0-9a-f-]{36}$/i.test(String(id || ''))) return erpError(400, 'INVALID_EMPLOYEE_ID', 'La referencia del colaborador no es válida.');
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(effectiveDate) || Number.isNaN(Date.parse(effectiveDate + 'T00:00:00Z'))) return erpError(400, 'INVALID_EFFECTIVE_DATE', 'La fecha efectiva del cambio no es válida.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate) || Number.isNaN(Date.parse(effectiveDate + 'T00:00:00Z'))) return erpError(400, 'INVALID_EFFECTIVE_DATE', 'La fecha efectiva del cambio no es válida.');
   const normalized = normalizeEmployeeCreateInput(input, { partial: true });
   if (normalized.error) return erpError(400, normalized.error.code, normalized.error.message);
   const safe = safeFields(def, normalized.value), keys = safe.keys, values = safe.values;

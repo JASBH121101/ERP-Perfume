@@ -114,12 +114,13 @@ test("vacation ledger leaves paid-but-not-used days intact and subtracts leave a
     hireDate: "2026-01-01", employeeId: "e1", asOf: "2026-04-01", leaveRequests: [],
     ledgerEntries: [
       { employeeId: "e1", entryType: "cash_payment", daysDelta: 0, amountNio: 1000, effectiveDate: "2026-02-01" },
+      { employeeId: "e1", entryType: "opening", daysDelta: 1, amountNio: 0, effectiveDate: "2026-02-15" },
       { employeeId: "e1", entryType: "enjoyed", daysDelta: -2, effectiveDate: "2026-03-01" },
       { employeeId: "e1", entryType: "cash_settlement", daysDelta: -1, amountNio: 500, effectiveDate: "2026-03-20" },
       { employeeId: "e1", entryType: "enjoyed", daysDelta: -5, effectiveDate: "2026-05-01" }
     ]
   });
-  assert.deepEqual(result, { accruedDays: 7.5, usedDays: 3, balanceDays: 4.5 });
+  assert.deepEqual(result, { accruedDays: 7.5, usedDays: 3, balanceDays: 5.5 });
 });
 
 test("product price recommendation protects target margin after gross-profit commission and fees", () => {

@@ -55,13 +55,18 @@ export function calculateVacationBalance({ hireDate, leaveRequests = [], ledgerE
   if (tenure.label === "Fecha de ingreso pendiente") return { accruedDays: 0, usedDays: 0, balanceDays: 0 };
   const accruedDays = Math.max(0, (tenure.years * 12 + tenure.months + tenure.days / 30) * 2.5);
   const end = utcDate(asOf);
-  const usedDays = Array.isArray(ledgerEntries)
-    ? Math.max(0, -ledgerEntries.reduce((total, entry) => {
-        if (String(entry.employeeId ?? entry.employee_id) !== String(employeeId)) return total;
+  const ledgerEntriesForEmployee = Array.isArray(ledgerEntries)
+    ? ledgerEntries.filter(entry => {
+        if (String(entry.employeeId ?? entry.employee_id) !== String(employeeId)) return false;
         const effectiveDate = utcDate(entry.effectiveDate ?? entry.effective_date);
-        if (!effectiveDate || effectiveDate > end) return total;
-        return total + Number(entry.daysDelta ?? entry.days_delta ?? 0);
-      }, 0))
+        return Boolean(effectiveDate && effectiveDate <= end);
+      })
+    : null;
+  const ledgerDelta = ledgerEntriesForEmployee
+    ? ledgerEntriesForEmployee.reduce((total, entry) => total + Number(entry.daysDelta ?? entry.days_delta ?? 0), 0)
+    : null;
+  const usedDays = ledgerEntriesForEmployee
+    ? ledgerEntriesForEmployee.reduce((total, entry) => total + Math.max(0, -Number(entry.daysDelta ?? entry.days_delta ?? 0)), 0)
     : leaveRequests.reduce((total, request) => {
         if (String(request.employeeId ?? request.employee_id) !== String(employeeId) ||
             request.status !== "Aprobado" ||
@@ -73,7 +78,7 @@ export function calculateVacationBalance({ hireDate, leaveRequests = [], ledgerE
   return {
     accruedDays: Number(accruedDays.toFixed(2)),
     usedDays: Number(usedDays.toFixed(2)),
-    balanceDays: Number(Math.max(0, accruedDays - usedDays).toFixed(2))
+    balanceDays: Number(Math.max(0, accruedDays + (ledgerDelta ?? -usedDays)).toFixed(2))
   };
 }
 
