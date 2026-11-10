@@ -40,7 +40,7 @@ test("API refuses payments for Spanish and English voided invoice statuses", asy
   assert.equal(response.status, 409);
   const mutation = sql.calls[1].statement;
   assert.match(mutation, /FOR UPDATE/);
-  assert.match(mutation, /NOT IN \\('anulada','anulado','cancelada','cancelado','cancelled','canceled','void','voided'\\)/);
+  assert.ok(mutation.includes("NOT IN ('anulada','anulado','cancelada','cancelado','cancelled','canceled','void','voided')"));
   assert.match(mutation, /INSERT INTO invoice_payments/);
   assert.match(mutation, /INSERT INTO cash_entries/);
   assert.match(mutation, /INSERT INTO audit_log/);
