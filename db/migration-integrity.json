@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0026",
+  "nextMigrationVersion": "0027",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -398,6 +398,15 @@
         "appliedAt": "2026-11-09T21:26:41.474Z",
         "productionAppliedAt": "2026-11-09T21:27:34.385Z",
         "note": "Applied and verified transactionally on Development and Production. Both branches have authenticity_type and inspired_by columns plus two validated CHECK constraints. Existing product data was not rewritten; current product count is zero in both environments."
+      }
+    },
+    {
+      "filename": "0026_hr_payroll_tax_and_vacation_ledger.sql",
+      "version": "0026",
+      "sha256": "d03bc896ecbe395419a7d31646c8d71bcc60ebf9cffd560e161377624526ee75",
+      "database": {
+        "status": "pending",
+        "note": "Additive HR schema update. Validate in Development, back up Production, then apply before deploying code."
       }
     }
   ],

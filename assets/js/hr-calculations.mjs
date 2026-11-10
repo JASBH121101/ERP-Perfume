@@ -50,19 +50,26 @@ export function calculateTenure(hireDate, asOf = new Date()) {
   return { years, months, days, totalDays, label: parts.join(", ") };
 }
 
-export function calculateVacationBalance({ hireDate, leaveRequests = [], employeeId, asOf = new Date() }) {
+export function calculateVacationBalance({ hireDate, leaveRequests = [], ledgerEntries, employeeId, asOf = new Date() }) {
   const tenure = calculateTenure(hireDate, asOf);
   if (tenure.label === "Fecha de ingreso pendiente") return { accruedDays: 0, usedDays: 0, balanceDays: 0 };
   const accruedDays = Math.max(0, (tenure.years * 12 + tenure.months + tenure.days / 30) * 2.5);
   const end = utcDate(asOf);
-  const usedDays = leaveRequests.reduce((total, request) => {
-    if (String(request.employeeId ?? request.employee_id) !== String(employeeId) ||
-        request.status !== "Aprobado" ||
-        !["Vacaciones", "Vacation"].includes(request.leaveType ?? request.leave_type)) return total;
-    const leaveEnd = utcDate(request.endDate ?? request.end_date);
-    if (!leaveEnd || leaveEnd > end) return total;
-    return total + Math.max(0, Number(request.days || 0));
-  }, 0);
+  const usedDays = Array.isArray(ledgerEntries)
+    ? Math.max(0, -ledgerEntries.reduce((total, entry) => {
+        if (String(entry.employeeId ?? entry.employee_id) !== String(employeeId)) return total;
+        const effectiveDate = utcDate(entry.effectiveDate ?? entry.effective_date);
+        if (!effectiveDate || effectiveDate > end) return total;
+        return total + Number(entry.daysDelta ?? entry.days_delta ?? 0);
+      }, 0))
+    : leaveRequests.reduce((total, request) => {
+        if (String(request.employeeId ?? request.employee_id) !== String(employeeId) ||
+            request.status !== "Aprobado" ||
+            !["Vacaciones", "Vacation"].includes(request.leaveType ?? request.leave_type)) return total;
+        const leaveEnd = utcDate(request.endDate ?? request.end_date);
+        if (!leaveEnd || leaveEnd > end) return total;
+        return total + Math.max(0, Number(request.days || 0));
+      }, 0);
   return {
     accruedDays: Number(accruedDays.toFixed(2)),
     usedDays: Number(usedDays.toFixed(2)),
@@ -139,5 +146,100 @@ export function convertCommissionForPayroll(commissionUsd, exchangeRate) {
     commissionUsd: Number(usd.toFixed(2)),
     exchangeRate: Number(rate.toFixed(4)),
     commissionNio: Math.round(usd * rate * 100) / 100
+  };
+}
+
+
+export const DEFAULT_IR_BRACKETS = Object.freeze([
+  Object.freeze({ upper: 100000, base: 0, rate: 0, excess: 0 }),
+  Object.freeze({ upper: 200000, base: 0, rate: 15, excess: 100000 }),
+  Object.freeze({ upper: 350000, base: 15000, rate: 20, excess: 200000 }),
+  Object.freeze({ upper: 500000, base: 45000, rate: 25, excess: 350000 }),
+  Object.freeze({ upper: null, base: 82500, rate: 30, excess: 500000 })
+]);
+
+const PERIODS_PER_YEAR = Object.freeze({ monthly: 12, biweekly: 24, weekly: 52 });
+
+export function calculateAnnualIncomeTax(annualTaxableIncomeNio, brackets = DEFAULT_IR_BRACKETS) {
+  const income = Number(annualTaxableIncomeNio);
+  if (!Number.isFinite(income) || income < 0 || !Array.isArray(brackets) || brackets.length === 0) {
+    throw new RangeError("La renta anual y la tabla de IR deben ser válidas.");
+  }
+  const ordered = [...brackets].sort((a, b) => {
+    const upperA = a.upper == null ? Infinity : Number(a.upper);
+    const upperB = b.upper == null ? Infinity : Number(b.upper);
+    return upperA - upperB;
+  });
+  const bracket = ordered.find(item => item.upper == null || income <= Number(item.upper));
+  if (!bracket) throw new RangeError("La tabla de IR no cubre la renta anual.");
+  const base = Number(bracket.base), rate = Number(bracket.rate), excess = Number(bracket.excess);
+  if (![base, rate, excess].every(Number.isFinite) || rate < 0 || rate > 100 || income < excess) {
+    throw new RangeError("La tabla de IR contiene un tramo inválido.");
+  }
+  return Number((base + Math.max(0, income - excess) * rate / 100).toFixed(2));
+}
+
+export function calculatePayrollWithholding({
+  baseSalaryNio = 0, bonusesNio = 0, commissionsNio = 0, employeeInssNio = 0,
+  frequency = "monthly", previousPeriods = [], inatecRate = 2, brackets = DEFAULT_IR_BRACKETS,
+  periodType = "Ordinaria"
+}) {
+  const amounts = [baseSalaryNio, bonusesNio, commissionsNio, employeeInssNio, inatecRate].map(Number);
+  if (!amounts.every(Number.isFinite) || amounts.some(value => value < 0) ||
+      !Object.prototype.hasOwnProperty.call(PERIODS_PER_YEAR, frequency)) {
+    throw new RangeError("Los importes, la frecuencia y la tasa INATEC deben ser válidos.");
+  }
+  const gross = amounts[0] + amounts[1] + amounts[2];
+  const taxable = Math.max(0, gross - amounts[3]);
+  if (periodType === "Aguinaldo") {
+    return { taxableIncomeNio: 0, annualizedIncomeNio: 0, annualTaxNio: 0, irWithheldNio: 0, inatecEmployerNio: 0 };
+  }
+  const history = previousPeriods.map(item => ({
+    taxable: Number(item.taxableIncomeNio ?? item.taxable_income_nio ?? 0),
+    withheld: Number(item.irWithheldNio ?? item.ir_withheld_nio ?? 0)
+  }));
+  if (history.some(item => !Number.isFinite(item.taxable) || item.taxable < 0 || !Number.isFinite(item.withheld) || item.withheld < 0)) {
+    throw new RangeError("El historial de retenciones contiene importes inválidos.");
+  }
+  const periodsPerYear = PERIODS_PER_YEAR[frequency], periodCount = history.length + 1;
+  const averageTaxablePerPeriod = (history.reduce((sum, item) => sum + item.taxable, 0) + taxable) / periodCount;
+  const annualizedIncome = averageTaxablePerPeriod * periodsPerYear;
+  const annualTax = calculateAnnualIncomeTax(annualizedIncome, brackets);
+  const cumulativeTaxDue = annualTax * periodCount / periodsPerYear;
+  const priorWithheld = history.reduce((sum, item) => sum + item.withheld, 0);
+  return {
+    taxableIncomeNio: Number(taxable.toFixed(2)),
+    annualizedIncomeNio: Number(annualizedIncome.toFixed(2)),
+    annualTaxNio: annualTax,
+    irWithheldNio: Number(Math.max(0, cumulativeTaxDue - priorWithheld).toFixed(2)),
+    inatecEmployerNio: Number((gross * amounts[4] / 100).toFixed(2))
+  };
+}
+
+export function calculateProductPricing({
+  unitCostUsd = 0, targetMarginPercent = 35, commissionRatePercent = 3,
+  commissionBasis = "gross_profit", paymentFeePercent = 0, otherVariableCostPercent = 0
+}) {
+  const values = [unitCostUsd, targetMarginPercent, commissionRatePercent, paymentFeePercent, otherVariableCostPercent].map(Number);
+  if (!values.every(Number.isFinite) || values[0] < 0 ||
+      values.slice(1).some(value => value < 0 || value > 100) ||
+      !["gross_profit", "sales"].includes(commissionBasis)) {
+    throw new RangeError("Los costos y porcentajes de precio deben ser válidos.");
+  }
+  const [cost, marginPct, commissionPct, paymentPct, otherPct] = values;
+  const commission = commissionPct / 100, denominator = 1 - marginPct / 100 - commission - paymentPct / 100 - otherPct / 100;
+  const numerator = commissionBasis === "gross_profit" ? cost * (1 - commission) : cost;
+  if (denominator <= 0) throw new RangeError("Los porcentajes no dejan espacio para cubrir el costo y el margen objetivo.");
+  const suggestedPriceUsd = Number((numerator / denominator).toFixed(2));
+  const grossProfitUsd = Number((suggestedPriceUsd - cost).toFixed(2));
+  const commissionUsd = commissionBasis === "gross_profit"
+    ? Number((grossProfitUsd * commission).toFixed(2))
+    : Number((suggestedPriceUsd * commission).toFixed(2));
+  const paymentFeesUsd = Number((suggestedPriceUsd * paymentPct / 100).toFixed(2));
+  const otherVariableCostsUsd = Number((suggestedPriceUsd * otherPct / 100).toFixed(2));
+  const netProfitUsd = Number((grossProfitUsd - commissionUsd - paymentFeesUsd - otherVariableCostsUsd).toFixed(2));
+  return {
+    suggestedPriceUsd, grossProfitUsd, commissionUsd, paymentFeesUsd, otherVariableCostsUsd,
+    netProfitUsd, estimatedNetMarginPercent: suggestedPriceUsd > 0 ? Number((netProfitUsd / suggestedPriceUsd * 100).toFixed(2)) : 0
   };
 }
