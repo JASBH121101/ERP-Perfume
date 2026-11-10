@@ -886,10 +886,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const canSeeSales = permissionGranted('billing.invoices.view');
     const canSeeExpenses = permissionGranted('expenses.records.view');
     const canSeeProducts = permissionGranted('products.catalog.view');
+    const canSeeInventory = ['inventory.stock.view','inventory.receipts.view','inventory.manual_out.view','inventory.adjustments.view','inventory.movements.reverse'].some(permissionGranted);
     const canSeeSuppliers = permissionGranted('suppliers.records.view');
     const canSeePurchases = permissionGranted('purchases.receipts.view');
     const canSeePurchaseOrders = permissionGranted('purchases.purchase_orders.view');
     const canSeeCustomers = permissionGranted('customers.records.view');
+    const canSeeReceivables = permissionGranted('receivables.view') || permissionGranted('billing.payments.view');
     const canSeeOrders = permissionGranted('orders.records.view');
     const canSeeCash = permissionGranted('cash.entries.view');
     const canSeeEmployees = permissionGranted('hr.employees.view');
@@ -915,7 +917,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const moduleCards = [];
     if (canSeeProducts) moduleCards.push(renderDashboardModuleCard('Productos',activeProducts.length,
       products.length + ' referencias registradas','products','bottle'));
-    if (canSeeProducts) moduleCards.push(renderDashboardModuleCard('Inventario',
+    if (canSeeProducts && canSeeInventory) moduleCards.push(renderDashboardModuleCard('Inventario',
       activeProducts.reduce((sum,product)=>sum+Math.max(0,Number(product.stock||0)),0).toLocaleString('es-NI'),
       lowProducts.length + ' referencias requieren revisión','inventory','boxes'));
     if (canSeeSuppliers) moduleCards.push(renderDashboardModuleCard('Proveedores',activeSuppliers.length,
@@ -932,6 +934,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       purchaseOrders.filter(order=>['Enviada','Confirmada','Recepción parcial'].includes(order.status)).length + ' abiertas','purchaseOrders','receipt'));
     if (canSeeExpenses) moduleCards.push(renderDashboardModuleCard('Gastos',expenses.length,
       'Registros operativos','expenses','receipt'));
+    if (canSeeSales && canSeeReceivables) {
+      const openInvoices = invoices.filter(invoice=>Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)>0);
+      const outstandingReceivables = openInvoices.reduce((sum,invoice)=>sum+Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)),0);
+      moduleCards.push(renderDashboardModuleCard('Cuentas por cobrar',money(outstandingReceivables),openInvoices.length + ' facturas con saldo','receivables','wallet'));
+    }
+    if (canSeePayables) {
+      const openSupplierInvoices = supplierInvoices.filter(invoice=>!['Pagada','Anulada','Cancelada'].includes(invoice.status));
+      const outstandingPayables = calculatePayablesSnapshot(canSeePurchases ? purchases : [],supplierInvoices,roundMoney).total;
+      moduleCards.push(renderDashboardModuleCard('Cuentas por pagar',money(outstandingPayables),openSupplierInvoices.length + ' facturas abiertas','payables','wallet'));
+    }
     if (canSeeCash) moduleCards.push(renderDashboardModuleCard('Caja y bancos',cashAccounts.length,
       cashEntries.length + ' movimientos registrados','cash','wallet'));
     if (canSeeEmployees) moduleCards.push(renderDashboardModuleCard('Personal',activeEmployees.length,
@@ -946,8 +958,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (canSeeSales) {
       metricCards.push(metric('Ventas facturadas',money(finance.revenue),'chart',invoices.length + ' facturas','USD · histórico',false));
       metricCards.push(metric('Utilidad bruta',money(finance.grossProfit),'spark','Ventas − costo de ventas','antes de gastos',true));
-      const receivables = invoices.reduce((sum,invoice)=>sum+Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)),0);
-      metricCards.push(metric('Por cobrar',money(receivables),'wallet','Saldo abierto de facturas','USD · saldo actual',false));
+      if (canSeeReceivables) {
+        const receivables = invoices.reduce((sum,invoice)=>sum+Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)),0);
+        metricCards.push(metric('Por cobrar',money(receivables),'wallet','Saldo abierto de facturas','USD · saldo actual',false));
+      }
     }
     if (canSeeExpenses) metricCards.push(metric('Gastos operativos',money(finance.operatingExpenses),'receipt',expenses.length + ' gastos','USD · histórico',false));
     if (canSeeSales && canSeeExpenses) {
