@@ -1,5 +1,5 @@
 import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
-import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financial-snapshot.mjs';
+import { calculateFinancialSnapshot, calculatePayablesSnapshot, isVoidedInvoice } from './financial-snapshot.mjs';
 import { resolveReportingPeriod, isWithinReportingPeriod } from './reporting-periods.mjs';
 import { buildFinancialTrendSeries, buildTopSellingProducts, buildExpenseCategorySeries, buildInventoryCategorySeries } from './analytics-charts.mjs';
 import { buildProcurementStatusSeries, buildSupplierSpendSeries, buildCustomerRevenueSeries, buildCashFlowTrendSeries } from './dashboard-summary.mjs';
@@ -913,6 +913,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const stockOut = activeProducts.filter(product => Number(product.stock || 0) <= 0).length;
     const stockTotal = activeProducts.length;
     const finance = canSeeSales || canSeeExpenses ? financialSnapshot() : null;
+    const activeInvoices = invoices.filter(invoice => !isVoidedInvoice(invoice));
 
     const moduleCards = [];
     if (canSeeProducts) moduleCards.push(renderDashboardModuleCard('Productos',activeProducts.length,
@@ -935,7 +936,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (canSeeExpenses) moduleCards.push(renderDashboardModuleCard('Gastos',expenses.length,
       'Registros operativos','expenses','receipt'));
     if (canSeeSales && canSeeReceivables) {
-      const openInvoices = invoices.filter(invoice=>Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)>0);
+      const openInvoices = activeInvoices.filter(invoice=>Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)>0);
       const outstandingReceivables = openInvoices.reduce((sum,invoice)=>sum+Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)),0);
       moduleCards.push(renderDashboardModuleCard('Cuentas por cobrar',money(outstandingReceivables),openInvoices.length + ' facturas con saldo','receivables','wallet'));
     }
@@ -959,7 +960,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       metricCards.push(metric('Ventas facturadas',money(finance.revenue),'chart',invoices.length + ' facturas','USD · histórico',false));
       metricCards.push(metric('Utilidad bruta',money(finance.grossProfit),'spark','Ventas − costo de ventas','antes de gastos',true));
       if (canSeeReceivables) {
-        const receivables = invoices.reduce((sum,invoice)=>sum+Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)),0);
+        const receivables = activeInvoices.reduce((sum,invoice)=>sum+Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)),0);
         metricCards.push(metric('Por cobrar',money(receivables),'wallet','Saldo abierto de facturas','USD · saldo actual',false));
       }
     }
@@ -1012,7 +1013,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
 
     const charts = [];
     if (canSeeSales || canSeeExpenses) {
-      const series = buildFinancialTrendSeries(canSeeSales ? invoices : [],canSeeExpenses ? expenses : [],{valid:true,start:null,end:null});
+      const series = buildFinancialTrendSeries(canSeeSales ? activeInvoices : [],canSeeExpenses ? expenses : [],{valid:true,start:null,end:null});
       charts.push(renderAnalyticsTrendCard(series,canSeeSales,canSeeExpenses,'últimos seis meses'));
     }
     if (canSeeProducts) {
@@ -1746,7 +1747,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         ['Pedidos registrados',orders.length,'pedidos'],
         ['Facturas registradas',invoices.length,'facturas'],
         ['Ventas facturadas',finance.revenue,'USD'],
-        ['Cobros recibidos',invoices.reduce((sum,i)=>sum+Number(i.paidUsd||0),0),'USD'],
+        ['Cobros recibidos',invoices.filter(i=>!isVoidedInvoice(i)).reduce((sum,i)=>sum+Number(i.paidUsd||0),0),'USD'],
         ['Utilidad bruta',finance.grossProfit,'USD'],
         ['Resultado después de gastos',finance.netProfit,'USD']
       ];
@@ -1775,7 +1776,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       headers=['Cliente','Contacto','Teléfono','Correo','Tipo','Pedidos','Total pedidos USD','Desde','Estado'];
       rows=customers.map(c=>[c.name,c.contact,c.phone,c.email,c.customerType,c.orders,c.spent,c.since,c.active===false?'Inactivo':'Activo']);
     }else if(state.view==='billing'||state.view==='receivables'){
-      const records=state.view==='receivables'?invoices.filter(i=>Number(i.totalUsd||0)-Number(i.paidUsd||0)>0.001):invoices;
+      const records=state.view==='receivables'?invoices.filter(i=>!isVoidedInvoice(i)&&Number(i.totalUsd||0)-Number(i.paidUsd||0)>0.001):invoices;
       headers=['Factura','Cliente','Fecha','Origen','Moneda','Tipo de cambio','Total USD','Pagado USD','Saldo USD','Estado','Método de pago','Cantidad de abonos'];
       rows=records.map(i=>[i.id,i.customer||i.customerName,dateText(i.createdAt),i.source,i.currency,i.exchangeRate,i.totalUsd,i.paidUsd,Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),i.status,i.paymentMethod,(i.payments||[]).length]);
     }else if(state.view==='hr'){
@@ -1812,10 +1813,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         ['Utilidad bruta',finance.grossProfit,'Antes de gastos operativos'],
         ['Gastos operativos',finance.operatingExpenses,'Gastos registrados'],
         ['Resultado después de gastos',finance.netProfit,'No representa utilidad fiscal'],
-        ['Cobros recibidos',invoices.reduce((sum,i)=>sum+Number(i.paidUsd||0),0),'Pagos registrados'],
+        ['Cobros recibidos',invoices.filter(i=>!isVoidedInvoice(i)).reduce((sum,i)=>sum+Number(i.paidUsd||0),0),'Pagos registrados'],
         ['Valor del inventario',inventoryValue,'A costo unitario'],
         ['Margen potencial del stock',potential,'Estimación sobre existencias actuales'],
-        ['Cuentas por cobrar',invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0),'Saldos pendientes'],
+        ['Cuentas por cobrar',invoices.filter(i=>!isVoidedInvoice(i)).reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0),'Saldos pendientes'],
         ['Cuentas por pagar',supplierPayables.total,'Proveedores y compras anteriores']
       ];
     }else if(state.view==='settings'){
@@ -2813,13 +2814,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     return heading(views.orders,'<button class="button button-primary" data-action="new-order">'+svg('plus')+' Nuevo pedido</button>')+'<div class="summary-strip"><div class="summary-mini"><span>Pedidos</span><strong>'+orders.length+'</strong></div><div class="summary-mini"><span>Pendientes</span><strong>'+orders.filter(o=>o.status!=='Completado').length+'</strong></div><div class="summary-mini"><span>Importe en pedidos USD</span><strong>'+money(orders.reduce((s,o)=>s+Number(o.amount||0),0))+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>REFERENCIA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL / COBRO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Sin pedidos.</td></tr>')+'</tbody></table></div></article><div class="notice-panel">'+svg('spark')+'<div><strong>Pedidos conectados</strong><p>El inventario se descuenta cuando el pedido pasa a preparación. El sistema registra reversiones si se devuelve a pendiente o se cancela antes de completarse.</p></div></div>';
   }
   function renderBilling(){
+    const activeInvoices=invoices.filter(invoice=>!isVoidedInvoice(invoice));
     const rows=invoices.map(f=>{
+      const voided=isVoidedInvoice(f);
       const paid=Number(f.paidUsd||0),balance=Math.max(0,Number(f.totalUsd||0)-paid);
       const origin=f.source==='web'?'Página web':(f.source==='manual'?'Venta manual':'Tienda física');
-      return '<tr><td data-label="Factura / origen" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Fecha">'+dateText(f.createdAt)+'</td><td data-label="Total">'+money(f.totalUsd)+'<small class="table-secondary">'+moneyInCurrency(roundMoney(Number(f.totalUsd||0)*Number(f.exchangeRate||exchangeRate)),'NIO')+' · '+rateLabel(f.exchangeRate)+'</small></td><td data-label="Pago recibido / saldo">'+money(paid)+' recibido <small class="table-secondary">'+money(balance)+' saldo pendiente</small></td><td data-label="Estado"><span class="status-chip '+(balance===0?'status-success':'status-pending')+'">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="view-invoice" data-id="'+esc(f.id)+'">Ver / imprimir</button>'+(balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Abonar</button>':'')+'</td></tr>';
+      const statusClass=voided?'status-muted':(balance===0?'status-success':'status-pending');
+      const paymentAction=!voided&&balance>0?'<button class="button button-quiet button-small" data-action="new-payment" data-id="'+esc(f.id)+'">Abonar</button>':'';
+      return '<tr><td data-label="Factura / origen" class="table-primary"><strong>'+esc(f.id)+'</strong><small class="table-secondary">'+origin+(f.orderId?' · '+esc(f.orderId):'')+'</small></td><td data-label="Cliente">'+esc(f.customer)+'</td><td data-label="Fecha">'+dateText(f.createdAt)+'</td><td data-label="Total">'+money(f.totalUsd)+'<small class="table-secondary">'+moneyInCurrency(roundMoney(Number(f.totalUsd||0)*Number(f.exchangeRate||exchangeRate)),'NIO')+' · '+rateLabel(f.exchangeRate)+'</small></td><td data-label="Pago recibido / saldo">'+money(paid)+' recibido <small class="table-secondary">'+money(balance)+' saldo pendiente</small></td><td data-label="Estado"><span class="status-chip '+statusClass+'">'+esc(f.status||'Pendiente')+'</span></td><td data-label="Acción"><button class="button button-quiet button-small" data-action="view-invoice" data-id="'+esc(f.id)+'">Ver / imprimir</button>'+paymentAction+'</td></tr>';
     }).join('');
     return heading(views.billing,'<button class="button button-primary" data-action="new-invoice">'+svg('plus')+' Nueva factura</button>')+
-      '<div class="summary-strip"><div class="summary-mini"><span>Facturas registradas</span><strong>'+invoices.length+'</strong></div><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(invoices.reduce((s,f)=>s+Math.max(0,f.totalUsd-Number(f.paidUsd||0)),0))+'</strong></div><div class="summary-mini"><span>Venta facturada USD</span><strong>'+money(invoices.reduce((s,f)=>s+f.totalUsd,0))+'</strong></div></div>'+
+      '<div class="summary-strip"><div class="summary-mini"><span>Facturas registradas</span><strong>'+invoices.length+'</strong></div><div class="summary-mini"><span>Saldo pendiente USD</span><strong>'+money(activeInvoices.reduce((s,f)=>s+Math.max(0,f.totalUsd-Number(f.paidUsd||0)),0))+'</strong></div><div class="summary-mini"><span>Venta facturada USD</span><strong>'+money(activeInvoices.reduce((s,f)=>s+Number(f.totalUsd||0),0))+'</strong></div></div>'+
       '<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>FACTURA / ORIGEN</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>PAGO RECIBIDO / SALDO</th><th>ESTADO</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Todavía no hay facturas registradas.</td></tr>')+'</tbody></table></div></article>'+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Comprobantes comerciales internos</strong><p>La vista previa permite imprimir en formato A4. No tiene autorización tributaria ni sustituye una factura fiscal.</p></div></div>';
   }
@@ -3034,7 +3039,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const value=fields.map(field=>record?.[field]).find(item=>item!==null&&item!==undefined&&item!=="");
       return isWithinReportingPeriod(value,period);
     };
-    const periodInvoices=invoices.filter(invoice=>inPeriod(invoice,['createdAt','invoiceDate','date']));
+    const periodInvoices=invoices.filter(invoice=>!isVoidedInvoice(invoice)&&inPeriod(invoice,['createdAt','invoiceDate','date']));
     const periodExpenses=expenses.filter(expense=>inPeriod(expense,['createdAt','expenseDate','date']));
     const periodPurchases=purchases.filter(purchase=>inPeriod(purchase,['createdAt','purchaseDate','date']));
     const periodSupplierInvoices=supplierInvoices.filter(invoice=>inPeriod(invoice,['invoiceDate','createdAt','date']));
@@ -3045,9 +3050,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const purchasesTotal=roundMoney(periodPurchases.reduce((sum,p)=>sum+Number(p.totalUsd||0),0)+
       periodSupplierInvoices.filter(invoice=>invoice.status!=="Anulada").reduce((sum,invoice)=>sum+Number(invoice.amountUsd||0),0));
     // These are current outstanding balances, not period activity.
-    const receivables=invoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0);
+    const activeInvoices=invoices.filter(invoice=>!isVoidedInvoice(invoice));
+    const receivables=activeInvoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0);
     const payables=supplierPayables.total;
-    const paidRevenue=invoices.reduce((sum,invoice)=>{
+    const paidRevenue=activeInvoices.reduce((sum,invoice)=>{
       const payments=Array.isArray(invoice.payments)?invoice.payments:[];
       if(payments.length)return sum+payments.filter(payment=>isWithinReportingPeriod(payment.createdAt,period)).reduce((subtotal,payment)=>subtotal+Number(payment.amountUsd||0),0);
       return sum+(isWithinReportingPeriod(invoice.createdAt,period)?Number(invoice.paidUsd||0):0);
@@ -3416,7 +3422,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   function dgiAmountNio(usd,rate){return roundMoney(Number(usd||0)*Number(rate||exchangeRate));}
   function getDgiBookRows(){
     return [['Fecha','Tipo de operación','Tercero / descripción','Referencia','Importe NIO','Clasificación'],
-      ...invoices.filter(i=>!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status)).flatMap(i=>(i.payments||[]).map(payment=>[
+      ...invoices.filter(i=>!isVoidedInvoice(i)).flatMap(i=>(i.payments||[]).map(payment=>[
         dateText(payment.createdAt),'Cobro recibido · factura',i.customer,i.id,dgiAmountNio(payment.amountUsd,payment.exchangeRate||1),'Ingreso percibido'
       ])),
       ...cashEntries.filter(entry=>entry.direction==='income'&&!entry.sourceType).map(entry=>[
@@ -3501,7 +3507,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const now=new Date(), monthStart=new Date(now.getFullYear(),now.getMonth(),1), nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);
     const invoicedOrderIds=new Set(invoices.map(i=>String(i.orderId||'')));
     const completedOrdersWithoutInvoice=orders.filter(o=>o.status==='Completado'&&!invoicedOrderIds.has(String(o.id)));
-    const salesRows=invoices.filter(i=>!['Anulada','Cancelada','Anulado','Cancelado'].includes(i.status))
+    const salesRows=invoices.filter(i=>!isVoidedInvoice(i))
       .flatMap(i=>(i.payments||[]).map(payment=>({
         date:new Date(payment.createdAt),
         amount:dgiAmountNio(payment.amountUsd,payment.exchangeRate||1)
