@@ -61,7 +61,7 @@ test("top products aggregate quantities and sales by product identity", () => {
   ]);
 });
 
-test("expense category totals are sorted and malformed amounts do not affect the total", () => {
+test("expense category totals are sorted and negative values do not inflate expenses", () => {
   const result = buildExpenseCategorySeries([
     { category: "Alquiler", amountUsd: 120 },
     { category: "Servicios", amountUsd: 35 },

@@ -57,7 +57,7 @@ export function buildFinancialTrendSeries(invoices = [], expenses = [], period =
   let end = period?.end ? dayStart(validDate(period.end) || today) : today;
   if (start > end) return { granularity: "day", buckets: [] };
   const durationDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
-  const granularity = durationDays <= 45 ? "day" : durationDays <= 180 ? "week" : durationDays > 730 ? "year" : "month";
+  const granularity = !period?.start ? "month" : durationDays <= 45 ? "day" : durationDays <= 180 ? "week" : durationDays > 730 ? "year" : "month";
   const buckets = [];
   let cursor = bucketStart(start, granularity);
   while (cursor <= end && buckets.length < 120) {

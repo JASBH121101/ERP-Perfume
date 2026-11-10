@@ -819,6 +819,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const recentInvoices=invoices.slice(0,5);
     const invoiceRows=recentInvoices.map(invoice=>'<tr><td data-label="Factura" class="table-primary">'+esc(invoice.id)+'</td><td data-label="Cliente">'+esc(invoice.customer||invoice.customerName)+'</td><td data-label="Fecha">'+dateText(invoice.createdAt)+'</td><td data-label="Total" class="table-primary">'+money(invoice.totalUsd)+'</td><td data-label="Estado">'+orderStatus(invoice.status)+'</td></tr>').join('');
     const topRows=top.map(product=>'<div class="top-product">'+art(product.tone)+'<div class="top-product-info"><strong>'+esc(product.name)+'</strong><small>'+esc(product.category)+' · '+product.stock+' unidades</small></div><span class="top-product-value">'+money(product.price)+'</span></div>').join('');
+    const dashboardShowSales=permissionGranted("billing.invoices.view");
+    const dashboardShowExpenses=permissionGranted("expenses.records.view");
+    const dashboardTrendSeries=buildFinancialTrendSeries(invoices,expenses,{valid:true,start:null,end:null});
+    const dashboardTrend=(dashboardShowSales||dashboardShowExpenses)
+      ? '<section class="analytics-chart-grid dashboard-chart-grid">'+renderAnalyticsTrendCard(dashboardTrendSeries,dashboardShowSales,dashboardShowExpenses,"últimos seis meses")+'</section>'
+      : '';
     const low=activeProducts.filter(needsRestock).length;
     const stockAvailable=activeProducts.filter(product=>Number(product.stock||0)>(Number.isInteger(product.minStock)?product.minStock:3)).length;
     const stockLow=activeProducts.filter(product=>Number(product.stock||0)>0&&needsRestock(product)).length;
@@ -861,7 +867,8 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<article class="panel"><div class="panel-heading"><div><h2>Productos destacados</h2><p>Productos activos con más unidades disponibles</p></div><button class="panel-link" data-view="products">Catálogo '+svg('arrow')+'</button></div><div class="top-products">'+(topRows||'<div class="empty-state">Todavía no hay productos registrados.</div>')+'</div><div class="panel-footer-note">Precios, costos y existencias disponibles en el sistema.</div></article>'+
       '</section>'+
       '<section class="lower-grid"><article class="panel"><div class="panel-heading"><div><h2>Facturas recientes</h2><p>Actividad comercial registrada</p></div><button class="panel-link" data-view="billing">Ver todas '+svg('arrow')+'</button></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FACTURA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>'+(invoiceRows||'<tr><td colspan="5"><div class="empty-state">Todavía no hay facturas.</div></td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel inventory-status-panel"><div class="panel-heading"><div><h2>Estado del inventario</h2><p>Distribución de productos por nivel de existencias</p></div><button class="panel-link" data-view="inventory">Consultar existencias '+svg('arrow')+'</button></div><div class="inventory-donut-layout">'+donutMarkup+'<div class="donut-legend">'+stockLegend+'</div></div><div class="panel-footer-note">Conteo por referencia activa, calculado con existencias y stock mínimo registrados en el sistema.</div></article></section>';
+      '<article class="panel inventory-status-panel"><div class="panel-heading"><div><h2>Estado del inventario</h2><p>Distribución de productos por nivel de existencias</p></div><button class="panel-link" data-view="inventory">Consultar existencias '+svg('arrow')+'</button></div><div class="inventory-donut-layout">'+donutMarkup+'<div class="donut-legend">'+stockLegend+'</div></div><div class="panel-footer-note">Conteo por referencia activa, calculado con existencias y stock mínimo registrados en el sistema.</div></article></section>'+
+      dashboardTrend;
   }
   function needsRestock(product) {
     return product.stock <= (Number.isInteger(product.minStock) ? product.minStock : 3);
