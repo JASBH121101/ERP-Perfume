@@ -419,7 +419,11 @@
       "sha256": "c0c1a7edfa71c42fe20007d2e440d171acc14a819c5852991124920da2c85e5d",
       "database": {
         "status": "pending",
-        "note": "Reviewed additive privilege migration. Pending guarded application to Development first, then Production after full regression checks. Grants only SELECT and INSERT to jb_erp_runtime_sql; UPDATE and DELETE remain unavailable."
+        "note": "Not part of the pinned read-only baseline snapshot (which ends at 0025). Subsequently applied transactionally and checksum-verified on live Development and Production on 2026-11-10. Pending only relative to the immutable baseline snapshot; both live databases are current through 0027. Grants only SELECT and INSERT to jb_erp_runtime_sql; UPDATE, DELETE and TRUNCATE remain unavailable.",
+        "developmentAppliedAt": "2026-11-10T14:06:37.857Z",
+        "productionAppliedAt": "2026-11-10T14:08:53.563Z",
+        "developmentLedgerChecksum": "c0c1a7edfa71c42fe20007d2e440d171acc14a819c5852991124920da2c85e5d",
+        "productionLedgerChecksum": "c0c1a7edfa71c42fe20007d2e440d171acc14a819c5852991124920da2c85e5d"
       }
     }
   ],
