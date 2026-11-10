@@ -1,6 +1,7 @@
 import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from './catalog-import.mjs';
 import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financial-snapshot.mjs';
 import { resolveReportingPeriod, isWithinReportingPeriod } from './reporting-periods.mjs';
+import { buildFinancialTrendSeries, buildTopSellingProducts, buildExpenseCategorySeries, buildInventoryCategorySeries } from './analytics-charts.mjs';
 import { profileHasPermission } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
 import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss, calculatePayrollWithholding, calculateProductPricing } from './hr-calculations.mjs';
@@ -2796,6 +2797,39 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="summary-strip hr-summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Comisiones pendientes</span><strong>'+money(activeCommissions.reduce((s,c)=>s+Number(c.commissionUsd||0),0))+' USD</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
       tabsHtml+'<div class="hr-content">'+content+'</div></section>';
   }
+  function renderAnalyticsTrendCard(series, showSales, showExpenses, periodLabel) {
+    const seriesConfig = [
+      ...(showSales ? [{ key: "revenue", label: "Facturación", className: "analytics-series-sales" }, { key: "costOfSales", label: "Costo de ventas", className: "analytics-series-cost" }] : []),
+      ...(showExpenses ? [{ key: "expenses", label: "Gastos operativos", className: "analytics-series-expenses" }] : [])
+    ];
+    const maxValue = Math.max(1, ...series.buckets.flatMap(bucket => seriesConfig.map(item => Number(bucket[item.key] || 0))));
+    const legend = seriesConfig.map(item => '<span class="analytics-chart-legend-item"><i class="' + item.className + '"></i>' + item.label + '</span>').join('');
+    const bars = series.buckets.map(bucket => {
+      const columns = seriesConfig.map(item => {
+        const value = Math.max(0, Number(bucket[item.key] || 0));
+        const height = value > 0 ? Math.max(2, value / maxValue * 100) : 0;
+        return '<span class="analytics-chart-bar ' + item.className + '" style="height:' + height.toFixed(2) + '%" title="' + esc(item.label + ': ' + money(value)) + '" aria-hidden="true"></span>';
+      }).join('');
+      return '<div class="analytics-chart-column" aria-label="' + esc(bucket.label + ': ' + seriesConfig.map(item => item.label + ' ' + money(bucket[item.key])).join(', ')) + '"><div class="analytics-chart-bars-stack">' + columns + '</div><span class="analytics-chart-xlabel">' + esc(bucket.label) + '</span></div>';
+    }).join('');
+    const hasValues = series.buckets.some(bucket => seriesConfig.some(item => Number(bucket[item.key] || 0) > 0));
+    const body = !series.buckets.length || !hasValues
+      ? '<div class="analytics-chart-empty">No hay movimientos en el período seleccionado. La gráfica se llenará al registrar facturas o gastos.</div>'
+      : '<div class="analytics-chart-legend">' + legend + '</div><div class="analytics-chart-bars">' + bars + '</div><p class="analytics-chart-footnote">Importes en USD · ' + esc(periodLabel) + '. Toca o pasa el cursor sobre las barras para consultar el valor.</p>';
+    return '<article class="panel analytics-chart-card analytics-chart-card-wide"><div class="panel-heading"><div><h2>Facturación, costo y gastos</h2><p>Evolución de la actividad registrada, agrupada por ' + esc(series.granularity === "day" ? "día" : series.granularity === "week" ? "semana" : series.granularity === "year" ? "año" : "mes") + '.</p></div></div>' + body + '</article>';
+  }
+
+  function renderAnalyticsRankCard(title, subtitle, items, valueOf, labelOf, detailOf, valueFormatter) {
+    const maxValue = Math.max(0, ...items.map(item => Number(valueOf(item) || 0)));
+    const rows = items.map(item => {
+      const value = Math.max(0, Number(valueOf(item) || 0));
+      const width = maxValue > 0 ? value / maxValue * 100 : 0;
+      return '<div class="analytics-rank-row"><div class="analytics-rank-heading"><strong>' + esc(labelOf(item)) + '</strong><span>' + esc(valueFormatter(value)) + '</span></div><div class="analytics-rank-track"><span style="width:' + width.toFixed(2) + '%"></span></div><small>' + esc(detailOf(item)) + '</small></div>';
+    }).join('');
+    const body = rows || '<div class="analytics-chart-empty">Todavía no hay datos para mostrar. La gráfica se llenará cuando registres operaciones.</div>';
+    return '<article class="panel analytics-chart-card"><div class="panel-heading"><div><h2>' + esc(title) + '</h2><p>' + esc(subtitle) + '</p></div></div><div class="analytics-rank-list">' + body + '</div></article>';
+  }
+
   function renderAnalytics(){
     const period=resolveReportingPeriod(analyticsPeriodPreset,new Date(),analyticsCustomFrom,analyticsCustomTo);
     const inPeriod=(record,fields)=>{
@@ -2820,6 +2854,31 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       if(payments.length)return sum+payments.filter(payment=>isWithinReportingPeriod(payment.createdAt,period)).reduce((subtotal,payment)=>subtotal+Number(payment.amountUsd||0),0);
       return sum+(isWithinReportingPeriod(invoice.createdAt,period)?Number(invoice.paidUsd||0):0);
     },0);
+    const canSeeSales=permissionGranted("billing.invoices.view");
+    const canSeeExpenses=permissionGranted("expenses.records.view");
+    const canSeeProducts=permissionGranted("products.catalog.view");
+    const trendSeries=buildFinancialTrendSeries(periodInvoices,periodExpenses,period);
+    const trendLabel=analyticsPeriodPreset==="all"?"últimos seis meses":period.label;
+    const chartCards=[];
+    if(canSeeSales||canSeeExpenses) chartCards.push(renderAnalyticsTrendCard(trendSeries,canSeeSales,canSeeExpenses,trendLabel));
+    if(canSeeSales) chartCards.push(renderAnalyticsRankCard(
+      "Productos más vendidos","Unidades facturadas en el período",
+      buildTopSellingProducts(periodInvoices,5),item=>item.quantity,item=>item.name,
+      item=>money(item.salesUsd)+" facturados",value=>Math.round(value).toLocaleString("es-NI")+" uds."
+    ));
+    if(canSeeExpenses) chartCards.push(renderAnalyticsRankCard(
+      "Gastos por categoría","Distribución de los gastos operativos del período",
+      buildExpenseCategorySeries(periodExpenses,6),item=>item.amountUsd,item=>item.label,
+      item=>"Importe acumulado en USD",money
+    ));
+    if(canSeeProducts) chartCards.push(renderAnalyticsRankCard(
+      "Inventario por categoría","Valor actual de existencias al costo, no movimiento del período",
+      buildInventoryCategorySeries(products,6),item=>item.valueUsd,item=>item.label,
+      item=>item.units.toLocaleString("es-NI")+" unidades · "+item.references+" referencias",money
+    ));
+    const analyticsCharts=chartCards.length
+      ? '<section class="analytics-chart-grid" aria-label="Gráficas de rendimiento">'+chartCards.join("")+'</section>'
+      : '<div class="notice-panel"><span>'+svg("info")+'</span><div><strong>Gráficas sin fuentes autorizadas</strong><p>Tu perfil necesita acceso de consulta a facturas, gastos o catálogo para mostrar estas visualizaciones.</p></div></div>';
     const presetOptions=[
       ['all','Todo el historial'],['month','Este mes'],['previous_month','Mes anterior'],
       ['last_30','Últimos 30 días'],['last_90','Últimos 90 días'],['last_180','Últimos 180 días'],
@@ -2851,6 +2910,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="summary-mini"><span>Cuentas por cobrar · saldo actual</span><strong>'+money(receivables)+'</strong></div>'+
       '<div class="summary-mini"><span>Cuentas por pagar · saldo actual</span><strong>'+money(payables)+'</strong></div>'+
       '</div>'+
+      analyticsCharts+
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Criterio del resultado</strong><p>La utilidad bruta se calcula con los renglones de facturas del período y su costo unitario registrado. El resultado después de gastos descuenta los gastos operativos capturados en el mismo rango; no representa utilidad fiscal ni incorpora impuestos, nómina o partidas no registradas. Los saldos por cobrar/pagar y el valor del inventario son posiciones actuales, no movimientos del período.</p></div></div>';
   }
   function supplierPayablesUsd(supplier){
