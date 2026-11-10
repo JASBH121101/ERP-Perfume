@@ -3373,7 +3373,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       .map(role => '<option value="'+esc(role.role_key)+'"'+(role.role_key==="viewer"?' selected':'')+'>'+esc(role.name)+'</option>').join("");
     const userRows = accessManager.users.map(user => {
       if (user.role === "owner") {
-        return '<tr><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td>Propietario</td><td>Protegido</td><td><span class="status-chip status-success">Activo</span></td><td>—</td></tr>';
+        return '<tr><td data-label="Cuenta"><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td data-label="Cargo">Propietario</td><td data-label="Plantilla"><span class="status-chip status-muted">Propietario</span><small class="table-secondary">Rol y permisos reservados al dueño.</small></td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td><td data-label="Seguridad">Cuenta protegida</td></tr>';
       }
       const statusOptions = ["invited","registered","active","rejected","disabled"]
         .map(status => '<option value="'+status+'"'+(user.account_status===status?' selected':'')+'>'+({
@@ -3390,11 +3390,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const overridePermissionOptions = accessManager.permissions.map(permission =>
         '<option value="'+esc(permission.permission_key)+'">'+esc(permission.label)+'</option>'
       ).join("");
-      return '<tr data-user-id="'+esc(user.id)+'"><td><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td>'+
-        '<td><input class="filter-select" data-user-position value="'+esc(user.position_title||"")+'" maxlength="120" placeholder="Cargo libre"></td>'+
-        '<td><select class="filter-select" data-user-role>'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(user.role_template_key===role.role_key?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></td>'+
-        '<td><select class="filter-select" data-user-status>'+statusOptions+'</select></td>'+
-        '<td class="user-access-controls"><label><input type="checkbox" data-user-password'+(user.must_change_password?' checked':'')+'> Cambio inicial</label>'+
+      return '<tr data-user-id="'+esc(user.id)+'"><td data-label="Cuenta"><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td>'+
+        '<td data-label="Cargo"><input class="filter-select" data-user-position value="'+esc(user.position_title||"")+'" maxlength="120" placeholder="Cargo libre"></td>'+
+        '<td data-label="Plantilla"><select class="filter-select" data-user-role>'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(user.role_template_key===role.role_key?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></td>'+
+        '<td data-label="Estado"><select class="filter-select" data-user-status>'+statusOptions+'</select></td>'+
+        '<td class="user-access-controls" data-label="Seguridad y permisos"><label><input type="checkbox" data-user-password'+(user.must_change_password?' checked':'')+'> Cambio inicial</label>'+
+        (user.account_status==="active" ? "" : '<button type="button" class="button button-primary button-small" data-action="activate-user-account">Activar acceso</button>')+
         '<details class="user-overrides"><summary>Excepciones ('+userOverrides.length+')</summary><div data-user-overrides>'+overrideRows+'</div>'+
         '<div class="permission-override-add"><select class="filter-select" data-new-override-permission aria-label="Permiso individual">'+overridePermissionOptions+'</select>'+
         '<select class="filter-select" data-new-override-value aria-label="Efecto"><option value="allow">Permitir</option><option value="deny">Denegar</option></select>'+
@@ -3404,11 +3405,11 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }).join("");
 
     const pendingRows = accessManager.pendingIdentities.map(identity =>
-      '<tr data-pending-email="'+esc(identity.email)+'" data-employee-id="'+esc(identity.employee_id||'')+'"><td><strong>'+esc(identity.email)+'</strong><small class="table-secondary">'+(identity.email_verified?'Correo verificado':'Correo pendiente de verificar')+'</small>'+(identity.employee_name?'<small class="table-secondary">Ficha: '+esc(identity.employee_name)+'</small>':'')+'</td>'+
-      '<td><input class="filter-select" data-pending-name value="'+esc(identity.display_name||"")+'" maxlength="180" placeholder="Nombre completo"></td>'+
-      '<td><input class="filter-select" data-pending-position maxlength="120" placeholder="Cargo libre"></td>'+
-      '<td><select class="filter-select" data-pending-role>'+roleOptions+'</select></td>'+
-      '<td><button class="button button-quiet button-small" data-action="send-invite-verification">Reenviar código</button> <button class="button button-primary button-small" data-action="provision-user-account">Preparar cuenta ERP</button></td></tr>'
+      '<tr data-pending-email="'+esc(identity.email)+'" data-employee-id="'+esc(identity.employee_id||'')+'"><td data-label="Identidad"><strong>'+esc(identity.email)+'</strong><small class="table-secondary">'+(identity.email_verified?'Correo verificado':'Correo pendiente de verificar')+'</small>'+(identity.employee_name?'<small class="table-secondary">Ficha: '+esc(identity.employee_name)+'</small>':'')+'</td>'+
+      '<td data-label="Nombre"><input class="filter-select" data-pending-name value="'+esc(identity.display_name||"")+'" maxlength="180" placeholder="Nombre completo"></td>'+
+      '<td data-label="Cargo"><input class="filter-select" data-pending-position maxlength="120" placeholder="Cargo libre"></td>'+
+      '<td data-label="Plantilla"><select class="filter-select" data-pending-role>'+roleOptions+'</select></td>'+
+      '<td data-label="Acciones"><button type="button" class="button button-quiet button-small" data-action="send-invite-verification">Reenviar código</button><button type="button" class="button button-primary button-small" data-action="provision-user-account">Preparar cuenta ERP</button></td></tr>'
     ).join("");
 
     const selectedRole = accessManager.roles.find(role=>role.role_key===accessSelectedRole);
@@ -3448,9 +3449,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
 
     return '<section class="access-manager-section">'+
       '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
-      '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>El cargo es texto libre. El estado activo es lo que habilita la entrada al ERP.</p></div><span class="ledger-count">'+accessManager.users.length+' cuentas</span></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>Después de verificar el correo y crear la contraseña, pulsa <strong>Activar acceso</strong> para habilitar al trabajador. La cuenta del propietario está protegida.</p></div><span class="ledger-count">'+accessManager.users.length+(accessManager.users.length===1?' cuenta':' cuentas')+'</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel"><div class="panel-heading"><div><h3>Invitar trabajador</h3><p>El propietario crea la identidad, envía la verificación y prepara un perfil ERP bloqueado. La persona establecerá su propia contraseña desde el correo.</p></div></div>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Invitar trabajador</h3><p>El propietario crea la identidad y envía el código. La persona verifica su correo y establece su contraseña. Después, activa su acceso desde Cuentas ERP.</p></div></div>'+
       '<form id="invite-worker-form" class="rate-form"><label class="form-field"><span>Nombre completo</span><input name="display_name" maxlength="180" placeholder="Nombre del trabajador" required></label><label class="form-field"><span>Correo electrónico</span><input name="email" type="email" maxlength="180" placeholder="trabajador@correo.com" required></label><label class="form-field"><span>Cargo</span><input name="position_title" maxlength="120" placeholder="Vendedor, bodeguero…"></label><label class="form-field"><span>Plantilla de permisos</span><select name="role_template_key">'+roleOptions+'</select></label><div class="modal-actions"><button class="button button-primary" type="submit">Crear y enviar invitación</button></div></form></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>Identidades de Neon Auth que todavía no tienen perfil ERP. Puedes reenviar el código o preparar el perfil bloqueado.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
       '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
@@ -4817,6 +4818,18 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       if(summary)summary.textContent="Excepciones ("+userRow.querySelectorAll("[data-override-key]").length+")";
       return;
     }
+    if(action==="activate-user-account"){
+      const row=button.closest("tr[data-user-id]"), id=row?.getAttribute("data-user-id");
+      if(!id)return;
+      button.disabled=true;
+      try{
+        await erpApi("users/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({account_status:"active"})});
+        await loadAccessManager(true);
+        toast("Acceso activado. La persona ya puede iniciar sesión con su correo y contraseña.");
+      }catch(error){toast(error?.message||"No se pudo activar el acceso.");}
+      finally{button.disabled=false;}
+      return;
+    }
     if(action==="save-user-access"){
       const row=button.closest("tr"), id=row?.getAttribute("data-user-id");
       if(!id)return;
@@ -4863,7 +4876,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         await erpApi("users",{method:"POST",body:JSON.stringify(payload)});
         form.reset();
         await loadAccessManager(true);
-        toast("Invitación enviada. La cuenta quedó bloqueada hasta que verifiques y actives sus permisos.");
+        toast("Invitación enviada. Cuando la persona verifique el correo y cree su contraseña, entra a Cuentas ERP y pulsa Activar acceso.");
       }catch(error){
         identityCreated = identityCreated || error?.identityCreated === true;
         toast(identityCreated

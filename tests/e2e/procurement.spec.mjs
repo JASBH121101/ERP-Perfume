@@ -75,7 +75,7 @@ async function installProcurementApi(page) {
     body: JSON.stringify(payload)
   });
 
-  await page.route('**/assets/js/bootstrap.mjs', route => route.fulfill({
+  await page.route('**/assets/js/bootstrap.mjs*', route => route.fulfill({
     status: 200,
     contentType: 'text/javascript; charset=utf-8',
     body: "document.body.classList.remove('auth-pending','auth-locked');" +

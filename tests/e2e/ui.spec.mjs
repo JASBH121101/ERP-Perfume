@@ -56,7 +56,7 @@ const fixture = {
 };
 
 test.beforeEach(async ({ page }) => {
-  await page.route('**/assets/js/bootstrap.mjs', route => route.fulfill({
+  await page.route('**/assets/js/bootstrap.mjs*', route => route.fulfill({
     status: 200,
     contentType: 'text/javascript; charset=utf-8',
     body: "document.body.classList.remove('auth-pending','auth-locked');" +
@@ -1295,14 +1295,14 @@ test('mobile sidebar visual coverage checks drawer, scrim, viewport bounds and d
 // these tests validate the real browser state machine without creating accounts
 // or sending messages to real mailboxes.
 async function installRealAuthBootstrapMock(page, { owner = false } = {}) {
-  await page.unroute('**/assets/js/bootstrap.mjs');
+  await page.unroute('**/assets/js/bootstrap.mjs*');
   const bootstrapPath = path.join(process.cwd(), 'assets/js/bootstrap.mjs');
   const bootstrapSource = (await readFile(bootstrapPath, 'utf8')).replace(
     'import { createAuthClient } from "@neondatabase/auth";',
     'const createAuthClient = () => window.__mockAuthClient;'
   );
   expect(bootstrapSource).not.toContain('import { createAuthClient } from "@neondatabase/auth";');
-  await page.route('**/assets/js/bootstrap.mjs', route => route.fulfill({
+  await page.route('**/assets/js/bootstrap.mjs*', route => route.fulfill({
     status: 200,
     contentType: 'text/javascript; charset=utf-8',
     body: bootstrapSource
