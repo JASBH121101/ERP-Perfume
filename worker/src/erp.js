@@ -14,7 +14,7 @@ const RESOURCE_DEFS = {
   employees: { table: "employees", roles: ["owner", "admin", "hr"], fields: ["employee_code","name","position","department","salary_nio","status","hire_date","phone","email","notes","commission_enabled","commission_rate","contract_type","work_schedule","contract_start_date","contract_end_date"], order: "name ASC" },
   hr_attendance: { table: "hr_attendance", roles: ["owner", "admin", "hr"], fields: ["employee_id","work_date","check_in","check_out","break_minutes","status","notes"], order: "work_date DESC" },
   hr_leave_requests: { table: "hr_leave_requests", roles: ["owner", "admin", "hr"], fields: ["employee_id","leave_type","start_date","end_date","days","reason","status"], order: "created_at DESC" },
-  hr_payroll_periods: { table: "hr_payroll_periods", roles: ["owner", "admin", "hr", "finance"], fields: ["period_start","period_end","payment_date","period_type","commission_exchange_rate","status","notes"], order: "period_start DESC" },
+  hr_payroll_periods: { table: "hr_payroll_periods", roles: ["owner", "admin", "hr", "finance"], fields: ["period_start","period_end","payment_date","period_type","period_frequency","commission_exchange_rate","status","notes"], order: "period_start DESC" },
   hr_payroll_items: { table: "hr_payroll_items", roles: ["owner", "admin", "hr", "finance"], fields: ["payroll_period_id","employee_id","base_salary_nio","bonuses_nio","deductions_nio","net_salary_nio","notes"], order: "created_at DESC" },
   dgi_support_documents: { table: "dgi_support_documents", roles: ["owner", "admin", "finance"], fields: ["document_date","document_type","issuer","reference_number","description","fiscal_period","currency","original_amount","amount_nio","formal_invoice","file_key","file_name","file_type","file_size","notes"], order: "document_date DESC, created_at DESC" },
   inventory_movements: { table: "inventory_movements", roles: ["owner", "admin", "inventory"], fields: ["product_id","movement_type","quantity","quantity_delta","previous_stock","new_stock","note","reference_type","reference_id"], order: "created_at DESC" }
@@ -385,7 +385,7 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
 }
 
 async function readBootstrap(sql, user, permissionContext) {
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings, employeeHistory, employeeDocuments] =
+  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, vacationLedger, payrollPeriods, payrollItems, settings, employeeHistory, employeeDocuments] =
     await sql.transaction((tx) => [
       tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
       tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
@@ -410,6 +410,7 @@ async function readBootstrap(sql, user, permissionContext) {
       tx`SELECT e.*, u.id AS linked_user_id, u.account_status AS linked_account_status, u.active AS account_active FROM employees e LEFT JOIN app_users u ON u.employee_id=e.id ORDER BY e.name ASC LIMIT 1000`,
       tx`SELECT * FROM hr_attendance ORDER BY work_date DESC LIMIT 5000`,
       tx`SELECT * FROM hr_leave_requests ORDER BY created_at DESC LIMIT 2000`,
+      tx`SELECT * FROM hr_vacation_ledger ORDER BY effective_date DESC,created_at DESC LIMIT 10000`,
       tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`,
       tx`SELECT * FROM hr_payroll_items ORDER BY created_at DESC LIMIT 5000`,
       tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`,
@@ -488,6 +489,9 @@ async function readBootstrap(sql, user, permissionContext) {
   if (hasPermission(permissionContext, "hr.attendance.view")) result.hr_attendance = attendance;
   if (hasPermission(permissionContext, "hr.leave.view")) result.hr_leave_requests = leaveRequests;
   if (hasPermission(permissionContext, "hr.payroll.view")) {
+    result.hr_vacation_ledger = vacationLedger;
+    result.hr_tax_settings = settings.find((setting) => setting.setting_key === "hr_tax_settings")?.setting_value || { inatec_rate:2, ir_brackets:[{upper:100000,base:0,rate:0,excess:0},{upper:200000,base:0,rate:15,excess:100000},{upper:350000,base:15000,rate:20,excess:200000},{upper:500000,base:45000,rate:25,excess:350000},{upper:null,base:82500,rate:30,excess:500000}] };
+    result.hr_pricing_settings = settings.find((setting) => setting.setting_key === "hr_pricing_settings")?.setting_value || { target_margin_percent:35, commission_rate_percent:3, commission_basis:"gross_profit", payment_fee_percent:0, other_variable_cost_percent:0 };
     result.hr_payroll_periods = payrollPeriods;
     result.hr_payroll_items = payrollItems;
     result.hr_inss_settings = settings.find((setting) => setting.setting_key === "hr_inss_settings")?.setting_value || { regime:"integral", employer_band:"under_50", employee_rate:7, employer_rate:21.5 };
@@ -717,7 +721,7 @@ async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
   const changeReason = String(input.change_reason || '').trim();
   delete input.effective_date; delete input.change_reason; delete input.employee_code; delete input.hire_date;
   if (!/^[0-9a-f-]{36}$/i.test(String(id || ''))) return erpError(400, 'INVALID_EMPLOYEE_ID', 'La referencia del colaborador no es válida.');
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(effectiveDate) || Number.isNaN(Date.parse(effectiveDate + 'T00:00:00Z'))) return erpError(400, 'INVALID_EFFECTIVE_DATE', 'La fecha efectiva del cambio no es válida.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate) || Number.isNaN(Date.parse(effectiveDate + 'T00:00:00Z'))) return erpError(400, 'INVALID_EFFECTIVE_DATE', 'La fecha efectiva del cambio no es válida.');
   const normalized = normalizeEmployeeCreateInput(input, { partial: true });
   if (normalized.error) return erpError(400, normalized.error.code, normalized.error.message);
   const safe = safeFields(def, normalized.value), keys = safe.keys, values = safe.values;
@@ -1875,51 +1879,53 @@ async function createPayrollItem(sql,user,body) {
   if(!periodId||!employeeId||![base,bonus,deductions].every(Number.isFinite)||base<0||bonus<0||deductions<0)
     return erpError(400,"INVALID_PAYROLL_ITEM","Revisa período, colaborador, salario base, bonos y deducciones.");
   try{
-    const settingsRows=await sql.query("SELECT setting_value FROM app_settings WHERE setting_key='hr_inss_settings' LIMIT 1");
-    const inss=settingsRows[0]?.setting_value||{};
-    const employeeRate=Number(inss.employee_rate??7);
-    const employerRate=Number(inss.employer_rate??21.5);
-    if(![employeeRate,employerRate].every(Number.isFinite)||employeeRate<0||employeeRate>100||employerRate<0||employerRate>100)
-      return erpError(409,"INVALID_INSS_SETTINGS","Configura tasas válidas de INSS antes de crear la nómina.");
-    // The exchange rate is frozen on the payroll period, not read again per employee.
+    const settingsRows=await sql.query("SELECT setting_key,setting_value FROM app_settings WHERE setting_key IN ('hr_inss_settings','hr_tax_settings')");
+    const settingMap=Object.fromEntries(settingsRows.map(row=>[row.setting_key,row.setting_value]));
+    const inss=settingMap.hr_inss_settings||{};
+    const tax=settingMap.hr_tax_settings||{};
+    const employeeRate=Number(inss.employee_rate??7),employerRate=Number(inss.employer_rate??21.5),inatecRate=Number(tax.inatec_rate??2);
+    const brackets=Array.isArray(tax.ir_brackets)?tax.ir_brackets:null;
+    if(![employeeRate,employerRate,inatecRate].every(Number.isFinite)||employeeRate<0||employeeRate>100||employerRate<0||employerRate>100||inatecRate<0||inatecRate>100||!brackets?.length)
+      return erpError(409,"INVALID_HR_TAX_SETTINGS","La configuración de INSS, IR o INATEC no es válida.");
+    // The exchange rate and payment frequency are frozen per payroll period.
     const rows=await sql.query(
-      "WITH period AS (SELECT id,status,period_start,period_end,period_type,commission_exchange_rate FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), " +
+      "WITH period AS (SELECT id,status,period_start,period_end,period_type,period_frequency,commission_exchange_rate FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), " +
       "employee AS (SELECT id,hire_date,salary_nio,commission_enabled FROM employees WHERE id=$2::uuid AND status='Activo'), " +
-      "cycle AS (SELECT make_date(EXTRACT(YEAR FROM p.period_start)::int-1,12,1) AS cycle_start, " +
-        "make_date(EXTRACT(YEAR FROM p.period_start)::int,11,30) AS cycle_end, LEAST(p.period_end,CURRENT_DATE) AS as_of " +
-        "FROM period p), " +
-      "monthly_ordinary AS (SELECT date_trunc('month',pp.period_end)::date AS month_start, " +
-        "SUM(pi.base_salary_nio+pi.bonuses_nio+pi.commissions_nio)::numeric(14,2) AS ordinary_salary " +
-        "FROM hr_payroll_items pi JOIN hr_payroll_periods pp ON pp.id=pi.payroll_period_id " +
-        "CROSS JOIN cycle c WHERE pi.employee_id=$2::uuid AND pp.status='Pagada' AND pp.period_type='Ordinaria' " +
-        "AND pp.period_end>=(date_trunc('month',c.cycle_end)-INTERVAL '5 months')::date AND pp.period_end<=c.cycle_end " +
-        "GROUP BY date_trunc('month',pp.period_end)), " +
+      "cycle AS (SELECT make_date(EXTRACT(YEAR FROM p.period_start)::int-1,12,1) AS cycle_start,make_date(EXTRACT(YEAR FROM p.period_start)::int,11,30) AS cycle_end,LEAST(p.period_end,CURRENT_DATE) AS as_of FROM period p), " +
+      "monthly_ordinary AS (SELECT date_trunc('month',pp.period_end)::date AS month_start,SUM(pi.base_salary_nio+pi.bonuses_nio+pi.commissions_nio)::numeric(14,2) AS ordinary_salary " +
+        "FROM hr_payroll_items pi JOIN hr_payroll_periods pp ON pp.id=pi.payroll_period_id CROSS JOIN cycle c WHERE pi.employee_id=$2::uuid AND pp.status='Pagada' AND pp.period_type='Ordinaria' " +
+        "AND pp.period_end>=(date_trunc('month',c.cycle_end)-INTERVAL '5 months')::date AND pp.period_end<=c.cycle_end GROUP BY date_trunc('month',pp.period_end)), " +
       "variable_basis AS (SELECT MAX(ordinary_salary)::numeric(14,2) AS highest_salary FROM monthly_ordinary), " +
       "aguinaldo_calc AS (SELECT CASE WHEN p.period_type='Aguinaldo' AND e.hire_date IS NOT NULL AND e.hire_date+INTERVAL '1 month'<=c.as_of AND c.as_of>=GREATEST(e.hire_date,c.cycle_start) " +
-        "THEN ROUND((CASE WHEN e.commission_enabled THEN COALESCE(v.highest_salary,e.salary_nio) ELSE e.salary_nio END) * " +
-        "((LEAST(c.as_of,c.cycle_end)-GREATEST(e.hire_date,c.cycle_start)+1)::numeric / NULLIF((c.cycle_end-c.cycle_start+1),0)),2) " +
-        "ELSE 0 END AS aguinaldo_nio FROM period p CROSS JOIN employee e CROSS JOIN cycle c CROSS JOIN variable_basis v), " +
-      "selected_commissions AS (SELECT ec.id,ec.commission_usd,p.commission_exchange_rate FROM employee_commissions ec CROSS JOIN period p " +
-        "WHERE p.period_type='Ordinaria' AND ec.employee_id=$2::uuid AND ec.status='Pendiente' " +
+        "THEN ROUND((CASE WHEN e.commission_enabled THEN COALESCE(v.highest_salary,e.salary_nio) ELSE e.salary_nio END)*((LEAST(c.as_of,c.cycle_end)-GREATEST(e.hire_date,c.cycle_start)+1)::numeric/NULLIF((c.cycle_end-c.cycle_start+1),0)),2) ELSE 0 END AS aguinaldo_nio " +
+        "FROM period p CROSS JOIN employee e CROSS JOIN cycle c CROSS JOIN variable_basis v), " +
+      "selected_commissions AS (SELECT ec.id,ec.commission_usd,p.commission_exchange_rate FROM employee_commissions ec CROSS JOIN period p WHERE p.period_type='Ordinaria' AND ec.employee_id=$2::uuid AND ec.status='Pendiente' " +
         "AND ec.sale_date BETWEEN p.period_start AND p.period_end ORDER BY ec.id FOR UPDATE OF ec), " +
-      "commission_totals AS (SELECT COALESCE(SUM(sc.commission_usd),0)::numeric(14,2) AS commission_usd, ROUND(COALESCE(SUM(sc.commission_usd),0)*p.commission_exchange_rate,2)::numeric(14,2) AS commission_nio, p.commission_exchange_rate FROM period p LEFT JOIN selected_commissions sc ON TRUE GROUP BY p.commission_exchange_rate), " +
+      "commission_totals AS (SELECT COALESCE(SUM(sc.commission_usd),0)::numeric(14,2) AS commission_usd,ROUND(COALESCE(SUM(sc.commission_usd),0)*p.commission_exchange_rate,2)::numeric(14,2) AS commission_nio,p.commission_exchange_rate " +
+        "FROM period p LEFT JOIN selected_commissions sc ON TRUE GROUP BY p.commission_exchange_rate), " +
       "contribution AS (SELECT CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$7/100,2) END AS employee_inss, " +
-        "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$8/100,2) END AS employer_inss " +
+        "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$8/100,2) END AS employer_inss, " +
+        "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(($3+$4+ct.commission_nio)*$11/100,2) END AS employer_inatec, " +
+        "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE GREATEST(0,($3+$4+ct.commission_nio)-ROUND(($3+$4+ct.commission_nio)*$7/100,2)) END AS taxable_income " +
         "FROM period p CROSS JOIN commission_totals ct), " +
-      "created AS (INSERT INTO hr_payroll_items(payroll_period_id,employee_id,base_salary_nio,bonuses_nio,deductions_nio, " +
-        "commissions_usd,commissions_nio,commission_exchange_rate,inss_employee_nio,inss_employer_nio,aguinaldo_nio,net_salary_nio,notes) " +
-        "SELECT p.id,e.id,$3,$4,$5,ct.commission_usd,ct.commission_nio,ct.commission_exchange_rate,contribution.employee_inss,contribution.employer_inss,ac.aguinaldo_nio, " +
-        "ROUND($3+$4+ct.commission_nio+ac.aguinaldo_nio-$5-contribution.employee_inss,2),$6 " +
-        "FROM period p CROSS JOIN employee e CROSS JOIN commission_totals ct CROSS JOIN contribution CROSS JOIN aguinaldo_calc ac " +
-        "WHERE p.status='Borrador' AND " +
-        "((p.period_type='Ordinaria' AND $5<=($3+$4+ct.commission_nio-contribution.employee_inss)) OR " +
+      "history AS (SELECT COUNT(pi.id)::int AS periods,COALESCE(SUM(pi.ir_taxable_income_nio),0)::numeric(14,2) AS taxable_total,COALESCE(SUM(pi.ir_withheld_nio),0)::numeric(14,2) AS withheld_total " +
+        "FROM period p LEFT JOIN hr_payroll_periods hp ON hp.period_type='Ordinaria' AND hp.status='Pagada' AND hp.period_frequency=p.period_frequency AND EXTRACT(YEAR FROM hp.period_start)=EXTRACT(YEAR FROM p.period_start) AND hp.period_end<p.period_start " +
+        "LEFT JOIN hr_payroll_items pi ON pi.payroll_period_id=hp.id AND pi.employee_id=$2::uuid), " +
+      "tax_calc AS (SELECT c.taxable_income AS current_taxable,CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(((h.taxable_total+c.taxable_income)/(h.periods+1))*CASE p.period_frequency WHEN 'weekly' THEN 52 WHEN 'biweekly' THEN 24 ELSE 12 END,2) END AS annualized_income, " +
+        "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE hr_ir_annual_tax(((h.taxable_total+c.taxable_income)/(h.periods+1))*CASE p.period_frequency WHEN 'weekly' THEN 52 WHEN 'biweekly' THEN 24 ELSE 12 END,$10::jsonb) END AS annual_tax, " +
+        "CASE WHEN p.period_type='Aguinaldo' THEN 0 ELSE ROUND(GREATEST(0,(hr_ir_annual_tax(((h.taxable_total+c.taxable_income)/(h.periods+1))*CASE p.period_frequency WHEN 'weekly' THEN 52 WHEN 'biweekly' THEN 24 ELSE 12 END,$10::jsonb)*(h.periods+1)/CASE p.period_frequency WHEN 'weekly' THEN 52 WHEN 'biweekly' THEN 24 ELSE 12 END)-h.withheld_total),2) END AS ir_withheld " +
+        "FROM period p CROSS JOIN contribution c CROSS JOIN history h), " +
+      "created AS (INSERT INTO hr_payroll_items(payroll_period_id,employee_id,base_salary_nio,bonuses_nio,deductions_nio,commissions_usd,commissions_nio,commission_exchange_rate, " +
+        "inss_employee_nio,inss_employer_nio,ir_taxable_income_nio,ir_withheld_nio,inatec_employer_nio,aguinaldo_nio,net_salary_nio,notes) " +
+        "SELECT p.id,e.id,$3,$4,$5,ct.commission_usd,ct.commission_nio,ct.commission_exchange_rate,c.employee_inss,c.employer_inss,tc.current_taxable,tc.ir_withheld,c.employer_inatec,ac.aguinaldo_nio, " +
+        "ROUND($3+$4+ct.commission_nio+ac.aguinaldo_nio-$5-c.employee_inss-tc.ir_withheld,2),$6 " +
+        "FROM period p CROSS JOIN employee e CROSS JOIN commission_totals ct CROSS JOIN contribution c CROSS JOIN aguinaldo_calc ac CROSS JOIN tax_calc tc " +
+        "WHERE p.status='Borrador' AND ((p.period_type='Ordinaria' AND $5<=($3+$4+ct.commission_nio-c.employee_inss-tc.ir_withheld)) OR " +
         "(p.period_type='Aguinaldo' AND $3=0 AND $4=0 AND $5=0 AND ac.aguinaldo_nio>0)) RETURNING *), " +
-      "assigned AS (UPDATE employee_commissions ec SET status='Asignada',payroll_period_id=$1::uuid " +
-        "FROM selected_commissions selected WHERE ec.id=selected.id AND EXISTS(SELECT 1 FROM created) RETURNING ec.id), " +
-      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) " +
-        "SELECT $9,'create','hr_payroll_item',created.id::text,to_jsonb(created) FROM created) " +
+      "assigned AS (UPDATE employee_commissions ec SET status='Asignada',payroll_period_id=$1::uuid FROM selected_commissions selected WHERE ec.id=selected.id AND EXISTS(SELECT 1 FROM created) RETURNING ec.id), " +
+      "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $9,'create','hr_payroll_item',created.id::text,to_jsonb(created) FROM created) " +
       "SELECT created.* FROM created",
-      [periodId,employeeId,base,bonus,deductions,body.notes||null,employeeRate,employerRate,user.id]
+      [periodId,employeeId,base,bonus,deductions,body.notes||null,employeeRate,employerRate,user.id,JSON.stringify(brackets),inatecRate]
     );
     if(!rows[0]){
       const period=await sql.query("SELECT status,period_type FROM hr_payroll_periods WHERE id=$1::uuid",[periodId]);
@@ -1927,8 +1933,8 @@ async function createPayrollItem(sql,user,body) {
       if(period[0].status!=="Borrador")return erpError(409,"PAYROLL_PERIOD_LOCKED","Solo se pueden agregar partidas a un período en borrador.");
       const employee=await sql.query("SELECT id FROM employees WHERE id=$1::uuid AND status='Activo'",[employeeId]);
       if(!employee[0])return erpError(404,"ACTIVE_EMPLOYEE_NOT_FOUND","El colaborador no existe o está inactivo.");
-      if(period[0].period_type==="Aguinaldo")return erpError(400,"AGUINALDO_ITEM_INVALID","El período de aguinaldo calcula el treceavo mes automáticamente y no admite salario, bonos ni deducciones adicionales.");
-      return erpError(400,"PAYROLL_DEDUCTIONS_TOO_HIGH","Las deducciones superan el neto disponible después del INSS y las comisiones.");
+      if(period[0].period_type==="Aguinaldo")return erpError(400,"AGUINALDO_ITEM_INVALID","El período de aguinaldo calcula el decimotercer mes automáticamente y no admite salario, bonos ni deducciones adicionales.");
+      return erpError(400,"PAYROLL_DEDUCTIONS_TOO_HIGH","Las deducciones superan el neto disponible después de INSS e IR.");
     }
     return erpJson({record:rows[0]},201);
   }catch(error){
@@ -1978,11 +1984,62 @@ async function reviewLeaveRequest(sql,user,id,body) {
   const status=String(body.status||"");
   if(!["Aprobado","Rechazado"].includes(status))return erpError(400,"INVALID_LEAVE_STATUS","La solicitud solo puede aprobarse o rechazarse.");
   const rows=await sql.query(
-    "WITH changed AS (UPDATE hr_leave_requests SET status=$1,reviewed_by=$2,reviewed_at=NOW() WHERE id=$3::uuid AND status='Pendiente' RETURNING *), logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $2,'review','hr_leave_request',id::text,jsonb_build_object('status',$1) FROM changed) SELECT * FROM changed",
+    "WITH target AS (SELECT l.*,e.hire_date FROM hr_leave_requests l JOIN employees e ON e.id=l.employee_id WHERE l.id=$3::uuid AND l.status='Pendiente' FOR UPDATE OF l,e), " +
+    "balance AS (SELECT t.*,ROUND(GREATEST(0,(EXTRACT(YEAR FROM age(t.end_date,t.hire_date))*12+EXTRACT(MONTH FROM age(t.end_date,t.hire_date))+EXTRACT(DAY FROM age(t.end_date,t.hire_date))/30.0)*2.5 + " +
+      "COALESCE((SELECT SUM(v.days_delta) FROM hr_vacation_ledger v WHERE v.employee_id=t.employee_id AND v.effective_date<=t.end_date),0)),2) AS available_days FROM target t), " +
+    "changed AS (UPDATE hr_leave_requests l SET status=$1,reviewed_by=$2,reviewed_at=NOW() FROM balance b WHERE l.id=b.id AND " +
+      "($1='Rechazado' OR b.leave_type NOT IN ('Vacaciones','Vacation') OR b.days<=b.available_days) RETURNING l.*), " +
+    "ledger AS (INSERT INTO hr_vacation_ledger(employee_id,source_leave_request_id,entry_type,effective_date,days_delta,amount_nio,notes,created_by) " +
+      "SELECT c.employee_id,c.id,'enjoyed',c.end_date,-ABS(c.days),0,'Disfrute aprobado de vacaciones', $2 FROM changed c WHERE $1='Aprobado' AND c.leave_type IN ('Vacaciones','Vacation') RETURNING id), " +
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $2,'review','hr_leave_request',c.id::text,jsonb_build_object('status',$1,'vacation_ledger_created',EXISTS(SELECT 1 FROM ledger)) FROM changed c) " +
+    "SELECT c.*,(SELECT available_days FROM balance LIMIT 1) AS available_days FROM changed c",
     [status,user.id,id]
   );
-  if(!rows[0])return erpError(409,"LEAVE_REQUEST_NOT_PENDING","La solicitud no existe o ya fue revisada.");
+  if(!rows[0]){
+    const target=await sql.query("SELECT l.status,l.leave_type,l.days,e.hire_date,l.end_date,COALESCE((SELECT SUM(v.days_delta) FROM hr_vacation_ledger v WHERE v.employee_id=l.employee_id AND v.effective_date<=l.end_date),0) AS used_days FROM hr_leave_requests l JOIN employees e ON e.id=l.employee_id WHERE l.id=$1::uuid LIMIT 1",[id]);
+    if(!target[0])return erpError(404,"LEAVE_REQUEST_NOT_FOUND","La solicitud no existe.");
+    if(target[0].status!=="Pendiente")return erpError(409,"LEAVE_REQUEST_NOT_PENDING","La solicitud ya fue revisada.");
+    if(status==="Aprobado"&&["Vacaciones","Vacation"].includes(target[0].leave_type)){
+      const age=await sql.query("SELECT ROUND(GREATEST(0,(EXTRACT(YEAR FROM age($1::date,$2::date))*12+EXTRACT(MONTH FROM age($1::date,$2::date))+EXTRACT(DAY FROM age($1::date,$2::date))/30.0)*2.5+$3::numeric),2) AS balance",[target[0].end_date,target[0].hire_date,target[0].used_days]);
+      return erpError(409,"INSUFFICIENT_VACATION_BALANCE","La solicitud supera el saldo de vacaciones disponible ("+Number(age[0]?.balance||0).toFixed(2)+" días).");
+    }
+    return erpError(409,"LEAVE_REVIEW_FAILED","No se pudo revisar la solicitud.");
+  }
   return erpJson({record:rows[0]});
+}
+
+async function createVacationLedgerEntry(sql,user,body) {
+  const employeeId=String(body.employee_id||"");
+  const entryType=String(body.entry_type||"");
+  const effectiveDate=String(body.effective_date||"");
+  const daysDelta=Number(body.days_delta||0);
+  const amount=Number(body.amount_nio||0);
+  const notes=String(body.notes||"").trim();
+  if(!/^[0-9a-f-]{36}$/i.test(employeeId)||!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)||
+     !["cash_payment","cash_settlement","adjustment"].includes(entryType)||!Number.isFinite(daysDelta)||!Number.isFinite(amount)||
+     amount<0||notes.length<3||notes.length>500)
+    return erpError(400,"INVALID_VACATION_LEDGER_ENTRY","Revisa colaborador, tipo, fecha, días, monto y motivo.");
+  if(entryType==="cash_payment"&&(daysDelta!==0||amount<=0))return erpError(400,"INVALID_VACATION_PAYMENT","Un pago de vacaciones debe registrar dinero sin reducir días de descanso.");
+  if(entryType==="cash_settlement"&&(daysDelta>=0||amount<=0))return erpError(400,"INVALID_VACATION_SETTLEMENT","La liquidación debe registrar monto y días negativos.");
+  if(entryType==="adjustment"&&(daysDelta===0&&amount<=0))return erpError(400,"INVALID_VACATION_ADJUSTMENT","La corrección debe modificar días o monto.");
+  const rows=await sql.query(
+    "WITH employee AS (SELECT id,status,hire_date FROM employees WHERE id=$1::uuid FOR UPDATE), " +
+    "balance AS (SELECT e.*,ROUND(GREATEST(0,(EXTRACT(YEAR FROM age($2::date,e.hire_date))*12+EXTRACT(MONTH FROM age($2::date,e.hire_date))+EXTRACT(DAY FROM age($2::date,e.hire_date))/30.0)*2.5+" +
+      "COALESCE((SELECT SUM(v.days_delta) FROM hr_vacation_ledger v WHERE v.employee_id=e.id AND v.effective_date<=$2::date),0)),2) AS available_days FROM employee e), " +
+    "created AS (INSERT INTO hr_vacation_ledger(employee_id,entry_type,effective_date,days_delta,amount_nio,notes,created_by) " +
+      "SELECT id,$3,$2,$4,$5,$6,$7 FROM balance WHERE hire_date IS NOT NULL AND " +
+      "($3<>'cash_settlement' OR status='Inactivo') AND ($4>=0 OR ABS($4)<=available_days) RETURNING *), " +
+    "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $7,'create','hr_vacation_ledger',id::text,to_jsonb(created) FROM created) " +
+    "SELECT created.* FROM created",
+    [employeeId,effectiveDate,entryType,daysDelta,amount,notes,user.id]
+  );
+  if(!rows[0]){
+    const employee=await sql.query("SELECT status,hire_date FROM employees WHERE id=$1::uuid",[employeeId]);
+    if(!employee[0])return erpError(404,"EMPLOYEE_NOT_FOUND","No existe el colaborador.");
+    if(entryType==="cash_settlement"&&employee[0].status!=="Inactivo")return erpError(409,"EMPLOYEE_NOT_TERMINATED","La liquidación monetaria solo se admite para un colaborador marcado como inactivo.");
+    return erpError(409,"VACATION_BALANCE_EXCEEDED","La operación supera el saldo de vacaciones disponible o la fecha no es válida.");
+  }
+  return erpJson({record:rows[0]},201);
 }
 
 async function createCashEntry(sql,user,body) {
@@ -2289,6 +2346,10 @@ export function resolveRoutePermission(resource, method, id, parts, body) {
     return method === "GET" ? "hr.payroll.view" : null;
   }
   if (resource === "hr-payroll-items") return method === "POST" ? "hr.payroll.create" : method === "GET" ? "hr.payroll.view" : null;
+  if (resource === "hr-vacation-ledger") {
+    if (method !== "POST") return method === "GET" ? "hr.payroll.view" : null;
+    return ["cash_settlement","adjustment"].includes(String(body?.entry_type || "")) ? "hr.payroll.approve" : "hr.payroll.create";
+  }
   if (resource === "hr-leave-requests") {
     if (method === "PATCH") {
       const status = String(body?.status || "").toLowerCase();
@@ -2374,7 +2435,7 @@ export async function handleERPRequest(request, env, user, sql) {
   const protectedResource = resource.replace(/-/g, "_");
   const immutableTransactions = new Set([
     "inventory_movements", "cash_entries", "invoices", "purchases",
-    "expenses", "cash_accounts", "hr_payroll_items", "hr_payroll_periods"
+    "expenses", "cash_accounts", "hr_payroll_items", "hr_payroll_periods", "hr_vacation_ledger"
   ]);
   if ((request.method === "PATCH" || request.method === "DELETE") &&
       id && immutableTransactions.has(protectedResource)) {
@@ -2848,9 +2909,22 @@ export async function handleERPRequest(request, env, user, sql) {
   if (resource === "settings" && request.method === "PATCH") {
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     const key = String(body.setting_key || "");
-    if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance","hr_inss_settings"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
+    if (!["default_exchange_rate","base_currency","payroll_currency","dgi_compliance","hr_inss_settings","hr_tax_settings","hr_pricing_settings"].includes(key)) return erpError(400, "INVALID_SETTING", "La configuración solicitada no está permitida.");
     const value = body.setting_value;
     if (key === "default_exchange_rate" && (!Number.isFinite(Number(value?.value)) || Number(value.value) <= 0 || Number(value.value) > 100000)) return erpError(400, "INVALID_EXCHANGE_RATE", "El tipo de cambio debe ser mayor que cero.");
+    if (key === "hr_tax_settings") {
+      const allowed=new Set(["tax_year","inatec_rate","ir_brackets"]);
+      if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).some(field=>!allowed.has(field))||!Number.isInteger(Number(value.tax_year))||Number(value.tax_year)<2020||Number(value.tax_year)>2100||!Number.isFinite(Number(value.inatec_rate))||Number(value.inatec_rate)<0||Number(value.inatec_rate)>10||!Array.isArray(value.ir_brackets)||value.ir_brackets.length!==5)
+        return erpError(400,"INVALID_HR_TAX_SETTINGS","La configuración fiscal de nómina no es válida.");
+      const brackets=value.ir_brackets;
+      const shape=brackets.every((b,i)=>b&&typeof b==="object"&&Number.isFinite(Number(b.base))&&Number.isFinite(Number(b.rate))&&Number.isFinite(Number(b.excess))&&Number(b.base)>=0&&Number(b.rate)>=0&&Number(b.rate)<=100&&Number(b.excess)>=0&&((i===4&&b.upper==null)||(i<4&&Number.isFinite(Number(b.upper))&&Number(b.upper)>Number(b.excess))));
+      if(!shape)return erpError(400,"INVALID_HR_TAX_BRACKETS","La tabla de tramos IR contiene valores inválidos.");
+    }
+    if (key === "hr_pricing_settings") {
+      const allowed=new Set(["target_margin_percent","commission_rate_percent","commission_basis","payment_fee_percent","other_variable_cost_percent"]);
+      if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).some(field=>!allowed.has(field))||!Object.prototype.hasOwnProperty.call(value,"target_margin_percent")||!Number.isFinite(Number(value.target_margin_percent))||Number(value.target_margin_percent)<0||Number(value.target_margin_percent)>90||!Number.isFinite(Number(value.commission_rate_percent||0))||Number(value.commission_rate_percent||0)<0||Number(value.commission_rate_percent||0)>100||!Number.isFinite(Number(value.payment_fee_percent||0))||Number(value.payment_fee_percent||0)<0||Number(value.payment_fee_percent||0)>100||!Number.isFinite(Number(value.other_variable_cost_percent||0))||Number(value.other_variable_cost_percent||0)<0||Number(value.other_variable_cost_percent||0)>100||!["gross_profit","sales"].includes(String(value.commission_basis||"gross_profit")))
+        return erpError(400,"INVALID_HR_PRICING_SETTINGS","La configuración de precios contiene porcentajes o bases no válidas.");
+    }
     if (key === "hr_inss_settings") {
       const allowed = new Set(["regime","employer_band","employee_rate","employer_rate"]);
       if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((field) => !allowed.has(field))) {
@@ -3002,6 +3076,11 @@ export async function handleERPRequest(request, env, user, sql) {
     if (!canAccess(user, RESOURCE_DEFS.hr_payroll_items.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para administrar nómina.");
     let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
     return createPayrollItem(sql,user,body);
+  }
+  if (resource === "hr-vacation-ledger" && request.method === "POST" && !id) {
+    if (!canAccess(user, RESOURCE_DEFS.hr_payroll_items.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para registrar movimientos de vacaciones.");
+    let body; try { body = await request.json(); } catch { return erpError(400, "INVALID_JSON", "El cuerpo JSON no es válido."); }
+    return createVacationLedgerEntry(sql,user,body);
   }
   if (resource === "hr-leave-requests" && request.method === "PATCH" && id) {
     if (!canAccess(user, RESOURCE_DEFS.hr_leave_requests.roles)) return erpError(403, "FORBIDDEN", "No tienes permiso para revisar solicitudes.");

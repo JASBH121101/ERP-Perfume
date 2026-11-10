@@ -174,12 +174,22 @@
           <label class="form-field"><span>Precio de venta (USD) <span class="required-mark" aria-hidden="true">*</span></span><input name="price" type="number" min="0.01" step="0.01" required></label>
           <label class="form-field"><span>Precio mayorista (USD)</span><input name="wholesalePrice" type="number" min="0" step="0.01"></label>
         </div>
+        <div class="form-grid product-pricing-settings">
+          <label class="form-field"><span>Margen neto objetivo (%)</span><input name="targetMarginPercent" type="number" min="0" max="90" step="0.1" value="35"></label>
+          <label class="form-field"><span>Comisión del vendedor (%)</span><input name="commissionRatePercent" type="number" min="0" max="100" step="0.1" value="3"></label>
+          <label class="form-field"><span>Base de comisión</span><select name="commissionBasis"><option value="gross_profit" selected>Utilidad bruta</option><option value="sales">Venta neta</option></select></label>
+          <label class="form-field"><span>Comisiones de cobro (%)</span><input name="paymentFeePercent" type="number" min="0" max="100" step="0.1" value="0"></label>
+          <label class="form-field"><span>Otros costos variables (%)</span><input name="otherVariableCostPercent" type="number" min="0" max="100" step="0.1" value="0"></label>
+        </div>
         <div class="cost-preview-grid" aria-live="polite">
           <div class="cost-preview-card"><span>Costo unitario</span><strong id="unit-cost-preview">$0.00</strong></div>
-          <div class="cost-preview-card"><span>Utilidad estimada</span><strong id="unit-profit-preview">$0.00</strong></div>
-          <div class="cost-preview-card"><span>Margen bruto</span><strong id="gross-margin-preview">—</strong></div>
+          <div class="cost-preview-card"><span>Utilidad bruta actual</span><strong id="unit-profit-preview">$0.00</strong></div>
+          <div class="cost-preview-card"><span>Margen bruto actual</span><strong id="gross-margin-preview">—</strong></div>
+          <div class="cost-preview-card"><span>Precio recomendado</span><strong id="recommended-price-preview" data-price="">—</strong></div>
+          <div class="cost-preview-card"><span>Utilidad y margen neto estimados</span><strong id="net-margin-preview">—</strong></div>
         </div>
-        <p class="form-helper">Cálculo preliminar: costo de compra + costos adicionales. Margen bruto = utilidad ÷ precio de venta. No incluye impuestos ni gastos generales.</p>
+        <div class="modal-actions"><button type="button" class="button button-secondary" id="apply-suggested-price">Aplicar precio recomendado</button></div>
+        <p class="form-helper">El precio recomendado busca el margen neto objetivo después de comisión comercial y costos variables porcentuales. El costo unitario conserva el costo promedio ponderado del inventario; esta herramienta no altera el método de valoración.</p>
       </section>
 
       <section class="product-form-section">

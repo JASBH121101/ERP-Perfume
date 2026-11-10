@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate,
-  calculateInss, calculateCommission, convertCommissionForPayroll
+  calculateInss, calculateCommission, convertCommissionForPayroll,
+  calculateAnnualIncomeTax, calculatePayrollWithholding, calculateProductPricing
 } from "../assets/js/hr-calculations.mjs";
 
 test("tenure renders complete years, months and days", () => {
@@ -74,4 +75,57 @@ test("payroll converts USD commission using the frozen payroll exchange rate", (
   });
   assert.throws(() => convertCommissionForPayroll(-1, 36.6), RangeError);
   assert.throws(() => convertCommissionForPayroll(10, 0), RangeError);
+});
+
+
+test("annual income tax applies the progressive work-income brackets", () => {
+  assert.equal(calculateAnnualIncomeTax(100000), 0);
+  assert.equal(calculateAnnualIncomeTax(150000), 7500);
+  assert.equal(calculateAnnualIncomeTax(250000), 25000);
+  assert.equal(calculateAnnualIncomeTax(400000), 57500);
+  assert.equal(calculateAnnualIncomeTax(600000), 112500);
+});
+
+test("variable commission-only payroll calculates progressive IR and employer-only INATEC", () => {
+  const first = calculatePayrollWithholding({
+    baseSalaryNio: 0, commissionsNio: 6000, employeeInssNio: 420, frequency: "biweekly", inatecRate: 2
+  });
+  assert.equal(first.taxableIncomeNio, 5580);
+  assert.equal(first.annualizedIncomeNio, 133920);
+  assert.equal(first.irWithheldNio, 212);
+  assert.equal(first.inatecEmployerNio, 120);
+  const second = calculatePayrollWithholding({
+    baseSalaryNio: 0, commissionsNio: 8000, employeeInssNio: 560, frequency: "biweekly", inatecRate: 2,
+    previousPeriods: [{ taxableIncomeNio: 5580, irWithheldNio: 212 }]
+  });
+  assert.equal(second.annualizedIncomeNio, 156240);
+  assert.equal(second.irWithheldNio, 491);
+});
+
+test("aguinaldo payroll withholding is exempt from IR and INATEC", () => {
+  const result = calculatePayrollWithholding({ baseSalaryNio: 0, bonusesNio: 1000, periodType: "Aguinaldo" });
+  assert.deepEqual(result, {
+    taxableIncomeNio: 0, annualizedIncomeNio: 0, annualTaxNio: 0, irWithheldNio: 0, inatecEmployerNio: 0
+  });
+});
+
+test("vacation ledger leaves paid-but-not-used days intact and subtracts leave and termination settlement", () => {
+  const result = calculateVacationBalance({
+    hireDate: "2026-01-01", employeeId: "e1", asOf: "2026-04-01", leaveRequests: [],
+    ledgerEntries: [
+      { employeeId: "e1", entryType: "cash_payment", daysDelta: 0, amountNio: 1000, effectiveDate: "2026-02-01" },
+      { employeeId: "e1", entryType: "opening", daysDelta: 1, amountNio: 0, effectiveDate: "2026-02-15" },
+      { employeeId: "e1", entryType: "enjoyed", daysDelta: -2, effectiveDate: "2026-03-01" },
+      { employeeId: "e1", entryType: "cash_settlement", daysDelta: -1, amountNio: 500, effectiveDate: "2026-03-20" },
+      { employeeId: "e1", entryType: "enjoyed", daysDelta: -5, effectiveDate: "2026-05-01" }
+    ]
+  });
+  assert.deepEqual(result, { accruedDays: 7.5, usedDays: 3, balanceDays: 5.5 });
+});
+
+test("product price recommendation protects target margin after gross-profit commission and fees", () => {
+  const result = calculateProductPricing({ unitCostUsd: 100, targetMarginPercent: 35, commissionRatePercent: 3 });
+  assert.equal(result.suggestedPriceUsd, 156.45);
+  assert.equal(result.estimatedNetMarginPercent, 35);
+  assert.throws(() => calculateProductPricing({ unitCostUsd: 100, targetMarginPercent: 80, commissionRatePercent: 25 }), RangeError);
 });

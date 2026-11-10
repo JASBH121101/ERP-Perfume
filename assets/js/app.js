@@ -3,7 +3,7 @@ import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financi
 import { resolveReportingPeriod, isWithinReportingPeriod } from './reporting-periods.mjs';
 import { profileHasPermission } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
-import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss } from './hr-calculations.mjs';
+import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss, calculatePayrollWithholding, calculateProductPricing } from './hr-calculations.mjs';
 import { getContractReminders } from './hr-contract-reminders.mjs';
 
 'use strict';
@@ -118,6 +118,9 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
   let payrollPeriods = [];
   let payrollItems = [];
   let hrCommissions = [];
+  let vacationLedger = [];
+  let hrTaxSettings = { tax_year:2026, inatec_rate:2, ir_brackets:[{upper:100000,base:0,rate:0,excess:0},{upper:200000,base:0,rate:15,excess:100000},{upper:350000,base:15000,rate:20,excess:200000},{upper:500000,base:45000,rate:25,excess:350000},{upper:null,base:82500,rate:30,excess:500000}] };
+  let hrPricingSettings = { target_margin_percent:35, commission_rate_percent:3, commission_basis:'gross_profit', payment_fee_percent:0, other_variable_cost_percent:0 };
   let hrInssSettings = { regime:'integral', employer_band:'under_50', employee_rate:7, employer_rate:21.5 };
   let inventoryMovements = [];
   let inventorySummary = null;
@@ -556,19 +559,22 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         id:e.id, employeeId:e.employee_id, leaveType:e.leave_type, startDate:e.start_date, endDate:e.end_date,
         days:Number(e.days||0), reason:e.reason||"", status:e.status, reviewedAt:e.reviewed_at
       }));
+      vacationLedger = (data.hr_vacation_ledger || []).map(e => ({id:e.id,employeeId:e.employee_id,sourceLeaveRequestId:e.source_leave_request_id,payrollItemId:e.payroll_item_id,entryType:e.entry_type,effectiveDate:e.effective_date,daysDelta:Number(e.days_delta||0),amountNio:Number(e.amount_nio||0),notes:e.notes||"",createdAt:e.created_at}));
       payrollPeriods = (data.hr_payroll_periods || []).map(e => ({
         id:e.id, periodStart:e.period_start, periodEnd:e.period_end, paymentDate:e.payment_date||"",
-        status:e.status, periodType:e.period_type||"Ordinaria", commissionExchangeRate:Number(e.commission_exchange_rate||exchangeRate), notes:e.notes||"", createdAt:e.created_at
+        status:e.status, periodType:e.period_type||"Ordinaria", periodFrequency:e.period_frequency||"monthly", commissionExchangeRate:Number(e.commission_exchange_rate||exchangeRate), notes:e.notes||"", createdAt:e.created_at
       }));
       payrollItems = (data.hr_payroll_items || []).map(e => ({
         id:e.id, payrollPeriodId:e.payroll_period_id, employeeId:e.employee_id,
         baseSalaryNio:Number(e.base_salary_nio||0), bonusesNio:Number(e.bonuses_nio||0),
         commissionsUsd:Number(e.commissions_usd||0), commissionsNio:Number(e.commissions_nio||0),
         commissionExchangeRate:Number(e.commission_exchange_rate||exchangeRate), inssEmployeeNio:Number(e.inss_employee_nio||0),
-        inssEmployerNio:Number(e.inss_employer_nio||0), aguinaldoNio:Number(e.aguinaldo_nio||0),
+        inssEmployerNio:Number(e.inss_employer_nio||0), irTaxableIncomeNio:Number(e.ir_taxable_income_nio||0), irWithheldNio:Number(e.ir_withheld_nio||0), inatecEmployerNio:Number(e.inatec_employer_nio||0), aguinaldoNio:Number(e.aguinaldo_nio||0),
         deductionsNio:Number(e.deductions_nio||0), netSalaryNio:Number(e.net_salary_nio||0), notes:e.notes||""
       }));
       hrInssSettings = data.hr_inss_settings && typeof data.hr_inss_settings === "object" ? { ...hrInssSettings, ...data.hr_inss_settings } : hrInssSettings;
+      hrTaxSettings = data.hr_tax_settings && typeof data.hr_tax_settings === "object" ? { ...hrTaxSettings, ...data.hr_tax_settings } : hrTaxSettings;
+      hrPricingSettings = data.hr_pricing_settings && typeof data.hr_pricing_settings === "object" ? { ...hrPricingSettings, ...data.hr_pricing_settings } : hrPricingSettings;
       hrCommissions = (data.hr_commissions || []).map(c => ({
         id:c.id, invoiceId:c.invoice_id, invoiceNumber:c.invoice_number||'', invoiceItemId:c.invoice_item_id,
         employeeId:c.employee_id, employeeName:c.employee_name||'Colaborador', saleDate:c.sale_date,
@@ -2196,7 +2202,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       body='<div class="form-grid">'+selectField('Colaborador','employeeId',options,true)+selectField('Tipo','leaveType','<option>Vacaciones</option><option>Permiso</option><option>Incapacidad</option><option>Otro</option>',true)+formField('Fecha inicial','startDate','date',true,'')+formField('Fecha final','endDate','date',true,'')+formField('Días solicitados','days','number',true,'min="0.5" step="0.5"')+formField('Motivo','reason','text',false,'maxlength="300"')+'</div>';
     }
     if(type==='payroll-period'){
-      body='<div class="form-grid">'+selectField('Tipo de período','periodType','<option value="Ordinaria" selected>Nómina ordinaria</option><option value="Aguinaldo">Aguinaldo · decimotercer mes</option>',true)+formField('Inicio del período','periodStart','date',true,'')+formField('Fin del período','periodEnd','date',true,'')+formField('Fecha prevista de pago','paymentDate','date',false,'')+formField('Tasa USD/NIO para comisiones','commissionExchangeRate','number',true,'min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">El período se crea en estado Borrador. En nómina ordinaria se calculan comisiones e INSS. En Aguinaldo, el sistema calcula el proporcional del decimotercer mes por separado.</p>';
+      body='<div class="form-grid">'+selectField('Tipo de período','periodType','<option value="Ordinaria" selected>Nómina ordinaria</option><option value="Aguinaldo">Aguinaldo · decimotercer mes</option>',true)+selectField('Frecuencia','periodFrequency','<option value="monthly">Mensual · 12 períodos</option><option value="biweekly" selected>Quincenal · 24 períodos</option><option value="weekly">Semanal · 52 períodos</option>',true)+formField('Inicio del período','periodStart','date',true,'')+formField('Fin del período','periodEnd','date',true,'')+formField('Fecha prevista de pago','paymentDate','date',false,'')+formField('Tasa USD/NIO para comisiones','commissionExchangeRate','number',true,'min="0.0001" step="0.0001" value="'+Number(exchangeRate).toFixed(4)+'"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper">La frecuencia determina la proyección anual de IR. Las comisiones se incluyen una sola vez; INATEC es patronal y no se descuenta del neto del trabajador.</p>';
     }
     if(type==='payroll-payment'){
       const period=payrollPeriods.find(p=>String(p.id)===String(recordId));
@@ -2210,12 +2216,13 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const available=payrollPeriods.filter(p=>p.status==='Borrador');
       if(!available.length){toast('Crea primero un período de nómina en estado Borrador.');return;}
       if(!employees.length){toast('Registra primero un colaborador.');return;}
-      const periodOptions=available.map(p=>'<option value="'+p.id+'" data-period-type="'+esc(p.periodType||'Ordinaria')+'">'+(p.periodType==='Aguinaldo'?'Aguinaldo · ':'Ordinaria · ')+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</option>').join('');
+      const periodOptions=available.map(p=>'<option value="'+p.id+'" data-period-type="'+esc(p.periodType||'Ordinaria')+'" data-period-frequency="'+esc(p.periodFrequency||'monthly')+'">'+(p.periodType==='Aguinaldo'?'Aguinaldo · ':'Ordinaria · ')+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</option>').join('');
       const firstPeriod=available[0];
       const employeeOptions=employees.filter(e=>e.status==='Activo').map(e=>'<option value="'+e.id+'" data-salary="'+Number(e.salaryNio||0)+'">'+esc(e.name)+' · '+moneyInCurrency(e.salaryNio,'NIO')+'</option>').join('');
-      const initialSalary=firstPeriod?.periodType==='Aguinaldo'?0:Number(employees.find(e=>e.status==='Activo')?.salaryNio||0);
+      const initialEmployee=employees.find(e=>e.status==='Activo');
+      const initialSalary=firstPeriod?.periodType==='Aguinaldo'?0:Number(initialEmployee?.salaryNio||0)*(firstPeriod?.periodFrequency==='weekly'?12/52:(firstPeriod?.periodFrequency==='biweekly'?0.5:1));
       const isAguinaldo=firstPeriod?.periodType==='Aguinaldo';
-      body='<div class="form-grid">'+selectField('Período de nómina','payrollPeriodId',periodOptions,true)+selectField('Colaborador','employeeId',employeeOptions,true)+formField('Salario base (C$)','baseSalaryNio','number',true,'min="0" step="0.01" value="'+initialSalary+'"')+formField('Bonos (C$)','bonusesNio','number',false,'min="0" step="0.01" value="0"')+formField('Deducciones (C$)','deductionsNio','number',false,'min="0" step="0.01" value="0"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper" id="payroll-item-help">'+(isAguinaldo?'El sistema calcula el decimotercer mes proporcional usando el ciclo laboral y el salario que corresponda; el aguinaldo está exento de INSS.':'El servidor calcula el INSS del trabajador y patronal, e incorpora las comisiones pendientes de ventas dentro de este período.')+'</p>';
+      body='<div class="form-grid">'+selectField('Período de nómina','payrollPeriodId',periodOptions,true)+selectField('Colaborador','employeeId',employeeOptions,true)+formField('Salario base del período (C$)','baseSalaryNio','number',true,'min="0" step="0.01" value="'+initialSalary.toFixed(2)+'"')+formField('Bonos (C$)','bonusesNio','number',false,'min="0" step="0.01" value="0"')+formField('Otras deducciones (C$)','deductionsNio','number',false,'min="0" step="0.01" value="0"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper" id="payroll-item-help">'+(isAguinaldo?'El sistema calcula el decimotercer mes proporcional.':'Puedes usar salario base cero para un asesor que cobra solo comisiones. El servidor calcula comisiones, INSS, IR e INATEC patronal.')+'</p>';
     }
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
@@ -2535,7 +2542,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         const startDate=get('periodStart'),endDate=get('periodEnd'),paymentDate=get('paymentDate');
         if(!startDate||!endDate||endDate<startDate||!Number.isFinite(num('commissionExchangeRate'))||num('commissionExchangeRate')<=0)throw new Error('Revisa las fechas y la tasa USD/NIO para comisiones.');
         await erpApi('hr_payroll_periods',{method:'POST',body:JSON.stringify({
-          period_start:startDate,period_end:endDate,period_type:get('periodType')==='Aguinaldo'?'Aguinaldo':'Ordinaria',payment_date:paymentDate||null,commission_exchange_rate:num('commissionExchangeRate'),status:'Borrador',notes:get('notes')||null
+          period_start:startDate,period_end:endDate,period_type:get('periodType')==='Aguinaldo'?'Aguinaldo':'Ordinaria',period_frequency:['monthly','biweekly','weekly'].includes(get('periodFrequency'))?get('periodFrequency'):'biweekly',payment_date:paymentDate||null,commission_exchange_rate:num('commissionExchangeRate'),status:'Borrador',notes:get('notes')||null
         })});
       } else if(type==='payroll-item'){
         const periodId=get('payrollPeriodId'),employeeId=get('employeeId');
@@ -2678,7 +2685,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       return [...totals.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([,value])=>Number(value.toFixed(2)));
     };
     const vacationFor=(employee)=>calculateVacationBalance({
-      hireDate:employee.hireDate,leaveRequests,employeeId:employee.id,asOf:today
+      hireDate:employee.hireDate,leaveRequests,ledgerEntries:vacationLedger,employeeId:employee.id,asOf:today
     });
     const aguinaldoFor=(employee)=>{
       const cycle=calculateAguinaldoEstimate({hireDate:employee.hireDate,salaryNio:employee.salaryNio,asOf:today});
@@ -2732,15 +2739,17 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const rows=leaveRequests.map(l=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(employeeName(l.employeeId))+'</td><td data-label="Tipo">'+esc(l.leaveType)+'</td><td data-label="Período">'+dateText(l.startDate)+' – '+dateText(l.endDate)+'</td><td data-label="Días">'+Number(l.days||0)+'</td><td data-label="Estado"><span class="status-chip '+(l.status==='Aprobado'?'status-success':(l.status==='Rechazado'?'status-danger':'status-pending'))+'">'+esc(l.status)+'</span></td><td data-label="Acciones">'+(l.status==='Pendiente'?'<button class="button button-quiet button-small" data-action="approve-leave" data-id="'+l.id+'">Aprobar</button><button class="button button-quiet button-small" data-action="reject-leave" data-id="'+l.id+'">Rechazar</button>':'—')+'</td></tr>').join('');
       content=(activeEmployees.length?'':'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Primero registra al colaborador</strong><p>Los permisos y vacaciones se vinculan a una persona activa.</p></div></div>')+'<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>COLABORADOR</th><th>TIPO</th><th>PERÍODO</th><th>DÍAS</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay permisos o vacaciones registrados.</td></tr>')+'</tbody></table></div></article>';
     } else if(state.hrTab==='benefits'){
+      const pendingCommissionNioFor=e=>activeCommissions.filter(c=>String(c.employeeId)===String(e.id)&&c.status==='Pendiente').reduce((sum,c)=>sum+Number(c.commissionNio||Number(c.commissionUsd||0)*Number(c.exchangeRate||exchangeRate||36.6)),0);
       const rows=activeEmployees.map(e=>{
         const tenure=calculateTenure(e.hireDate,today);
         const vacation=vacationFor(e);
         const aguinaldo=aguinaldoFor(e);
         const inss=inssFor(e);
+        const taxEstimate=calculatePayrollWithholding({baseSalaryNio:Number(e.salaryNio||0),commissionsNio:pendingCommissionNioFor(e),employeeInssNio:inss.employeeInssNio,frequency:'monthly',inatecRate:Number(hrTaxSettings.inatec_rate||2),brackets:hrTaxSettings.ir_brackets});
         const salaryBasisNote=e.commissionEnabled
           ? (monthlyOrdinarySalaries(e.id,aguinaldo.cycleEnd).length?'<small class="table-secondary">Mayor salario ordinario de los últimos meses registrados</small>':'<small class="table-secondary">Sin historial suficiente; se usa el salario fijo actual</small>')
           : '<small class="table-secondary">Último salario mensual fijo registrado</small>';
-        return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(tenure.label)+'</small></td><td data-label="Vacaciones"><strong>'+vacation.balanceDays.toFixed(2)+' días</strong><small class="table-secondary">'+vacation.accruedDays.toFixed(2)+' acumulados · '+vacation.usedDays.toFixed(2)+' usados</small></td><td data-label="Aguinaldo estimado"><strong>'+moneyInCurrency(aguinaldo.amountNio,'NIO')+'</strong>'+salaryBasisNote+'</td><td data-label="INSS trabajador">'+moneyInCurrency(inss.employeeInssNio,'NIO')+'</td><td data-label="INSS patronal">'+moneyInCurrency(inss.employerInssNio,'NIO')+'</td></tr>';
+        return '<tr><td data-label="Colaborador" class="table-primary">'+esc(e.name)+'<small class="table-secondary">'+esc(tenure.label)+'</small></td><td data-label="Vacaciones"><strong>'+vacation.balanceDays.toFixed(2)+' días</strong><small class="table-secondary">'+vacation.accruedDays.toFixed(2)+' acumulados · '+vacation.usedDays.toFixed(2)+' usados</small></td><td data-label="Aguinaldo estimado"><strong>'+moneyInCurrency(aguinaldo.amountNio,'NIO')+'</strong>'+salaryBasisNote+'</td><td data-label="INSS trabajador">'+moneyInCurrency(inss.employeeInssNio,'NIO')+'</td><td data-label="IR estimado">'+moneyInCurrency(taxEstimate.irWithheldNio,'NIO')+'</td><td data-label="INATEC patronal estimado">'+moneyInCurrency(taxEstimate.inatecEmployerNio,'NIO')+'</td><td data-label="INSS patronal">'+moneyInCurrency(inss.employerInssNio,'NIO')+'</td></tr>';
       }).join('');
       const vacationTotal=activeEmployees.reduce((sum,e)=>sum+vacationFor(e).balanceDays,0);
       const aguinaldoTotal=activeEmployees.reduce((sum,e)=>sum+aguinaldoFor(e).amountNio,0);
@@ -2754,7 +2763,10 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       const inssConfig=permissionGranted('settings.general.manage')
         ? '<form id="hr-inss-settings-form" class="hr-inss-settings"><div class="form-grid"><label>Modalidad INSS<select name="preset">'+presets.map(([value,label])=>'<option value="'+value+'" '+(preset===value?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label><div class="detail-field"><span>Tasas aplicadas</span><strong>'+Number(hrInssSettings.employee_rate||7).toFixed(2)+'% trabajador · '+Number(hrInssSettings.employer_rate||21.5).toFixed(2)+'% patronal</strong></div></div><button class="button button-primary button-small" type="submit">Guardar modalidad INSS</button></form>'
         : '<p class="form-helper">Modalidad configurada: '+esc(hrInssSettings.regime||'integral')+' · trabajador '+Number(hrInssSettings.employee_rate||7).toFixed(2)+'% · patronal '+Number(hrInssSettings.employer_rate||21.5).toFixed(2)+'%.</p>';
-      content='<div class="summary-strip hr-benefit-summary"><div class="summary-mini"><span>Vacaciones disponibles</span><strong>'+vacationTotal.toFixed(2)+' días</strong></div><div class="summary-mini"><span>Aguinaldo estimado</span><strong>'+moneyInCurrency(aguinaldoTotal,'NIO')+'</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>VACACIONES DISPONIBLES</th><th>AGUINALDO ESTIMADO</th><th>INSS TRABAJADOR</th><th>INSS PATRONAL</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay colaboradores activos.</td></tr>')+'</tbody></table></div></article><article class="list-panel hr-benefit-settings"><div class="panel-heading"><div><h3>Configuración de INSS</h3><p>El descuento laboral y el aporte patronal se muestran por separado.</p></div></div>'+inssConfig+'</article><div class="notice-panel hr-payroll-note">'+svg('warning')+'<div><strong>Estimaciones y reglas</strong><p>Las vacaciones se acumulan a razón de 2.5 días por mes y se descuentan cuando ya fueron disfrutadas. El aguinaldo se muestra como provisión estimada; su pago se calcula en un período especial. El INSS mostrado es una proyección sobre salario mensual y comisiones pendientes, no una planilla oficial.</p></div></div>';
+      const employeeLabel=id=>employees.find(e=>String(e.id)===String(id))?.name||'Colaborador';
+      const ledgerRows=vacationLedger.slice(0,60).map(v=>'<tr><td>'+dateText(v.effectiveDate)+'</td><td>'+esc(employeeLabel(v.employeeId))+'</td><td>'+esc(({enjoyed:'Vacaciones disfrutadas',cash_payment:'Pago registrado',cash_settlement:'Liquidación al salir',adjustment:'Ajuste de saldo',opening:'Saldo inicial'})[v.entryType]||v.entryType)+'</td><td>'+(v.daysDelta>0?'+':'')+Number(v.daysDelta||0).toFixed(2)+'</td><td>'+moneyInCurrency(v.amountNio,'NIO')+'</td><td>'+esc(v.notes||'—')+'</td></tr>').join('');
+      const vacationEntryForm=(permissionGranted('hr.payroll.create')||permissionGranted('hr.payroll.approve'))?'<article class="list-panel"><div class="panel-heading"><div><h3>Registro de vacaciones y liquidaciones</h3><p>El pago monetario no elimina los días pendientes; la liquidación solo se registra al terminar el contrato.</p></div></div><form id="hr-vacation-ledger-form" class="hr-inss-settings"><div class="form-grid"><label>Colaborador<select name="employeeId" required><option value="">Selecciona…</option>'+employees.map(e=>'<option value="'+esc(e.id)+'">'+esc(e.name)+' · '+esc(e.status)+'</option>').join('')+'</select></label><label>Movimiento<select name="entryType" required><option value="cash_payment">Pago monetario (sin descontar días)</option><option value="cash_settlement">Liquidación por terminación</option><option value="adjustment">Ajuste auditable de saldo</option></select></label><label>Fecha efectiva<input name="effectiveDate" type="date" value="'+today+'" required></label><label>Días a descontar / ajustar<input name="daysDelta" type="number" step="0.01" value="0" required></label><label>Monto en Córdobas<input name="amountNio" type="number" min="0" step="0.01" value="0" required></label><label class="full-field">Motivo / respaldo<input name="notes" type="text" maxlength="500" required></label></div><p class="form-helper">Para liquidación escribe los días como cantidad positiva: el sistema los registra en negativo y valida el saldo. Para pago monetario, los días deben ser cero. El desembolso se registra aparte en caja/banco.</p><button class="button button-primary button-small" type="submit">Guardar movimiento auditable</button></form></article>':'<p class="form-helper">Tu perfil puede consultar el saldo e historial, pero no registrar ajustes o liquidaciones.</p>';
+      content='<div class="summary-strip hr-benefit-summary"><div class="summary-mini"><span>Vacaciones disponibles</span><strong>'+vacationTotal.toFixed(2)+' días</strong></div><div class="summary-mini"><span>Aguinaldo estimado</span><strong>'+moneyInCurrency(aguinaldoTotal,'NIO')+'</strong></div><div class="summary-mini"><span>IR vigente</span><strong>Tarifa '+Number(hrTaxSettings.tax_year||2026)+'</strong></div><div class="summary-mini"><span>INATEC patronal</span><strong>'+Number(hrTaxSettings.inatec_rate||2).toFixed(2)+'%</strong></div></div><article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>COLABORADOR</th><th>VACACIONES DISPONIBLES</th><th>AGUINALDO ESTIMADO</th><th>INSS TRABAJADOR</th><th>IR ESTIMADO</th><th>INATEC PATRONAL</th><th>INSS PATRONAL</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">No hay colaboradores activos.</td></tr>')+'</tbody></table></div></article><article class="list-panel hr-benefit-settings"><div class="panel-heading"><div><h3>Configuración de INSS</h3><p>El descuento laboral y el aporte patronal se muestran por separado.</p></div></div>'+inssConfig+'<p class="form-helper">INATEC se registra al 2% como costo patronal. IR utiliza la tarifa progresiva anual; actualiza la tabla de DGI cada ejercicio con respaldo contable.</p></article>'+vacationEntryForm+'<article class="list-panel"><div class="panel-heading"><div><h3>Historial de vacaciones</h3><p>Libro inmutable: las correcciones se registran con un ajuste, nunca borrando movimientos.</p></div></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FECHA</th><th>COLABORADOR</th><th>MOVIMIENTO</th><th>DÍAS</th><th>MONTO</th><th>MOTIVO</th></tr></thead><tbody>'+(ledgerRows||'<tr><td colspan="6">Todavía no hay movimientos en el libro de vacaciones.</td></tr>')+'</tbody></table></div></article><div class="notice-panel hr-payroll-note">'+svg('warning')+'<div><strong>Alcance del cálculo</strong><p>Las vacaciones acumulan 2.5 días por mes. El saldo disminuye por disfrute registrado o por liquidación válida al terminar la relación laboral; un pago monetario ordinario no elimina el derecho al descanso. IR/INATEC son cálculos de nómina y deben revisarse con contador según normativa vigente.</p></div></div>';
     } else if(state.hrTab==='commissions'){
       const rows=hrCommissions.map(c=>'<tr><td data-label="Colaborador" class="table-primary">'+esc(c.employeeName)+'</td><td data-label="Factura">'+esc(c.invoiceNumber||'—')+'<small class="table-secondary">'+dateText(c.saleDate)+'</small></td><td data-label="Perfume">'+esc(c.productName)+' × '+Number(c.quantity||0)+'</td><td data-label="Utilidad bruta">'+money(c.grossProfitUsd)+' USD</td><td data-label="Tasa">'+Number(c.rate||0).toFixed(2)+'%</td><td data-label="Comisión USD">'+money(c.commissionUsd)+' USD<small class="table-secondary">Equivalente al vender: '+moneyInCurrency(c.commissionNio,'NIO')+'</small></td><td data-label="Estado"><span class="status-chip '+(c.status==='Pagada'?'status-success':(c.status==='Asignada'?'status-pending':'status-muted'))+'">'+esc(c.status)+'</span></td></tr>').join('');
       const pendingTotal=activeCommissions.reduce((sum,c)=>sum+Number(c.commissionUsd||0),0);
@@ -2771,12 +2783,14 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         const commissionRate=items.find(item=>Number(item.commissionsUsd||0)>0)?.commissionExchangeRate||p.commissionExchangeRate||exchangeRate;
         const aguinaldo=items.reduce((sum,item)=>sum+Number(item.aguinaldoNio||0),0);
         const employerInss=items.reduce((sum,item)=>sum+Number(item.inssEmployerNio||0),0);
+        const irWithheld=items.reduce((sum,item)=>sum+Number(item.irWithheldNio||0),0);
+        const employerInatec=items.reduce((sum,item)=>sum+Number(item.inatecEmployerNio||0),0);
         const periodAction=p.status==='Borrador'
           ?'<button class="button button-quiet button-small" data-action="approve-payroll" data-id="'+p.id+'" '+(items.length?'':'disabled')+'>Aprobar</button>'
           :(p.status==='Aprobada'?'<button class="button button-primary button-small" data-action="pay-payroll" data-id="'+p.id+'">Pagar nómina</button>':'—');
-        return '<tr><td data-label="Período" class="table-primary">'+(p.periodType==='Aguinaldo'?'Aguinaldo · ':'Ordinaria · ')+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</td><td data-label="Colaboradores">'+items.length+'</td><td data-label="Comisiones">'+money(commissionsUsd)+' USD<small class="table-secondary">'+moneyInCurrency(commissions,'NIO')+' · tasa '+Number(commissionRate).toFixed(4)+'</small></td><td data-label="Aguinaldo">'+moneyInCurrency(aguinaldo,'NIO')+'</td><td data-label="INSS patronal">'+moneyInCurrency(employerInss,'NIO')+'</td><td data-label="Neto a pagar">'+moneyInCurrency(total,'NIO')+'</td><td data-label="Fecha de pago">'+dateText(p.paymentDate)+'</td><td data-label="Estado"><span class="status-chip '+(p.status==='Pagada'?'status-success':(p.status==='Anulada'?'status-muted':'status-pending'))+'">'+esc(p.status)+'</span></td><td data-label="Acciones">'+periodAction+'</td></tr>';
+        return '<tr><td data-label="Período" class="table-primary">'+(p.periodType==='Aguinaldo'?'Aguinaldo · ':'Ordinaria · ')+dateText(p.periodStart)+' – '+dateText(p.periodEnd)+'</td><td data-label="Colaboradores">'+items.length+'</td><td data-label="Comisiones">'+money(commissionsUsd)+' USD<small class="table-secondary">'+moneyInCurrency(commissions,'NIO')+' · tasa '+Number(commissionRate).toFixed(4)+'</small></td><td data-label="Aguinaldo">'+moneyInCurrency(aguinaldo,'NIO')+'</td><td data-label="INSS patronal">'+moneyInCurrency(employerInss,'NIO')+'</td><td data-label="IR retenido">'+moneyInCurrency(irWithheld,'NIO')+'</td><td data-label="INATEC patronal">'+moneyInCurrency(employerInatec,'NIO')+'</td><td data-label="Neto a pagar">'+moneyInCurrency(total,'NIO')+'</td><td data-label="Fecha de pago">'+dateText(p.paymentDate)+'</td><td data-label="Estado"><span class="status-chip '+(p.status==='Pagada'?'status-success':(p.status==='Anulada'?'status-muted':'status-pending'))+'">'+esc(p.status)+'</span></td><td data-label="Acciones">'+periodAction+'</td></tr>';
       }).join('');
-      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>COMISIONES USD / C$</th><th>AGUINALDO</th><th>INSS PATRONAL</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel hr-payroll-note">'+svg('warning')+'<div><strong>Antes de pagar</strong><p>El ERP calcula automáticamente comisiones e INSS en la nómina ordinaria. Para el treceavo mes crea un período de tipo Aguinaldo: el sistema calcula el proporcional y no aplica cotizaciones ni deducciones ordinarias al aguinaldo.</p></div></div>';
+      content='<article class="list-panel"><div class="table-wrap"><table class="data-table mobile-record-table mobile-record-actions"><thead><tr><th>PERÍODO</th><th>COLABORADORES</th><th>COMISIONES USD / C$</th><th>AGUINALDO</th><th>INSS PATRONAL</th><th>IR RETENIDO</th><th>INATEC PATRONAL</th><th>NETO A PAGAR</th><th>FECHA DE PAGO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>'+(rows||'<tr><td colspan="11">No hay períodos de nómina registrados.</td></tr>')+'</tbody></table></div></article><div class="notice-panel hr-payroll-note">'+svg('warning')+'<div><strong>Antes de pagar</strong><p>El ERP calcula comisiones, INSS e IR en nómina ordinaria y muestra INATEC como aporte patronal separado. El IR variable se ajusta con los períodos pagados del ejercicio; el aguinaldo permanece en período especial.</p></div></div>';
     }
     return '<section class="hr-view">'+heading(views.hr,actions)+
       '<div class="summary-strip hr-summary-strip"><div class="summary-mini"><span>Colaboradores activos</span><strong>'+activeEmployees.length+'</strong></div><div class="summary-mini"><span>Nómina mensual base</span><strong>'+moneyInCurrency(activeEmployees.reduce((s,e)=>s+Number(e.salaryNio||0),0),'NIO')+'</strong></div><div class="summary-mini"><span>Comisiones pendientes</span><strong>'+money(activeCommissions.reduce((s,c)=>s+Number(c.commissionUsd||0),0))+' USD</strong></div><div class="summary-mini"><span>Períodos de nómina</span><strong>'+payrollPeriods.length+'</strong></div></div>'+
@@ -3647,17 +3661,12 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }, 3600);
   }
   function updateProductCostPreview() {
-    const purchaseCost = Number(form.elements.purchaseCost.value || 0);
-    const additionalCost = Number(form.elements.additionalCost.value || 0);
-    const price = Number(form.elements.price.value || 0);
-    const unitCost = purchaseCost + additionalCost;
-    const profit = price - unitCost;
-    const margin = price > 0 ? (profit / price) * 100 : null;
-    document.getElementById('unit-cost-preview').textContent = money(unitCost);
-    document.getElementById('unit-profit-preview').textContent = price > 0 ? money(profit) : '—';
-    document.getElementById('gross-margin-preview').textContent = margin === null ? '—' : margin.toFixed(1) + '%';
-    document.getElementById('unit-profit-preview').classList.toggle('negative-value', profit < 0 && price > 0);
-    document.getElementById('gross-margin-preview').classList.toggle('negative-value', margin !== null && margin < 0);
+    const purchaseCost=Number(form.elements.purchaseCost.value||0),additionalCost=Number(form.elements.additionalCost.value||0),price=Number(form.elements.price.value||0),unitCost=purchaseCost+additionalCost,profit=price-unitCost,margin=price>0?(profit/price)*100:null;
+    document.getElementById('unit-cost-preview').textContent=money(unitCost);document.getElementById('unit-profit-preview').textContent=price>0?money(profit):'—';document.getElementById('gross-margin-preview').textContent=margin===null?'—':margin.toFixed(1)+'%';
+    document.getElementById('unit-profit-preview').classList.toggle('negative-value',profit<0&&price>0);document.getElementById('gross-margin-preview').classList.toggle('negative-value',margin!==null&&margin<0);
+    const suggestedNode=document.getElementById('recommended-price-preview'),netNode=document.getElementById('net-margin-preview');
+    try{const r=calculateProductPricing({unitCostUsd:unitCost,targetMarginPercent:Number(form.elements.targetMarginPercent?.value??hrPricingSettings.target_margin_percent??35),commissionRatePercent:Number(form.elements.commissionRatePercent?.value??hrPricingSettings.commission_rate_percent??3),commissionBasis:form.elements.commissionBasis?.value||hrPricingSettings.commission_basis||'gross_profit',paymentFeePercent:Number(form.elements.paymentFeePercent?.value??hrPricingSettings.payment_fee_percent??0),otherVariableCostPercent:Number(form.elements.otherVariableCostPercent?.value??hrPricingSettings.other_variable_cost_percent??0)});if(suggestedNode){suggestedNode.textContent=unitCost>0?money(r.suggestedPriceUsd):'—';suggestedNode.dataset.price=unitCost>0?String(r.suggestedPriceUsd):'';}if(netNode)netNode.textContent=unitCost>0?money(r.netProfitUsd)+' · '+r.estimatedNetMarginPercent.toFixed(1)+'% neto':'—';}
+    catch{if(suggestedNode){suggestedNode.textContent='No viable';suggestedNode.dataset.price='';}if(netNode)netNode.textContent='Reduce el margen o los cargos.';}
   }
   function updateProductAuthenticityFields() {
     const isInspired = form.elements.authenticityType?.value === 'inspired';
@@ -3691,6 +3700,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     document.querySelector('#product-dialog .modal-note').textContent = product
       ? 'Edición de ficha. Las existencias no se modifican aquí: registra entradas, salidas o ajustes desde Existencias.'
       : 'La ficha y las existencias iniciales se guardarán al confirmar.';
+    ['targetMarginPercent','commissionRatePercent','commissionBasis','paymentFeePercent','otherVariableCostPercent'].forEach(name=>{const map={targetMarginPercent:'target_margin_percent',commissionRatePercent:'commission_rate_percent',commissionBasis:'commission_basis',paymentFeePercent:'payment_fee_percent',otherVariableCostPercent:'other_variable_cost_percent'};if(form.elements[name]&&hrPricingSettings[map[name]]!==undefined)form.elements[name].value=String(hrPricingSettings[map[name]]);});
     updateProductCostPreview();
     mountProductImageGallery(document.getElementById('product-image-gallery'),product||{images:[]});
     if (typeof dialog.showModal === 'function') dialog.showModal();
@@ -4219,6 +4229,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if (event.target && event.target.id === 'stock-movement-type') updateStockQuantityMode();
   });
   form.addEventListener('input', updateProductCostPreview);
+  form.addEventListener('click',function(event){if(event.target?.closest('#apply-suggested-price')){event.preventDefault();updateProductCostPreview();const suggested=document.getElementById('recommended-price-preview')?.dataset?.price;if(suggested&&Number(suggested)>0){form.elements.price.value=Number(suggested).toFixed(2);updateProductCostPreview();toast('Precio recomendado aplicado. Revisa antes de guardar.');}}});
   form.elements.authenticityType?.addEventListener('change', updateProductAuthenticityFields);
   form.elements.productImages?.addEventListener('change',()=>{
     const files=Array.from(form.elements.productImages.files||[]);
@@ -4496,6 +4507,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }
   });
   businessForm.addEventListener('submit',saveBusinessRecord);
+  document.addEventListener('submit',async function(event){
+    if(event.target?.id!=='hr-vacation-ledger-form')return;
+    event.preventDefault();const form=event.target;if(!form.reportValidity())return;
+    const data=new FormData(form),get=k=>String(data.get(k)||'').trim(),num=k=>Number(data.get(k)||0),type=get('entryType');
+    const daysDelta=type==='cash_payment'?0:(type==='cash_settlement'?-Math.abs(num('daysDelta')):num('daysDelta'));
+    const button=form.querySelector('button[type="submit"]');if(button){button.disabled=true;button.textContent='Guardando…';}
+    try{await erpApi('hr-vacation-ledger',{method:'POST',body:JSON.stringify({employee_id:get('employeeId'),entry_type:type,effective_date:get('effectiveDate'),days_delta:daysDelta,amount_nio:num('amountNio'),notes:get('notes')})});await loadERPFromNeon(true);renderView();toast('Movimiento agregado al historial de vacaciones.');}
+    catch(error){toast(error?.message||'No se pudo registrar el movimiento.');}
+    finally{if(button){button.disabled=false;button.textContent='Guardar movimiento auditable';}}
+  });
   document.addEventListener('focusin',function(event){const input=event.target.closest('[data-lookup]');if(input)renderLookupResults(input);});
   document.addEventListener('input',function(event){const input=event.target.closest('[data-lookup]');if(!input)return;const hidden=input.closest('[data-search-field]').querySelector('input[type="hidden"]');hidden.value='';input.setCustomValidity(input.value.trim()?'Selecciona un resultado de la lista.':'');renderLookupResults(input);if(input.dataset.lookup==='order'&&businessForm.dataset.recordType==='invoice')updateInvoicePreview();});
   document.addEventListener('click',function(event){
