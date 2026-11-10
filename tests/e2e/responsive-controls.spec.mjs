@@ -114,10 +114,8 @@ test.describe('responsive account controls',()=>{
         expect(metrics.rootRight,view+' root right at '+width+'px').toBeLessThanOrEqual(width+1);
         expect(metrics.documentWidth,view+' document overflow at '+width+'px').toBeLessThanOrEqual(width+1);
         expect(metrics.offenders,view+' overflowing elements at '+width+'px').toEqual([]);
-        if(width===390){
-          const safe=view.replace(/[^a-z0-9-]/gi,'-');
-          await page.screenshot({path:path.resolve('visual-evidence/responsive-audit',width+'-'+safe+'.png'),fullPage:false,animations:'disabled'});
-        }
+        const safe=view.replace(/[^a-z0-9-]/gi,'-');
+        await page.screenshot({path:path.resolve('visual-evidence/responsive-audit',width+'-'+safe+'.png'),fullPage:false,animations:'disabled'});
       }
     }
   });
