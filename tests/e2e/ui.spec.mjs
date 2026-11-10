@@ -311,14 +311,19 @@ async function installStatefulInventoryApi(page, options = {}) {
   return { data, requests };
 }
 
-test('authenticated ERP renders dashboard and primary modules from API data', async ({ page }) => {
+test('authenticated ERP renders the executive dashboard and primary modules from API data', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/JB PARFUMS/);
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
-  const inventoryDonut = page.locator('.inventory-donut');
+  await expect(page.locator('.dashboard-module-card[data-view="suppliers"]')).toBeVisible();
+  await expect(page.locator('.dashboard-module-card[data-view="customers"]')).toBeVisible();
+  await expect(page.locator('.dashboard-module-card[data-view="purchaseOrders"]')).toBeVisible();
+  const inventoryDonut = page.locator('.dashboard-donut-ring');
   await expect(inventoryDonut).toBeVisible();
-  await expect(inventoryDonut).toHaveAttribute('aria-label', /Distribución de productos/);
-  await expect(page.locator('.donut-legend-item')).toHaveCount(3);
+  await expect(inventoryDonut).toHaveAttribute('aria-label', /Estado del inventario/);
+  await expect(page.locator('.dashboard-donut-legend-item')).toHaveCount(3);
+  await expect(page.getByRole('heading', { name: 'Visión de los módulos' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Alertas y pendientes' })).toBeVisible();
   await navigateToView(page, 'products');
   await expect(page.getByRole('heading', { name: 'Catálogo de productos' })).toBeVisible();
   await expect(page.locator('#product-table-body')).toContainText('QA Fixture Perfume');
@@ -330,6 +335,32 @@ test('authenticated ERP renders dashboard and primary modules from API data', as
   await expect(page.locator('.hr-tabs')).toBeVisible();
   await navigateToView(page, 'analytics');
   await expect(page.getByRole('heading', { name: 'Informes y análisis' })).toBeVisible();
+});
+
+
+test('executive dashboard hides unauthorized commercial and administrative indicators', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
+  await page.evaluate(() => {
+    window.JBAuth.profile = {
+      id: 'qa-inventory-summary', name: 'QA Inventory', role: 'custom-inventory',
+      permissions: [
+        'dashboard.view', 'products.catalog.view', 'inventory.stock.view',
+        'inventory.receipts.view', 'purchases.purchase_orders.view',
+        'purchases.receipts.view', 'suppliers.records.view'
+      ]
+    };
+  });
+  await page.locator('#sidebar button[data-view="dashboard"]').click();
+  await expect(page.locator('.dashboard-module-card[data-view="suppliers"]')).toBeVisible();
+  await expect(page.locator('.dashboard-module-card[data-view="purchaseOrders"]')).toBeVisible();
+  await expect(page.locator('.dashboard-module-card[data-view="billing"]')).toHaveCount(0);
+  await expect(page.locator('.dashboard-module-card[data-view="cash"]')).toHaveCount(0);
+  await expect(page.locator('.dashboard-module-card[data-view="hr"]')).toHaveCount(0);
+  await expect(page.locator('.metric-card')).not.toContainText('Ventas facturadas');
+  await expect(page.locator('.metric-card')).not.toContainText('Gastos operativos');
+  await expect(page.locator('.dashboard-chart-grid')).not.toContainText('Facturación, costo y gastos');
+  await expect(page.locator('.dashboard-chart-grid')).not.toContainText('Flujo de caja');
 });
 
 test('inventory products search by SKU and filter category and stock status', async ({ page }) => {
