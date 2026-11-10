@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "hashAlgorithm": "sha256",
   "hashDefinition": "SHA-256 over the exact file bytes; no line-ending or whitespace normalization.",
-  "nextMigrationVersion": "0027",
+  "nextMigrationVersion": "0028",
   "snapshot": {
     "provider": "Neon",
     "project": "erp-perfume",
@@ -411,6 +411,15 @@
         "productionAppliedAt": "2026-11-10T13:47:35.336Z",
         "developmentLedgerChecksum": "0e0a47ea8dd8b092a58da04a349ad9b4bcd92e97dc78f6bde43f0d8b323d3c29",
         "productionLedgerChecksum": "0e0a47ea8dd8b092a58da04a349ad9b4bcd92e97dc78f6bde43f0d8b323d3c29"
+      }
+    },
+    {
+      "filename": "0027_hr_vacation_ledger_runtime_grants.sql",
+      "version": "0027",
+      "sha256": "c0c1a7edfa71c42fe20007d2e440d171acc14a819c5852991124920da2c85e5d",
+      "database": {
+        "status": "pending",
+        "note": "Reviewed additive privilege migration. Pending guarded application to Development first, then Production after full regression checks. Grants only SELECT and INSERT to jb_erp_runtime_sql; UPDATE and DELETE remain unavailable."
       }
     }
   ],

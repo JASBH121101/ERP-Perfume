@@ -148,3 +148,16 @@ test("purchase order creator cannot approve their own request", () => {
   assert.equal(canApprovePurchaseOrder("approver-2", "creator-1"), true);
   assert.equal(canApprovePurchaseOrder("approver-2", null), true);
 });
+
+test("HR payroll, vacation ledger and leave routes enforce dedicated permissions", () => {
+  assert.equal(resolveRoutePermission("hr-payroll-items", "POST", "", [], {}), "hr.payroll.create");
+  assert.equal(resolveRoutePermission("hr-payroll-items", "GET", "", [], null), "hr.payroll.view");
+  assert.equal(resolveRoutePermission("hr-vacation-ledger", "GET", "", [], null), "hr.payroll.view");
+  assert.equal(resolveRoutePermission("hr-vacation-ledger", "POST", "", [], { entry_type: "cash_payment" }), "hr.payroll.create");
+  assert.equal(resolveRoutePermission("hr-vacation-ledger", "POST", "", [], { entry_type: "cash_settlement" }), "hr.payroll.approve");
+  assert.equal(resolveRoutePermission("hr-vacation-ledger", "POST", "", [], { entry_type: "adjustment" }), "hr.payroll.approve");
+  assert.equal(resolveRoutePermission("hr-vacation-ledger", "PATCH", "ledger-1", [], {}), null);
+  assert.equal(resolveRoutePermission("hr-leave-requests", "POST", "", [], {}), "hr.leave.create");
+  assert.equal(resolveRoutePermission("hr-leave-requests", "PATCH", "leave-1", [], { status: "Aprobado" }), "hr.leave.approve");
+  assert.equal(resolveRoutePermission("hr-leave-requests", "PATCH", "leave-1", [], { status: "Rechazado" }), "hr.leave.reject");
+});
