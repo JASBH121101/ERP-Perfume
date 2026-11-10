@@ -113,6 +113,70 @@ async function navigateToView(page, view) {
   await sidebar.locator('button[data-view="' + view + '"]').click();
 }
 
+async function installInvoiceVoidFixtureApi(page) {
+  await page.unroute(workerPattern);
+  const data = structuredClone(fixture);
+  const common = {
+    invoice_date: "2026-11-10",
+    currency: "USD",
+    exchange_rate: 1,
+    subtotal_usd: 100,
+    discount_usd: 0,
+    delivery_fee_usd: 0,
+    source: "manual",
+    customer_phone: null,
+    notes: null,
+    created_by: "qa-owner",
+    created_at: "2026-11-10T10:00:00.000Z"
+  };
+  data.invoices = [
+    {
+      ...common,
+      id: "QA-VOID-001",
+      invoice_number: "QA-VOID-001",
+      customer_name: "Cliente factura anulada",
+      total_usd: 500,
+      paid_usd: 0,
+      status: "Anulada"
+    },
+    {
+      ...common,
+      id: "QA-ACTIVE-001",
+      invoice_number: "QA-ACTIVE-001",
+      customer_name: "Cliente factura activa",
+      total_usd: 100,
+      paid_usd: 20,
+      status: "Abono parcial"
+    },
+    {
+      ...common,
+      id: "QA-CANCELLED-001",
+      invoice_number: "QA-CANCELLED-001",
+      customer_name: "Cliente factura cancelada",
+      total_usd: 900,
+      paid_usd: 0,
+      status: "Cancelled"
+    }
+  ];
+  data.invoice_items = [];
+  data.invoice_payments = [];
+  await page.route(workerPattern, async route => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith('/bootstrap') && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ data })
+      });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ records: [], data })
+    });
+  });
+  return data;
+}
+
 async function installHRFixtureApi(page) {
   await page.unroute(workerPattern);
   const data=structuredClone(fixture);
@@ -846,6 +910,28 @@ test('sidebar and font preferences persist without storing operational records l
   await expect(page.locator('body')).toHaveClass(/sidebar-collapsed/);
   await expect(page.locator('#font-scale-label')).toHaveText('120%');
   expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.includes('demo-data')))).toEqual([]);
+});
+
+test('voided invoices remain visible in billing history but cannot affect receivables or be paid', async ({ page }) => {
+  await installInvoiceVoidFixtureApi(page);
+  await page.goto('/');
+
+  await navigateToView(page, 'billing');
+  const voidedRow = page.locator('#view-root tr').filter({ hasText: 'QA-VOID-001' });
+  const cancelledRow = page.locator('#view-root tr').filter({ hasText: 'QA-CANCELLED-001' });
+  const activeRow = page.locator('#view-root tr').filter({ hasText: 'QA-ACTIVE-001' });
+
+  await expect(voidedRow).toBeVisible();
+  await expect(cancelledRow).toBeVisible();
+  await expect(voidedRow.locator('[data-action="new-payment"]')).toHaveCount(0);
+  await expect(cancelledRow.locator('[data-action="new-payment"]')).toHaveCount(0);
+  await expect(activeRow.locator('[data-action="new-payment"]')).toHaveCount(1);
+
+  await navigateToView(page, 'receivables');
+  await expect(page.locator('#view-root')).not.toContainText('QA-VOID-001');
+  await expect(page.locator('#view-root')).not.toContainText('QA-CANCELLED-001');
+  await expect(page.locator('#view-root')).toContainText('QA-ACTIVE-001');
+  await expect(page.locator('#view-root')).toContainText('$80.00');
 });
 
 test('mobile navigation opens and closes after selecting a module', async ({ page }) => {
