@@ -37,32 +37,43 @@ function extractJwt(value) {
   return candidates.find((item) => typeof item === "string" && item.split(".").length === 3) || null;
 }
 
-async function getToken() {
+async function requestSessionToken() {
+  if (!authBaseUrl) return { token: null, error: "" };
+  try {
+    const response = await fetch(authBaseUrl + "/token", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      headers: { accept: "application/json" }
+    });
+    const body = await readJson(response);
+    const token = extractJwt(body);
+    if (response.ok && token) return { token, error: "" };
+    return {
+      token: null,
+      error: response.ok
+        ? "El servicio de acceso respondió, pero no entregó una sesión válida."
+        : "El servicio de acceso respondió HTTP " + response.status + " al solicitar el JWT."
+    };
+  } catch (error) {
+    return {
+      token: null,
+      error: "No se pudo consultar el servicio de sesión. " +
+        (error?.message || "Comprueba la conexión y las cookies del navegador.")
+    };
+  }
+}
+
+async function getToken(prefetchedToken = null) {
   if (!authClient) return null;
 
-  // Fetch the short-lived JWT from Neon Auth using its HttpOnly session cookie.
-  // Do not use authClient.token(): SDK versions may return cached session data
-  // rather than the signed JWT required by the ERP Worker.
-  let endpointError = "";
-  if (authBaseUrl) {
-    try {
-      const response = await fetch(authBaseUrl + "/token", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-        headers: { accept: "application/json" }
-      });
-      const body = await readJson(response);
-      const directToken = extractJwt(body);
-      if (response.ok && directToken) return directToken;
-      endpointError = response.ok
-        ? "El servicio de acceso respondió, pero no entregó una sesión válida."
-        : "El servicio de acceso respondió HTTP " + response.status + " al solicitar el JWT.";
-    } catch (error) {
-      endpointError = "No se pudo consultar el servicio de sesión. " +
-        (error?.message || "Comprueba la conexión y las cookies del navegador.");
-    }
-  }
+  // The direct cookie-backed JWT request may already be running alongside
+  // getSession(); this preserves the same token source without serial waits.
+  const tokenResult = prefetchedToken
+    ? await prefetchedToken
+    : await requestSessionToken();
+  if (tokenResult?.token) return tokenResult.token;
+  let endpointError = tokenResult?.error || "";
 
   // Use the documented client helper when available, then session payloads.
   try {
@@ -110,6 +121,10 @@ function updateSidebarIdentity(profile) {
 
 async function refreshProfile() {
   if (!authClient) return null;
+
+  // Both requests are read-only and authenticated by the same managed cookie.
+  // Start the JWT request before waiting for Neon Auth's session response.
+  const tokenRequest = requestSessionToken();
   const sessionSpan = startPerformanceSpan("Sesión Neon Auth");
   let result;
   try {
@@ -134,7 +149,7 @@ async function refreshProfile() {
     const tokenSpan = startPerformanceSpan("Obtener JWT");
     let token;
     try {
-      token = await getToken();
+      token = await getToken(tokenRequest);
       tokenSpan({ status: token ? 200 : 401 });
     } catch (error) {
       tokenSpan({ status: 599 });
@@ -154,6 +169,19 @@ async function refreshProfile() {
       });
       body = await readJson(response);
       profileSpan({ status: response.status });
+      const serverTiming = response.headers.get("server-timing") || "";
+      const timingLabels = {
+        jwt: "Worker: verificar JWT",
+        identity_db: "Worker: consultar identidad",
+        permissions: "Worker: cargar permisos"
+      };
+      for (const metric of serverTiming.split(",")) {
+        const match = metric.trim().match(/^([a-z_]+);dur=([0-9.]+)$/i);
+        if (!match || !timingLabels[match[1]]) continue;
+        recordPerformance(timingLabels[match[1]], Number(match[2]), {
+          status: response.status
+        });
+      }
     } catch (error) {
       profileSpan({ status: 599 });
       throw error;
@@ -359,7 +387,7 @@ async function initialize() {
   const configSpan = startPerformanceSpan("Config API");
 
   try {
-    const response = await fetch(apiUrl("/api/config"), { cache: "no-store" });
+    const response = await fetch(apiUrl("/api/config"), { cache: "default" });
     if (!response.ok) {
       configSpan({ status: response.status });
       throw new Error("El backend respondió con estado " + response.status + ".");
