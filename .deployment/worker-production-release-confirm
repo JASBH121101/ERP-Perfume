@@ -1,1 +1,3 @@
 Confirm guarded Production Worker rollout on PR merge after verified Neon migration 0025; deploy only after health preflight passes.
+
+Release gate: PR #45 — deploy the session-bound auth profile (authUserId) and cross-account SPA isolation fix to the existing Production Worker after merge. Neon Production migration 0025 was verified applied on 2026-11-09; this release adds no database migration and does not modify permissions or business data.

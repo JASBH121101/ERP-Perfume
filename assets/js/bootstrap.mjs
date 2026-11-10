@@ -1,4 +1,5 @@
 import { createAuthClient } from "@neondatabase/auth";
+import { profileIdentityKey, profileMatchesAuthUser } from "./permission-utils.mjs";
 
 const $ = (selector) => document.querySelector(selector);
 const authDialog = $("#auth-dialog");
@@ -14,6 +15,7 @@ let authBaseUrl = "";
 let erpProfile = null;
 let profileError = "";
 let appLoaded = false;
+let appLoadedProfileKey = "";
 let allowInviteActivation = false;
 let authEnvironment = "unknown";
 
@@ -78,6 +80,33 @@ async function getToken() {
   throw new Error(endpointError || "No se recibió una sesión válida. Cierra sesión, vuelve a iniciar y comprueba que el navegador permita cookies.");
 }
 
+function updateSidebarIdentity(profile) {
+  const name = String(profile?.name || "").trim() || "Usuario";
+  const position = String(profile?.positionTitle || "").trim() ||
+    (profile?.role === "owner" ? "Propietario" : "Cargo no asignado");
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(part => Array.from(part)[0]?.toLocaleUpperCase("es") || "")
+    .join("") || "JB";
+
+  const nameNode = document.getElementById("sidebar-profile-name");
+  const positionNode = document.getElementById("sidebar-profile-position");
+  const avatarNodes = [
+    document.getElementById("sidebar-profile-avatar"),
+    document.querySelector(".top-avatar")
+  ];
+  if (nameNode) nameNode.textContent = name;
+  if (positionNode) positionNode.textContent = position;
+  avatarNodes.forEach(node => {
+    if (node) node.textContent = initials;
+  });
+  document.querySelector(".profile-button")?.setAttribute(
+    "aria-label", "Cuenta de " + name + ", " + position
+  );
+  document.querySelector(".top-avatar")?.setAttribute(
+    "aria-label", "Perfil de " + name
+  );
+}
+
 async function refreshProfile() {
   if (!authClient) return null;
   const result = await authClient.getSession();
@@ -88,6 +117,7 @@ async function refreshProfile() {
   authUser = data?.user || authSession?.user || null;
   erpProfile = null;
   profileError = "";
+  updateSidebarIdentity(null);
 
   if (!authUser) return null;
 
@@ -104,9 +134,18 @@ async function refreshProfile() {
     });
     const body = await readJson(response);
     if (response.ok && body.user) {
+      if (!profileMatchesAuthUser(body.user, authUser)) {
+        erpProfile = null;
+        profileError = "La sesión de autenticación y la cuenta ERP no corresponden al mismo usuario. Cierra sesión y vuelve a iniciar.";
+        updateSidebarIdentity(null);
+        return null;
+      }
       erpProfile = body.user;
+      updateSidebarIdentity(erpProfile);
     } else {
+      erpProfile = null;
       profileError = body?.error?.message || body?.error?.code || "La cuenta todavía no tiene acceso al ERP.";
+      updateSidebarIdentity(null);
     }
   } catch (error) {
     profileError = error?.message || "No se pudo validar el perfil del ERP.";
@@ -255,9 +294,17 @@ async function openERP() {
   }
 
   try {
+    const nextProfileKey = profileIdentityKey(erpProfile);
+    if (appLoaded && appLoadedProfileKey && nextProfileKey !== appLoadedProfileKey) {
+      // app.js retains module state and business records in memory. Never let
+      // another ERP identity reuse the previous account's state or sidebar.
+      window.location.reload();
+      return false;
+    }
     if (!appLoaded) {
-      await import("./app.js?v=20261110-access-mobile-1");
+      await import("./app.js?v=20261110-auth-isolation-1");
       appLoaded = true;
+      appLoadedProfileKey = nextProfileKey;
     }
 
     document.body.classList.remove("auth-pending", "auth-locked");
@@ -399,6 +446,11 @@ async function initialize() {
       authUser = null;
       erpProfile = null;
       profileError = "";
+      appLoadedProfileKey = "";
+      updateSidebarIdentity(null);
+      // Dispose the entire SPA so no previous user's cached business data
+      // remains in the DOM or memory while another identity signs in.
+      window.location.reload();
     }
   };
 

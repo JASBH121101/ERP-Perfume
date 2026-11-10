@@ -1382,6 +1382,7 @@ async function installRealAuthBootstrapMock(page, { owner = false } = {}) {
     body: JSON.stringify({
       user: {
         id: 'qa-owner-profile',
+        authUserId: 'qa-owner-auth',
         name: 'QA Owner',
         email: 'qa-owner@example.test',
         role: 'owner',
