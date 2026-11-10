@@ -612,3 +612,112 @@ input[type="radio"] {
     flex: 0 1 auto;
   }
 }
+
+
+/* HR tables: switch to contained record cards while the desktop sidebar is visible. */
+@media (min-width: 721px) and (max-width: 950px) {
+  .hr-view,
+  .hr-view .hr-content,
+  .hr-view .hr-content > .list-panel,
+  .hr-view .hr-content > .panel {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hr-view .hr-content > .list-panel {
+    overflow: hidden;
+  }
+  .hr-view .hr-content > .list-panel > .table-wrap {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
+  }
+  .hr-view .hr-content table.mobile-record-table {
+    display: block !important;
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed;
+    white-space: normal !important;
+  }
+  .hr-view .hr-content table.mobile-record-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    gap: 10px;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody tr {
+    display: grid;
+    box-sizing: border-box;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px 14px;
+    width: 100%;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid #e5e9ef;
+    border-radius: 11px;
+    background: #fff;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td {
+    display: flex;
+    box-sizing: border-box;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    line-height: 1.4;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td::before {
+    content: attr(data-label);
+    color: #7b8796;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .4px;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td:first-child,
+  .hr-view .hr-content table.mobile-record-table tbody td:last-child {
+    grid-column: 1 / -1;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td:first-child {
+    padding-bottom: 8px;
+    border-bottom: 1px solid #edf0f4;
+  }
+  .hr-view .hr-content .hr-row-actions {
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  .hr-view .hr-content .hr-row-actions > .button {
+    flex: 0 1 auto;
+    max-width: 100%;
+    white-space: normal;
+  }
+  .hr-view .hr-content .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
