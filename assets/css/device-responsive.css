@@ -562,3 +562,25 @@ input[type="radio"] {
     max-width: 100%;
   }
 }
+
+
+/* Tablet dashboard: use two KPI columns within the sidebar-constrained workspace. */
+@media (min-width: 721px) and (max-width: 950px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metric-foot {
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .metric-change,
+  .metric-caption {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .metric-caption {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+}
