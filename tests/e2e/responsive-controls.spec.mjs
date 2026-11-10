@@ -142,6 +142,7 @@ test.describe('responsive account controls',()=>{
           })();
           return {viewport,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,rootLeft:Math.round(rect.left),rootRight:Math.round(rect.right),offenders:offenders.slice(0,8),diagnostic};
         });
+        // Diagnostic output is retained in CI logs if the settings layout exceeds the mobile viewport.
         if (view === 'settings' && width === 390) console.log('SETTINGS_RESPONSIVE_DIAGNOSTIC', JSON.stringify(metrics.diagnostic));
         expect(metrics.rootLeft,view+' root left at '+width+'px').toBeGreaterThanOrEqual(-1);
         expect(metrics.rootRight,view+' root right at '+width+'px').toBeLessThanOrEqual(width+1);
