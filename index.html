@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="assets/css/compact-responsive.css">
   <link rel="stylesheet" href="assets/css/ultra-compact.css?v=20261110-access-mobile-2">
   <link rel="stylesheet" href="assets/css/device-responsive.css?v=20261110-device-audit-11">
-  <script type="module" src="assets/js/bootstrap.mjs?v=20261110-sticky-help-1"></script>
+  <script type="module" src="assets/js/bootstrap.mjs?v=20261110-clean-inputs-1"></script>
 </head>
 <body class="auth-pending">
   <div class="app-shell">
@@ -159,7 +159,7 @@
           <label class="form-field"><span>Género</span><select name="gender"><option value="">No especificado</option><option>Femenino</option><option>Masculino</option><option>Unisex</option></select></label>
           <label class="form-field"><span>Familia olfativa</span><select name="family"><option value="">No especificada</option><option>Amaderada</option><option>Ámbar / Oriental</option><option>Floral</option><option>Frutal</option><option>Cítrica</option><option>Fresca / Acuática</option><option>Gourmand / Dulce</option><option>Especiada</option><option> Aromática</option><option>Otra</option></select></label>
           <label class="form-field"><span>Tipo de producto <span class="required-mark" aria-hidden="true">*</span></span><select name="authenticityType" required><option value="">Seleccionar clasificación</option><option value="original">Original</option><option value="inspired">Inspiración</option><option value="generic">Genérico / sin referencia</option><option value="unspecified" hidden disabled>Sin clasificar (registro anterior)</option></select></label>
-          <label class="form-field full-field" id="product-inspired-by-field" hidden><span>Inspirado en <span class="required-mark" aria-hidden="true">*</span></span><input name="inspiredBy" maxlength="120" placeholder="Ej. Creed Aventus"><small>Escribe el nombre del perfume de referencia. Se mostrará en la ficha del producto.</small></label>
+          <label class="form-field full-field" id="product-inspired-by-field" hidden><span>Inspirado en <span class="required-mark" aria-hidden="true">*</span></span><input name="inspiredBy" maxlength="120"><small>Escribe el nombre del perfume de referencia. Se mostrará en la ficha del producto.</small></label>
           <label class="form-field"><span>Contenido (ml)</span><input name="sizeMl" type="number" min="0" max="10000" step="1"></label>
           <label class="form-field"><span>Presentación</span><select name="presentation"><option value="">Seleccionar</option><option>Caja original</option><option>Tester</option><option>Sin caja</option><option>Decant</option><option>Set / Estuche</option></select></label>
           <label class="form-field"><span>Código de barras</span><input name="barcode" maxlength="40"></label>
@@ -239,7 +239,7 @@
       <p class="modal-note">La reversión agrega un nuevo movimiento opuesto. El original permanece intacto en el Kardex. Solo se permiten reversiones de movimientos manuales y cada movimiento puede revertirse una sola vez.</p>
       <div class="form-grid">
         <div class="form-field full-field"><span>Movimiento seleccionado</span><strong id="inventory-reversal-summary">Movimiento de inventario</strong></div>
-        <label class="form-field full-field"><span>Motivo de la reversión <span class="required-mark" aria-hidden="true">*</span></span><textarea name="reason" rows="3" minlength="3" maxlength="240" required placeholder="Explica por qué debe corregirse este movimiento"></textarea></label>
+        <label class="form-field full-field"><span>Motivo de la reversión <span class="required-mark" aria-hidden="true">*</span></span><textarea name="reason" rows="3" minlength="3" maxlength="240" required></textarea></label>
       </div>
       <div class="modal-actions">
         <button type="button" class="button button-quiet" id="inventory-reversal-cancel">Cancelar</button>
