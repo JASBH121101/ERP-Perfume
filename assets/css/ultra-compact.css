@@ -879,3 +879,196 @@ html, body { font-size: max(15px, calc(15px * var(--ui-font-scale, 1))); }
   .access-manager-section .modal-actions { width: 100%; }
   .access-manager-section .modal-actions .button { width: 100%; min-height: 48px; }
 }
+
+
+/* Access administration: every management table becomes a readable
+   single-column mobile card, not a horizontally scrolling desktop table. */
+@media (max-width: 760px) {
+  .access-manager-section,
+  .access-manager-section > *,
+  .access-manager-section .panel,
+  .access-manager-section .panel > *,
+  .access-manager-section .panel-heading,
+  .access-manager-section .panel-heading > div,
+  .access-manager-section .table-wrap {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .access-manager-section {
+    width: 100%;
+    overflow-x: clip;
+  }
+  .access-manager-section .panel {
+    width: 100%;
+    overflow: hidden;
+  }
+  .access-manager-section .panel-heading {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .access-manager-section .panel-heading > div {
+    flex: 1 1 100%;
+  }
+  .access-manager-section .table-wrap {
+    width: 100%;
+    overflow: visible !important;
+  }
+  .access-manager-section table.mobile-record-table,
+  .access-manager-section .table-wrap > table {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    table-layout: fixed !important;
+    white-space: normal !important;
+  }
+  .access-manager-section table.mobile-record-table thead,
+  .access-manager-section .table-wrap > table thead {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+  }
+  .access-manager-section table.mobile-record-table tbody,
+  .access-manager-section .table-wrap > table tbody {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 10px;
+  }
+  .access-manager-section table.mobile-record-table tbody tr,
+  .access-manager-section .table-wrap > table tbody tr {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 11px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid #eee7dc;
+    border-radius: 12px;
+    background: #fffdf9;
+  }
+  .access-manager-section table.mobile-record-table tbody td,
+  .access-manager-section .table-wrap > table tbody td {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word;
+    line-height: 1.4;
+    font-size: 14px;
+  }
+  .access-manager-section table.mobile-record-table tbody td::before,
+  .access-manager-section .table-wrap > table tbody td::before {
+    display: block;
+    content: attr(data-label);
+    color: #9d927f;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .45px;
+    text-transform: uppercase;
+  }
+  .access-manager-section table.mobile-record-table tbody td[colspan],
+  .access-manager-section .table-wrap > table tbody td[colspan] {
+    display: block !important;
+    text-align: center;
+  }
+  .access-manager-section table.mobile-record-table tbody td[colspan]::before,
+  .access-manager-section .table-wrap > table tbody td[colspan]::before {
+    content: none;
+  }
+  .access-manager-section table.mobile-record-table .filter-select,
+  .access-manager-section table.mobile-record-table input,
+  .access-manager-section table.mobile-record-table select,
+  .access-manager-section .table-wrap > table input,
+  .access-manager-section .table-wrap > table select {
+    box-sizing: border-box;
+    display: block;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px;
+  }
+  .access-manager-section .user-access-controls {
+    gap: 10px !important;
+  }
+  .access-manager-section .user-access-controls > .button,
+  .access-manager-section table.mobile-record-table tbody td:last-child .button,
+  .access-manager-section .table-wrap > table tbody td:last-child .button {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-height: 46px;
+    justify-content: center;
+    white-space: normal;
+  }
+  .access-manager-section .user-overrides,
+  .access-manager-section .user-overrides > div {
+    width: 100%;
+    min-width: 0;
+  }
+  .access-manager-section .permission-override-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+    gap: 8px;
+  }
+  .access-manager-section .permission-override-row > span,
+  .access-manager-section .permission-override-row > button {
+    grid-column: 1 / -1;
+  }
+  .access-manager-section .permission-override-add {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+    gap: 8px;
+  }
+  .access-manager-section .permission-override-add button {
+    grid-column: 1 / -1;
+  }
+  .access-manager-section .permission-editor-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+    min-width: 0;
+  }
+  .access-manager-section .permission-editor-module,
+  .access-manager-section .permission-editor-module-content,
+  .access-manager-section .permission-editor-row {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .access-manager-section .rate-form,
+  .access-manager-section .form-field,
+  .access-manager-section .form-field input,
+  .access-manager-section .form-field select,
+  .access-manager-section .modal-actions {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .access-manager-section .modal-actions .button {
+    width: 100%;
+    min-height: 48px;
+  }
+}
