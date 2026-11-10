@@ -78,6 +78,33 @@ async function getToken() {
   throw new Error(endpointError || "No se recibió una sesión válida. Cierra sesión, vuelve a iniciar y comprueba que el navegador permita cookies.");
 }
 
+function updateSidebarIdentity(profile) {
+  const name = String(profile?.name || "").trim() || "Usuario";
+  const position = String(profile?.positionTitle || "").trim() ||
+    (profile?.role === "owner" ? "Propietario" : "Cargo no asignado");
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(part => Array.from(part)[0]?.toLocaleUpperCase("es") || "")
+    .join("") || "JB";
+
+  const nameNode = document.getElementById("sidebar-profile-name");
+  const positionNode = document.getElementById("sidebar-profile-position");
+  const avatarNodes = [
+    document.getElementById("sidebar-profile-avatar"),
+    document.querySelector(".top-avatar")
+  ];
+  if (nameNode) nameNode.textContent = name;
+  if (positionNode) positionNode.textContent = position;
+  avatarNodes.forEach(node => {
+    if (node) node.textContent = initials;
+  });
+  document.querySelector(".profile-button")?.setAttribute(
+    "aria-label", "Cuenta de " + name + ", " + position
+  );
+  document.querySelector(".top-avatar")?.setAttribute(
+    "aria-label", "Perfil de " + name
+  );
+}
+
 async function refreshProfile() {
   if (!authClient) return null;
   const result = await authClient.getSession();
@@ -88,6 +115,7 @@ async function refreshProfile() {
   authUser = data?.user || authSession?.user || null;
   erpProfile = null;
   profileError = "";
+  updateSidebarIdentity(null);
 
   if (!authUser) return null;
 
@@ -105,8 +133,10 @@ async function refreshProfile() {
     const body = await readJson(response);
     if (response.ok && body.user) {
       erpProfile = body.user;
+      updateSidebarIdentity(erpProfile);
     } else {
       profileError = body?.error?.message || body?.error?.code || "La cuenta todavía no tiene acceso al ERP.";
+      updateSidebarIdentity(null);
     }
   } catch (error) {
     profileError = error?.message || "No se pudo validar el perfil del ERP.";
