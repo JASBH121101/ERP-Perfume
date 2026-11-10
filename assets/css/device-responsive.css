@@ -537,3 +537,17 @@ input[type="radio"] {
   }
 }
 
+/* Preserve the label's stacked text/input structure after constraining the grid. */
+@media (max-width: 560px) {
+  .settings-rate-panel .rate-form > .form-field {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .settings-rate-panel .rate-form > .button {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
