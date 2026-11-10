@@ -768,3 +768,114 @@ html, body { font-size: max(15px, calc(15px * var(--ui-font-scale, 1))); }
     width: 100%;
   }
 }
+
+
+/* JB Parfums access administration: mobile-first account cards. */
+@media (max-width: 720px) {
+  .access-manager-section,
+  .access-manager-section .panel,
+  .access-manager-section .panel-heading,
+  .access-manager-section .rate-form,
+  .access-manager-section .form-field { min-width: 0; width: 100%; }
+  .access-manager-section .panel-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .access-manager-section .panel-heading > div { min-width: 0; flex: 1 1 100%; }
+  .access-manager-section .table-wrap { width: 100%; overflow: visible; }
+  .access-manager-section table.mobile-record-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    white-space: normal;
+  }
+  .access-manager-section table.mobile-record-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .access-manager-section table.mobile-record-table tbody {
+    display: grid;
+    width: 100%;
+    gap: 10px;
+  }
+  .access-manager-section table.mobile-record-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid #eee7dc;
+    border-radius: 12px;
+    background: #fffdf9;
+  }
+  .access-manager-section table.mobile-record-table tbody td {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+  }
+  .access-manager-section table.mobile-record-table tbody td::before {
+    content: attr(data-label);
+    color: #9d927f;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .45px;
+    text-transform: uppercase;
+  }
+  .access-manager-section table.mobile-record-table tbody td:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 9px;
+    border-bottom: 1px solid #eee8de;
+  }
+  .access-manager-section table.mobile-record-table tbody td:last-child {
+    grid-column: 1 / -1;
+  }
+  .access-manager-section table.mobile-record-table tbody td[colspan] {
+    display: block;
+    grid-column: 1 / -1;
+    text-align: center;
+  }
+  .access-manager-section table.mobile-record-table tbody td[colspan]::before {
+    content: none;
+  }
+  .access-manager-section table.mobile-record-table .filter-select,
+  .access-manager-section table.mobile-record-table input,
+  .access-manager-section table.mobile-record-table select {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 42px;
+  }
+  .access-manager-section .user-access-controls {
+    gap: 10px;
+  }
+  .access-manager-section .user-access-controls > .button,
+  .access-manager-section .mobile-record-table td:last-child .button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  .access-manager-section .user-overrides { min-width: 0; width: 100%; }
+  .access-manager-section .permission-override-add {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .access-manager-section .permission-override-add button { grid-column: 1 / -1; }
+  .access-manager-section .modal-actions { width: 100%; }
+  .access-manager-section .modal-actions .button { width: 100%; min-height: 48px; }
+}
