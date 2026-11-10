@@ -335,20 +335,48 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }else if(cached){URL.revokeObjectURL(cached);}
     productAssetUrlCache.delete(key);
   }
-  async function hydrateProductImageSlots(){
+  let productImageObserver=null;
+  const productImageObservedSlots=new Set();
+  async function loadProductImageSlot(slot){
+    const product=products.find(item=>String(item.id)===slot.getAttribute("data-product-image-slot"));
+    const image=product?.images?.[0];
+    if(!image?.key||!slot.isConnected)return;
+    try{
+      const url=await productAssetUrl(image.key);
+      if(!slot.isConnected)return;
+      const img=document.createElement("img");
+      img.src=url;img.alt=product.name;img.loading="lazy";img.decoding="async";
+      slot.replaceChildren(img);
+    }catch{}
+  }
+  function hydrateProductImageSlots(){
     const slots=Array.from(document.querySelectorAll("[data-product-image-slot]")).slice(0,60);
-    await Promise.all(slots.map(async slot=>{
-      const product=products.find(item=>String(item.id)===slot.getAttribute("data-product-image-slot"));
-      const image=product?.images?.[0];
-      if(!image?.key)return;
-      try{
-        const url=await productAssetUrl(image.key);
-        if(!slot.isConnected)return;
-        const img=document.createElement("img");
-        img.src=url;img.alt=product.name;img.loading="lazy";
-        slot.replaceChildren(img);
-      }catch{}
-    }));
+    if(!slots.length)return;
+    if(typeof IntersectionObserver!=="function"){
+      slots.forEach(slot=>{void loadProductImageSlot(slot);});
+      return;
+    }
+    if(!productImageObserver){
+      productImageObserver=new IntersectionObserver(entries=>{
+        entries.forEach(entry=>{
+          if(!entry.isIntersecting)return;
+          const slot=entry.target;
+          productImageObserver.unobserve(slot);
+          productImageObservedSlots.delete(slot);
+          void loadProductImageSlot(slot);
+        });
+      },{rootMargin:"240px 0px",threshold:0.01});
+    }
+    for(const observedSlot of productImageObservedSlots){
+      if(observedSlot.isConnected)continue;
+      productImageObserver.unobserve(observedSlot);
+      productImageObservedSlots.delete(observedSlot);
+    }
+    slots.forEach(slot=>{
+      if(!slot.isConnected||slot.querySelector("img")||productImageObservedSlots.has(slot))return;
+      productImageObservedSlots.add(slot);
+      productImageObserver.observe(slot);
+    });
   }
   async function mountProductImageGallery(container,product){
     if(!container)return;
