@@ -721,3 +721,76 @@ input[type="radio"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Contextual help: keep operational explanations available without occupying
+   permanent space in the working view. */
+.context-help{
+  position:relative;
+  width:fit-content;
+  max-width:100%;
+  margin:12px 0 4px;
+  color:#746b5d;
+  font-size:11px;
+}
+.context-help summary{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:32px;
+  padding:5px 10px 5px 6px;
+  border:1px solid #e8e0d4;
+  border-radius:8px;
+  color:#75694f;
+  background:#fffdf9;
+  cursor:pointer;
+  list-style:none;
+  user-select:none;
+}
+.context-help summary::-webkit-details-marker{display:none}
+.context-help summary:hover,
+.context-help[open] summary{
+  border-color:#cdbb9e;
+  background:#faf6ee;
+}
+.context-help-icon{
+  display:inline-grid;
+  width:20px;
+  height:20px;
+  place-items:center;
+  flex:0 0 20px;
+  border:1px solid #cdbb9e;
+  border-radius:50%;
+  color:#8b6d43;
+  font-size:12px;
+  font-weight:700;
+}
+.context-help-content{
+  max-width:min(560px,calc(100vw - 40px));
+  margin-top:8px;
+  padding:11px 13px;
+  border:1px solid #e8e0d4;
+  border-radius:9px;
+  color:#746e63;
+  background:#fffdf9;
+  box-shadow:0 8px 24px #28211612;
+  line-height:1.6;
+}
+.context-help-content p{margin:0}
+@media(max-width:720px){
+  .context-help{margin-top:9px;font-size:10px}
+  .context-help summary{min-height:36px}
+  .context-help-content{max-width:calc(100vw - 28px)}
+}
+
+/* Keep the workspace/navigation strip reachable while long views scroll. */
+.topbar{
+  position:sticky !important;
+  top:0;
+  z-index:90;
+  min-width:0;
+  overflow:visible;
+  background:rgba(255,255,255,.96);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+}
+.topbar-left,
+.topbar-actions{min-width:0}
