@@ -429,6 +429,7 @@ async function initialize() {
       authUser = null;
       erpProfile = null;
       profileError = "";
+      updateSidebarIdentity(null);
     }
   };
 
