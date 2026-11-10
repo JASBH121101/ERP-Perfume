@@ -3373,7 +3373,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       .map(role => '<option value="'+esc(role.role_key)+'"'+(role.role_key==="viewer"?' selected':'')+'>'+esc(role.name)+'</option>').join("");
     const userRows = accessManager.users.map(user => {
       if (user.role === "owner") {
-        return '<tr><td data-label="Cuenta"><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td data-label="Cargo">Propietario</td><td data-label="Plantilla"><span class="status-chip status-muted">Propietario</span><small class="table-secondary">Rol y permisos reservados al dueño.</small></td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td><td data-label="Seguridad">Cuenta protegida</td></tr>';
+        return '<tr><td data-label="Cuenta"><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td data-label="Cargo">Propietario</td><td data-label="Plantilla"><span class="status-chip status-muted">Propietario</span><small class="table-secondary">Rol y permisos reservados al dueño.</small></td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td><td data-label="Seguridad"><span class="status-chip status-muted">Protegido</span><small class="table-secondary">Cuenta del propietario. Su rol no se puede modificar desde aquí.</small></td></tr>';
       }
       const statusOptions = ["invited","registered","active","rejected","disabled"]
         .map(status => '<option value="'+status+'"'+(user.account_status===status?' selected':'')+'>'+({
