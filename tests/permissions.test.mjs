@@ -173,6 +173,19 @@ function bootstrapPermissionContext(keys = []) {
   };
 }
 
+test("owner bootstrap keeps the full ERP dataset payload", async () => {
+  const { sql, statements } = createBootstrapSql();
+  const result = await readBootstrap(sql, { id: "owner-user" }, { owner: true, permissions: ["*"] });
+
+  assert.equal(statements.length, 29);
+  assert.ok(Array.isArray(result.products));
+  assert.ok(Array.isArray(result.inventory_movements));
+  assert.ok(Array.isArray(result.orders));
+  assert.ok(Array.isArray(result.hr_payroll_periods));
+  assert.ok(Array.isArray(result.hr_commissions));
+  assert.ok(Object.hasOwn(result, "settings"));
+});
+
 test("bootstrap does not query any ERP datasets when the account has no module grants", async () => {
   const { sql, statements } = createBootstrapSql();
   const result = await readBootstrap(sql, { id: "limited-user" }, bootstrapPermissionContext());
