@@ -30,7 +30,7 @@ const apiBaseUrl = resolveApiBaseUrl({
   apiBaseUrl: process.env.ERP_API_BASE_URL
 });
 const withApi = injectApiBaseUrl(html, apiBaseUrl);
-const browserEntryPattern = /src="assets\\/js\\/bootstrap\\.mjs(\\?[^"]*)?"/g;
+const browserEntryPattern = /src="assets\/js\/bootstrap\.mjs(\?[^"]*)?"/g;
 const browserEntries = [...withApi.matchAll(browserEntryPattern)];
 if (browserEntries.length !== 1) {
   throw new Error(`Expected exactly one bootstrap browser entry in dist/index.html; found ${browserEntries.length}.`);
