@@ -32,6 +32,14 @@ function erpError(status, code, message) {
   return erpJson({ error: { code, message } }, status);
 }
 
+function nicaraguaToday() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Managua", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date());
+  const part = type => parts.find(item => item.type === type)?.value || "";
+  return part("year") + "-" + part("month") + "-" + part("day");
+}
+
 function inventoryQueryPage(params) {
   const rawPage = params?.get?.("page");
   const rawSize = params?.get?.("page_size");
@@ -693,7 +701,7 @@ export async function createGeneric(sql, user, resource, def, body) {
       salaryNio: input.salary_nio,
       status: input.status || "Activo",
       workSchedule: input.work_schedule || "Por definir",
-      effectiveDate: new Date().toISOString().slice(0, 10),
+      effectiveDate: nicaraguaToday(),
       settings: laborSettings
     });
     if (!wageCheck.valid) return erpError(409, wageCheck.code, wageCheck.message);
@@ -729,7 +737,7 @@ export async function createGeneric(sql, user, resource, def, body) {
 
 export async function updateEmployeeGeneric(sql, user, resource, def, id, body) {
   const input = { ...(body || {}) };
-  const effectiveDate = String(input.effective_date || new Date().toISOString().slice(0, 10));
+  const effectiveDate = String(input.effective_date || nicaraguaToday());
   const changeReason = String(input.change_reason || '').trim();
   delete input.effective_date; delete input.change_reason; delete input.employee_code; delete input.hire_date;
   if (!/^[0-9a-f-]{36}$/i.test(String(id || ''))) return erpError(400, 'INVALID_EMPLOYEE_ID', 'La referencia del colaborador no es válida.');
