@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const workerPattern = /\\/api\\/erp\\/[^?]+/;
+const workerPattern = /\/api\/erp\/[^?]+/;
 const apiBase = 'https://jb-parfums-erp-api.jaredblancoh19.workers.dev';
 const fixture = {
   products: [
@@ -24,11 +24,9 @@ const fixture = {
 
 test.beforeEach(async ({page})=>{
   await page.route('**/assets/js/bootstrap.mjs*',route=>route.fulfill({
-    status:200,contentType:'text/javascript; charset=utf-8',
-    body:"document.body.classList.remove('auth-pending','auth-locked');document.body.classList.add('erp-authorized');window.JBAuth={mode:'authenticated',user:{id:'qa-owner',email:'qa-owner@example.test'},profile:{id:'qa-owner',name:'QA Owner',role:'owner',permissions:['*']},apiUrl:path=>new URL(path,'"+apiBase+"').toString(),getToken:async()=> 'qa-only-token'};import('./app.js);"
-  }).catch?route.fulfill({status:200,contentType:'text/javascript; charset=utf-8',body:"document.body.classList.remove('auth-pending','auth-locked');document.body.classList.add('erp-authorized');window.JBAuth={mode:'authenticated',user:{id:'qa-owner',email:'qa-owner@example.test'},profile:{id:'qa-owner',name:'QA Owner',role:'owner',permissions:['*']},apiUrl:path=>new URL(path,'"+apiBase+"').toString(),getToken:async()=> 'qa-only-token'};import('./app.js');"}):route.fulfill({
-    status:200,contentType:'text/javascript; charset=utf-8',
-    body:"document.body.classList.remove('auth-pending','auth-locked');document.body.classList.add('erp-authorized');window.JBAuth={mode:'authenticated',user:{id:'qa-owner',email:'qa-owner@example.test'},profile:{id:'qa-owner',name:'QA Owner',role:'owner',permissions:['*']},apiUrl:path=>new URL(path,'"+apiBase+"').toString(),getToken:async()=> 'qa-only-token'};import('./app.js');"
+    status:200,
+    contentType:'text/javascript; charset=utf-8',
+    body:"document.body.classList.remove('auth-pending','auth-locked');document.body.classList.add('erp-authorized');window.JBAuth={mode:'authenticated',user:{id:'qa-owner',email:'qa-owner@example.test'},profile:{id:'qa-owner',name:'QA Owner',role:'owner',permissions:['*']},apiUrl:path=>new URL(path,'https://jb-parfums-erp-api.jaredblancoh19.workers.dev').toString(),getToken:async()=> 'qa-only-token'};import('./app.js');"
   }));
   await page.route(workerPattern,async route=>{
     const request=route.request(),url=new URL(request.url()),pathname=url.pathname;
