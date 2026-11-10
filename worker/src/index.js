@@ -152,7 +152,7 @@ async function requireUser(request, env) {
       "u.account_status AS erp_account_status, u.must_change_password AS erp_must_change_password, " +
       "u.active AS erp_active " +
       'FROM neon_auth."user" a LEFT JOIN app_users u ' +
-      "ON u.auth_user_id = a.id AND LOWER(u.email) = LOWER(a.email) " +
+      "ON u.auth_user_id = a.id::text AND LOWER(u.email) = LOWER(a.email) " +
       "WHERE a.id = $1 LIMIT 1",
       [authUserId]
     );
