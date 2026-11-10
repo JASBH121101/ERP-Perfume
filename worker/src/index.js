@@ -163,11 +163,11 @@ async function requireUser(request, env) {
     if (!user) {
       return { response: errorResponse(403, "ACCOUNT_NOT_PROVISIONED", "Esta cuenta todavía no fue autorizada por el propietario del ERP.") };
     }
-    if (user.active !== true || user.account_status === "disabled") {
-      return { response: errorResponse(403, "ACCOUNT_DISABLED", "Esta cuenta del ERP está deshabilitada.") };
+    if (user.account_status === "disabled") {
+      return { response: errorResponse(403, "ACCOUNT_DISABLED", "El propietario deshabilitó esta cuenta del ERP. Contacta al propietario si necesitas recuperar el acceso.") };
     }
-    if (user.account_status !== "active") {
-      return { response: errorResponse(403, "ACCOUNT_NOT_ACTIVE", "La cuenta todavía no está habilitada para entrar al ERP.") };
+    if (user.active !== true || user.account_status !== "active") {
+      return { response: errorResponse(403, "ACCOUNT_NOT_ACTIVE", "Tu correo y contraseña ya están configurados. Solo falta que el propietario active tu acceso al ERP.") };
     }
 
     return { user, sql };

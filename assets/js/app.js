@@ -3373,7 +3373,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       .map(role => '<option value="'+esc(role.role_key)+'"'+(role.role_key==="viewer"?' selected':'')+'>'+esc(role.name)+'</option>').join("");
     const userRows = accessManager.users.map(user => {
       if (user.role === "owner") {
-        return '<tr><td data-label="Cuenta"><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td data-label="Cargo">Propietario</td><td data-label="Plantilla"><span class="status-chip status-muted">Propietario</span><small class="table-secondary">Rol y permisos reservados al dueño.</small></td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td><td data-label="Seguridad">Cuenta protegida</td></tr>';
+        return '<tr><td data-label="Cuenta"><strong>'+esc(user.display_name)+'</strong><small class="table-secondary">'+esc(user.email)+'</small></td><td data-label="Cargo">Propietario</td><td data-label="Permisos"><span class="status-chip status-muted">Propietario</span><small class="table-secondary">Rol y permisos reservados al dueño.</small></td><td data-label="Estado"><span class="status-chip status-success">Activo</span></td><td data-label="Seguridad"><span class="status-chip status-muted">Protegido</span><small class="table-secondary">Cuenta del propietario. Su rol no se puede modificar desde aquí.</small></td></tr>';
       }
       const statusOptions = ["invited","registered","active","rejected","disabled"]
         .map(status => '<option value="'+status+'"'+(user.account_status===status?' selected':'')+'>'+({
@@ -3441,20 +3441,20 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       return parts.join(" · ")||"—";
     };
     const auditRows = accessManager.audit.slice(0,100).map(record =>
-      '<tr><td>'+esc(new Date(record.created_at).toLocaleString("es-NI"))+'</td><td>'+esc(record.actor_name||"Sistema")+(record.actor_email?'<small class="table-secondary">'+esc(record.actor_email)+'</small>':'')+'</td><td>'+esc(record.action)+'</td><td>'+esc(record.entity_type)+(record.entity_id?' · '+esc(record.entity_id):'')+'</td><td>'+esc(auditDetailsSummary(record))+'</td></tr>'
+      '<tr><td data-label="Fecha">'+esc(new Date(record.created_at).toLocaleString("es-NI"))+'</td><td data-label="Actor">'+esc(record.actor_name||"Sistema")+(record.actor_email?'<small class="table-secondary">'+esc(record.actor_email)+'</small>':'')+'</td><td data-label="Acción">'+esc(record.action)+'</td><td data-label="Registro">'+esc(record.entity_type)+(record.entity_id?' · '+esc(record.entity_id):'')+'</td><td data-label="Detalle">'+esc(auditDetailsSummary(record))+'</td></tr>'
     ).join("");
     const clientErrorRows = accessManager.clientErrors.slice(0,100).map(error =>
-      '<tr><td>'+esc(new Date(error.created_at).toLocaleString("es-NI"))+'</td><td>'+esc(error.actor_name||"Usuario")+'</td><td><span class="status-chip status-warning">'+esc(error.error_type)+'</span></td><td>'+esc(error.error_message)+'</td><td>'+esc(error.page_path||"/")+(error.source_file?' · '+esc(error.source_file):'')+(error.line_number?' :'+Number(error.line_number):'')+'</td></tr>'
+      '<tr><td data-label="Fecha">'+esc(new Date(error.created_at).toLocaleString("es-NI"))+'</td><td data-label="Usuario">'+esc(error.actor_name||"Usuario")+'</td><td data-label="Tipo"><span class="status-chip status-warning">'+esc(error.error_type)+'</span></td><td data-label="Error">'+esc(error.error_message)+'</td><td data-label="Origen">'+esc(error.page_path||"/")+(error.source_file?' · '+esc(error.source_file):'')+(error.line_number?' :'+Number(error.line_number):'')+'</td></tr>'
     ).join("");
 
     return '<section class="access-manager-section">'+
       '<div class="panel-heading"><div><span class="eyebrow">CONTROL DEL PROPIETARIO</span><h2>Administración de accesos</h2><p>Solo el propietario puede autorizar identidades, editar permisos y consultar auditoría.</p></div><button class="button button-quiet button-small" data-action="refresh-access-manager">Actualizar</button></div>'+
-      '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>Después de verificar el correo y crear la contraseña, pulsa <strong>Activar acceso</strong> para habilitar al trabajador. La cuenta del propietario está protegida.</p></div><span class="ledger-count">'+accessManager.users.length+(accessManager.users.length===1?' cuenta':' cuentas')+'</span></div>'+
-      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PLANTILLA</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
+      '<article class="panel"><div class="panel-heading"><div><h3>Cuentas ERP</h3><p>El cargo describe el puesto de trabajo; el perfil de permisos determina qué módulos puede utilizar. Después de verificar el correo y crear la contraseña, pulsa <strong>Activar acceso</strong> para habilitar al trabajador. La cuenta del propietario está protegida.</p></div><span class="ledger-count">'+accessManager.users.length+(accessManager.users.length===1?' cuenta':' cuentas')+'</span></div>'+
+      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>CUENTA</th><th>CARGO</th><th>PERMISOS</th><th>ESTADO</th><th>SEGURIDAD</th></tr></thead><tbody>'+(userRows||'<tr><td colspan="5">No hay cuentas provisionadas.</td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Invitar trabajador</h3><p>El propietario crea la identidad y envía el código. La persona verifica su correo y establece su contraseña. Después, activa su acceso desde Cuentas ERP.</p></div></div>'+
-      '<form id="invite-worker-form" class="rate-form"><label class="form-field"><span>Nombre completo</span><input name="display_name" maxlength="180" placeholder="Nombre del trabajador" required></label><label class="form-field"><span>Correo electrónico</span><input name="email" type="email" maxlength="180" placeholder="trabajador@correo.com" required></label><label class="form-field"><span>Cargo</span><input name="position_title" maxlength="120" placeholder="Vendedor, bodeguero…"></label><label class="form-field"><span>Plantilla de permisos</span><select name="role_template_key">'+roleOptions+'</select></label><div class="modal-actions"><button class="button button-primary" type="submit">Crear y enviar invitación</button></div></form></article>'+
+      '<form id="invite-worker-form" class="rate-form"><label class="form-field"><span>Nombre completo</span><input name="display_name" maxlength="180" placeholder="Nombre del trabajador" required></label><label class="form-field"><span>Correo electrónico</span><input name="email" type="email" maxlength="180" placeholder="trabajador@correo.com" required></label><label class="form-field"><span>Cargo</span><input name="position_title" maxlength="120" placeholder="Vendedor, bodeguero…"></label><label class="form-field"><span>Perfil de permisos</span><select name="role_template_key">'+roleOptions+'</select></label><div class="modal-actions"><button class="button button-primary" type="submit">Crear y enviar invitación</button></div></form></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Identidades pendientes</h3><p>Identidades de Neon Auth que todavía no tienen perfil ERP. Puedes reenviar el código o preparar el perfil bloqueado.</p></div><span class="ledger-count">'+accessManager.pendingIdentities.length+' pendientes</span></div>'+
-      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PLANTILLA</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
+      '<div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>IDENTIDAD</th><th>NOMBRE</th><th>CARGO</th><th>PERMISOS</th><th></th></tr></thead><tbody>'+(pendingRows||'<tr><td colspan="5">No hay identidades nuevas pendientes.</td></tr>')+'</tbody></table></div></article>'+
       '<article class="panel"><div class="panel-heading"><div><h3>Plantillas de permisos</h3><p>Los permisos de módulo, sección y acción se configuran por separado. Activar un padre no activa automáticamente sus hijos.</p></div>'+
       '<select class="filter-select" id="access-role-select">'+accessManager.roles.filter(role=>role.role_key!=="owner").map(role=>'<option value="'+esc(role.role_key)+'"'+(role.role_key===accessSelectedRole?' selected':'')+'>'+esc(role.name)+'</option>').join("")+'</select></div>'+
       (selectedRole ? '<form id="role-permissions-form" data-role-key="'+esc(accessSelectedRole)+'"><div class="permission-editor-grid">'+permissionGroups+'</div><div class="modal-actions"><button class="button button-primary" type="submit">Guardar permisos de plantilla</button></div></form>' : '<p>No hay plantillas editables disponibles.</p>')+
@@ -4867,6 +4867,16 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
         employee_id:null,
         must_change_password:true
       };
+      const emailAlreadyProvisioned=accessManager.users.some(user=>String(user.email||"").trim().toLowerCase()===payload.email);
+      if(emailAlreadyProvisioned){
+        toast("Ese correo ya tiene una cuenta ERP. No se puede registrar dos veces. Edita el cargo o el perfil de permisos de la cuenta existente.");
+        return;
+      }
+      const emailIdentityPending=accessManager.pendingIdentities.some(identity=>String(identity.email||"").trim().toLowerCase()===payload.email);
+      if(emailIdentityPending){
+        toast("Ese correo ya tiene una identidad pendiente. Usa Reenviar código o Preparar cuenta ERP en Identidades pendientes.");
+        return;
+      }
       const submit=form.querySelector('[type="submit"]');
       if(submit){submit.disabled=true;submit.textContent="Creando invitación…";}
       let identityCreated=false;
