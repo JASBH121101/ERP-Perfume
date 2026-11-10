@@ -3048,7 +3048,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     const potential=products.reduce((sum,p)=>sum+Math.max(0,costSummary(p).profit)*Number(p.stock||0),0);
     const supplierPayables=calculatePayablesSnapshot(purchases,supplierInvoices,roundMoney);
     const purchasesTotal=roundMoney(periodPurchases.reduce((sum,p)=>sum+Number(p.totalUsd||0),0)+
-      periodSupplierInvoices.filter(invoice=>invoice.status!=="Anulada").reduce((sum,invoice)=>sum+Number(invoice.amountUsd||0),0));
+      periodSupplierInvoices.filter(invoice=>!isVoidedInvoice(invoice)).reduce((sum,invoice)=>sum+Number(invoice.amountUsd||0),0));
     // These are current outstanding balances, not period activity.
     const activeInvoices=invoices.filter(invoice=>!isVoidedInvoice(invoice));
     const receivables=activeInvoices.reduce((sum,i)=>sum+Math.max(0,Number(i.totalUsd||0)-Number(i.paidUsd||0)),0);
