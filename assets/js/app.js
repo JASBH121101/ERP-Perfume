@@ -2,6 +2,7 @@ import { parseCatalogCSV as parseCatalogCSVModule, parseCatalogTextRows } from '
 import { calculateFinancialSnapshot, calculatePayablesSnapshot } from './financial-snapshot.mjs';
 import { resolveReportingPeriod, isWithinReportingPeriod } from './reporting-periods.mjs';
 import { buildFinancialTrendSeries, buildTopSellingProducts, buildExpenseCategorySeries, buildInventoryCategorySeries } from './analytics-charts.mjs';
+import { buildProcurementStatusSeries, buildSupplierSpendSeries, buildCustomerRevenueSeries, buildCashFlowTrendSeries } from './dashboard-summary.mjs';
 import { profileHasPermission } from './permission-utils.mjs';
 import { downloadExport, openPrintExport } from './export-tools.mjs';
 import { calculateTenure, calculateVacationBalance, calculateAguinaldoEstimate, calculateInss, calculatePayrollWithholding, calculateProductPricing } from './hr-calculations.mjs';
@@ -813,63 +814,239 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     return '<article class="metric-card"><div class="metric-top"><span class="metric-label">' + label + '</span><span class="metric-symbol">' + svg(symbol) + '</span></div><div class="metric-value">' + value + '</div><div class="metric-foot"><span class="metric-change' + (gold ? ' gold' : '') + '">' + change + '</span><span class="metric-caption">' + note + '</span></div></article>';
   }
   function financialSnapshot(){ return calculateFinancialSnapshot(invoices, expenses, roundMoney); }
-  function renderDashboard() {
-    const activeProducts=products.filter(product=>product.active!==false);
-    const top=activeProducts.slice().sort((a,b)=>b.stock-a.stock).slice(0,4);
-    const recentInvoices=invoices.slice(0,5);
-    const invoiceRows=recentInvoices.map(invoice=>'<tr><td data-label="Factura" class="table-primary">'+esc(invoice.id)+'</td><td data-label="Cliente">'+esc(invoice.customer||invoice.customerName)+'</td><td data-label="Fecha">'+dateText(invoice.createdAt)+'</td><td data-label="Total" class="table-primary">'+money(invoice.totalUsd)+'</td><td data-label="Estado">'+orderStatus(invoice.status)+'</td></tr>').join('');
-    const topRows=top.map(product=>'<div class="top-product">'+art(product.tone)+'<div class="top-product-info"><strong>'+esc(product.name)+'</strong><small>'+esc(product.category)+' · '+product.stock+' unidades</small></div><span class="top-product-value">'+money(product.price)+'</span></div>').join('');
-    const dashboardShowSales=permissionGranted("billing.invoices.view");
-    const dashboardShowExpenses=permissionGranted("expenses.records.view");
-    const dashboardTrendSeries=buildFinancialTrendSeries(invoices,expenses,{valid:true,start:null,end:null});
-    const dashboardTrend=(dashboardShowSales||dashboardShowExpenses)
-      ? '<section class="analytics-chart-grid dashboard-chart-grid">'+renderAnalyticsTrendCard(dashboardTrendSeries,dashboardShowSales,dashboardShowExpenses,"últimos seis meses")+'</section>'
-      : '';
-    const low=activeProducts.filter(needsRestock).length;
-    const stockAvailable=activeProducts.filter(product=>Number(product.stock||0)>(Number.isInteger(product.minStock)?product.minStock:3)).length;
-    const stockLow=activeProducts.filter(product=>Number(product.stock||0)>0&&needsRestock(product)).length;
-    const stockOut=activeProducts.filter(product=>Number(product.stock||0)<=0).length;
-    const stockTotal=activeProducts.length;
-    const availableEnd=stockTotal?360*stockAvailable/stockTotal:0;
-    const lowEnd=stockTotal?360*(stockAvailable+stockLow)/stockTotal:0;
-    const donutBackground=stockTotal
-      ? 'conic-gradient(#3f8b68 0deg '+availableEnd+'deg,#d7a44e '+availableEnd+'deg '+lowEnd+'deg,#bf6a62 '+lowEnd+'deg 360deg)'
-      : 'conic-gradient(#e8edf2 0deg 360deg)';
-    const stockSegments=[
-      {label:'Disponible',count:stockAvailable,tone:'available'},
-      {label:'Stock bajo',count:stockLow,tone:'low'},
-      {label:'Agotado',count:stockOut,tone:'out'}
-    ];
-    const stockLegend=stockSegments.map(segment=>{
-      const percent=stockTotal?Math.round(segment.count/stockTotal*100):0;
-      return '<div class="donut-legend-item"><span class="donut-swatch '+segment.tone+'"></span><span class="donut-legend-label">'+segment.label+'</span><strong>'+segment.count+'</strong><small>'+percent+'%</small></div>';
-    }).join('');
-    const donutMarkup='<div class="inventory-donut" role="img" aria-label="Distribución de productos: '+stockAvailable+' disponibles, '+stockLow+' con stock bajo y '+stockOut+' agotados." style="background:'+donutBackground+'"><div class="inventory-donut-center"><strong>'+stockTotal+'</strong><span>productos</span></div></div>';
-    const finance=financialSnapshot();
-    const days=[];
-    for(let offset=6;offset>=0;offset--){
-      const day=new Date();day.setHours(0,0,0,0);day.setDate(day.getDate()-offset);
-      const total=invoices.filter(invoice=>{const d=new Date(invoice.createdAt);return !Number.isNaN(d.getTime())&&d.toDateString()===day.toDateString();})
-        .reduce((sum,invoice)=>sum+Number(invoice.totalUsd||0),0);
-      days.push({label:day.toLocaleDateString('es-NI',{weekday:'short',day:'2-digit'}),total});
-    }
-    const maxDay=Math.max(1,...days.map(day=>day.total));
-    const bars=days.map(day=>'<div class="stock-row"><div class="stock-row-head"><span>'+esc(day.label)+'</span><strong>'+money(day.total)+'</strong></div><div class="stock-track"><span class="stock-fill" style="width:'+Math.round(day.total/maxDay*100)+'%"></span></div></div>').join('');
-    return heading(views.dashboard,'')+
-      '<section class="metric-grid">'+
-      metric('Ventas facturadas',money(finance.revenue),'chart',invoices.length+' facturas','productos vendidos · USD',false)+
-      metric('Utilidad bruta',money(finance.grossProfit),'spark','Venta neta de productos − costo','antes de gastos operativos',true)+
-      metric('Resultado después de gastos',money(finance.netProfit),'wallet',money(finance.operatingExpenses)+' en gastos','incluye ingresos de entrega; sin impuestos ni nómina no registrada',true)+
-      metric('Alertas de inventario',String(low).padStart(2,'0'),'warning',activeProducts.length+' productos activos','stock bajo o agotado',true)+
-      '</section>'+
-      '<section class="dashboard-grid">'+
-      '<article class="panel"><div class="panel-heading"><div><h2>Ventas facturadas · últimos 7 días</h2><p>Importes tomados de comprobantes registrados</p></div><button class="panel-link" data-view="analytics">Ver informes '+svg('arrow')+'</button></div><div class="chart-summary"><strong>'+money(finance.revenue)+'</strong><span>total facturado histórico · USD</span></div><div class="stock-summary dashboard-sales-bars">'+bars+'</div><div class="chart-note"><i></i> Solo incluye facturas registradas en el sistema.</div></article>'+
-      '<article class="panel"><div class="panel-heading"><div><h2>Productos destacados</h2><p>Productos activos con más unidades disponibles</p></div><button class="panel-link" data-view="products">Catálogo '+svg('arrow')+'</button></div><div class="top-products">'+(topRows||'<div class="empty-state">Todavía no hay productos registrados.</div>')+'</div><div class="panel-footer-note">Precios, costos y existencias disponibles en el sistema.</div></article>'+
-      '</section>'+
-      '<section class="lower-grid"><article class="panel"><div class="panel-heading"><div><h2>Facturas recientes</h2><p>Actividad comercial registrada</p></div><button class="panel-link" data-view="billing">Ver todas '+svg('arrow')+'</button></div><div class="table-wrap"><table class="data-table mobile-record-table"><thead><tr><th>FACTURA</th><th>CLIENTE</th><th>FECHA</th><th>TOTAL</th><th>ESTADO</th></tr></thead><tbody>'+(invoiceRows||'<tr><td colspan="5"><div class="empty-state">Todavía no hay facturas.</div></td></tr>')+'</tbody></table></div></article>'+
-      '<article class="panel inventory-status-panel"><div class="panel-heading"><div><h2>Estado del inventario</h2><p>Distribución de productos por nivel de existencias</p></div><button class="panel-link" data-view="inventory">Consultar existencias '+svg('arrow')+'</button></div><div class="inventory-donut-layout">'+donutMarkup+'<div class="donut-legend">'+stockLegend+'</div></div><div class="panel-footer-note">Conteo por referencia activa, calculado con existencias y stock mínimo registrados en el sistema.</div></article></section>'+
-      dashboardTrend;
+
+  function renderDashboardModuleCard(title, value, detail, view, symbol) {
+    return '<button type="button" class="dashboard-module-card" data-view="' + esc(view) + '">' +
+      '<span class="dashboard-module-icon">' + svg(symbol) + '</span>' +
+      '<span class="dashboard-module-copy"><span class="dashboard-module-title">' + esc(title) + '</span>' +
+      '<strong class="dashboard-module-value">' + esc(value) + '</strong>' +
+      '<small class="dashboard-module-detail">' + esc(detail) + '</small></span>' +
+      '<span class="dashboard-module-arrow" aria-hidden="true">↗</span></button>';
   }
+
+  function renderDashboardDonutCard(title, subtitle, segments, emptyMessage) {
+    const palette = ['#3f8b68','#d7a44e','#6f84b5','#bf6a62','#9b7ab7','#8291a3','#4f9ca1'];
+    const normalized = (Array.isArray(segments) ? segments : [])
+      .map(item => ({ label:String(item.label || 'Otros'), count:Math.max(0,Number(item.count || 0)), detail:item.detail || '' }))
+      .filter(item => item.count > 0);
+    const total = normalized.reduce((sum,item) => sum + item.count,0);
+    let cursor = 0;
+    const stops = normalized.map((item,index) => {
+      const end = cursor + item.count / Math.max(1,total) * 360;
+      const value = palette[index % palette.length] + ' ' + cursor.toFixed(2) + 'deg ' + end.toFixed(2) + 'deg';
+      cursor = end;
+      return value;
+    });
+    const ring = total ? 'conic-gradient(' + stops.join(',') + ')' : 'conic-gradient(#e8edf2 0deg 360deg)';
+    const legend = normalized.map((item,index) => {
+      const percent = Math.round(item.count / total * 100);
+      return '<div class="dashboard-donut-legend-item"><i style="background:' + palette[index % palette.length] + '"></i>' +
+        '<span>' + esc(item.label) + '</span><strong>' + item.count.toLocaleString('es-NI') + '</strong>' +
+        '<small>' + percent + '%</small></div>';
+    }).join('');
+    const body = total
+      ? '<div class="dashboard-donut-layout"><div class="dashboard-donut-ring" role="img" aria-label="' +
+        esc(title + ': ' + normalized.map(item => item.label + ' ' + item.count).join(', ')) +
+        '" style="background:' + ring + '"><span><strong>' + total.toLocaleString('es-NI') +
+        '</strong><small>registros</small></span></div><div class="dashboard-donut-legend">' + legend + '</div></div>'
+      : '<div class="analytics-chart-empty">' + esc(emptyMessage || 'Todavía no hay registros para mostrar.') + '</div>';
+    return '<article class="panel analytics-chart-card dashboard-donut-card"><div class="panel-heading"><div><h2>' +
+      esc(title) + '</h2><p>' + esc(subtitle) + '</p></div></div>' + body + '</article>';
+  }
+
+  function renderDashboardCashFlowCard(series) {
+    const buckets = Array.isArray(series?.buckets) ? series.buckets : [];
+    const maxValue = Math.max(1,...buckets.flatMap(item => [Number(item.income || 0),Number(item.outflow || 0)]));
+    const hasValues = buckets.some(item => Number(item.income || 0) > 0 || Number(item.outflow || 0) > 0);
+    const bars = buckets.map(item => {
+      const income = Math.max(0,Number(item.income || 0));
+      const outflow = Math.max(0,Number(item.outflow || 0));
+      const incomeHeight = income > 0 ? Math.max(2,income / maxValue * 100) : 0;
+      const outflowHeight = outflow > 0 ? Math.max(2,outflow / maxValue * 100) : 0;
+      return '<div class="dashboard-cashflow-column" aria-label="' + esc(item.label + ': entradas ' + money(income) + ', salidas ' + money(outflow)) +
+        '"><div class="dashboard-cashflow-bars"><span class="dashboard-cashflow-income" style="height:' + incomeHeight.toFixed(2) +
+        '%" title="Entradas: ' + esc(money(income)) + '"></span><span class="dashboard-cashflow-outflow" style="height:' +
+        outflowHeight.toFixed(2) + '%" title="Salidas: ' + esc(money(outflow)) + '"></span></div><small>' +
+        esc(item.label) + '</small></div>';
+    }).join('');
+    const body = hasValues
+      ? '<div class="dashboard-cashflow-legend"><span><i class="dashboard-cashflow-income"></i>Entradas</span><span><i class="dashboard-cashflow-outflow"></i>Salidas</span></div>' +
+        '<div class="dashboard-cashflow-chart">' + bars + '</div><p class="analytics-chart-footnote">Importes equivalentes en USD · últimos seis meses.</p>'
+      : '<div class="analytics-chart-empty">Todavía no hay movimientos de caja registrados.</div>';
+    return '<article class="panel analytics-chart-card"><div class="panel-heading"><div><h2>Flujo de caja</h2><p>Entradas y salidas registradas, sin confundirlas con saldos bancarios conciliados.</p></div></div>' + body + '</article>';
+  }
+
+  function renderDashboardAlertItem(label, count, detail, view, tone) {
+    return '<button type="button" class="dashboard-alert-item ' + esc(tone || 'warning') + '" data-view="' + esc(view) + '">' +
+      '<strong>' + Number(count).toLocaleString('es-NI') + '</strong><span><b>' + esc(label) + '</b><small>' +
+      esc(detail) + '</small></span><span class="dashboard-alert-arrow" aria-hidden="true">↗</span></button>';
+  }
+
+  function renderDashboard() {
+    const canSeeSales = permissionGranted('billing.invoices.view');
+    const canSeeExpenses = permissionGranted('expenses.records.view');
+    const canSeeProducts = permissionGranted('products.catalog.view');
+    const canSeeSuppliers = permissionGranted('suppliers.records.view');
+    const canSeePurchases = permissionGranted('purchases.receipts.view');
+    const canSeePurchaseOrders = permissionGranted('purchases.purchase_orders.view');
+    const canSeeCustomers = permissionGranted('customers.records.view');
+    const canSeeOrders = permissionGranted('orders.records.view');
+    const canSeeCash = permissionGranted('cash.entries.view');
+    const canSeeEmployees = permissionGranted('hr.employees.view');
+    const canSeeContracts = permissionGranted('hr.contracts.view');
+    const canSeePayroll = permissionGranted('hr.payroll.view');
+    const canSeePayables = permissionGranted('purchases.supplier_invoices.view');
+    const canSeeDgi = permissionGranted('dgi.documents.view');
+    if (canSeeDgi && !dgiDocumentsLoaded && !dgiDocumentsLoading && !dgiDocumentsLoadAttempted) {
+      void loadDgiSupportDocuments(false);
+    }
+
+    const activeProducts = canSeeProducts ? products.filter(product => product.active !== false) : [];
+    const activeSuppliers = canSeeSuppliers ? suppliers.filter(supplier => supplier.active !== false) : [];
+    const activeCustomers = canSeeCustomers ? customers.filter(customer => customer.active !== false) : [];
+    const activeEmployees = canSeeEmployees ? employees.filter(employee => employee.status === 'Activo') : [];
+    const lowProducts = activeProducts.filter(needsRestock);
+    const stockAvailable = activeProducts.filter(product => Number(product.stock || 0) > (Number.isInteger(product.minStock) ? product.minStock : 3)).length;
+    const stockLow = activeProducts.filter(product => Number(product.stock || 0) > 0 && needsRestock(product)).length;
+    const stockOut = activeProducts.filter(product => Number(product.stock || 0) <= 0).length;
+    const stockTotal = activeProducts.length;
+    const finance = canSeeSales || canSeeExpenses ? financialSnapshot() : null;
+
+    const moduleCards = [];
+    if (canSeeProducts) moduleCards.push(renderDashboardModuleCard('Productos',activeProducts.length,
+      products.length + ' referencias registradas','products','bottle'));
+    if (canSeeProducts) moduleCards.push(renderDashboardModuleCard('Inventario',
+      activeProducts.reduce((sum,product)=>sum+Math.max(0,Number(product.stock||0)),0).toLocaleString('es-NI'),
+      lowProducts.length + ' referencias requieren revisión','inventory','boxes'));
+    if (canSeeSuppliers) moduleCards.push(renderDashboardModuleCard('Proveedores',activeSuppliers.length,
+      suppliers.length + ' registrados','suppliers','users'));
+    if (canSeeCustomers) moduleCards.push(renderDashboardModuleCard('Clientes',activeCustomers.length,
+      customers.length + ' registrados','customers','users'));
+    if (canSeeOrders) moduleCards.push(renderDashboardModuleCard('Pedidos',orders.length,
+      orders.filter(order=>!['Cancelado','Cancelada','Anulado','Anulada'].includes(order.status)).length + ' vigentes','orders','receipt'));
+    if (canSeeSales) moduleCards.push(renderDashboardModuleCard('Facturación',invoices.length,
+      'Facturas registradas','billing','receipt'));
+    if (canSeePurchases) moduleCards.push(renderDashboardModuleCard('Compras recibidas',purchases.length,
+      'Entradas de compra registradas','purchases','bag'));
+    if (canSeePurchaseOrders) moduleCards.push(renderDashboardModuleCard('Órdenes de compra',purchaseOrders.length,
+      purchaseOrders.filter(order=>['Enviada','Confirmada','Recepción parcial'].includes(order.status)).length + ' abiertas','purchaseOrders','receipt'));
+    if (canSeeExpenses) moduleCards.push(renderDashboardModuleCard('Gastos',expenses.length,
+      'Registros operativos','expenses','receipt'));
+    if (canSeeCash) moduleCards.push(renderDashboardModuleCard('Caja y bancos',cashAccounts.length,
+      cashEntries.length + ' movimientos registrados','cash','wallet'));
+    if (canSeeEmployees) moduleCards.push(renderDashboardModuleCard('Personal',activeEmployees.length,
+      employees.length + ' colaboradores registrados','hr','users'));
+    if (canSeePayroll) moduleCards.push(renderDashboardModuleCard('Nómina',payrollPeriods.length,
+      payrollPeriods.length + ' períodos registrados','hr','wallet'));
+    if (canSeeDgi) moduleCards.push(renderDashboardModuleCard('Soportes DGI',
+      dgiDocumentsLoaded ? dgiSupportDocuments.length : (dgiDocumentsLoading ? '…' : '—'),
+      dgiDocumentsLoaded ? 'Documentos archivados' : (dgiDocumentsError ? 'Consulta no disponible' : 'Consulta de soportes'),'dgi','receipt'));
+
+    const metricCards = [];
+    if (canSeeSales) {
+      metricCards.push(metric('Ventas facturadas',money(finance.revenue),'chart',invoices.length + ' facturas','USD · histórico',false));
+      metricCards.push(metric('Utilidad bruta',money(finance.grossProfit),'spark','Ventas − costo de ventas','antes de gastos',true));
+      const receivables = invoices.reduce((sum,invoice)=>sum+Math.max(0,Number(invoice.totalUsd||0)-Number(invoice.paidUsd||0)),0);
+      metricCards.push(metric('Por cobrar',money(receivables),'wallet','Saldo abierto de facturas','USD · saldo actual',false));
+    }
+    if (canSeeExpenses) metricCards.push(metric('Gastos operativos',money(finance.operatingExpenses),'receipt',expenses.length + ' gastos','USD · histórico',false));
+    if (canSeeSales && canSeeExpenses) {
+      metricCards.push(metric('Resultado después de gastos',money(finance.netProfit),'wallet','Utilidad bruta + entrega − gastos','No incluye nómina ni impuestos no registrados',true));
+    }
+    if (canSeePayables) {
+      const payables = calculatePayablesSnapshot(canSeePurchases ? purchases : [],supplierInvoices,roundMoney).total;
+      metricCards.push(metric('Por pagar',money(payables),'wallet',supplierInvoices.filter(invoice=>!['Pagada','Anulada','Cancelada'].includes(invoice.status)).length + ' facturas abiertas','USD · saldo actual',false));
+    }
+    if (canSeeProducts) {
+      const stockValue = activeProducts.reduce((sum,product)=>sum+Math.max(0,Number(product.unitCost||0))*Math.max(0,Number(product.stock||0)),0);
+      metricCards.push(metric('Inventario a costo',money(stockValue),'boxes',activeProducts.length + ' productos activos','USD · posición actual',false));
+    }
+    if (canSeeCash) {
+      const netCash = cashEntries.reduce((sum,entry)=>sum+(entry.direction==='income'?1:-1)*Number(entry.amountUsd||0),0);
+      metricCards.push(metric('Flujo neto registrado',money(netCash),'chart','Entradas menos salidas','USD · movimientos históricos',false));
+    }
+
+    const alerts = [];
+    if (canSeeProducts && lowProducts.length) alerts.push(renderDashboardAlertItem('Stock por reponer',lowProducts.length,
+      'Productos por debajo del mínimo','products','warning'));
+    if (canSeePurchaseOrders) {
+      const approvals = purchaseOrders.filter(order=>order.status==='Enviada').length;
+      const receiving = purchaseOrders.filter(order=>['Confirmada','Recepción parcial'].includes(order.status)).length;
+      if (approvals) alerts.push(renderDashboardAlertItem('Órdenes por aprobar',approvals,'Revisar solicitudes enviadas','purchaseOrders','warning'));
+      if (receiving) alerts.push(renderDashboardAlertItem('Recepciones pendientes',receiving,'Órdenes confirmadas o parciales','purchaseOrders','info'));
+    }
+    if (canSeePayables) {
+      const today = new Date().toISOString().slice(0,10);
+      const overdue = supplierInvoices.filter(invoice=>invoice.dueDate && invoice.dueDate < today &&
+        !['Pagada','Anulada','Cancelada'].includes(invoice.status)).length;
+      if (overdue) alerts.push(renderDashboardAlertItem('Facturas vencidas',overdue,'Proveedores con saldo y fecha vencida','payables','danger'));
+    }
+    if (canSeeEmployees && canSeeContracts) {
+      const reminders = getContractReminders(activeEmployees,new Date());
+      if (reminders.length) alerts.push(renderDashboardAlertItem('Contratos por vencer',reminders.length,
+        'Vencimiento dentro de 30 días','hr','warning'));
+    }
+    if (canSeePayroll) {
+      const pendingPayroll = payrollPeriods.filter(period=>!['Pagada','Cerrada','Cancelada'].includes(period.status)).length;
+      if (pendingPayroll) alerts.push(renderDashboardAlertItem('Nóminas pendientes',pendingPayroll,
+        'Períodos que requieren revisión','hr','info'));
+    }
+    const alertSection = '<section class="dashboard-section"><div class="dashboard-section-heading"><div><h2>Alertas y pendientes</h2><p>Solo se muestran alertas de módulos autorizados.</p></div></div>' +
+      (alerts.length ? '<div class="dashboard-alert-grid">' + alerts.join('') + '</div>' :
+        '<div class="dashboard-all-clear"><span>' + svg('spark') + '</span><strong>Sin alertas pendientes</strong><small>No se detectan pendientes en los módulos disponibles.</small></div>') +
+      '</section>';
+
+    const charts = [];
+    if (canSeeSales || canSeeExpenses) {
+      const series = buildFinancialTrendSeries(canSeeSales ? invoices : [],canSeeExpenses ? expenses : [],{valid:true,start:null,end:null});
+      charts.push(renderAnalyticsTrendCard(series,canSeeSales,canSeeExpenses,'últimos seis meses'));
+    }
+    if (canSeeProducts) {
+      charts.push(renderDashboardDonutCard('Estado del inventario','Disponibilidad de referencias activas',[
+        {label:'Disponible',count:stockAvailable},
+        {label:'Stock bajo',count:stockLow},
+        {label:'Agotado',count:stockOut}
+      ],'No hay productos activos para analizar.'));
+    }
+    if (canSeePurchaseOrders) {
+      const statusSeries = buildProcurementStatusSeries(purchaseOrders);
+      charts.push(renderDashboardDonutCard('Órdenes de compra','Distribución por etapa del proceso',statusSeries,
+        'Todavía no hay órdenes de compra registradas.'));
+    }
+    if (canSeeSales) {
+      charts.push(renderAnalyticsRankCard('Productos más vendidos','Unidades incluidas en facturas registradas',
+        buildTopSellingProducts(invoices,5),item=>item.quantity,item=>item.name,
+        item=>money(item.salesUsd)+' facturados',value=>Math.round(value).toLocaleString('es-NI')+' uds.'));
+    }
+    if (canSeePurchases && canSeeSuppliers) {
+      charts.push(renderAnalyticsRankCard('Compras por proveedor','Importes de compras recibidas, sin duplicar las facturas proveedor',
+        buildSupplierSpendSeries(purchases,5),item=>item.amountUsd,item=>item.name,
+        item=>item.purchaseCount+' compras registradas',money));
+    }
+    if (canSeeExpenses) {
+      charts.push(renderAnalyticsRankCard('Gastos por categoría','Distribución de los gastos operativos registrados',
+        buildExpenseCategorySeries(expenses,6),item=>item.amountUsd,item=>item.label,
+        item=>'Importe acumulado en USD',money));
+    }
+    if (canSeeSales && canSeeCustomers) {
+      charts.push(renderAnalyticsRankCard('Clientes principales','Facturación acumulada por cliente',
+        buildCustomerRevenueSeries(invoices,5),item=>item.revenueUsd,item=>item.name,
+        item=>item.invoiceCount+' facturas',money));
+    }
+    if (canSeeCash) charts.push(renderDashboardCashFlowCard(buildCashFlowTrendSeries(cashEntries)));
+
+    const moduleSection = '<section class="dashboard-section"><div class="dashboard-section-heading"><div><h2>Visión de los módulos</h2><p>Indicadores rápidos de la operación, calculados con los registros disponibles.</p></div></div>' +
+      (moduleCards.length ? '<div class="dashboard-module-grid">' + moduleCards.join('') + '</div>' :
+        '<div class="analytics-chart-empty">Tu perfil todavía no tiene módulos operativos autorizados.</div>') + '</section>';
+    const metricSection = metricCards.length
+      ? '<section class="metric-grid dashboard-finance-metrics" aria-label="Indicadores financieros">' + metricCards.join('') + '</section>'
+      : '';
+    const chartSection = charts.length
+      ? '<section class="analytics-chart-grid dashboard-chart-grid" aria-label="Gráficas del negocio">' + charts.join('') + '</section>'
+      : '<div class="analytics-chart-empty">No hay fuentes de datos autorizadas para generar gráficas.</div>';
+    return heading(views.dashboard,'') + moduleSection + metricSection + alertSection + chartSection;
+  }
+
   function needsRestock(product) {
     return product.stock <= (Number.isInteger(product.minStock) ? product.minStock : 3);
   }
@@ -3213,7 +3390,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       }));
       dgiDocumentsLoaded=true;
     }catch(error){dgiDocumentsError=error?.message||'No se pudo consultar el archivo DGI.';}
-    finally{dgiDocumentsLoading=false;if(state.view==='dgi')renderView();}
+    finally{dgiDocumentsLoading=false;if(state.view==='dgi'||state.view==='dashboard')renderView();}
   }
   function dgiPeriodKey(date){
     const value=date instanceof Date?date:new Date(date);
