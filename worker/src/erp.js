@@ -2015,7 +2015,7 @@ async function createVacationLedgerEntry(sql,user,body) {
   const daysDelta=Number(body.days_delta||0);
   const amount=Number(body.amount_nio||0);
   const notes=String(body.notes||"").trim();
-  if(!/^[0-9a-f-]{36}$/i.test(employeeId)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(effectiveDate)||
+  if(!/^[0-9a-f-]{36}$/i.test(employeeId)||!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)||
      !["cash_payment","cash_settlement","adjustment"].includes(entryType)||!Number.isFinite(daysDelta)||!Number.isFinite(amount)||
      amount<0||notes.length<3||notes.length>500)
     return erpError(400,"INVALID_VACATION_LEDGER_ENTRY","Revisa colaborador, tipo, fecha, días, monto y motivo.");
