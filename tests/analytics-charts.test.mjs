@@ -93,3 +93,24 @@ test("chart helpers return empty output safely when there are no business record
   assert.deepEqual(buildExpenseCategorySeries(undefined), []);
   assert.deepEqual(buildInventoryCategorySeries([]), []);
 });
+
+
+test("voided invoices are excluded from trend revenue, cost and invoice counts", () => {
+  const period = { valid: true, start: new Date(2026, 10, 1), end: new Date(2026, 10, 30, 23, 59, 59, 999) };
+  const result = buildFinancialTrendSeries([
+    { status: "Pendiente", createdAt: "2026-11-03T10:00:00", totalUsd: 30, items: [{ quantity: 1, unitCostUsd: 12 }] },
+    { status: "Anulada", createdAt: "2026-11-04T10:00:00", totalUsd: 900, items: [{ quantity: 10, unitCostUsd: 70 }] },
+    { status: "Cancelada", createdAt: "2026-11-05T10:00:00", totalUsd: 700, items: [{ quantity: 10, unitCostUsd: 50 }] }
+  ], [], period, new Date(2026, 10, 30));
+  assert.equal(result.buckets.reduce((sum, bucket) => sum + bucket.revenue, 0), 30);
+  assert.equal(result.buckets.reduce((sum, bucket) => sum + bucket.costOfSales, 0), 12);
+  assert.equal(result.buckets.reduce((sum, bucket) => sum + bucket.invoiceCount, 0), 1);
+});
+
+test("voided invoices are excluded from top-selling product totals", () => {
+  const result = buildTopSellingProducts([
+    { status: "Pagada", items: [{ productId: "p1", name: "Perfume A", quantity: 1, unitPriceUsd: 20 }] },
+    { status: "Anulada", items: [{ productId: "p1", name: "Perfume A", quantity: 10, unitPriceUsd: 20 }] }
+  ]);
+  assert.deepEqual(result, [{ key: "p1", name: "Perfume A", quantity: 1, salesUsd: 20 }]);
+});
