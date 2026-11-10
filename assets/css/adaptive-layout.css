@@ -43,7 +43,7 @@
 /* Intermediate tablet widths have too little room for a dense five-column
    account table beside the desktop sidebar. Convert access tables to cards
    before the content column becomes cramped. */
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .access-manager-section,
   .access-manager-section > *,
   .access-manager-section .panel,
@@ -144,7 +144,7 @@
 
 /* Account-level controls: compact actions, aligned checkbox and balanced
    exception controls. Do not stretch every action to the card's full width. */
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .access-manager-section .user-access-controls {
     display: flex;
     flex-direction: column;
