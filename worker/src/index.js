@@ -221,6 +221,7 @@ async function getProfile(request, env) {
     return json({
       user: {
         id: auth.user.id,
+        authUserId: auth.user.auth_user_id,
         email: auth.user.email,
         name: auth.user.display_name,
         role: auth.user.role,
