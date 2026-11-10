@@ -111,8 +111,14 @@ function updateSidebarIdentity(profile) {
 async function refreshProfile() {
   if (!authClient) return null;
   const sessionSpan = startPerformanceSpan("Sesión Neon Auth");
-  const result = await authClient.getSession();
-  sessionSpan({ status: result?.error ? 500 : 200 });
+  let result;
+  try {
+    result = await authClient.getSession();
+    sessionSpan({ status: result?.error ? 500 : 200 });
+  } catch (error) {
+    sessionSpan({ status: 599 });
+    throw error;
+  }
   if (result?.error) throw new Error(result.error.message || "No se pudo consultar la sesión.");
 
   const data = result?.data || null;
@@ -126,20 +132,32 @@ async function refreshProfile() {
 
   try {
     const tokenSpan = startPerformanceSpan("Obtener JWT");
-    const token = await getToken();
-    tokenSpan({ status: token ? 200 : 401 });
+    let token;
+    try {
+      token = await getToken();
+      tokenSpan({ status: token ? 200 : 401 });
+    } catch (error) {
+      tokenSpan({ status: 599 });
+      throw error;
+    }
     if (!token) {
       profileError = "No se pudo obtener un token válido de la sesión.";
       return null;
     }
 
     const profileSpan = startPerformanceSpan("Validar perfil ERP");
-    const response = await fetch(apiUrl("/api/auth/profile"), {
-      headers: { authorization: "Bearer " + token },
-      cache: "no-store"
-    });
-    const body = await readJson(response);
-    profileSpan({ status: response.status });
+    let response, body;
+    try {
+      response = await fetch(apiUrl("/api/auth/profile"), {
+        headers: { authorization: "Bearer " + token },
+        cache: "no-store"
+      });
+      body = await readJson(response);
+      profileSpan({ status: response.status });
+    } catch (error) {
+      profileSpan({ status: 599 });
+      throw error;
+    }
     if (response.ok && body.user) {
       if (!profileMatchesAuthUser(body.user, authUser)) {
         erpProfile = null;
@@ -310,8 +328,13 @@ async function openERP() {
     }
     if (!appLoaded) {
       const appImportSpan = startPerformanceSpan("Importar cliente ERP");
-      await import("./app.js?v=20261110-auth-isolation-1");
-      appImportSpan({ status: 200 });
+      try {
+        await import("./app.js?v=20261110-perf-diagnostics-1");
+        appImportSpan({ status: 200 });
+      } catch (error) {
+        appImportSpan({ status: 599 });
+        throw error;
+      }
       appLoaded = true;
       appLoadedProfileKey = nextProfileKey;
     }
