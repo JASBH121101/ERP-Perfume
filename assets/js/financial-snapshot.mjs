@@ -1,6 +1,6 @@
 const roundMoneyDefault = value => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
-const VOIDED_INVOICE_STATUSES = new Set(["anulada","anulado","cancelada","cancelado","void","voided"]);
+const VOIDED_INVOICE_STATUSES = new Set(["anulada","anulado","cancelada","cancelado","cancelled","canceled","void","voided"]);
 
 export function isVoidedInvoice(invoice) {
   const status = typeof invoice === "string" ? invoice : invoice?.status;
