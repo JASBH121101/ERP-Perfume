@@ -1742,5 +1742,6 @@ test('text entry fields stay visually clean without example placeholders across 
   }
 
   await expect(page.locator('#product-form [name="name"]')).toHaveAttribute('required', '');
+  await navigateToView(page, 'settings');
   await expect(page.locator('#exchange-rate-form [name="exchangeRate"]')).toHaveAttribute('required', '');
 });
