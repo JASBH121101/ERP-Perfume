@@ -2424,7 +2424,7 @@ import { MINIMUM_WAGE_SECTORS, getMinimumWageForSector } from './hr-labor-rules.
       const initialEmployee=employees.find(e=>e.status==='Activo');
       const initialSalary=firstPeriod?.periodType==='Aguinaldo'?0:Number(initialEmployee?.salaryNio||0)*(firstPeriod?.periodFrequency==='weekly'?12/52:(firstPeriod?.periodFrequency==='biweekly'?0.5:1));
       const isAguinaldo=firstPeriod?.periodType==='Aguinaldo';
-      body='<div class="form-grid">'+selectField('Período de nómina','payrollPeriodId',periodOptions,true)+selectField('Colaborador','employeeId',employeeOptions,true)+formField('Salario base del período (C$)','baseSalaryNio','number',true,'min="0" step="0.01" value="'+initialSalary.toFixed(2)+'"')+formField('Bonos (C$)','bonusesNio','number',false,'min="0" step="0.01" value="0"')+formField('Otras deducciones (C$)','deductionsNio','number',false,'min="0" step="0.01" value="0"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper" id="payroll-item-help">'+(isAguinaldo?'El sistema calcula el decimotercer mes proporcional.':'Puedes usar salario base cero para un asesor que cobra solo comisiones. El servidor calcula comisiones, INSS, IR e INATEC patronal.')+'</p>';
+      body='<div class="form-grid">'+selectField('Período de nómina','payrollPeriodId',periodOptions,true)+selectField('Colaborador','employeeId',employeeOptions,true)+formField('Salario base del período (C$)','baseSalaryNio','number',true,'min="0" step="0.01" value="'+initialSalary.toFixed(2)+'"')+formField('Bonos (C$)','bonusesNio','number',false,'min="0" step="0.01" value="0"')+formField('Otras deducciones (C$)','deductionsNio','number',false,'min="0" step="0.01" value="0"')+formField('Notas','notes','text',false,'maxlength="250"')+'</div><p class="form-helper" id="payroll-item-help">'+(isAguinaldo?'El sistema calcula el decimotercer mes proporcional.':'El salario base debe cubrir el mínimo proporcional del período según su frecuencia. Las comisiones pendientes se agregan como remuneración variable; el servidor calcula INSS, IR e INATEC patronal.')+'</p>';
     }
     document.getElementById('business-modal-title').textContent=titles[type]||(type==='purchase-payment'?'Abonar compra':'Nuevo registro');
     document.getElementById('business-form-body').innerHTML=body;businessForm.dataset.recordType=type;businessForm.dataset.recordId=recordId||'';
@@ -4726,20 +4726,28 @@ import { MINIMUM_WAGE_SECTORS, getMinimumWageForSector } from './hr-labor-rules.
       if(endDate)endDate.min=event.target.value||'';
     }
     if(businessForm.dataset.recordType==='payroll-item'&&event.target.name==='payrollPeriodId'){
-      const periodType=event.target.selectedOptions?.[0]?.getAttribute('data-period-type');
+      const selectedPeriod=event.target.selectedOptions?.[0];
+      const periodType=selectedPeriod?.getAttribute('data-period-type');
+      const frequency=selectedPeriod?.getAttribute('data-period-frequency')||'monthly';
+      const factor=frequency==='weekly'?12/52:(frequency==='biweekly'?0.5:1);
       const salary=businessForm.querySelector('[name="baseSalaryNio"]');
       const help=businessForm.querySelector('#payroll-item-help');
       const isAguinaldo=periodType==='Aguinaldo';
-      if(salary){salary.value=isAguinaldo?'0':(businessForm.querySelector('[name="employeeId"]')?.selectedOptions?.[0]?.getAttribute('data-salary')||'0');}
-      if(help)help.textContent=isAguinaldo?'El sistema calcula el decimotercer mes proporcional usando el ciclo laboral y el salario que corresponda; el aguinaldo está exento de INSS.':'El servidor calcula el INSS del trabajador y patronal, e incorpora las comisiones pendientes de ventas dentro de este período.';
+      const monthlySalary=Number(businessForm.querySelector('[name="employeeId"]')?.selectedOptions?.[0]?.getAttribute('data-salary')||0);
+      if(salary){salary.value=isAguinaldo?'0':Number((monthlySalary*factor).toFixed(2)).toFixed(2);}
+      if(help)help.textContent=isAguinaldo?'El sistema calcula el decimotercer mes proporcional usando el ciclo laboral y el salario que corresponda; el aguinaldo está exento de INSS.':'El salario base se ajusta a la frecuencia y debe cubrir el mínimo proporcional del período. Las comisiones se agregan aparte.';
       return;
     }
     if(businessForm.dataset.recordType==='payroll-item'&&event.target.name==='employeeId'){
       const selected=event.target.selectedOptions?.[0];
       const salary=businessForm.querySelector('[name="baseSalaryNio"]');
       if(salary&&selected){
-        const periodType=businessForm.querySelector('[name="payrollPeriodId"]')?.selectedOptions?.[0]?.getAttribute('data-period-type');
-        salary.value=periodType==='Aguinaldo'?'0':(selected.getAttribute('data-salary')||'0');
+        const period=businessForm.querySelector('[name="payrollPeriodId"]')?.selectedOptions?.[0];
+        const periodType=period?.getAttribute('data-period-type');
+        const frequency=period?.getAttribute('data-period-frequency')||'monthly';
+        const factor=frequency==='weekly'?12/52:(frequency==='biweekly'?0.5:1);
+        const monthlySalary=Number(selected.getAttribute('data-salary')||0);
+        salary.value=periodType==='Aguinaldo'?'0':Number((monthlySalary*factor).toFixed(2)).toFixed(2);
       }
       return;
     }
