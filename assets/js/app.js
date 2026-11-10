@@ -871,7 +871,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     }).join('');
     const body = hasValues
       ? '<div class="dashboard-cashflow-legend"><span><i class="dashboard-cashflow-income"></i>Entradas</span><span><i class="dashboard-cashflow-outflow"></i>Salidas</span></div>' +
-        '<div class="dashboard-cashflow-chart">' + bars + '</div><p class="analytics-chart-footnote">Importes equivalentes en USD · últimos seis meses.</p>'
+        '<div class="dashboard-cashflow-chart-wrap"><div class="dashboard-cashflow-chart">' + bars + '</div></div><p class="analytics-chart-footnote">Importes equivalentes en USD · últimos seis meses.</p>'
       : '<div class="analytics-chart-empty">Todavía no hay movimientos de caja registrados.</div>';
     return '<article class="panel analytics-chart-card"><div class="panel-heading"><div><h2>Flujo de caja</h2><p>Entradas y salidas registradas, sin confundirlas con saldos bancarios conciliados.</p></div></div>' + body + '</article>';
   }
