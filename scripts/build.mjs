@@ -30,5 +30,14 @@ const apiBaseUrl = resolveApiBaseUrl({
   apiBaseUrl: process.env.ERP_API_BASE_URL
 });
 const withApi = injectApiBaseUrl(html, apiBaseUrl);
-await writeFile(htmlPath, withApi.replace('src="assets/js/bootstrap.mjs"', 'src="assets/js/app.js"'), "utf8");
+const browserEntryPattern = /src="assets\\/js\\/bootstrap\\.mjs(\\?[^"]*)?"/g;
+const browserEntries = [...withApi.matchAll(browserEntryPattern)];
+if (browserEntries.length !== 1) {
+  throw new Error(`Expected exactly one bootstrap browser entry in dist/index.html; found ${browserEntries.length}.`);
+}
+const builtHtml = withApi.replace(
+  browserEntryPattern,
+  (_match, query = "") => `src="assets/js/app.js${query}"`
+);
+await writeFile(htmlPath, builtHtml, "utf8");
 console.log("Built static ERP assets and bundled browser authentication client.");
