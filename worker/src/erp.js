@@ -384,118 +384,212 @@ async function auditQuery(sql, actorId, action, entity, entityId, details = {}) 
   );
 }
 
-async function readBootstrap(sql, user, permissionContext) {
-  const [products, movements, customers, suppliers, orders, orderItems, purchases, purchaseItems, purchaseOrders, purchaseOrderItems, purchaseReceipts, purchaseReceiptItems, supplierInvoices, supplierInvoicePayments, invoices, invoiceItems, invoicePayments, expenses, cashAccounts, cashEntries, employees, attendance, leaveRequests, payrollPeriods, payrollItems, settings, employeeHistory, employeeDocuments] =
-    await sql.transaction((tx) => [
-      tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`,
-      tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`,
-      tx`SELECT * FROM customers ORDER BY name ASC LIMIT 2000`,
-      tx`SELECT s.*,COALESCE(p.additional_phones,'[]'::jsonb) AS additional_phones FROM suppliers s LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('phone',phone,'display_order',display_order) ORDER BY display_order) AS additional_phones FROM supplier_phone_numbers WHERE supplier_id=s.id) p ON TRUE ORDER BY s.name ASC LIMIT 1000`,
-      tx`SELECT * FROM orders ORDER BY created_at DESC LIMIT 2000`,
-      tx`SELECT * FROM order_items ORDER BY id ASC LIMIT 10000`,
-      tx`SELECT * FROM purchases ORDER BY created_at DESC LIMIT 2000`,
-      tx`SELECT * FROM purchase_items ORDER BY id ASC LIMIT 10000`,
-      tx`SELECT po.*,COALESCE(NULLIF(creator.display_name,''),creator.email,'Usuario no disponible') AS created_by_name,COALESCE(NULLIF(approver.display_name,''),approver.email,'Usuario no disponible') AS approved_by_name FROM purchase_orders po LEFT JOIN app_users creator ON creator.id=po.created_by LEFT JOIN app_users approver ON approver.id=po.approved_by ORDER BY po.created_at DESC LIMIT 2000`,
-      tx`SELECT * FROM purchase_order_items ORDER BY created_at ASC LIMIT 10000`,
-      tx`SELECT pr.*,COALESCE(NULLIF(emitter.display_name,''),emitter.email,'Usuario no disponible') AS emitted_by_name,COALESCE(NULLIF(poster.display_name,''),poster.email,'Usuario no disponible') AS posted_by_name,je.journal_number FROM purchase_receipts pr LEFT JOIN app_users emitter ON emitter.id=pr.emitted_by LEFT JOIN app_users poster ON poster.id=pr.posted_by LEFT JOIN purchase_journal_entries je ON je.purchase_receipt_id=pr.id ORDER BY COALESCE(pr.emitted_at,pr.received_at) DESC LIMIT 5000`,
-      tx`SELECT * FROM purchase_receipt_items ORDER BY id ASC LIMIT 10000`,
-      tx`SELECT si.*,s.name AS supplier_name FROM supplier_invoices si JOIN suppliers s ON s.id=si.supplier_id ORDER BY si.invoice_date DESC,si.created_at DESC LIMIT 5000`,
-      tx`SELECT sip.*,ca.name AS account_name FROM supplier_invoice_payments sip JOIN cash_accounts ca ON ca.id=sip.account_id ORDER BY sip.paid_at DESC LIMIT 10000`,
-      tx`SELECT * FROM invoices ORDER BY created_at DESC LIMIT 2000`,
-      tx`SELECT * FROM invoice_items ORDER BY id ASC LIMIT 10000`,
-      tx`SELECT * FROM invoice_payments ORDER BY created_at DESC LIMIT 10000`,
-      tx`SELECT * FROM expenses ORDER BY created_at DESC LIMIT 5000`,
-      tx`SELECT * FROM cash_accounts WHERE active = TRUE ORDER BY name ASC`,
-      tx`SELECT * FROM cash_entries ORDER BY created_at DESC LIMIT 10000`,
-      tx`SELECT e.*, u.id AS linked_user_id, u.account_status AS linked_account_status, u.active AS account_active FROM employees e LEFT JOIN app_users u ON u.employee_id=e.id ORDER BY e.name ASC LIMIT 1000`,
-      tx`SELECT * FROM hr_attendance ORDER BY work_date DESC LIMIT 5000`,
-      tx`SELECT * FROM hr_leave_requests ORDER BY created_at DESC LIMIT 2000`,
-      tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`,
-      tx`SELECT * FROM hr_payroll_items ORDER BY created_at DESC LIMIT 5000`,
-      tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`,
-      tx`SELECT * FROM employee_history ORDER BY effective_date DESC, created_at DESC LIMIT 5000`,
-      tx`SELECT id,employee_id,document_type,file_name,file_type,file_size,created_at FROM employee_documents ORDER BY created_at DESC LIMIT 2000`
-    ]);
-
-  const result = {};
-  if (hasPermission(permissionContext, "settings.general.view")) {
-    result.settings = settings.filter((setting) =>
-      setting.setting_key !== "dgi_compliance" || hasPermission(permissionContext, "dgi.documents.view")
-    );
-  }
-  if (hasPermission(permissionContext, "products.catalog.view")) result.products = products;
+export function resolveBootstrapAccess(permissionContext) {
   const canViewInbound = hasPermission(permissionContext, "inventory.receipts.view") ||
     hasPermission(permissionContext, "purchases.receipts.view");
   const canViewOutbound = hasPermission(permissionContext, "inventory.manual_out.view");
   const canViewAdjustments = hasPermission(permissionContext, "inventory.adjustments.view");
-  if (canViewInbound || canViewOutbound || canViewAdjustments) {
-    result.inventory_movements = movements.filter((movement) => {
+  const canViewPayroll = hasPermission(permissionContext, "hr.payroll.view");
+  const canViewEmployees = hasPermission(permissionContext, "hr.employees.view");
+  const canViewPurchaseReceipts = hasPermission(permissionContext, "purchases.receipts.view");
+  const canViewPurchaseOrders = hasPermission(permissionContext, "purchases.purchase_orders.view");
+
+  return {
+    settings: hasPermission(permissionContext, "settings.general.view") || canViewPayroll,
+    generalSettings: hasPermission(permissionContext, "settings.general.view"),
+    products: hasPermission(permissionContext, "products.catalog.view"),
+    movements: canViewInbound || canViewOutbound || canViewAdjustments,
+    canViewInbound,
+    canViewOutbound,
+    canViewAdjustments,
+    customers: hasPermission(permissionContext, "customers.records.view"),
+    suppliers: hasPermission(permissionContext, "suppliers.records.view"),
+    orders: hasPermission(permissionContext, "orders.records.view"),
+    purchases: canViewPurchaseReceipts,
+    purchaseOrders: canViewPurchaseOrders || canViewPurchaseReceipts,
+    supplierInvoices: hasPermission(permissionContext, "purchases.supplier_invoices.view"),
+    supplierInvoicePayments: hasPermission(permissionContext, "payables.payments.view"),
+    invoices: hasPermission(permissionContext, "billing.invoices.view"),
+    invoicePayments: hasPermission(permissionContext, "billing.payments.view"),
+    expenses: hasPermission(permissionContext, "expenses.records.view"),
+    cash: hasPermission(permissionContext, "cash.entries.view"),
+    employees: canViewEmployees,
+    attendance: hasPermission(permissionContext, "hr.attendance.view"),
+    leaveRequests: hasPermission(permissionContext, "hr.leave.view"),
+    payroll: canViewPayroll
+  };
+}
+
+export async function readBootstrap(sql, user, permissionContext) {
+  const access = resolveBootstrapAccess(permissionContext);
+  const queryPlan = [];
+  const addQuery = (key, enabled, buildQuery) => {
+    if (enabled) queryPlan.push({ key, buildQuery });
+  };
+
+  // Keep one consistent read transaction, but only issue queries for datasets
+  // the authenticated user is allowed to see.
+  addQuery("products", access.products, tx =>
+    tx`SELECT * FROM products ORDER BY name ASC LIMIT 2000`);
+  addQuery("movements", access.movements, tx =>
+    tx`SELECT * FROM inventory_movements ORDER BY created_at DESC LIMIT 5000`);
+  addQuery("customers", access.customers, tx =>
+    tx`SELECT * FROM customers ORDER BY name ASC LIMIT 2000`);
+  addQuery("suppliers", access.suppliers, tx =>
+    tx`SELECT s.*,COALESCE(p.additional_phones,'[]'::jsonb) AS additional_phones FROM suppliers s LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('phone',phone,'display_order',display_order) ORDER BY display_order) AS additional_phones FROM supplier_phone_numbers WHERE supplier_id=s.id) p ON TRUE ORDER BY s.name ASC LIMIT 1000`);
+  addQuery("orders", access.orders, tx =>
+    tx`SELECT * FROM orders ORDER BY created_at DESC LIMIT 2000`);
+  addQuery("orderItems", access.orders, tx =>
+    tx`SELECT * FROM order_items ORDER BY id ASC LIMIT 10000`);
+  addQuery("purchases", access.purchases, tx =>
+    tx`SELECT * FROM purchases ORDER BY created_at DESC LIMIT 2000`);
+  addQuery("purchaseItems", access.purchases, tx =>
+    tx`SELECT * FROM purchase_items ORDER BY id ASC LIMIT 10000`);
+  addQuery("purchaseOrders", access.purchaseOrders, tx =>
+    tx`SELECT po.*,COALESCE(NULLIF(creator.display_name,''),creator.email,'Usuario no disponible') AS created_by_name,COALESCE(NULLIF(approver.display_name,''),approver.email,'Usuario no disponible') AS approved_by_name FROM purchase_orders po LEFT JOIN app_users creator ON creator.id=po.created_by LEFT JOIN app_users approver ON approver.id=po.approved_by ORDER BY po.created_at DESC LIMIT 2000`);
+  addQuery("purchaseOrderItems", access.purchaseOrders, tx =>
+    tx`SELECT * FROM purchase_order_items ORDER BY created_at ASC LIMIT 10000`);
+  addQuery("purchaseReceipts", access.purchaseOrders, tx =>
+    tx`SELECT pr.*,COALESCE(NULLIF(emitter.display_name,''),emitter.email,'Usuario no disponible') AS emitted_by_name,COALESCE(NULLIF(poster.display_name,''),poster.email,'Usuario no disponible') AS posted_by_name,je.journal_number FROM purchase_receipts pr LEFT JOIN app_users emitter ON emitter.id=pr.emitted_by LEFT JOIN app_users poster ON poster.id=pr.posted_by LEFT JOIN purchase_journal_entries je ON je.purchase_receipt_id=pr.id ORDER BY COALESCE(pr.emitted_at,pr.received_at) DESC LIMIT 5000`);
+  addQuery("purchaseReceiptItems", access.purchaseOrders, tx =>
+    tx`SELECT * FROM purchase_receipt_items ORDER BY id ASC LIMIT 10000`);
+  addQuery("supplierInvoices", access.supplierInvoices, tx =>
+    tx`SELECT si.*,s.name AS supplier_name FROM supplier_invoices si JOIN suppliers s ON s.id=si.supplier_id ORDER BY si.invoice_date DESC,si.created_at DESC LIMIT 5000`);
+  addQuery("supplierInvoicePayments", access.supplierInvoicePayments, tx =>
+    tx`SELECT sip.*,ca.name AS account_name FROM supplier_invoice_payments sip JOIN cash_accounts ca ON ca.id=sip.account_id ORDER BY sip.paid_at DESC LIMIT 10000`);
+  addQuery("invoices", access.invoices, tx =>
+    tx`SELECT * FROM invoices ORDER BY created_at DESC LIMIT 2000`);
+  addQuery("invoiceItems", access.invoices, tx =>
+    tx`SELECT * FROM invoice_items ORDER BY id ASC LIMIT 10000`);
+  addQuery("invoicePayments", access.invoicePayments, tx =>
+    tx`SELECT * FROM invoice_payments ORDER BY created_at DESC LIMIT 10000`);
+  addQuery("expenses", access.expenses, tx =>
+    tx`SELECT * FROM expenses ORDER BY created_at DESC LIMIT 5000`);
+  addQuery("cashAccounts", access.cash, tx =>
+    tx`SELECT * FROM cash_accounts WHERE active = TRUE ORDER BY name ASC`);
+  addQuery("cashEntries", access.cash, tx =>
+    tx`SELECT * FROM cash_entries ORDER BY created_at DESC LIMIT 10000`);
+  addQuery("employees", access.employees, tx =>
+    tx`SELECT e.*, u.id AS linked_user_id, u.account_status AS linked_account_status, u.active AS account_active FROM employees e LEFT JOIN app_users u ON u.employee_id=e.id ORDER BY e.name ASC LIMIT 1000`);
+  addQuery("attendance", access.attendance, tx =>
+    tx`SELECT * FROM hr_attendance ORDER BY work_date DESC LIMIT 5000`);
+  addQuery("leaveRequests", access.leaveRequests, tx =>
+    tx`SELECT * FROM hr_leave_requests ORDER BY created_at DESC LIMIT 2000`);
+  addQuery("payrollPeriods", access.payroll, tx =>
+    tx`SELECT * FROM hr_payroll_periods ORDER BY period_start DESC LIMIT 500`);
+  addQuery("payrollItems", access.payroll, tx =>
+    tx`SELECT * FROM hr_payroll_items ORDER BY created_at DESC LIMIT 5000`);
+  addQuery("settings", access.settings, tx =>
+    tx`SELECT setting_key, setting_value FROM app_settings ORDER BY setting_key ASC`);
+  addQuery("employeeHistory", access.employees, tx =>
+    tx`SELECT * FROM employee_history ORDER BY effective_date DESC, created_at DESC LIMIT 5000`);
+  addQuery("employeeDocuments", access.employees, tx =>
+    tx`SELECT id,employee_id,document_type,file_name,file_type,file_size,created_at FROM employee_documents ORDER BY created_at DESC LIMIT 2000`);
+  addQuery("employeeCommissions", access.payroll, tx =>
+    tx`SELECT ec.*, e.name AS employee_name, i.invoice_number FROM employee_commissions ec JOIN employees e ON e.id=ec.employee_id JOIN invoices i ON i.id=ec.invoice_id ORDER BY ec.sale_date DESC, ec.created_at DESC LIMIT 5000`);
+
+  const rows = queryPlan.length
+    ? await sql.transaction(tx => queryPlan.map(query => query.buildQuery(tx)))
+    : [];
+  const data = new Map(queryPlan.map((query, index) => [query.key, rows[index] || []]));
+  const getRows = key => data.get(key) || [];
+
+  const products = getRows("products");
+  const movements = getRows("movements");
+  const customers = getRows("customers");
+  const suppliers = getRows("suppliers");
+  const orders = getRows("orders");
+  const orderItems = getRows("orderItems");
+  const purchases = getRows("purchases");
+  const purchaseItems = getRows("purchaseItems");
+  const purchaseOrders = getRows("purchaseOrders");
+  const purchaseOrderItems = getRows("purchaseOrderItems");
+  const purchaseReceipts = getRows("purchaseReceipts");
+  const purchaseReceiptItems = getRows("purchaseReceiptItems");
+  const supplierInvoices = getRows("supplierInvoices");
+  const supplierInvoicePayments = getRows("supplierInvoicePayments");
+  const invoices = getRows("invoices");
+  const invoiceItems = getRows("invoiceItems");
+  const invoicePayments = getRows("invoicePayments");
+  const expenses = getRows("expenses");
+  const cashAccounts = getRows("cashAccounts");
+  const cashEntries = getRows("cashEntries");
+  const employees = getRows("employees");
+  const attendance = getRows("attendance");
+  const leaveRequests = getRows("leaveRequests");
+  const payrollPeriods = getRows("payrollPeriods");
+  const payrollItems = getRows("payrollItems");
+  const settings = getRows("settings");
+  const employeeHistory = getRows("employeeHistory");
+  const employeeDocuments = getRows("employeeDocuments");
+
+  const result = {};
+  if (access.generalSettings) {
+    result.settings = settings.filter(setting =>
+      setting.setting_key !== "dgi_compliance" || hasPermission(permissionContext, "dgi.documents.view")
+    );
+  }
+  if (access.products) result.products = products;
+  if (access.movements) {
+    result.inventory_movements = movements.filter(movement => {
       const type = String(movement.movement_type || "");
       const delta = Number(movement.quantity_delta ?? movement.quantity ?? 0);
 
       // Permission scope follows the business event, not just the sign.
       // Adjustments remain restricted to their own section even when they
       // increase/decrease stock; reversals inherit the direction they undo.
-      if (type === "Ajuste") return canViewAdjustments;
-      if (type === "Entrada" || type === "Devolucion") return canViewInbound;
-      if (type === "Salida") return canViewOutbound;
+      if (type === "Ajuste") return access.canViewAdjustments;
+      if (type === "Entrada" || type === "Devolucion") return access.canViewInbound;
+      if (type === "Salida") return access.canViewOutbound;
       if (type === "Reversion") {
-        if (delta < 0) return canViewOutbound;
-        if (delta > 0) return canViewInbound;
-        return canViewAdjustments;
+        if (delta < 0) return access.canViewOutbound;
+        if (delta > 0) return access.canViewInbound;
+        return access.canViewAdjustments;
       }
       return false;
     });
   }
-  if (hasPermission(permissionContext, "suppliers.records.view")) result.suppliers = suppliers;
-  if (hasPermission(permissionContext, "purchases.receipts.view")) {
+  if (access.suppliers) result.suppliers = suppliers;
+  if (access.purchases) {
     result.purchases = purchases;
     result.purchase_items = purchaseItems;
   }
-  if (hasPermission(permissionContext, "purchases.purchase_orders.view") ||
-      hasPermission(permissionContext, "purchases.receipts.view")) {
+  if (access.purchaseOrders) {
     result.purchase_orders = purchaseOrders;
     result.purchase_order_items = purchaseOrderItems;
     result.purchase_receipts = purchaseReceipts;
     result.purchase_receipt_items = purchaseReceiptItems;
   }
-  if (hasPermission(permissionContext, "purchases.supplier_invoices.view")) {
-    result.supplier_invoices = supplierInvoices;
-  }
-  if (hasPermission(permissionContext, "payables.payments.view")) {
-    result.supplier_invoice_payments = supplierInvoicePayments;
-  }
-  if (hasPermission(permissionContext, "customers.records.view")) result.customers = customers;
-  if (hasPermission(permissionContext, "orders.records.view")) {
+  if (access.supplierInvoices) result.supplier_invoices = supplierInvoices;
+  if (access.supplierInvoicePayments) result.supplier_invoice_payments = supplierInvoicePayments;
+  if (access.customers) result.customers = customers;
+  if (access.orders) {
     result.orders = orders;
     result.order_items = orderItems;
   }
-  if (hasPermission(permissionContext, "billing.invoices.view")) {
+  if (access.invoices) {
     result.invoices = invoices;
     result.invoice_items = invoiceItems;
   }
-  if (hasPermission(permissionContext, "billing.payments.view")) result.invoice_payments = invoicePayments;
-  if (hasPermission(permissionContext, "expenses.records.view")) result.expenses = expenses;
-  if (hasPermission(permissionContext, "cash.entries.view")) {
+  if (access.invoicePayments) result.invoice_payments = invoicePayments;
+  if (access.expenses) result.expenses = expenses;
+  if (access.cash) {
     result.cash_accounts = cashAccounts;
     result.cash_entries = cashEntries;
   }
-  if (hasPermission(permissionContext, "hr.employees.view")) {
+  if (access.employees) {
     result.employees = employees;
     result.employee_history = employeeHistory;
     result.employee_documents = employeeDocuments;
   }
-  if (hasPermission(permissionContext, "hr.attendance.view")) result.hr_attendance = attendance;
-  if (hasPermission(permissionContext, "hr.leave.view")) result.hr_leave_requests = leaveRequests;
-  if (hasPermission(permissionContext, "hr.payroll.view")) {
+  if (access.attendance) result.hr_attendance = attendance;
+  if (access.leaveRequests) result.hr_leave_requests = leaveRequests;
+  if (access.payroll) {
     result.hr_payroll_periods = payrollPeriods;
     result.hr_payroll_items = payrollItems;
-    result.hr_inss_settings = settings.find((setting) => setting.setting_key === "hr_inss_settings")?.setting_value || { regime:"integral", employer_band:"under_50", employee_rate:7, employer_rate:21.5 };
-    result.hr_commissions = await sql.query(
-      "SELECT ec.*, e.name AS employee_name, i.invoice_number FROM employee_commissions ec " +
-      "JOIN employees e ON e.id=ec.employee_id JOIN invoices i ON i.id=ec.invoice_id " +
-      "ORDER BY ec.sale_date DESC, ec.created_at DESC LIMIT 5000"
-    );
+    result.hr_inss_settings = settings.find(setting => setting.setting_key === "hr_inss_settings")?.setting_value ||
+      { regime: "integral", employer_band: "under_50", employee_rate: 7, employer_rate: 21.5 };
+    result.hr_commissions = getRows("employeeCommissions");
   }
   return result;
 }
