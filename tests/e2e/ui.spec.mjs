@@ -848,6 +848,34 @@ test('sidebar and font preferences persist without storing operational records l
   expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.includes('demo-data')))).toEqual([]);
 });
 
+test('HR benefits allow the owner to configure the activity sector and show its current minimum wage', async ({ page }) => {
+  const api = await installHRFixtureApi(page);
+  api.data.employees[0].salary_nio = 12000;
+  await page.goto('/');
+  await navigateToView(page, 'hr');
+  await page.locator('.hr-tabs [data-tab="benefits"]').click();
+
+  const form = page.locator('#hr-labor-settings-form');
+  await expect(form).toBeVisible();
+  await expect(form.locator('[name="sectorCode"]')).toHaveValue('commerce');
+  await expect(form).toContainText('11,350.08');
+
+  const settingsRequest = page.waitForRequest(request =>
+    request.url().endsWith('/api/erp/settings') && request.method() === 'PATCH'
+  );
+  await form.locator('[name="sectorCode"]').selectOption('manufactura');
+  await form.getByRole('button', { name: 'Guardar sector y salario mínimo' }).click();
+  const request = await settingsRequest;
+
+  expect(request.postDataJSON()).toEqual({
+    setting_key: 'hr_labor_settings',
+    setting_value: { sector_code: 'manufactura' }
+  });
+  await expect(page.locator('#toast-region')).toContainText('Sector actualizado');
+  await expect(page.locator('#hr-labor-settings-form [name="sectorCode"]')).toHaveValue('manufactura');
+  await expect(page.locator('#hr-labor-settings-form')).toContainText('8,320.48');
+});
+
 test('mobile navigation opens and closes after selecting a module', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
