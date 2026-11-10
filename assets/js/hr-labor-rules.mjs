@@ -16,6 +16,10 @@ export function getMinimumWageForSector(sectorCode = "commerce", effectiveDate =
   if (!sector) return { available: false, code: "UNKNOWN_MINIMUM_WAGE_SECTOR" };
   const date = String(effectiveDate || "");
   if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return { available: false, code: "INVALID_MINIMUM_WAGE_DATE" };
+  const parsedDate = new Date(date + "T00:00:00.000Z");
+  if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+    return { available: false, code: "INVALID_MINIMUM_WAGE_DATE" };
+  }
   if (date < sector.effectiveFrom) {
     return { available: false, code: "MINIMUM_WAGE_TABLE_NOT_YET_EFFECTIVE", sector };
   }
