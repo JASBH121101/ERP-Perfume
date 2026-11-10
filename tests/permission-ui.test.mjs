@@ -36,6 +36,49 @@ test("the Worker profile must match both the authenticated Neon user id and emai
   assert.equal(profileMatchesAuthUser({ ...matchingProfile, authUserId: "" }, authUser), false);
 });
 
+test("the Bodega profile exposes only its inventory-related navigation modules", () => {
+  const bodega = {
+    role: "viewer",
+    permissions: [
+      "dashboard.view",
+      "products.catalog.view",
+      "inventory.stock.view",
+      "inventory.receipts.view",
+      "purchases.purchase_orders.view",
+      "purchases.receipts.view",
+      "suppliers.records.view"
+    ]
+  };
+  const viewPermissions = {
+    dashboard: ["dashboard.view"],
+    orders: ["orders.records.view"],
+    billing: ["billing.invoices.view"],
+    customers: ["customers.records.view"],
+    products: ["products.catalog.view"],
+    catalog: ["products.catalog.view"],
+    inventory: ["inventory.stock.view", "inventory.receipts.view"],
+    purchases: ["purchases.receipts.view"],
+    purchaseOrders: ["purchases.purchase_orders.view", "purchases.receipts.view"],
+    suppliers: ["suppliers.records.view"],
+    expenses: ["expenses.records.view"],
+    cash: ["cash.entries.view"],
+    hr: ["hr.employees.view", "hr.attendance.view", "hr.payroll.view"],
+    dgi: ["dgi.documents.view"],
+    analytics: ["analytics.reports.view"],
+    settings: ["settings.general.view"],
+    payables: ["purchases.supplier_invoices.view"],
+    receivables: ["receivables.view", "billing.payments.view"]
+  };
+  const visible = Object.entries(viewPermissions)
+    .filter(([, keys]) => profileHasAnyPermission(bodega, keys))
+    .map(([view]) => view);
+  assert.deepEqual(visible, [
+    "dashboard", "products", "catalog", "inventory", "purchases",
+    "purchaseOrders", "suppliers"
+  ]);
+  assert.equal(profileHasAnyPermission(bodega, ["billing.invoices.view", "cash.entries.view"]), false);
+});
+
 test("identity keys are stable across permission ordering and change when grants change", () => {
   const profile = {
     authUserId: "auth-1", id: "erp-1", role: "viewer", roleTemplate: "inventory",
@@ -49,8 +92,9 @@ test("identity keys are stable across permission ordering and change when grants
   }));
 });
 
-test("the auth bootstrap rejects mismatched profiles and reloads the SPA after sign-out or identity changes", () => {
-  assert.match(bootstrap, /profileMatchesAuthUser\(body\.user, authUser\)/);
+test("the auth bootstrap rejects mismatched profiles and remounts the SPA on sign-out or identity changes", () => {
+  assert.match(bootstrap, /profileMatchesAuthUser\\(body\\.user, authUser\\)/);
   assert.match(bootstrap, /nextProfileKey !== appLoadedProfileKey/);
-  assert.match(bootstrap, /window\.location\.reload\(\)/);
+  const signOut = bootstrap.match(/async signOut\\(\\) \\{[\\s\\S]*?\\n    \\}/)?.[0] || "";
+  assert.match(signOut, /window\\.location\\.reload\\(\\)/);
 });
