@@ -5,7 +5,7 @@ import {
   hasPermission,
   loadUserPermissions
 } from "../worker/src/permissions.js";
-import { canApprovePurchaseOrder, resolveRoutePermission } from "../worker/src/erp.js";
+import { canApprovePurchaseOrder, readBootstrap, resolveRoutePermission } from "../worker/src/erp.js";
 
 test("a permission is denied when its section or module parent is denied", () => {
   const context = {
@@ -147,4 +147,90 @@ test("purchase order creator cannot approve their own request", () => {
   assert.equal(canApprovePurchaseOrder("creator-1", "creator-1"), false);
   assert.equal(canApprovePurchaseOrder("approver-2", "creator-1"), true);
   assert.equal(canApprovePurchaseOrder("approver-2", null), true);
+});
+
+
+function createBootstrapSql() {
+  const statements = [];
+  const sql = (strings, ...values) => {
+    const statement = strings.reduce((result, part, index) =>
+      result + part + (index < values.length ? String(values[index]) : ""), "");
+    statements.push(statement);
+    return Promise.resolve([]);
+  };
+  sql.transaction = async buildQueries => Promise.all(buildQueries(sql));
+  sql.query = async statement => {
+    statements.push(String(statement));
+    return [];
+  };
+  return { sql, statements };
+}
+
+function bootstrapPermissionContext(keys = []) {
+  return {
+    owner: false,
+    permissions: keys.map(key => ({ key, parentKey: null, allowed: true }))
+  };
+}
+
+test("bootstrap does not query any ERP datasets when the account has no module grants", async () => {
+  const { sql, statements } = createBootstrapSql();
+  const result = await readBootstrap(sql, { id: "limited-user" }, bootstrapPermissionContext());
+
+  assert.deepEqual(result, {});
+  assert.equal(statements.length, 0);
+});
+
+test("bootstrap only reads the product dataset for a product-catalog-only account", async () => {
+  const { sql, statements } = createBootstrapSql();
+  const result = await readBootstrap(
+    sql,
+    { id: "product-user" },
+    bootstrapPermissionContext(["products.catalog.view"])
+  );
+
+  assert.deepEqual(Object.keys(result), ["products"]);
+  assert.equal(statements.length, 1);
+  assert.match(statements[0], /FROM products/);
+  assert.doesNotMatch(statements[0], /FROM (customers|orders|invoices|employees|cash_entries)/);
+});
+
+test("purchase-order access does not trigger unrelated purchase receipt item queries", async () => {
+  const { sql, statements } = createBootstrapSql();
+  const result = await readBootstrap(
+    sql,
+    { id: "purchasing-user" },
+    bootstrapPermissionContext(["purchases.purchase_orders.view"])
+  );
+
+  assert.deepEqual(Object.keys(result), [
+    "purchase_orders",
+    "purchase_order_items",
+    "purchase_receipts",
+    "purchase_receipt_items"
+  ]);
+  assert.equal(statements.length, 4);
+  assert.ok(statements.some(statement => /FROM purchase_orders/.test(statement)));
+  assert.ok(statements.some(statement => /FROM purchase_receipts/.test(statement)));
+  assert.ok(!statements.some(statement => /FROM purchases\b|FROM purchase_items\b/.test(statement)));
+});
+
+test("payroll access reads its settings and payroll datasets without loading employee history", async () => {
+  const { sql, statements } = createBootstrapSql();
+  const result = await readBootstrap(
+    sql,
+    { id: "payroll-user" },
+    bootstrapPermissionContext(["hr.payroll.view"])
+  );
+
+  assert.deepEqual(Object.keys(result), [
+    "hr_payroll_periods",
+    "hr_payroll_items",
+    "hr_inss_settings",
+    "hr_commissions"
+  ]);
+  assert.equal(statements.length, 4);
+  assert.ok(statements.some(statement => /FROM app_settings/.test(statement)));
+  assert.ok(statements.some(statement => /FROM employee_commissions/.test(statement)));
+  assert.ok(!statements.some(statement => /FROM employee_history|FROM employee_documents|FROM hr_attendance/.test(statement)));
 });
