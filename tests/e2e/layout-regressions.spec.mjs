@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 
 const compactCss = readFileSync(new URL("../../assets/css/ultra-compact.css", import.meta.url), "utf8");
+const deviceCss = readFileSync(new URL("../../assets/css/device-responsive.css", import.meta.url), "utf8");
 
 test("permission accordions rebalance masonry columns when sections expand and collapse", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -116,4 +117,71 @@ test("procurement tabs and actions retain distinct button surfaces", async ({ pa
   expect(inactive.border).not.toBe("0px");
   expect(inactive.height).toBeGreaterThanOrEqual(44);
   expect(primary).toContain("gradient");
+});
+
+
+test("mobile account security controls stay aligned and compact across phone widths", async ({ page }) => {
+  const markup = `
+    <section class="access-manager-section">
+      <div class="table-wrap">
+        <table class="data-table mobile-record-table">
+          <thead><tr><th>Cuenta</th><th>Seguridad</th></tr></thead>
+          <tbody><tr>
+            <td data-label="Cuenta"><strong>Trabajador de prueba</strong></td>
+            <td class="user-access-controls" data-label="Seguridad y permisos">
+              <label><input type="checkbox" checked> Cambio inicial</label>
+              <button type="button" class="button button-primary button-small">Activar acceso</button>
+              <details class="user-overrides"><summary>Excepciones (0)</summary><div class="permission-override-add"><select class="filter-select"><option>Exportar información</option></select><select class="filter-select"><option>Permitir</option></select><button class="button button-quiet button-small">Añadir</button></div></details>
+              <button type="button" class="button button-quiet button-small">Guardar cuenta</button>
+            </td>
+          </tr></tbody>
+        </table>
+      </div>
+    </section>
+    <button class="button button-primary">Guardar cambios</button>
+    <button class="button button-quiet button-small">Cancelar</button>
+  `;
+  await page.setContent(`<style>${compactCss}\n${deviceCss}</style>${markup}`);
+
+  for (const width of [320, 360, 390, 428]) {
+    await page.setViewportSize({ width, height: 844 });
+    const checkbox = await page.locator(".user-access-controls input[type=checkbox]").boundingBox();
+    const label = await page.locator(".user-access-controls > label").boundingBox();
+    const activate = await page.getByRole("button", { name: "Activar acceso" }).boundingBox();
+    const save = await page.getByRole("button", { name: "Guardar cuenta" }).boundingBox();
+    const cell = await page.locator(".user-access-controls").boundingBox();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+
+    expect(checkbox.width).toBeLessThanOrEqual(19);
+    expect(checkbox.height).toBeLessThanOrEqual(19);
+    expect(checkbox.x).toBeGreaterThanOrEqual(label.x);
+    expect(Math.abs((checkbox.y + checkbox.height / 2) - (label.y + label.height / 2))).toBeLessThan(4);
+    expect(label.width).toBeLessThan(220);
+    expect(activate.width).toBeLessThan(cell.width * 0.85);
+    expect(save.width).toBeLessThan(cell.width * 0.85);
+    expect(activate.height).toBeGreaterThanOrEqual(38);
+    expect(activate.height).toBeLessThanOrEqual(44);
+    expect(overflow).toBe(false);
+  }
+});
+
+test("mobile button scale preserves touch targets without stretching compact actions", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setContent(`
+    <style>${compactCss}\n${deviceCss}</style>
+    <main style="width:100%;max-width:360px">
+      <button class="button button-primary">Guardar cambios</button>
+      <button class="button button-quiet button-small">Actualizar</button>
+      <button class="icon-button" aria-label="Cerrar">×</button>
+    </main>
+  `);
+  const primary = await page.locator(".button-primary").boundingBox();
+  const compact = await page.locator(".button-small").boundingBox();
+  const icon = await page.locator(".icon-button").boundingBox();
+  expect(primary.height).toBeGreaterThanOrEqual(40);
+  expect(compact.height).toBeGreaterThanOrEqual(36);
+  expect(compact.height).toBeLessThanOrEqual(40);
+  expect(icon.width).toBe(40);
+  expect(icon.height).toBe(40);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
