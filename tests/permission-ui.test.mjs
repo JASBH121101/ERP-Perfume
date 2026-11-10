@@ -93,8 +93,8 @@ test("identity keys are stable across permission ordering and change when grants
 });
 
 test("the auth bootstrap rejects mismatched profiles and remounts the SPA on sign-out or identity changes", () => {
-  assert.match(bootstrap, /profileMatchesAuthUser\\(body\\.user, authUser\\)/);
+  assert.match(bootstrap, /profileMatchesAuthUser\(body\.user, authUser\)/);
   assert.match(bootstrap, /nextProfileKey !== appLoadedProfileKey/);
-  const signOut = bootstrap.match(/async signOut\\(\\) \\{[\\s\\S]*?\\n    \\}/)?.[0] || "";
-  assert.match(signOut, /window\\.location\\.reload\\(\\)/);
+  const signOut = bootstrap.match(/async signOut\(\) \{[\s\S]*?\n    \}/)?.[0] || "";
+  assert.match(signOut, /window\.location\.reload\(\)/);
 });
