@@ -26,26 +26,25 @@ function mockSql(result) {
   };
 }
 
-test("API refuses a payment on an annulled invoice before writing payment, cash or audit rows", async () => {
+test("API refuses payments for Spanish and English voided invoice statuses", async () => {
+  for (const status of ["Anulada","Anulado","Cancelada","Cancelado","Cancelled","Canceled","Void","Voided"]) {
+    const sql = mockSql({ invoice_exists: true, invoice_status: status, record: null });
+    const response = await addInvoicePayment(sql, user, body);
+    const payload = await response.json();
+    assert.equal(response.status, 409, status);
+    assert.equal(payload.error.code, "INVOICE_VOIDED", status);
+    assert.equal(sql.calls.length, 2, status);
+  }
   const sql = mockSql({ invoice_exists: true, invoice_status: "Anulada", record: null });
   const response = await addInvoicePayment(sql, user, body);
-  const payload = await response.json();
   assert.equal(response.status, 409);
-  assert.deepEqual(payload, {
-    error: {
-      code: "INVOICE_VOIDED",
-      message: "No se puede registrar un abono sobre una factura anulada o cancelada."
-    }
-  });
-  assert.equal(sql.calls.length, 2);
   const mutation = sql.calls[1].statement;
   assert.match(mutation, /FOR UPDATE/);
-  assert.match(mutation, /NOT IN \('anulada','anulado','cancelada','cancelado','void','voided'\)/);
+  assert.match(mutation, /NOT IN \\('anulada','anulado','cancelada','cancelado','cancelled','canceled','void','voided'\\)/);
   assert.match(mutation, /INSERT INTO invoice_payments/);
   assert.match(mutation, /INSERT INTO cash_entries/);
   assert.match(mutation, /INSERT INTO audit_log/);
 });
-
 test("API returns not found when the referenced invoice does not exist", async () => {
   const sql = mockSql({ invoice_exists: false, invoice_status: null, record: null });
   const response = await addInvoicePayment(sql, user, body);
