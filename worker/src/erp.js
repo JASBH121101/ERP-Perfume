@@ -1980,7 +1980,7 @@ async function changePayrollPeriodStatus(sql,user,id,body) {
   return erpError(400,"INVALID_PAYROLL_STATUS","La acción solicitada para el período no está permitida.");
 }
 
-async function reviewLeaveRequest(sql,user,id,body) {
+export async function reviewLeaveRequest(sql,user,id,body) {
   const status=String(body.status||"");
   if(!["Aprobado","Rechazado"].includes(status))return erpError(400,"INVALID_LEAVE_STATUS","La solicitud solo puede aprobarse o rechazarse.");
   const rows=await sql.query(
