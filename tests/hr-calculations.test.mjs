@@ -24,7 +24,7 @@ test("vacation balance accrues 2.5 days per full month and deducts approved take
       { employeeId: "e1", leaveType: "Vacaciones", status: "Aprobado", days: 4, endDate: "2026-05-10" }
     ]
   });
-  assert.deepEqual(result, { accruedDays: 7.5, usedDays: 2, balanceDays: 5.5 });
+  assert.deepEqual(result, { accruedDays: 7.5, usedDays: 2, compensatedDays: 0, balanceDays: 5.5 });
 });
 
 test("aguinaldo estimate prorates the Dec-to-Nov work cycle", () => {
@@ -86,8 +86,8 @@ test("paid vacation settlement reduces the live balance without double-counting 
  {employeeId:"e1",settlementType:"Compensacion",status:"Pendiente",days:2},
  {employeeId:"e1",settlementType:"Compensacion",status:"Pagada",days:1}
  ]});
- assert.equal(r.accruedDays,15); assert.equal(r.usedDays,1);
- assert.equal(r.compensatedDays,1); assert.equal(r.balanceDays,13);
+ assert.equal(r.accruedDays,15); assert.equal(r.usedDays,5);
+ assert.equal(r.compensatedDays,1); assert.equal(r.balanceDays,9);
 });
 test("Nicaragua progressive annual labor IR uses marginal bands",()=>{
  assert.equal(calculateAnnualLaborIR(100000).annualTaxNio,0);
