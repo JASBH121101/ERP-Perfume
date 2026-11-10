@@ -185,6 +185,29 @@ try {
     report.profiles[profile.name] = { baseline, preview, comparison };
   }
 
+  const diagnosticsContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true
+  });
+  try {
+    const diagnosticsPage = await diagnosticsContext.newPage();
+    await diagnosticsPage.goto(new URL("/?perf=1", previewUrl).href, {
+      waitUntil: "load",
+      timeout: 45_000
+    });
+    const diagnosticsPanel = diagnosticsPage.locator("#jb-performance-diagnostics");
+    await diagnosticsPanel.waitFor({ state: "visible", timeout: 5_000 });
+    const panelText = await diagnosticsPanel.innerText();
+    if (!panelText.includes("Diagnóstico de carga")) {
+      throw new Error("The preview-only diagnostics panel did not render its expected heading.");
+    }
+    report.diagnosticsPanel = { visible: true, previewOnly: true };
+  } finally {
+    await diagnosticsContext.close();
+  }
+
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, JSON.stringify(report, null, 2) + "\n", "utf8");
 
