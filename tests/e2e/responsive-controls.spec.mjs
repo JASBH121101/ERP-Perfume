@@ -112,6 +112,11 @@ test.describe('responsive account controls',()=>{
           const diagnostic = (() => {
             if (!root.querySelector('.settings-rate-panel')) return null;
             const form = root.querySelector('.settings-rate-panel .rate-form');
+            const children = [...form.children].map(node => {
+              const box = node.getBoundingClientRect();
+              const style = getComputedStyle(node);
+              return {tag:node.tagName,cls:typeof node.className === 'string' ? node.className : '',left:Math.round(box.left*100)/100,right:Math.round(box.right*100)/100,width:Math.round(box.width*100)/100,marginLeft:style.marginLeft,marginRight:style.marginRight,alignSelf:style.alignSelf,justifySelf:style.justifySelf,display:style.display,boxSizing:style.boxSizing,widthCss:style.width};
+            });
             const chain = [];
             for (let node = form; node; node = node.parentElement) {
               const box = node.getBoundingClientRect();
@@ -138,7 +143,7 @@ test.describe('responsive account controls',()=>{
               });
               if (node === root) break;
             }
-            return chain;
+            return {chain,children};
           })();
           return {viewport,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,rootLeft:Math.round(rect.left),rootRight:Math.round(rect.right),offenders:offenders.slice(0,8),diagnostic};
         });
