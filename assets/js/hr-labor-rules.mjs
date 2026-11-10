@@ -39,16 +39,7 @@ export function validateMonthlyMinimumWage({
   if (String(status || "Activo") !== "Activo") {
     return { valid: true, applies: false, reason: "inactive_employee" };
   }
-  if (String(workSchedule || "Por definir") === "Parcial") {
-    return {
-      valid: true,
-      applies: false,
-      reviewRequired: true,
-      code: "PARTIAL_SCHEDULE_REQUIRES_HOURLY_REVIEW",
-      message: "La jornada parcial requiere registrar y revisar el equivalente salarial por horas; el ERP aún no calcula una tarifa horaria."
-    };
-  }
-
+  // The complete monthly floor is enforced for active contracts, including reduced schedules, until a legally approved hourly rule is configured.
   const rule = getMinimumWageForSector(settings?.sector_code || "commerce", effectiveDate);
   if (!rule.available) {
     return {
@@ -70,7 +61,7 @@ export function validateMonthlyMinimumWage({
       code: "MINIMUM_WAGE_VIOLATION",
       minimumSalaryNio: rule.amountNio,
       sectorCode: rule.code,
-      message: "El salario base mensual de jornada completa no puede ser inferior al mínimo vigente de C$" +
+      message: "El salario mensual no puede ser inferior al mínimo vigente de C$" +
         rule.amountNio.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
         " para " + rule.label + " (vigencia " + rule.effectiveFrom + " a " + rule.effectiveTo + ")."
     };
