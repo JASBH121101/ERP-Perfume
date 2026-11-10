@@ -1589,3 +1589,143 @@ test('invitee verifies email and sets a personal password through the OTP activa
     password: invitedPassword
   });
 });
+
+
+async function installResponsiveAccessManagerApi(page) {
+  await page.unroute(workerPattern);
+  const users = [{
+    id: 'qa-inventory-user',
+    auth_user_id: 'qa-inventory-auth',
+    display_name: 'Bodeguero QA',
+    email: 'bodega.qa@example.test',
+    position_title: 'Bodega',
+    role: 'inventory',
+    role_template_key: 'inventory',
+    account_status: 'registered',
+    active: false,
+    must_change_password: true,
+    overrides: []
+  }];
+  await page.route(workerPattern, async route => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith('/bootstrap') && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: fixture })
+      });
+    }
+    if (pathname.endsWith('/resource-usage') && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          updatedAt: '2026-11-10T00:00:00.000Z',
+          database: { sizeBytes: 1024, activeConnections: 1, transactionsCommitted: 10, transactionsRolledBack: 0 },
+          storage: { sizeBytes: 0, objectCount: 0, complete: true, scannedPages: 1 },
+          errors: { database: null, storage: null }
+        })
+      });
+    }
+    if (pathname === '/api/erp/users' && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ users, pendingIdentities: [] })
+      });
+    }
+    if (pathname === '/api/erp/roles' && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          roles: [
+            { role_key: 'inventory', name: 'Inventario' },
+            { role_key: 'sales', name: 'Ventas' }
+          ],
+          permissions: [
+            { permission_key: 'inventory.view', module_key: 'inventory', permission_type: 'module', label: 'Inventario' },
+            { permission_key: 'inventory.stock.view', module_key: 'inventory', permission_type: 'section', label: 'Existencias' },
+            { permission_key: 'inventory.stock.adjust', module_key: 'inventory', permission_type: 'action', label: 'Ajustar existencias' }
+          ],
+          grants: [
+            { role_key: 'inventory', permission_key: 'inventory.view', allowed: true },
+            { role_key: 'inventory', permission_key: 'inventory.stock.view', allowed: true }
+          ]
+        })
+      });
+    }
+    if ((pathname === '/api/erp/audit' || pathname === '/api/erp/client-errors') && request.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ records: [] })
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ records: [], data: fixture })
+    });
+  });
+}
+
+test('access administration controls stay proportionate and aligned across phone, tablet and desktop', async ({ page }) => {
+  await installRealAuthBootstrapMock(page, { owner: true });
+  await installResponsiveAccessManagerApi(page);
+
+  const viewports = [
+    { name: 'small-phone', width: 320, height: 740 },
+    { name: 'phone', width: 360, height: 800 },
+    { name: 'phone-wide', width: 430, height: 900 },
+    { name: 'tablet-portrait', width: 768, height: 1024 },
+    { name: 'tablet-landscape', width: 900, height: 1024 },
+    { name: 'laptop', width: 1024, height: 900 },
+    { name: 'desktop', width: 1440, height: 900 }
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto('/');
+    await navigateToView(page, 'settings');
+
+    const userRow = page.locator('[data-user-id="qa-inventory-user"]');
+    await expect(userRow).toBeVisible();
+    const dimensions = await userRow.evaluate(row => {
+      const rect = element => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          width: bounds.width,
+          height: bounds.height,
+          left: bounds.left,
+          right: bounds.right
+        };
+      };
+      const checkbox = row.querySelector('[data-user-password]');
+      const activate = row.querySelector('[data-action="activate-user-account"]');
+      const save = row.querySelector('[data-action="save-user-access"]');
+      return {
+        row: rect(row),
+        checkbox: rect(checkbox),
+        activate: rect(activate),
+        save: rect(save),
+        controls: [...row.querySelectorAll('input, select, button')].map(rect)
+      };
+    });
+
+    expect(dimensions.row.left, viewport.name + ': account card begins outside viewport').toBeGreaterThanOrEqual(-1);
+    expect(dimensions.row.right, viewport.name + ': account card exceeds viewport').toBeLessThanOrEqual(viewport.width + 1);
+    expect(dimensions.checkbox.width, viewport.name + ': checkbox width').toBeGreaterThanOrEqual(16);
+    expect(dimensions.checkbox.width, viewport.name + ': checkbox stretched').toBeLessThanOrEqual(22);
+    expect(dimensions.checkbox.height, viewport.name + ': checkbox height').toBeLessThanOrEqual(22);
+    expect(dimensions.activate.width, viewport.name + ': activation button too wide').toBeLessThanOrEqual(220);
+    expect(dimensions.activate.height, viewport.name + ': activation button too tall').toBeLessThanOrEqual(44);
+    expect(dimensions.save.width, viewport.name + ': save button too wide').toBeLessThanOrEqual(220);
+    expect(dimensions.save.height, viewport.name + ': save button too tall').toBeLessThanOrEqual(44);
+    for (const control of dimensions.controls) {
+      expect(control.left, viewport.name + ': control left edge').toBeGreaterThanOrEqual(-1);
+      expect(control.right, viewport.name + ': control right edge').toBeLessThanOrEqual(viewport.width + 1);
+    }
+  }
+});
