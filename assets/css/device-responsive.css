@@ -217,3 +217,507 @@ input[type="radio"] {
     transition: none !important;
   }
 }
+
+/* Final responsive audit — account controls and action sizing.
+   Keep compact actions content-sized; reserve full-width buttons for explicit
+   form submission areas rather than every action inside a mobile record card. */
+.access-manager-section .user-access-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 9px;
+}
+.access-manager-section .user-access-controls > label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  align-self: flex-start;
+  width: fit-content;
+  min-height: 36px;
+  max-width: 100%;
+  gap: 9px;
+  padding: 6px 10px;
+  line-height: 1.3;
+}
+.access-manager-section .user-access-controls > label > input[type="checkbox"] {
+  flex: 0 0 18px !important;
+  width: 18px !important;
+  min-width: 18px !important;
+  max-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
+  margin: 0 !important;
+}
+.access-manager-section .user-access-controls > button.button,
+.access-manager-section .user-access-controls > .button,
+.access-manager-section table.mobile-record-table tbody td.user-access-controls > button.button,
+.access-manager-section .table-wrap > table tbody td.user-access-controls > button.button {
+  display: inline-flex;
+  align-self: flex-start !important;
+  justify-self: start;
+  flex: 0 1 auto;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 38px !important;
+  padding: 0 13px;
+  white-space: normal;
+}
+.access-manager-section .user-access-controls > .user-overrides {
+  width: 100%;
+  min-width: 0;
+}
+.access-manager-section .user-access-controls > .user-overrides > summary {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+}
+.access-manager-section .permission-override-add .button {
+  width: auto !important;
+  min-width: 88px;
+  justify-self: start;
+}
+.access-manager-section .user-access-controls > [data-action="save-user-access"] {
+  margin-top: 1px;
+}
+
+@media (max-width: 760px) {
+  .access-manager-section .user-access-controls {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px !important;
+    padding-top: 2px;
+  }
+  .access-manager-section .user-access-controls > label {
+    align-self: flex-start !important;
+    width: fit-content !important;
+    min-height: 36px;
+  }
+  .access-manager-section .user-access-controls > button.button,
+  .access-manager-section .user-access-controls > .button,
+  .access-manager-section table.mobile-record-table tbody td.user-access-controls > button.button,
+  .access-manager-section .table-wrap > table tbody td.user-access-controls > button.button,
+  .access-manager-section .mobile-record-table tbody td:last-child .user-access-controls > .button {
+    align-self: flex-start !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 38px !important;
+    flex: 0 1 auto !important;
+    padding-inline: 13px;
+  }
+  .access-manager-section .permission-override-add {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+  .access-manager-section .permission-override-add .button {
+    grid-column: auto !important;
+    width: auto !important;
+    justify-self: start;
+  }
+  .access-manager-section .user-overrides {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  :root { --jb-device-control-height: 40px; }
+  .topbar { gap: 8px; }
+  .topbar-left, .topbar-actions { min-width: 0; }
+  .breadcrumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .content-wrap { min-width: 0; }
+  .page-heading { min-width: 0; }
+  .heading-actions { width: 100%; }
+  .heading-actions .button { flex: 0 1 auto; }
+  .access-manager-section .user-access-controls > button.button,
+  .access-manager-section .user-access-controls > .button,
+  .access-manager-section table.mobile-record-table tbody td.user-access-controls > button.button,
+  .access-manager-section .table-wrap > table tbody td.user-access-controls > button.button {
+    min-height: 38px !important;
+    padding-inline: 11px;
+    font-size: max(12px, calc(11px * var(--ui-font-scale, 1)));
+  }
+}
+
+/* Compact action groups and consistent mobile card alignment. */
+@media (max-width: 760px) {
+  .mobile-record-table.mobile-record-actions tbody td:last-child {
+    align-items: flex-start;
+  }
+  .mobile-record-table.mobile-record-actions tbody td:last-child > .button,
+  .mobile-record-table.mobile-record-actions tbody td:last-child .hr-row-actions > .button {
+    width: auto !important;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 38px;
+    flex: 0 1 auto;
+  }
+  .modal-actions .button,
+  .auth-modal .modal-actions .button {
+    min-height: 42px;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* Mobile icon actions: preserve a reliable tap area without stretching the row. */
+@media (max-width: 760px) {
+  .table-action {
+    box-sizing: border-box;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 40px;
+    width: 40px !important;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .mobile-record-table.mobile-record-actions tbody td:last-child > .table-action,
+  .mobile-record-table.mobile-record-actions tbody td:last-child .table-action {
+    width: 40px !important;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    flex: 0 0 40px;
+  }
+
+  .mobile-record-table.mobile-record-actions tbody td:last-child .button:not(.table-action) {
+    min-height: 40px;
+  }
+}
+
+/* Tablet: dense replenishment ledger cards prevent the action column collapsing. */
+@media (min-width: 721px) and (max-width: 900px) {
+  .inventory-replenishment-panel .table-wrap {
+    width: 100%;
+    overflow: visible;
+  }
+  .inventory-replenishment-panel table.mobile-record-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    white-space: normal;
+  }
+  .inventory-replenishment-panel table.mobile-record-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .inventory-replenishment-panel table.mobile-record-table tbody {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    gap: 10px;
+  }
+  .inventory-replenishment-panel table.mobile-record-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px 14px;
+    width: 100%;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid #e8e3d8;
+    border-radius: 11px;
+    background: #fff;
+  }
+  .inventory-replenishment-panel table.mobile-record-table tbody td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+  }
+  .inventory-replenishment-panel table.mobile-record-table tbody td::before {
+    content: attr(data-label);
+    color: #897e6c;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .45px;
+    text-transform: uppercase;
+  }
+  .inventory-replenishment-panel table.mobile-record-table tbody td:first-child,
+  .inventory-replenishment-panel table.mobile-record-table tbody td:last-child {
+    grid-column: 1 / -1;
+  }
+  .inventory-replenishment-panel table.mobile-record-table tbody td:first-child {
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee9df;
+  }
+  .inventory-replenishment-panel table.mobile-record-table tbody td:last-child .button {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 40px;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+}
+
+/* Settings: constrain the exchange-rate form and its children to the panel box. */
+.settings-rate-panel,
+.settings-rate-panel .rate-form,
+.settings-rate-panel .rate-form > .form-field,
+.settings-rate-panel .rate-form > .button,
+.settings-rate-panel .rate-form input {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+.settings-rate-panel .rate-form {
+  width: 100%;
+}
+.settings-rate-panel .rate-form > .form-field {
+  width: 100%;
+}
+.settings-rate-panel .rate-form input {
+  width: 100%;
+}
+@media (max-width: 560px) {
+  .settings-rate-panel .rate-form {
+    width: 100%;
+    gap: 10px;
+  }
+  .settings-rate-panel .rate-form > .form-field,
+  .settings-rate-panel .rate-form > .button {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* Settings exchange form: mobile children must align to the form's inner edge. */
+@media (max-width: 560px) {
+  .settings-rate-panel .rate-form {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    justify-items: stretch;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+  .settings-rate-panel .rate-form > .form-field,
+  .settings-rate-panel .rate-form > .button {
+    box-sizing: border-box;
+    display: block;
+    position: static;
+    align-self: stretch !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+  .settings-rate-panel .rate-form > .form-field input {
+    box-sizing: border-box;
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+}
+
+/* Preserve the label's stacked text/input structure after constraining the grid. */
+@media (max-width: 560px) {
+  .settings-rate-panel .rate-form > .form-field {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .settings-rate-panel .rate-form > .button {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+
+
+/* Mobile access role creation: keep the existing 14px inset inside the panel. */
+@media (max-width: 760px) {
+  .access-manager-section #role-create-form {
+    box-sizing: border-box;
+    width: auto !important;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+
+/* Tablet dashboard: use two KPI columns within the sidebar-constrained workspace. */
+@media (min-width: 721px) and (max-width: 950px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metric-foot {
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .metric-change,
+  .metric-caption {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .metric-caption {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+}
+
+
+/* Tablet page headers: stack titles above action groups in the sidebar workspace. */
+@media (min-width: 721px) and (max-width: 950px) {
+  .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .page-heading > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .page-heading .heading-actions {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .page-heading .heading-actions > * {
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 1 auto;
+  }
+}
+
+
+/* HR tables: switch to contained record cards while the desktop sidebar is visible. */
+@media (min-width: 721px) and (max-width: 950px) {
+  .hr-view,
+  .hr-view .hr-content,
+  .hr-view .hr-content > .list-panel,
+  .hr-view .hr-content > .panel {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hr-view .hr-content > .list-panel {
+    overflow: hidden;
+  }
+  .hr-view .hr-content > .list-panel > .table-wrap {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
+  }
+  .hr-view .hr-content table.mobile-record-table {
+    display: block !important;
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed;
+    white-space: normal !important;
+  }
+  .hr-view .hr-content table.mobile-record-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    gap: 10px;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody tr {
+    display: grid;
+    box-sizing: border-box;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px 14px;
+    width: 100%;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid #e5e9ef;
+    border-radius: 11px;
+    background: #fff;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td {
+    display: flex;
+    box-sizing: border-box;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    line-height: 1.4;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td::before {
+    content: attr(data-label);
+    color: #7b8796;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .4px;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td:first-child,
+  .hr-view .hr-content table.mobile-record-table tbody td:last-child {
+    grid-column: 1 / -1;
+  }
+  .hr-view .hr-content table.mobile-record-table tbody td:first-child {
+    padding-bottom: 8px;
+    border-bottom: 1px solid #edf0f4;
+  }
+  .hr-view .hr-content .hr-row-actions {
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  .hr-view .hr-content .hr-row-actions > .button {
+    flex: 0 1 auto;
+    max-width: 100%;
+    white-space: normal;
+  }
+  .hr-view .hr-content .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
