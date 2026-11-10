@@ -2829,7 +2829,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
       '<div class="notice-panel">'+svg('warning')+'<div><strong>Comprobantes comerciales internos</strong><p>La vista previa permite imprimir en formato A4. No tiene autorización tributaria ni sustituye una factura fiscal.</p></div></div>';
   }
   function renderReceivables(){
-    const open=invoices.filter(f=>Number(f.totalUsd||0)-Number(f.paidUsd||0)>0.001);
+    const open=invoices.filter(f=>!isVoidedInvoice(f)&&Number(f.totalUsd||0)-Number(f.paidUsd||0)>0.001);
     const total=open.reduce((sum,f)=>sum+Math.max(0,Number(f.totalUsd||0)-Number(f.paidUsd||0)),0);
     const clients=new Set(open.map(f=>String(f.customer||'').trim().toLocaleLowerCase('es'))).size;
     const rows=open.map(f=>{
@@ -3505,7 +3505,7 @@ import { getContractReminders } from './hr-contract-reminders.mjs';
     if(!permissionGranted('dgi.documents.view'))return heading(views.dgi,'')+'<div class="notice-panel"><span>'+svg('warning')+'</span><div><strong>Acceso restringido</strong><p>Tu cuenta no tiene permiso para consultar los documentos DGI.</p></div></div>';
     if(!dgiDocumentsLoaded&&!dgiDocumentsLoading&&!dgiDocumentsLoadAttempted)loadDgiSupportDocuments(false);
     const now=new Date(), monthStart=new Date(now.getFullYear(),now.getMonth(),1), nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);
-    const invoicedOrderIds=new Set(invoices.map(i=>String(i.orderId||'')));
+    const invoicedOrderIds=new Set(invoices.filter(i=>!isVoidedInvoice(i)).map(i=>String(i.orderId||'')));
     const completedOrdersWithoutInvoice=orders.filter(o=>o.status==='Completado'&&!invoicedOrderIds.has(String(o.id)));
     const salesRows=invoices.filter(i=>!isVoidedInvoice(i))
       .flatMap(i=>(i.payments||[]).map(payment=>({
