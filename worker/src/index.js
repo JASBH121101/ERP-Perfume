@@ -118,7 +118,7 @@ async function requireUser(request, env) {
   }
 
   let identity;
-  const authTimings = { jwt: 0, identityDb: 0 };
+  const authTimings = { signature: 0, identityDb: 0 };
   try {
     const jwtStarted = performance.now();
     const verified = await jwtVerify(
@@ -131,7 +131,7 @@ async function requireUser(request, env) {
       }
     );
     identity = verified.payload;
-    authTimings.jwt = performance.now() - jwtStarted;
+    authTimings.signature = performance.now() - jwtStarted;
   } catch {
     return { response: errorResponse(401, "INVALID_SESSION", "Your session is invalid or expired. Sign in again.") };
   }
@@ -260,7 +260,7 @@ async function getProfile(request, env) {
     });
     if (env?.ERP_ENVIRONMENT === "development") {
       const timings = [
-        ["jwt", auth.authTimings?.jwt],
+        ["signature", auth.authTimings?.signature],
         ["identity_db", auth.authTimings?.identityDb],
         ["permissions", permissionMs]
       ].filter(([, duration]) => Number.isFinite(duration));
