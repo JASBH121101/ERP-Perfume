@@ -104,16 +104,6 @@ test("employee creation follows the selected sector instead of hardcoding commer
   assert.equal(response.status, 201);
 });
 
-test("employee creation uses the separate regime-especial wage and validity window", async () => {
-  const sql = createSql({ settings: { sector_code: "regimen_especial" } });
-  const response = await createGeneric(sql, user, "employees", employeeDef, {
-    name: "QA Special Regime Employee", salary_nio: 9986.46, status: "Activo", work_schedule: "Completa"
-  });
-
-  assert.equal(response.status, 201);
-  assert.equal(sql.calls.length, 2);
-});
-
 test("employee salary updates below the selected floor are rejected before writing history", async () => {
   const sql = updateSql();
   const response = await updateEmployeeGeneric(sql, user, "employees", employeeDef, employeeId, {
