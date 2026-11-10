@@ -1904,14 +1904,14 @@ async function getEmployeeDocumentFile(request,env,user,sql,id) {
   return new Response(object.body,{status:200,headers});
 }
 
-async function createPayrollItem(sql,user,body) {
+export async function createPayrollItem(sql,user,body) {
   const periodId=String(body.payroll_period_id||"");
   const employeeId=String(body.employee_id||"");
   const base=Number(body.base_salary_nio),bonus=Number(body.bonuses_nio||0),deductions=Number(body.deductions_nio||0);
   if(!periodId||!employeeId||![base,bonus,deductions].every(Number.isFinite)||base<0||bonus<0||deductions<0)
     return erpError(400,"INVALID_PAYROLL_ITEM","Revisa período, colaborador, salario base, bonos y deducciones.");
   try{
-    const settingsRows=await sql.query("SELECT setting_key,setting_value FROM app_settings WHERE setting_key IN ('hr_inss_settings','hr_tax_settings')");
+    const settingsRows=await sql.query("SELECT setting_key,setting_value FROM app_settings WHERE setting_key IN ('hr_inss_settings','hr_tax_settings','hr_labor_settings')");
     const settingMap=Object.fromEntries(settingsRows.map(row=>[row.setting_key,row.setting_value]));
     const inss=settingMap.hr_inss_settings||{};
     const tax=settingMap.hr_tax_settings||{};
@@ -1919,10 +1919,37 @@ async function createPayrollItem(sql,user,body) {
     const brackets=Array.isArray(tax.ir_brackets)?tax.ir_brackets:null;
     if(![employeeRate,employerRate,inatecRate].every(Number.isFinite)||employeeRate<0||employeeRate>100||employerRate<0||employerRate>100||inatecRate<0||inatecRate>100||!brackets?.length)
       return erpError(409,"INVALID_HR_TAX_SETTINGS","La configuración de INSS, IR o INATEC no es válida.");
+    const laborSettings=settingMap.hr_labor_settings||{sector_code:"commerce"};
+    const validationRows=await sql.query(
+      "SELECT p.status AS period_status,p.period_type,p.period_frequency,p.period_end,e.salary_nio,e.work_schedule,e.status AS employee_status " +
+      "FROM hr_payroll_periods p LEFT JOIN employees e ON e.id=$2::uuid WHERE p.id=$1::uuid LIMIT 1",
+      [periodId,employeeId]
+    );
+    if(!validationRows[0])return erpError(404,"PAYROLL_PERIOD_NOT_FOUND","No existe el período de nómina.");
+    const payrollContext=validationRows[0];
+    if(payrollContext.period_status!=="Borrador")return erpError(409,"PAYROLL_PERIOD_LOCKED","Solo se pueden agregar partidas a un período en borrador.");
+    if(payrollContext.employee_status!=="Activo")return erpError(404,"ACTIVE_EMPLOYEE_NOT_FOUND","El colaborador no existe o está inactivo.");
+    const frequency=String(payrollContext.period_frequency||"monthly");
+    if(!["monthly","biweekly","weekly"].includes(frequency))return erpError(400,"INVALID_PAYROLL_FREQUENCY","La frecuencia de nómina no es válida.");
+    const periodEndDate=String(payrollContext.period_end||"").slice(0,10);
+    const wageCheck=validateMonthlyMinimumWage({
+      salaryNio:payrollContext.salary_nio,status:payrollContext.employee_status,
+      workSchedule:payrollContext.work_schedule,effectiveDate:periodEndDate,settings:laborSettings
+    });
+    if(!wageCheck.valid)return erpError(409,wageCheck.code,wageCheck.message);
+    const monthlyWageRule=getMinimumWageForSector(laborSettings.sector_code||"commerce",periodEndDate);
+    if(!monthlyWageRule.available)return erpError(409,monthlyWageRule.code,"No existe una tabla de salario mínimo vigente para la fecha de este período de nómina.");
+    const frequencyFactor=frequency==="weekly"?12/52:(frequency==="biweekly"?0.5:1);
+    const minimumPeriodWage=Number((monthlyWageRule.amountNio*frequencyFactor).toFixed(2));
+    if(payrollContext.period_type==="Ordinaria"&&base+0.001<minimumPeriodWage){
+      return erpError(409,"PAYROLL_BELOW_MINIMUM_WAGE",
+        "El salario base de este período debe ser como mínimo "+minimumPeriodWage.toFixed(2)+" C$ para respetar el salario mínimo mensual proporcional.");
+    }
+    if(!["Ordinaria","Aguinaldo"].includes(String(payrollContext.period_type||"")))return erpError(400,"INVALID_PAYROLL_PERIOD_TYPE","El tipo de período de nómina no es válido.");
     // The exchange rate and payment frequency are frozen per payroll period.
     const rows=await sql.query(
       "WITH period AS (SELECT id,status,period_start,period_end,period_type,period_frequency,commission_exchange_rate FROM hr_payroll_periods WHERE id=$1::uuid FOR UPDATE), " +
-      "employee AS (SELECT id,hire_date,salary_nio,commission_enabled FROM employees WHERE id=$2::uuid AND status='Activo'), " +
+      "employee AS (SELECT id,hire_date,salary_nio,commission_enabled FROM employees WHERE id=$2::uuid AND status='Activo' AND salary_nio >= $13 FOR UPDATE), " +
       "cycle AS (SELECT make_date(EXTRACT(YEAR FROM p.period_start)::int-1,12,1) AS cycle_start,make_date(EXTRACT(YEAR FROM p.period_start)::int,11,30) AS cycle_end,LEAST(p.period_end,CURRENT_DATE) AS as_of FROM period p), " +
       "monthly_ordinary AS (SELECT date_trunc('month',pp.period_end)::date AS month_start,SUM(pi.base_salary_nio+pi.bonuses_nio+pi.commissions_nio)::numeric(14,2) AS ordinary_salary " +
         "FROM hr_payroll_items pi JOIN hr_payroll_periods pp ON pp.id=pi.payroll_period_id CROSS JOIN cycle c WHERE pi.employee_id=$2::uuid AND pp.status='Pagada' AND pp.period_type='Ordinaria' " +
@@ -1957,14 +1984,15 @@ async function createPayrollItem(sql,user,body) {
       "assigned AS (UPDATE employee_commissions ec SET status='Asignada',payroll_period_id=$1::uuid FROM selected_commissions selected WHERE ec.id=selected.id AND EXISTS(SELECT 1 FROM created) RETURNING ec.id), " +
       "logged AS (INSERT INTO audit_log(actor_user_id,action,entity_type,entity_id,details) SELECT $9,'create','hr_payroll_item',created.id::text,to_jsonb(created) FROM created) " +
       "SELECT created.* FROM created",
-      [periodId,employeeId,base,bonus,deductions,body.notes||null,employeeRate,employerRate,user.id,JSON.stringify(brackets),inatecRate]
+      [periodId,employeeId,base,bonus,deductions,body.notes||null,employeeRate,employerRate,user.id,JSON.stringify(brackets),inatecRate,minimumPeriodWage,monthlyWageRule.amountNio]
     );
     if(!rows[0]){
       const period=await sql.query("SELECT status,period_type FROM hr_payroll_periods WHERE id=$1::uuid",[periodId]);
       if(!period[0])return erpError(404,"PAYROLL_PERIOD_NOT_FOUND","No existe el período de nómina.");
       if(period[0].status!=="Borrador")return erpError(409,"PAYROLL_PERIOD_LOCKED","Solo se pueden agregar partidas a un período en borrador.");
-      const employee=await sql.query("SELECT id FROM employees WHERE id=$1::uuid AND status='Activo'",[employeeId]);
+      const employee=await sql.query("SELECT id,salary_nio FROM employees WHERE id=$1::uuid AND status='Activo'",[employeeId]);
       if(!employee[0])return erpError(404,"ACTIVE_EMPLOYEE_NOT_FOUND","El colaborador no existe o está inactivo.");
+      if(Number(employee[0].salary_nio)+0.001<monthlyWageRule.amountNio)return erpError(409,"MINIMUM_WAGE_VIOLATION","El salario mensual del colaborador quedó por debajo del mínimo vigente. Corrige el expediente antes de procesar nómina.");
       if(period[0].period_type==="Aguinaldo")return erpError(400,"AGUINALDO_ITEM_INVALID","El período de aguinaldo calcula el decimotercer mes automáticamente y no admite salario, bonos ni deducciones adicionales.");
       return erpError(400,"PAYROLL_DEDUCTIONS_TOO_HIGH","Las deducciones superan el neto disponible después de INSS e IR.");
     }
