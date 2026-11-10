@@ -551,3 +551,14 @@ input[type="radio"] {
   }
 }
 
+
+
+/* Mobile access role creation: keep the existing 14px inset inside the panel. */
+@media (max-width: 760px) {
+  .access-manager-section #role-create-form {
+    box-sizing: border-box;
+    width: auto !important;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
