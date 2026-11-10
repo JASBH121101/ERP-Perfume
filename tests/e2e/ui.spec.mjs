@@ -799,10 +799,11 @@ test('custom role without DGI permission is returned to an allowed module', asyn
       permissions: ['dashboard.view']
     };
   });
-  await page.locator('#sidebar button[data-view="dgi"]').click();
+  const dgiNavigation = page.locator('#sidebar button[data-view="dgi"]');
+  await expect(dgiNavigation).toBeHidden();
+  await dgiNavigation.evaluate(button => button.click());
   await expect(page.getByRole('heading', { name: /Buenos días|Buenas tardes|Buenas noches/ })).toBeVisible();
-  await page.locator('#sidebar button[data-view="dashboard"]').click();
-  await expect(page.locator('#sidebar button[data-view="dgi"]')).toBeHidden();
+  await expect(dgiNavigation).toBeHidden();
 });
 
 test('DGI workspace displays thresholds as alerts and starts with regime unconfirmed', async ({ page }) => {
