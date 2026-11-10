@@ -2,3 +2,5 @@ Deploy the pinned Production Worker to the original production environment after
 Source baseline: 5be5601a4c8f3e5cf8bf4e0f234e039fc3ff85f9
 Target: jb-parfums-erp-api-production + Neon Production + Neon Auth Production + R2 erp-perfume-assets.
 Run production health preflight, tests, deploy with Wrangler, then verify health, Auth, storage and CORS.
+Release this access-management UI and account-status correction to the original Production Worker.
+Target: Production Worker + Neon Production + Neon Auth Production + R2.
