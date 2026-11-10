@@ -38,7 +38,11 @@ function extractJwt(value) {
 }
 
 async function requestSessionToken() {
-  if (!authBaseUrl) return { token: null, error: "" };
+  const tokenSpan = startPerformanceSpan("Obtener JWT");
+  if (!authBaseUrl) {
+    tokenSpan({ status: 401 });
+    return { token: null, error: "" };
+  }
   try {
     const response = await fetch(authBaseUrl + "/token", {
       method: "GET",
@@ -48,7 +52,11 @@ async function requestSessionToken() {
     });
     const body = await readJson(response);
     const token = extractJwt(body);
-    if (response.ok && token) return { token, error: "" };
+    if (response.ok && token) {
+      tokenSpan({ status: 200 });
+      return { token, error: "" };
+    }
+    tokenSpan({ status: response.status || 401 });
     return {
       token: null,
       error: response.ok
@@ -56,6 +64,7 @@ async function requestSessionToken() {
         : "El servicio de acceso respondió HTTP " + response.status + " al solicitar el JWT."
     };
   } catch (error) {
+    tokenSpan({ status: 599 });
     return {
       token: null,
       error: "No se pudo consultar el servicio de sesión. " +
@@ -146,13 +155,10 @@ async function refreshProfile() {
   if (!authUser) return null;
 
   try {
-    const tokenSpan = startPerformanceSpan("Obtener JWT");
     let token;
     try {
       token = await getToken(tokenRequest);
-      tokenSpan({ status: token ? 200 : 401 });
     } catch (error) {
-      tokenSpan({ status: 599 });
       throw error;
     }
     if (!token) {
