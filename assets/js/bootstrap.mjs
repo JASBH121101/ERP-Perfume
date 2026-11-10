@@ -1,6 +1,7 @@
 import { createAuthClient } from "@neondatabase/auth";
 import { profileIdentityKey, profileMatchesAuthUser } from "./permission-utils.mjs";
 import { recordPerformance, startPerformanceSpan } from "./performance-metrics.mjs";
+import { createJwtTokenCache } from "./jwt-token-cache.mjs";
 
 const $ = (selector) => document.querySelector(selector);
 const authDialog = $("#auth-dialog");
@@ -19,6 +20,7 @@ let appLoaded = false;
 let appLoadedProfileKey = "";
 let allowInviteActivation = false;
 let authEnvironment = "unknown";
+const sessionTokenCache = createJwtTokenCache();
 
 async function readJson(response) {
   try { return await response.json(); } catch { return {}; }
@@ -76,11 +78,11 @@ async function requestSessionToken() {
 async function getToken(prefetchedToken = null) {
   if (!authClient) return null;
 
-  // The direct cookie-backed JWT request may already be running alongside
-  // getSession(); this preserves the same token source without serial waits.
+  // Reuse only a short-lived JWT in memory; simultaneous callers share one
+  // cookie-backed request. The Worker still verifies every authenticated call.
   const tokenResult = prefetchedToken
     ? await prefetchedToken
-    : await requestSessionToken();
+    : await sessionTokenCache.request(requestSessionToken);
   if (tokenResult?.token) return tokenResult.token;
   let endpointError = tokenResult?.error || "";
 
@@ -89,14 +91,14 @@ async function getToken(prefetchedToken = null) {
     if (typeof authClient.getJWTToken === "function") {
       const result = await authClient.getJWTToken();
       const helperToken = extractJwt(result);
-      if (helperToken) return helperToken;
+      if (helperToken) return sessionTokenCache.remember(helperToken);
     }
   } catch (error) {
     if (!endpointError) endpointError = error?.message || "No se pudo renovar la sesión.";
   }
 
   const sessionToken = extractJwt(authSession);
-  if (sessionToken) return sessionToken;
+  if (sessionToken) return sessionTokenCache.remember(sessionToken);
 
   throw new Error(endpointError || "No se recibió una sesión válida. Cierra sesión, vuelve a iniciar y comprueba que el navegador permita cookies.");
 }
@@ -131,9 +133,10 @@ function updateSidebarIdentity(profile) {
 async function refreshProfile() {
   if (!authClient) return null;
 
-  // Both requests are read-only and authenticated by the same managed cookie.
-  // Start the JWT request before waiting for Neon Auth's session response.
-  const tokenRequest = requestSessionToken();
+  // Start a fresh cache generation, then request the cookie-backed JWT in
+  // parallel with Neon Auth session discovery. Other callers can share it.
+  sessionTokenCache.clear();
+  const tokenRequest = sessionTokenCache.request(requestSessionToken);
   const sessionSpan = startPerformanceSpan("Sesión Neon Auth");
   let result;
   try {
@@ -454,6 +457,7 @@ async function initialize() {
       return result;
     },
     async signIn(email, password) {
+      sessionTokenCache.clear();
       const result = await authClient.signIn.email({ email, password });
       if (result?.error) throw new Error(result.error.message || "No se pudo iniciar sesión.");
       await refreshProfile();
@@ -514,6 +518,7 @@ async function initialize() {
       if (!authClient) return;
       const result = await authClient.signOut();
       if (result?.error) throw new Error(result.error.message || "No se pudo cerrar sesión.");
+      sessionTokenCache.clear();
       authSession = null;
       authUser = null;
       erpProfile = null;
