@@ -1,4 +1,5 @@
 import { createAuthClient } from "@neondatabase/auth";
+import { profileIdentityKey, profileMatchesAuthUser } from "./permission-utils.mjs";
 
 const $ = (selector) => document.querySelector(selector);
 const authDialog = $("#auth-dialog");
@@ -14,6 +15,7 @@ let authBaseUrl = "";
 let erpProfile = null;
 let profileError = "";
 let appLoaded = false;
+let appLoadedProfileKey = "";
 let allowInviteActivation = false;
 let authEnvironment = "unknown";
 
@@ -132,9 +134,16 @@ async function refreshProfile() {
     });
     const body = await readJson(response);
     if (response.ok && body.user) {
+      if (!profileMatchesAuthUser(body.user, authUser)) {
+        erpProfile = null;
+        profileError = "La sesión de autenticación y la cuenta ERP no corresponden al mismo usuario. Cierra sesión y vuelve a iniciar.";
+        updateSidebarIdentity(null);
+        return null;
+      }
       erpProfile = body.user;
       updateSidebarIdentity(erpProfile);
     } else {
+      erpProfile = null;
       profileError = body?.error?.message || body?.error?.code || "La cuenta todavía no tiene acceso al ERP.";
       updateSidebarIdentity(null);
     }
@@ -285,9 +294,17 @@ async function openERP() {
   }
 
   try {
+    const nextProfileKey = profileIdentityKey(erpProfile);
+    if (appLoaded && appLoadedProfileKey && nextProfileKey !== appLoadedProfileKey) {
+      // app.js retains module state and business records in memory. Never let
+      // another ERP identity reuse the previous account's state or sidebar.
+      window.location.reload();
+      return false;
+    }
     if (!appLoaded) {
-      await import("./app.js?v=20261110-access-mobile-1");
+      await import("./app.js?v=20261110-auth-isolation-1");
       appLoaded = true;
+      appLoadedProfileKey = nextProfileKey;
     }
 
     document.body.classList.remove("auth-pending", "auth-locked");
@@ -429,7 +446,11 @@ async function initialize() {
       authUser = null;
       erpProfile = null;
       profileError = "";
+      appLoadedProfileKey = "";
       updateSidebarIdentity(null);
+      // Dispose the entire SPA so no previous user's cached business data
+      // remains in the DOM or memory while another identity signs in.
+      window.location.reload();
     }
   };
 
