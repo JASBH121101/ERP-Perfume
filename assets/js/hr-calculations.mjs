@@ -63,12 +63,9 @@ export function calculateVacationBalance({ hireDate, leaveRequests = [], settlem
   const compensatedDays = paidSettlements
     .filter(item => (item.settlementType ?? item.settlement_type) === "Compensacion")
     .reduce((total, item) => total + Math.max(0, Number(item.days || 0)), 0);
-  const paidLeaveRequestIds = new Set(paidSettlements
-    .map(item => item.leaveRequestId ?? item.leave_request_id).filter(Boolean).map(String));
   const usedDays = leaveRequests.reduce((total, request) => {
     if (String(request.employeeId ?? request.employee_id) !== String(employeeId) ||
         request.status !== "Aprobado" ||
-        paidLeaveRequestIds.has(String(request.id)) ||
         !["Vacaciones", "Vacation"].includes(request.leaveType ?? request.leave_type)) return total;
     const leaveEnd = utcDate(request.endDate ?? request.end_date);
     if (!leaveEnd || leaveEnd > end) return total;
@@ -136,7 +133,7 @@ export function calculateLaborIR({monthlyGrossNio=0,monthlyEmployeeInssNio=0,mon
   annualAdditionalIncomeNio=0,monthsRemaining=12,priorWithheldNio=0}) {
   const months=Math.max(1,Math.min(12,Math.floor(Number(monthsRemaining)||12)));
   const monthlyNet=Math.max(0,Number(monthlyGrossNio)-Number(monthlyEmployeeInssNio)-Number(monthlyEligibleDeductionsNio));
-  const annualNet=Math.max(0,monthlyNet*months+Math.max(0,Number(annualAdditionalIncomeNio)||0));
+  const annualNet=Math.max(0,monthlyNet*12+Math.max(0,Number(annualAdditionalIncomeNio)||0));
   const annualTax=calculateAnnualLaborIR(annualNet);
   const due=Math.max(0,annualTax.annualTaxNio-Math.max(0,Number(priorWithheldNio)||0));
   return {...annualTax,projectedAnnualNetIncomeNio:Number(annualNet.toFixed(2)),
