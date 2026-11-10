@@ -3,7 +3,7 @@ name: ERP isolated performance preview
 on:
   push:
     branches:
-      - perf/erp-loading-optimization
+      - perf/erp-loading-optimization\n      - ui/erp-ultra-compact
     paths:
       - "assets/**"
       - "index.html"
