@@ -115,7 +115,9 @@ async function requireUser(request, env) {
   }
 
   let identity;
+  const authTimings = { jwt: 0, identityDb: 0 };
   try {
+    const jwtStarted = performance.now();
     const verified = await jwtVerify(
       authorization.slice(7),
       getJwks(env.NEON_AUTH_JWKS_URL),
@@ -126,6 +128,7 @@ async function requireUser(request, env) {
       }
     );
     identity = verified.payload;
+    authTimings.jwt = performance.now() - jwtStarted;
   } catch {
     return { response: errorResponse(401, "INVALID_SESSION", "Your session is invalid or expired. Sign in again.") };
   }
@@ -137,10 +140,20 @@ async function requireUser(request, env) {
 
   try {
     const sql = getDatabase(env);
+    const identityQueryStarted = performance.now();
     const authRows = await sql.query(
-      'SELECT id, name, email, "emailVerified" AS email_verified FROM neon_auth."user" WHERE id = $1 LIMIT 1',
+      'SELECT a.id, a.name, a.email, a."emailVerified" AS email_verified, ' +
+      "u.id AS erp_id, u.auth_user_id AS erp_auth_user_id, u.email AS erp_email, " +
+      "u.display_name AS erp_display_name, u.role AS erp_role, " +
+      "u.role_template_key AS erp_role_template_key, u.position_title AS erp_position_title, " +
+      "u.account_status AS erp_account_status, u.must_change_password AS erp_must_change_password, " +
+      "u.active AS erp_active " +
+      'FROM neon_auth."user" a LEFT JOIN app_users u ' +
+      "ON u.auth_user_id = a.id AND LOWER(u.email) = LOWER(a.email) " +
+      "WHERE a.id = $1 LIMIT 1",
       [authUserId]
     );
+    authTimings.identityDb = performance.now() - identityQueryStarted;
     const authRecord = authRows[0];
 
     if (!authRecord || typeof authRecord.email !== "string" || !authRecord.email.trim()) {
@@ -152,14 +165,18 @@ async function requireUser(request, env) {
 
     // A Neon Auth identity is not automatically an ERP account.
     // Only a separately provisioned app_users row grants entry.
-    const rows = await sql.query(
-      "SELECT id, auth_user_id, email, display_name, role, role_template_key, position_title, " +
-      "account_status, must_change_password, active " +
-      "FROM app_users WHERE auth_user_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1",
-      [authUserId, authRecord.email.trim()]
-    );
-
-    const user = rows[0] || await provisionBootstrapOwner(sql, authRecord, env);
+    const user = authRecord.erp_id ? {
+      id: authRecord.erp_id,
+      auth_user_id: authRecord.erp_auth_user_id,
+      email: authRecord.erp_email,
+      display_name: authRecord.erp_display_name,
+      role: authRecord.erp_role,
+      role_template_key: authRecord.erp_role_template_key,
+      position_title: authRecord.erp_position_title,
+      account_status: authRecord.erp_account_status,
+      must_change_password: authRecord.erp_must_change_password,
+      active: authRecord.erp_active
+    } : await provisionBootstrapOwner(sql, authRecord, env);
     if (!user) {
       return { response: errorResponse(403, "ACCOUNT_NOT_PROVISIONED", "Esta cuenta todavía no fue autorizada por el propietario del ERP.") };
     }
@@ -170,7 +187,7 @@ async function requireUser(request, env) {
       return { response: errorResponse(403, "ACCOUNT_NOT_ACTIVE", "Tu correo y contraseña ya están configurados. Solo falta que el propietario active tu acceso al ERP.") };
     }
 
-    return { user, sql };
+    return { user, sql, authTimings };
   } catch (error) {
     console.error("[auth] Unable to resolve ERP user:", error?.message || "database error");
     return { response: errorResponse(503, "IDENTITY_UNAVAILABLE", "The ERP identity service is temporarily unavailable.") };
@@ -179,11 +196,15 @@ async function requireUser(request, env) {
 
 async function getConfig(env) {
   const ready = Boolean(env?.DATABASE_URL && env?.NEON_AUTH_BASE_URL && env?.NEON_AUTH_JWKS_URL);
-  return json({
+  const response = json({
     authBaseUrl: ready ? env.NEON_AUTH_BASE_URL : null,
     mode: ready ? "authenticated" : "demo",
     environment: env?.ERP_ENVIRONMENT || "development"
   });
+  // This endpoint contains only deployment metadata and a public auth URL.
+  // It is identical for every visitor to the same deployment.
+  response.headers.set("cache-control", "public, max-age=300, stale-while-revalidate=600");
+  return response;
 }
 
 async function getHealth(env) {
@@ -212,13 +233,15 @@ async function getProfile(request, env) {
   const auth = await requireUser(request, env);
   if (auth.response) return auth.response;
   try {
+    const permissionStarted = performance.now();
     const permissionContext = await loadUserPermissions(auth.sql, auth.user);
+    const permissionMs = performance.now() - permissionStarted;
     const permissions = permissionContext.owner
       ? ["*"]
       : permissionContext.permissions
           .filter((item) => hasPermission(permissionContext, item.key))
           .map((item) => item.key);
-    return json({
+    const response = json({
       user: {
         id: auth.user.id,
         authUserId: auth.user.auth_user_id,
@@ -232,6 +255,17 @@ async function getProfile(request, env) {
         permissions
       }
     });
+    if (env?.ERP_ENVIRONMENT === "development") {
+      const timings = [
+        ["jwt", auth.authTimings?.jwt],
+        ["identity_db", auth.authTimings?.identityDb],
+        ["permissions", permissionMs]
+      ].filter(([, duration]) => Number.isFinite(duration));
+      response.headers.set("server-timing", timings
+        .map(([name, duration]) => name + ";dur=" + Math.max(0, duration).toFixed(1))
+        .join(", "));
+    }
+    return response;
   } catch (error) {
     console.error("[auth] Permission profile failed:", error?.message || "database error");
     return errorResponse(503, "PERMISSIONS_UNAVAILABLE", "No se pudieron cargar los permisos de la cuenta.");
