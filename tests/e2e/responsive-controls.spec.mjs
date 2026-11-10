@@ -109,8 +109,40 @@ test.describe('responsive account controls',()=>{
               offenders.push({tag:el.tagName,cls:typeof el.className==='string'?el.className:'',right:Math.round(r.right),left:Math.round(r.left),width:Math.round(r.width)});
             }
           }
-          return {viewport,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,rootLeft:Math.round(rect.left),rootRight:Math.round(rect.right),offenders:offenders.slice(0,8)};
+          const diagnostic = (() => {
+            if (!root.querySelector('.settings-rate-panel')) return null;
+            const form = root.querySelector('.settings-rate-panel .rate-form');
+            const chain = [];
+            for (let node = form; node; node = node.parentElement) {
+              const box = node.getBoundingClientRect();
+              const style = getComputedStyle(node);
+              chain.push({
+                tag: node.tagName,
+                cls: typeof node.className === 'string' ? node.className : '',
+                left: Math.round(box.left * 100) / 100,
+                right: Math.round(box.right * 100) / 100,
+                width: Math.round(box.width * 100) / 100,
+                clientWidth: node.clientWidth,
+                scrollWidth: node.scrollWidth,
+                display: style.display,
+                boxSizing: style.boxSizing,
+                widthCss: style.width,
+                minWidth: style.minWidth,
+                maxWidth: style.maxWidth,
+                flex: style.flex,
+                marginLeft: style.marginLeft,
+                marginRight: style.marginRight,
+                paddingLeft: style.paddingLeft,
+                paddingRight: style.paddingRight,
+                transform: style.transform
+              });
+              if (node === root) break;
+            }
+            return chain;
+          })();
+          return {viewport,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth,rootLeft:Math.round(rect.left),rootRight:Math.round(rect.right),offenders:offenders.slice(0,8),diagnostic};
         });
+        if (view === 'settings' && width === 390) console.log('SETTINGS_RESPONSIVE_DIAGNOSTIC', JSON.stringify(metrics.diagnostic));
         expect(metrics.rootLeft,view+' root left at '+width+'px').toBeGreaterThanOrEqual(-1);
         expect(metrics.rootRight,view+' root right at '+width+'px').toBeLessThanOrEqual(width+1);
         expect(metrics.documentWidth,view+' document overflow at '+width+'px').toBeLessThanOrEqual(width+1);
