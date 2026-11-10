@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateFinancialSnapshot, calculatePayablesSnapshot } from "../assets/js/financial-snapshot.mjs";
+import { calculateFinancialSnapshot, calculatePayablesSnapshot, isVoidedInvoice } from "../assets/js/financial-snapshot.mjs";
 
 test("financial snapshot separates product gross profit from delivery income and expenses", () => {
   const invoices = [
@@ -76,5 +76,53 @@ test("payables snapshot handles empty ledgers and malformed collection inputs", 
     legacyPurchasePayables:0,
     supplierInvoicePayables:0,
     total:0
+  });
+});
+
+
+test("voided invoices never contribute to revenue, delivery, cost, gross profit or net profit", () => {
+  const result = calculateFinancialSnapshot([
+    {
+      status: "Pendiente", totalUsd: 40, subtotalUsd: 35, discountUsd: 5, deliveryFeeUsd: 5,
+      items: [{ quantity: 1, unitPriceUsd: 35, unitCostUsd: 20 }]
+    },
+    {
+      status: "Anulada", totalUsd: 900, subtotalUsd: 850, deliveryFeeUsd: 50,
+      items: [{ quantity: 10, unitPriceUsd: 85, unitCostUsd: 60 }]
+    },
+    {
+      status: "Cancelled", totalUsd: 500, subtotalUsd: 500, deliveryFeeUsd: 0,
+      items: [{ quantity: 10, unitPriceUsd: 50, unitCostUsd: 35 }]
+    }
+  ], [{ amountUsd: 3 }]);
+  assert.deepEqual(result, {
+    revenue: 40,
+    productNetSales: 30,
+    deliveryIncome: 5,
+    costOfSales: 20,
+    grossProfit: 10,
+    operatingExpenses: 3,
+    netProfit: 12
+  });
+});
+
+test("invoice void-state detection handles Spanish status variants and English imports", () => {
+  for (const status of ["Anulada","Anulado","Cancelada","Cancelado","Void","Voided"]) {
+    assert.equal(isVoidedInvoice({ status }), true, status);
+  }
+  assert.equal(isVoidedInvoice({ status: "Abono parcial" }), false);
+});
+
+test("payables snapshot excludes cancelled supplier invoices in all supported status variants", () => {
+  const result = calculatePayablesSnapshot([], [
+    { amountUsd: 100, paidUsd: 0, status: "Pendiente" },
+    { amountUsd: 900, paidUsd: 0, status: "Cancelada" },
+    { amountUsd: 800, paidUsd: 0, status: "Cancelado" },
+    { amountUsd: 700, paidUsd: 0, status: "Voided" }
+  ]);
+  assert.deepEqual(result, {
+    legacyPurchasePayables: 0,
+    supplierInvoicePayables: 100,
+    total: 100
   });
 });
