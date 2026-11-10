@@ -256,7 +256,7 @@ async function openERP() {
 
   try {
     if (!appLoaded) {
-      await import("./app.js");
+      await import("./app.js?v=20261110-access-mobile-1");
       appLoaded = true;
     }
 
