@@ -9,7 +9,7 @@
 
 ## Request path
 
-The Worker verifies the Neon Auth JWT, resolves the ERP user from the database, and confirms that the account is active. Only then does it call JB Security Guard using the internal ERP user ID. The adapter hashes the identifier with Web Crypto before it reaches the Cloudflare binding. Logs contain only component, event, severity, scope, and mode — never the user ID or JWT.
+The Worker verifies the Neon Auth JWT signature, issuer, audience, and subject first. It then applies JB Security Guard using the stable subject from that verified token, before making any Neon database query. The adapter hashes the identifier with Web Crypto before it reaches the Cloudflare binding. Normal ERP account provisioning, active-account validation, and permissions still run afterward. Logs contain only component, event, severity, scope, and mode — never the user ID or JWT.
 
 ## Boundaries
 

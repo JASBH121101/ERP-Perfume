@@ -68,14 +68,16 @@ test("Cloudflare binding failures fail open rather than denying ERP access", asy
   assert.equal(JSON.stringify(events).includes("private Cloudflare detail"), false);
 });
 
-test("ERP places account throttling only after active account verification", async () => {
+test("ERP limits verified JWT identities before executing Neon queries", async () => {
   const source = await readFile(new URL("../worker/src/index.js", import.meta.url), "utf8");
-  const activeCheck = source.indexOf('if (user.active !== true || user.account_status !== "active")');
-  const rateCheck = source.indexOf("const rateLimitResponse = await checkAccountRateLimit(env, user);");
-  const successReturn = source.indexOf("return { user, sql };", rateCheck);
-  assert.ok(activeCheck >= 0);
-  assert.ok(rateCheck > activeCheck);
-  assert.ok(successReturn > rateCheck);
+  const subjectCheck = source.indexOf('if (!authUserId)');
+  const rateCheck = source.indexOf("const rateLimitResponse = await checkAccountRateLimit(env, authUserId);");
+  const databaseQuery = source.indexOf("const sql = getDatabase(env);", rateCheck);
+  const accountCheck = source.indexOf('if (user.active !== true || user.account_status !== "active")', rateCheck);
+  assert.ok(subjectCheck >= 0);
+  assert.ok(rateCheck > subjectCheck);
+  assert.ok(databaseQuery > rateCheck);
+  assert.ok(accountCheck > rateCheck);
 });
 
 test("both Wrangler environments begin in non-blocking monitor mode", async () => {

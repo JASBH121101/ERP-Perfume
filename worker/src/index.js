@@ -52,7 +52,7 @@ function withCors(request, env, response) {
   });
 }
 
-async function checkAccountRateLimit(env, user) {
+async function checkAccountRateLimit(env, identity) {
   const binding = env?.JB_GUARD_ACCOUNT_LIMITER;
   if (!binding || typeof binding.limit !== "function") return null;
 
@@ -73,7 +73,7 @@ async function checkAccountRateLimit(env, user) {
       }
     });
     const result = await limiter.check({
-      identity: String(user?.id ?? ""),
+      identity: String(identity ?? ""),
       scope: "account"
     });
     return result.response;
@@ -168,6 +168,11 @@ async function requireUser(request, env) {
     return { response: errorResponse(401, "INVALID_SESSION", "The session does not contain a user identity.") };
   }
 
+  // The JWT has passed signature, issuer, audience and algorithm validation.
+  // Apply the account counter before any Neon query so abusive sessions cannot amplify DB work.
+  const rateLimitResponse = await checkAccountRateLimit(env, authUserId);
+  if (rateLimitResponse) return { response: rateLimitResponse };
+
   try {
     const sql = getDatabase(env);
     const authRows = await sql.query(
@@ -202,10 +207,6 @@ async function requireUser(request, env) {
     if (user.active !== true || user.account_status !== "active") {
       return { response: errorResponse(403, "ACCOUNT_NOT_ACTIVE", "Tu correo y contraseña ya están configurados. Solo falta que el propietario active tu acceso al ERP.") };
     }
-
-    // Rate-limit only after the JWT and active ERP account have been verified.
-    const rateLimitResponse = await checkAccountRateLimit(env, user);
-    if (rateLimitResponse) return { response: rateLimitResponse };
 
     return { user, sql };
   } catch (error) {
