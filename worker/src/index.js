@@ -3,6 +3,7 @@ import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { handleERPRequest } from "./erp.js";
 import { loadUserPermissions, hasPermission } from "./permissions.js";
+import { createCloudflareWorkerRateLimit } from "./security-guard-rate-limit.js";
 
 const jwksCache = new Map();
 
@@ -49,6 +50,38 @@ function withCors(request, env, response) {
     statusText: response.statusText,
     headers
   });
+}
+
+async function checkAccountRateLimit(env, user) {
+  const binding = env?.JB_GUARD_ACCOUNT_LIMITER;
+  if (!binding || typeof binding.limit !== "function") return null;
+
+  try {
+    const limiter = createCloudflareWorkerRateLimit({
+      binding,
+      namespace: "jb-parfums-erp-api:account",
+      mode: env?.JB_SECURITY_GUARD_MODE === "enforce" ? "enforce" : "monitor",
+      periodSeconds: 60,
+      onEvent(event) {
+        console.warn("[security-guard]", JSON.stringify({
+          component: event.component,
+          action: event.action,
+          severity: event.severity,
+          scope: event.scope,
+          mode: event.mode
+        }));
+      }
+    });
+    const result = await limiter.check({
+      identity: String(user?.id ?? ""),
+      scope: "account"
+    });
+    return result.response;
+  } catch {
+    // A Guard integration fault must not change ERP availability.
+    console.warn("[security-guard] rate-limit-adapter-unavailable");
+    return null;
+  }
 }
 
 function getJwks(url) {
@@ -169,6 +202,10 @@ async function requireUser(request, env) {
     if (user.active !== true || user.account_status !== "active") {
       return { response: errorResponse(403, "ACCOUNT_NOT_ACTIVE", "Tu correo y contraseña ya están configurados. Solo falta que el propietario active tu acceso al ERP.") };
     }
+
+    // Rate-limit only after the JWT and active ERP account have been verified.
+    const rateLimitResponse = await checkAccountRateLimit(env, user);
+    if (rateLimitResponse) return { response: rateLimitResponse };
 
     return { user, sql };
   } catch (error) {
