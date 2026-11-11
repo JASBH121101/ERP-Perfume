@@ -59,11 +59,23 @@ jobs:
         with:
           node-version: 22
 
+      - name: Create short-lived JB Expert QA GitHub App token
+        id: jbqa-app-token
+        if: ${{ vars.JBQA_APP_CLIENT_ID != '' && secrets.JBQA_APP_PRIVATE_KEY != '' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.JBQA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.JBQA_APP_PRIVATE_KEY }}
+          owner: JASBH121101
+          repositories: JB-Expert-QA
+          permission-contents: read
+
       - name: Checkout pinned JB Expert QA engine
         uses: actions/checkout@v4
         with:
           repository: JASBH121101/JB-Expert-QA
           ref: 92f23fafd679c31dcbe496a4e1b3801d3f14fb7f
+          token: ${{ steps.jbqa-app-token.outputs.token || github.token }}
           path: .jb-expert-qa
           fetch-depth: 1
           persist-credentials: false
