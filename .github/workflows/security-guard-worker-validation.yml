@@ -1,0 +1,59 @@
+name: JB Security Guard Worker validation
+
+on:
+  push:
+    branches: ["security/**"]
+    paths:
+      - "worker/src/**"
+      - "tests/security-guard-rate-limit.test.mjs"
+      - "wrangler.toml"
+      - "wrangler.production.toml"
+      - ".github/workflows/security-guard-worker-validation.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "worker/src/**"
+      - "tests/security-guard-rate-limit.test.mjs"
+      - "wrangler.toml"
+      - "wrangler.production.toml"
+      - ".github/workflows/security-guard-worker-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-guard-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check Worker syntax and execute unit tests
+        run: |
+          node --input-type=module --check < worker/src/index.js
+          node --check worker/src/security-guard-rate-limit.js
+          node --check tests/security-guard-rate-limit.test.mjs
+          npm run test:unit
+      - name: Build ERP assets
+        run: npm run build
+      - name: Validate Development and Production Worker bundles without deploying
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.36.0 deploy --dry-run --outdir "$RUNNER_TEMP/worker-development" --config wrangler.toml
+          npx --yes wrangler@4.36.0 deploy --dry-run --outdir "$RUNNER_TEMP/worker-production" --config wrangler.production.toml
+      - name: Record deployment boundary
+        run: |
+          echo "This workflow only validates bundles. It does not deploy to Cloudflare, modify Neon, or write to R2." >> "$GITHUB_STEP_SUMMARY"

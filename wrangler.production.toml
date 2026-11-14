@@ -10,9 +10,17 @@ account_id = "ddfbc84938d4d2795dd70d524b4197c9"
 API_CORS_ORIGINS = "https://erp-perfume.pages.dev"
 BOOTSTRAP_OWNER_EMAIL = "jaredblancoh19@gmail.com"
 ERP_ENVIRONMENT = "production"
+JB_SECURITY_GUARD_MODE = "monitor"
 NEON_AUTH_BASE_URL = "https://ep-snowy-surf-ber3pjus.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth"
 NEON_AUTH_JWKS_URL = "https://ep-snowy-surf-ber3pjus.neonauth.c-9.us-east-2.aws.neon.tech/erp_perfume/auth/.well-known/jwks.json"
 
 [[r2_buckets]]
 binding = "ERP_ASSETS"
 bucket_name = "erp-perfume-assets"
+
+[[ratelimits]]
+name = "JB_GUARD_ACCOUNT_LIMITER"
+namespace_id = "202611111102"
+[ratelimits.simple]
+limit = 600
+period = 60

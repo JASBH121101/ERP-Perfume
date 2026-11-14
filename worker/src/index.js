@@ -3,6 +3,7 @@ import { neon } from "@neondatabase/serverless";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { handleERPRequest } from "./erp.js";
 import { loadUserPermissions, hasPermission } from "./permissions.js";
+import { createCloudflareWorkerRateLimit } from "./security-guard-rate-limit.js";
 
 const jwksCache = new Map();
 
@@ -49,6 +50,38 @@ function withCors(request, env, response) {
     statusText: response.statusText,
     headers
   });
+}
+
+async function checkAccountRateLimit(env, identity) {
+  const binding = env?.JB_GUARD_ACCOUNT_LIMITER;
+  if (!binding || typeof binding.limit !== "function") return null;
+
+  try {
+    const limiter = createCloudflareWorkerRateLimit({
+      binding,
+      namespace: "jb-parfums-erp-api:account",
+      mode: env?.JB_SECURITY_GUARD_MODE === "enforce" ? "enforce" : "monitor",
+      periodSeconds: 60,
+      onEvent(event) {
+        console.warn("[security-guard]", JSON.stringify({
+          component: event.component,
+          action: event.action,
+          severity: event.severity,
+          scope: event.scope,
+          mode: event.mode
+        }));
+      }
+    });
+    const result = await limiter.check({
+      identity: String(identity ?? ""),
+      scope: "account"
+    });
+    return result.response;
+  } catch {
+    // A Guard integration fault must not change ERP availability.
+    console.warn("[security-guard] rate-limit-adapter-unavailable");
+    return null;
+  }
 }
 
 function getJwks(url) {
@@ -134,6 +167,11 @@ async function requireUser(request, env) {
   if (!authUserId) {
     return { response: errorResponse(401, "INVALID_SESSION", "The session does not contain a user identity.") };
   }
+
+  // The JWT has passed signature, issuer, audience and algorithm validation.
+  // Apply the account counter before any Neon query so abusive sessions cannot amplify DB work.
+  const rateLimitResponse = await checkAccountRateLimit(env, authUserId);
+  if (rateLimitResponse) return { response: rateLimitResponse };
 
   try {
     const sql = getDatabase(env);
